@@ -1,0 +1,10 @@
+node_modules
+dist
+build
+.local
+output
+.playwright-cli
+legacy/web/*.html
+package-lock.json
+docs/openapi.json
+*.sql

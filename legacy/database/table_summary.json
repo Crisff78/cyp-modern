@@ -1,0 +1,23 @@
+{
+  "status": "not_extracted",
+  "audited_on": "2026-09-16",
+  "backup": {
+    "filename": "CobrosyPagos-GDemos-2.bak",
+    "bytes": 7831040,
+    "sha256": "3406194142696769A0773E17FC9BB857E92D3B128054F29E7F44FCE785CAECB7"
+  },
+  "native_sql_discovery": {
+    "sql_server_services_found": false,
+    "registered_instances_found": false,
+    "localdb_tool_found": false,
+    "sqlcmd_tool_found": false,
+    "sqlserver_powershell_module_found": false
+  },
+  "blocker": "No native SQL Server or LocalDB instance discovered; user prohibited Docker and directed restoration to be skipped in this case.",
+  "tables": null,
+  "procedures": null,
+  "foreign_keys": null,
+  "indexes": null,
+  "row_counts": null,
+  "notes": "Null means unknown, not zero. The modern PostgreSQL schema is newly designed and is not an extraction of this backup."
+}

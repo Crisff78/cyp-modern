@@ -1,0 +1,29 @@
+{
+  "name": "cobros-y-pagos",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Operaciones de cobros, pagos y cuadre. Dos portales web, una API.",
+  "workspaces": [
+    "app/server",
+    "app/client-admin",
+    "app/client-collector"
+  ],
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev": "concurrently -n api,admin,collector -c green,cyan,blue \"npm run dev -w @cyp/server\" \"npm run dev -w @cyp/client-admin\" \"npm run dev -w @cyp/client-collector\"",
+    "build": "npm run build --workspaces",
+    "typecheck": "npm run typecheck --workspaces",
+    "test": "npm test -w @cyp/server",
+    "db:migrate": "npm run db:migrate -w @cyp/server",
+    "check": "npm run typecheck && npm test && npm run build",
+    "format": "prettier --write \"app/**/*.{ts,tsx,css,json,html,js,sql}\" \"docs/*.md\" README.md --ignore-unknown"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "typescript": "^5.9.3",
+    "@types/node": "^22.19.0",
+    "prettier": "^3.6.2"
+  }
+}

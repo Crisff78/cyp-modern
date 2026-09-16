@@ -1,0 +1,246 @@
+{
+  "captured_at_utc": "2026-09-16T14:58:00.923086+00:00",
+  "target": "http://gdemos.ddns.net/cypdemo/",
+  "scope": "Unauthenticated public GET requests only",
+  "requests": [
+    {
+      "url": "http://gdemos.ddns.net/cypdemo/",
+      "status": 200,
+      "bytes": 486,
+      "sha256_received_bytes": "ad01cca4fb13bc3450b8334b1cb72b6518d4d4059b1b64dc56370578fabd3a47",
+      "content_type": "text/html",
+      "server": "Microsoft-IIS/8.5",
+      "last_modified": "Mon, 06 Mar 2023 13:22:35 GMT",
+      "set_cookie_redacted": [],
+      "security_headers": {
+        "Content-Security-Policy": null,
+        "Strict-Transport-Security": null,
+        "X-Frame-Options": null,
+        "X-Content-Type-Options": null,
+        "Referrer-Policy": null
+      }
+    },
+    {
+      "url": "http://gdemos.ddns.net/cypdemo/cyp10_front.dll?CID=cypdemo",
+      "status": 200,
+      "bytes": 20917,
+      "sha256_received_bytes": "575e12a312d8420a785c0db788406d31ccb55b552a99373a0252f5d809e5cef2",
+      "content_type": "text/html; charset=utf-8",
+      "server": "Microsoft-IIS/8.5",
+      "last_modified": null,
+      "set_cookie_redacted": [
+        "UNI_GUI_SESSION_ID=[REDACTED_SESSION]; Path=/"
+      ],
+      "security_headers": {
+        "Content-Security-Policy": null,
+        "Strict-Transport-Security": null,
+        "X-Frame-Options": null,
+        "X-Content-Type-Options": null,
+        "Referrer-Policy": null
+      }
+    },
+    {
+      "url": "http://gdemos.ddns.net/cypdemo/cyp10_front.dll/ext-3.4.0/resources/css/uni-ext.css",
+      "status": 200,
+      "bytes": 786,
+      "sha256_received_bytes": "4890ccb7847a784b0da8d6704ebf8d7cc32dde12144127f93bd8a9df3defe9c3",
+      "content_type": "text/css; charset=utf-8",
+      "server": "Microsoft-IIS/8.5",
+      "last_modified": "Wed, 19 Oct 2011 12:20:28 GMT",
+      "set_cookie_redacted": [],
+      "security_headers": {
+        "Content-Security-Policy": null,
+        "Strict-Transport-Security": null,
+        "X-Frame-Options": null,
+        "X-Content-Type-Options": null,
+        "Referrer-Policy": null
+      }
+    },
+    {
+      "url": "http://gdemos.ddns.net/cypdemo/cyp10_front.dll/ext-3.4.0/resources/css/ext-all.css",
+      "status": 200,
+      "bytes": 139591,
+      "sha256_received_bytes": "2ceabf012c48dba7c3865ebd47af9b28e17bc94defc4960105eb47a871a1bf29",
+      "content_type": "text/css; charset=utf-8",
+      "server": "Microsoft-IIS/8.5",
+      "last_modified": "Thu, 09 Jun 2011 02:43:14 GMT",
+      "set_cookie_redacted": [],
+      "security_headers": {
+        "Content-Security-Policy": null,
+        "Strict-Transport-Security": null,
+        "X-Frame-Options": null,
+        "X-Content-Type-Options": null,
+        "Referrer-Policy": null
+      },
+      "version_evidence": [
+        "3.4.0"
+      ]
+    },
+    {
+      "url": "http://gdemos.ddns.net/cypdemo/cyp10_front.dll/ext-3.4.0/adapter/ext/ext-base.js",
+      "status": 200,
+      "bytes": 27254,
+      "sha256_received_bytes": "9bb52e335e70d808a76fc0dd6df5c0b738dc800f4fffb6087217f9bcfeba7271",
+      "content_type": "text/javascript; charset=utf-8",
+      "server": "Microsoft-IIS/8.5",
+      "last_modified": "Thu, 09 Jun 2011 03:43:14 GMT",
+      "set_cookie_redacted": [],
+      "security_headers": {
+        "Content-Security-Policy": null,
+        "Strict-Transport-Security": null,
+        "X-Frame-Options": null,
+        "X-Content-Type-Options": null,
+        "Referrer-Policy": null
+      },
+      "version_evidence": [
+        "3.4.0"
+      ]
+    },
+    {
+      "url": "http://gdemos.ddns.net/cypdemo/cyp10_front.dll/ext-3.4.0/ext-sync-1.4.1-min.js",
+      "status": 200,
+      "bytes": 6480,
+      "sha256_received_bytes": "e8d6ea8eb5f561fad965860dcf1c305bd82f4264db6fa4f6d0a012df903b961d",
+      "content_type": "text/javascript; charset=utf-8",
+      "server": "Microsoft-IIS/8.5",
+      "last_modified": "Thu, 03 May 2012 08:41:40 GMT",
+      "set_cookie_redacted": [],
+      "security_headers": {
+        "Content-Security-Policy": null,
+        "Strict-Transport-Security": null,
+        "X-Frame-Options": null,
+        "X-Content-Type-Options": null,
+        "Referrer-Policy": null
+      }
+    },
+    {
+      "url": "http://gdemos.ddns.net/cypdemo/cyp10_front.dll/ext-3.4.0/ext-all.js",
+      "status": 200,
+      "bytes": 717499,
+      "sha256_received_bytes": "4add1861015a041b3eeb386132682f4d7653325a5270628131865c5a81f5994b",
+      "content_type": "text/javascript; charset=utf-8",
+      "server": "Microsoft-IIS/8.5",
+      "last_modified": "Thu, 09 Jun 2011 03:43:14 GMT",
+      "set_cookie_redacted": [],
+      "security_headers": {
+        "Content-Security-Policy": null,
+        "Strict-Transport-Security": null,
+        "X-Frame-Options": null,
+        "X-Content-Type-Options": null,
+        "Referrer-Policy": null
+      },
+      "version_evidence": [
+        "3.4.0"
+      ]
+    },
+    {
+      "url": "http://gdemos.ddns.net/cypdemo/cyp10_front.dll/ext-3.4.0/examples/ux/ux-all.js",
+      "status": 200,
+      "bytes": 154567,
+      "sha256_received_bytes": "15e87acfa27e3ecd144d08c08ac8c3612247bd794677870c2adc433b213e3944",
+      "content_type": "text/javascript; charset=utf-8",
+      "server": "Microsoft-IIS/8.5",
+      "last_modified": "Thu, 09 Jun 2011 03:43:14 GMT",
+      "set_cookie_redacted": [],
+      "security_headers": {
+        "Content-Security-Policy": null,
+        "Strict-Transport-Security": null,
+        "X-Frame-Options": null,
+        "X-Content-Type-Options": null,
+        "Referrer-Policy": null
+      },
+      "version_evidence": [
+        "3.4.0",
+        "3.4.0"
+      ]
+    },
+    {
+      "url": "http://gdemos.ddns.net/cypdemo/cyp10_front.dll/ext-3.4.0/resources/css/xtheme-xp.css",
+      "status": 200,
+      "bytes": 43884,
+      "sha256_received_bytes": "baef23ae6d57e09617ec0b65ba24d1faa50d1921bc6c4832b1ece3e83a05478e",
+      "content_type": "text/css; charset=utf-8",
+      "server": "Microsoft-IIS/8.5",
+      "last_modified": "Mon, 28 Feb 2011 10:06:22 GMT",
+      "set_cookie_redacted": [],
+      "security_headers": {
+        "Content-Security-Policy": null,
+        "Strict-Transport-Security": null,
+        "X-Frame-Options": null,
+        "X-Content-Type-Options": null,
+        "Referrer-Policy": null
+      },
+      "version_evidence": [
+        "3.0.0"
+      ]
+    },
+    {
+      "url": "http://gdemos.ddns.net/cypdemo/cyp10_front.dll/ext-3.4.0/examples/ux/css/ux-all.css",
+      "status": 200,
+      "bytes": 17375,
+      "sha256_received_bytes": "5140229db6a6f537d86ead36acf190f32b954471988e0f69d271950b8efc8758",
+      "content_type": "text/css; charset=utf-8",
+      "server": "Microsoft-IIS/8.5",
+      "last_modified": "Wed, 19 Oct 2011 14:35:10 GMT",
+      "set_cookie_redacted": [],
+      "security_headers": {
+        "Content-Security-Policy": null,
+        "Strict-Transport-Security": null,
+        "X-Frame-Options": null,
+        "X-Content-Type-Options": null,
+        "Referrer-Policy": null
+      },
+      "version_evidence": [
+        "3.4.0"
+      ]
+    },
+    {
+      "url": "http://gdemos.ddns.net/cypdemo/cyp10_front.dll/ext-3.4.0/src/locale/ext-lang-es.js",
+      "status": 200,
+      "bytes": 8941,
+      "sha256_received_bytes": "534e7cc55cb8898167c76784e7c989b2c3442f57b581dd4ab65f832bcd47bb02",
+      "content_type": "text/javascript; charset=utf-8",
+      "server": "Microsoft-IIS/8.5",
+      "last_modified": "Thu, 09 Jun 2011 03:43:14 GMT",
+      "set_cookie_redacted": [],
+      "security_headers": {
+        "Content-Security-Policy": null,
+        "Strict-Transport-Security": null,
+        "X-Frame-Options": null,
+        "X-Content-Type-Options": null,
+        "Referrer-Policy": null
+      },
+      "version_evidence": [
+        "3.4.0"
+      ]
+    },
+    {
+      "url": "http://gdemos.ddns.net/cypdemo/cyp10_front.dll/ext-3.4.0/ext-unigui-1.4.1-min.js",
+      "status": 200,
+      "bytes": 20087,
+      "sha256_received_bytes": "ad46f9016066a1c4e8f00174b6e1719a9462585785ea7ef3f69047874e689141",
+      "content_type": "text/javascript; charset=utf-8",
+      "server": "Microsoft-IIS/8.5",
+      "last_modified": "Thu, 03 May 2012 08:41:40 GMT",
+      "set_cookie_redacted": [],
+      "security_headers": {
+        "Content-Security-Policy": null,
+        "Strict-Transport-Security": null,
+        "X-Frame-Options": null,
+        "X-Content-Type-Options": null,
+        "Referrer-Policy": null
+      }
+    }
+  ],
+  "external_references_not_fetched": [
+    "http://maps.googleapis.com/maps/api/js?sensor=false",
+    "http://maps.googleapis.com/maps/api/js?sensor=false&key=[REDACTED_PUBLIC_API_KEY]"
+  ],
+  "dynamic_endpoints_referenced_not_invoked": [
+    "/cypdemo/cyp10_front.dll/HandleEvent"
+  ],
+  "redactions": [
+    "Public embedded API key",
+    "Anonymous session identifier"
+  ]
+}

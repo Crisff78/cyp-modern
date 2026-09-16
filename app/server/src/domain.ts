@@ -1,0 +1,413 @@
+import { randomUUID, randomBytes } from "node:crypto";
+
+export type Role = "admin" | "collector";
+export type User = {
+  id: string;
+  name: string;
+  role: Role;
+  collectorId?: string;
+};
+export type Client = {
+  id: string;
+  name: string;
+  code: string;
+  phone: string;
+  address: string;
+  routeId: string;
+};
+export type Route = {
+  id: string;
+  name: string;
+  sector: string;
+  collectorId: string;
+};
+export type Collector = {
+  id: string;
+  name: string;
+  initials: string;
+  routeId: string;
+  status: "active" | "offline" | "limit";
+  collectionLimit: number;
+  payoutLimit: number;
+  lat: number;
+  lng: number;
+  lastSeen: string;
+};
+export type Charge = {
+  id: string;
+  clientId: string;
+  service: string;
+  amount: number;
+  collected: number;
+  dueDate: string;
+  required: boolean;
+  status: "pending" | "partial" | "paid" | "cancelled";
+};
+export type Payout = {
+  id: string;
+  clientId: string;
+  collectorId: string;
+  concept: string;
+  amount: number;
+  paid: number;
+  status: Charge["status"];
+};
+export type Movement = {
+  id: string;
+  collectorId: string;
+  clientId?: string;
+  chargeId?: string;
+  payoutId?: string;
+  type: "collection" | "deposit" | "office_delivery" | "payout";
+  amount: number;
+  createdAt: string;
+  receiptToken?: string;
+  receiptRevoked?: boolean;
+  actorId: string;
+};
+export type Settlement = {
+  id: string;
+  collectorId: string;
+  date: string;
+  collected: number;
+  deposited: number;
+  officeDelivered: number;
+  paidToClients: number;
+  difference: number;
+  status: "closed";
+  closedAt: string;
+  actorId: string;
+};
+export type Idempotency = {
+  id: string;
+  fingerprint: string;
+  response: unknown;
+  createdAt: string;
+};
+export type State = {
+  clients: Client[];
+  routes: Route[];
+  collectors: Collector[];
+  charges: Charge[];
+  payouts: Payout[];
+  movements: Movement[];
+  settlements: Settlement[];
+  idempotency: Idempotency[];
+};
+export class DomainError extends Error {
+  constructor(
+    public code: string,
+    message: string,
+    public status = 422,
+  ) {
+    super(message);
+  }
+}
+export const businessDate = (date = new Date()) =>
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Santo_Domingo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+export const emptyState = (): State => ({
+  clients: [],
+  routes: [],
+  collectors: [],
+  charges: [],
+  payouts: [],
+  movements: [],
+  settlements: [],
+  idempotency: [],
+});
+export function preview(state: State, collectorId: string, date?: string) {
+  const rows = state.movements.filter(
+    (m) =>
+      m.collectorId === collectorId &&
+      (!date || businessDate(new Date(m.createdAt)) === date),
+  );
+  const sum = (type: Movement["type"]) =>
+    rows.filter((m) => m.type === type).reduce((a, m) => a + m.amount, 0);
+  const collected = sum("collection"),
+    deposited = sum("deposit"),
+    officeDelivered = sum("office_delivery"),
+    paidToClients = sum("payout");
+  return {
+    collected,
+    deposited,
+    officeDelivered,
+    paidToClients,
+    difference: collected - deposited + (officeDelivered - paidToClients),
+  };
+}
+export function assertAdmin(user: User) {
+  if (user.role !== "admin")
+    throw new DomainError(
+      "FORBIDDEN",
+      "Esta acción requiere administración.",
+      403,
+    );
+}
+export function assertCollectorAccess(user: User, id: string) {
+  if (user.role === "collector" && user.collectorId !== id)
+    throw new DomainError(
+      "FORBIDDEN",
+      "Este cobrador no está asignado a tu cuenta.",
+      403,
+    );
+}
+export function collectorForClient(state: State, clientId: string) {
+  const client = state.clients.find((c) => c.id === clientId);
+  if (!client)
+    throw new DomainError("NOT_FOUND", "Cliente no encontrado.", 404);
+  return state.routes.find((r) => r.id === client.routeId)!.collectorId;
+}
+export function postMovement(
+  state: State,
+  user: User,
+  type: Movement["type"],
+  body: {
+    amount: number;
+    chargeId?: string;
+    payoutId?: string;
+    collectorId?: string;
+  },
+  now = new Date(),
+) {
+  let collectorId = body.collectorId,
+    clientId: string | undefined,
+    charge: Charge | undefined,
+    payout: Payout | undefined;
+  if (type === "collection") {
+    charge = state.charges.find((c) => c.id === body.chargeId);
+    if (!charge)
+      throw new DomainError("NOT_FOUND", "Cargo no encontrado.", 404);
+    collectorId = collectorForClient(state, charge.clientId);
+    clientId = charge.clientId;
+    if (
+      charge.status === "cancelled" ||
+      charge.collected + body.amount > charge.amount
+    )
+      throw new DomainError(
+        "INVALID_AMOUNT",
+        "El cobro supera el saldo pendiente.",
+      );
+  } else if (type === "payout") {
+    payout = state.payouts.find((p) => p.id === body.payoutId);
+    if (!payout)
+      throw new DomainError("NOT_FOUND", "Descargo no encontrado.", 404);
+    collectorId = payout.collectorId;
+    clientId = payout.clientId;
+    if (
+      payout.status === "cancelled" ||
+      payout.paid + body.amount > payout.amount
+    )
+      throw new DomainError(
+        "INVALID_AMOUNT",
+        "El pago supera el saldo autorizado.",
+      );
+  } else assertAdmin(user);
+  const collector = state.collectors.find((c) => c.id === collectorId);
+  if (!collector)
+    throw new DomainError("NOT_FOUND", "Cobrador no encontrado.", 404);
+  assertCollectorAccess(user, collector.id);
+  const date = businessDate(now);
+  if (
+    state.settlements.some(
+      (s) => s.collectorId === collector.id && s.date >= date,
+    )
+  )
+    throw new DomainError("DAY_CLOSED", "La jornada ya está cerrada.", 409);
+  // A new operating day cannot absorb an unresolved previous cash balance.
+  const old = state.movements.filter(
+    (m) =>
+      m.collectorId === collector.id &&
+      businessDate(new Date(m.createdAt)) < date,
+  );
+  if (old.length) {
+    const oldState = { ...state, movements: old };
+    if (preview(oldState, collector.id).difference !== 0)
+      throw new DomainError(
+        "PREVIOUS_DAY_OPEN",
+        "Debes resolver el efectivo pendiente de la jornada anterior.",
+        409,
+      );
+  }
+  const balance = preview(state, collector.id);
+  const collectionCash = balance.collected - balance.deposited,
+    payoutCash = balance.officeDelivered - balance.paidToClients;
+  if (
+    type === "collection" &&
+    collectionCash + body.amount > collector.collectionLimit
+  )
+    throw new DomainError(
+      "COLLECTION_LIMIT",
+      "Este cobro excede el límite de cobro. Deposita efectivo primero.",
+      409,
+    );
+  if (
+    type === "office_delivery" &&
+    payoutCash + body.amount > collector.payoutLimit
+  )
+    throw new DomainError(
+      "PAYOUT_LIMIT",
+      "La entrega excede el límite de pago.",
+      409,
+    );
+  if (type === "deposit" && body.amount > collectionCash)
+    throw new DomainError(
+      "INSUFFICIENT_COLLECTION_CASH",
+      "El depósito supera el efectivo cobrado disponible.",
+      409,
+    );
+  if (type === "payout" && body.amount > payoutCash)
+    throw new DomainError(
+      "INSUFFICIENT_PAYOUT_CASH",
+      "No hay fondos de oficina suficientes para este pago.",
+      409,
+    );
+  const movement: Movement = {
+    id: randomUUID(),
+    collectorId: collector.id,
+    clientId,
+    chargeId: charge?.id,
+    payoutId: payout?.id,
+    type,
+    amount: body.amount,
+    createdAt: now.toISOString(),
+    actorId: user.id,
+    ...(clientId
+      ? {
+          receiptToken: randomBytes(24).toString("base64url"),
+          receiptRevoked: false,
+        }
+      : {}),
+  };
+  if (charge) {
+    charge.collected += body.amount;
+    charge.status = charge.collected === charge.amount ? "paid" : "partial";
+  }
+  if (payout) {
+    payout.paid += body.amount;
+    payout.status = payout.paid === payout.amount ? "paid" : "partial";
+  }
+  state.movements.push(movement);
+  return movement;
+}
+export function closeDay(
+  state: State,
+  user: User,
+  collectorId: string,
+  date: string,
+  now = new Date(),
+) {
+  assertAdmin(user);
+  if (!state.collectors.some((c) => c.id === collectorId))
+    throw new DomainError("NOT_FOUND", "Cobrador no encontrado.", 404);
+  if (date > businessDate(now))
+    throw new DomainError(
+      "FUTURE_DATE",
+      "No se puede cerrar una fecha futura.",
+    );
+  if (
+    state.settlements.some(
+      (s) => s.collectorId === collectorId && s.date === date,
+    )
+  )
+    throw new DomainError("DAY_CLOSED", "La jornada ya está cerrada.", 409);
+  const totals = preview(state, collectorId, date);
+  if (totals.difference !== 0)
+    throw new DomainError(
+      "UNBALANCED",
+      "El cuadre debe tener una diferencia exacta de RD$ 0.00.",
+      409,
+    );
+  const settlement: Settlement = {
+    id: randomUUID(),
+    collectorId,
+    date,
+    ...totals,
+    status: "closed",
+    closedAt: now.toISOString(),
+    actorId: user.id,
+  };
+  state.settlements.push(settlement);
+  return settlement;
+}
+export function snapshot(state: State, user: User) {
+  const allowed = (id: string) =>
+    user.role === "admin" || user.collectorId === id;
+  const routes = state.routes.filter((r) => allowed(r.collectorId));
+  const clients = state.clients.filter((c) =>
+    routes.some((r) => r.id === c.routeId),
+  );
+  const movements = state.movements
+    .filter((m) => allowed(m.collectorId))
+    .map(({ actorId, receiptRevoked, ...m }) => ({
+      ...m,
+      ...(receiptRevoked ? { receiptToken: undefined } : {}),
+    }));
+  const collectors = state.collectors
+    .filter((c) => allowed(c.id))
+    .map((c) => {
+      const b = preview(state, c.id);
+      return {
+        ...c,
+        cashInHand: b.difference,
+        status: (b.collected - b.deposited >= c.collectionLimit ||
+        b.officeDelivered - b.paidToClients >= c.payoutLimit
+          ? "limit"
+          : Date.now() - Date.parse(c.lastSeen) > 15 * 60 * 1000
+            ? "offline"
+            : c.status) as Collector["status"],
+      };
+    });
+  const date = businessDate();
+  const daily = movements.filter(
+    (m) => businessDate(new Date(m.createdAt)) === date,
+  );
+  const sum = (type: Movement["type"]) =>
+    daily.filter((m) => m.type === type).reduce((s, m) => s + m.amount, 0);
+  const collected = sum("collection"),
+    paid = sum("payout"),
+    deposited = sum("deposit"),
+    officeDelivered = sum("office_delivery");
+  const history = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - 6 + i);
+    const day = businessDate(d);
+    const rows = movements.filter(
+      (m) => businessDate(new Date(m.createdAt)) === day,
+    );
+    return {
+      label: day.slice(5),
+      collected: rows
+        .filter((m) => m.type === "collection")
+        .reduce((s, m) => s + m.amount, 0),
+      paid: rows
+        .filter((m) => m.type === "payout")
+        .reduce((s, m) => s + m.amount, 0),
+    };
+  });
+  return {
+    businessDate: date,
+    clients,
+    routes,
+    collectors,
+    charges: state.charges.filter((c) =>
+      clients.some((cl) => cl.id === c.clientId),
+    ),
+    payouts: state.payouts.filter((p) => allowed(p.collectorId)),
+    movements,
+    settlements: state.settlements.filter((s) => allowed(s.collectorId)),
+    totals: {
+      collected,
+      paid,
+      deposited,
+      officeDelivered,
+      difference: collected - deposited + officeDelivered - paid,
+      activeCollectors: collectors.filter((c) => c.status === "active").length,
+    },
+    history,
+  };
+}
