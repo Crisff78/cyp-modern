@@ -1057,6 +1057,37 @@ type OperationSpec = {
   details?: ReactNode;
 };
 
+type MonitorEntity = "collector" | "zone" | "route";
+type MonitorRow = TableRow & {
+  entityId: string;
+  entityType: MonitorEntity;
+  rawName: string;
+};
+type MapData = {
+  collector: {
+    id: string;
+    name: string;
+    phone: string;
+    lat: number;
+    lng: number;
+    cash_in_hand: number;
+    collection_limit: number;
+    payout_limit: number;
+    last_ping: string;
+  };
+  stops: {
+    id: string;
+    order: number;
+    client_name: string;
+    lat: number;
+    lng: number;
+    amount_due: number;
+    status: "pending" | "partial" | "paid" | "cancelled" | string;
+    obligated: boolean;
+  }[];
+  route_geometry: null | unknown;
+};
+
 function ModuleRouter({
   page,
   snapshot,
@@ -1860,14 +1891,53 @@ function MonitorView({
 }) {
   const [auto, setAuto] = useState(true),
     [seconds, setSeconds] = useState("30"),
-    [currency, setCurrency] = useState("DOP");
-  const rows = monitorRows(page, snapshot);
+    [currency, setCurrency] = useState("DOP"),
+    [query, setQuery] = useState(""),
+    [selected, setSelected] = useState<MonitorRow | null>(null),
+    [mapData, setMapData] = useState<MapData | null>(null),
+    [mapLoading, setMapLoading] = useState(false),
+    [mapError, setMapError] = useState("");
+  const rows = monitorRows(page, snapshot).filter((row) =>
+    `${row.rawName} ${row.entityId}`
+      .toLowerCase()
+      .includes(query.toLowerCase()),
+  );
   const title =
     page === "monitorCollectors"
       ? "Monitor de Cobradores"
       : page === "monitorZones"
         ? "Monitor de Zonas"
         : "Monitor de Rutas";
+  useEffect(() => {
+    if (!selected) {
+      setMapData(null);
+      setMapError("");
+      return;
+    }
+    let cancelled = false;
+    setMapLoading(true);
+    setMapError("");
+    api<MapData>(
+      `/monitoring/${selected.entityType}/${encodeURIComponent(selected.entityId)}/map-data`,
+    )
+      .then((data) => {
+        if (!cancelled) setMapData(data);
+      })
+      .catch((error) => {
+        if (!cancelled)
+          setMapError(
+            error instanceof Error
+              ? error.message
+              : "No pudimos cargar CobranzaMapas.",
+          );
+      })
+      .finally(() => {
+        if (!cancelled) setMapLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selected]);
   return (
     <>
       <div className="page-title compact-title">
@@ -1910,33 +1980,27 @@ function MonitorView({
               <option>EUR</option>
             </select>
           </label>
+          <label className="monitor-search">
+            <Search size={15} />
+            <input
+              aria-label={`Buscar en ${title}`}
+              placeholder={
+                page === "monitorCollectors"
+                  ? "Buscar cobrador..."
+                  : page === "monitorZones"
+                    ? "Buscar zona..."
+                    : "Buscar ruta..."
+              }
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </label>
           <button className="btn" onClick={onRefresh} disabled={refreshing}>
             <RefreshCw className={refreshing ? "spin" : ""} size={16} />{" "}
             Refrescar
           </button>
         </div>
-        <LegacyTable
-          dense
-          columns={[
-            {
-              key: "name",
-              label:
-                page === "monitorCollectors"
-                  ? "Cobrador"
-                  : page === "monitorZones"
-                    ? "Zona"
-                    : "Ruta",
-            },
-            { key: "collectionLimit", label: "Lím. de Cobro", align: "right" },
-            { key: "payoutLimit", label: "Lím. de Pago", align: "right" },
-            { key: "collected", label: "Cobrado", align: "right" },
-            { key: "deposited", label: "Depositado", align: "right" },
-            { key: "delivered", label: "Entregado", align: "right" },
-            { key: "paid", label: "Pagado", align: "right" },
-            { key: "difference", label: "Diferencia", align: "right" },
-          ]}
-          rows={rows}
-        />
+        <MonitorLedgerTable page={page} rows={rows} onSelect={setSelected} />
         <div className="legacy-footerbar">
           <span>Página 1 de 1</span>
           <span>
@@ -1945,9 +2009,202 @@ function MonitorView({
           <span>
             Próximo refresco: <strong>{auto ? `${seconds}s` : "Manual"}</strong>
           </span>
+          <span>Click sobre una fila para abrir CobranzaMapas.</span>
         </div>
       </section>
+      <Modal
+        open={Boolean(selected)}
+        onClose={() => setSelected(null)}
+        title={
+          selected ? `CobranzaMapas · ${selected.rawName}` : "CobranzaMapas"
+        }
+        description="Ubicación, ruta, paradas y exposición financiera en tiempo real."
+        className="map-monitor-dialog"
+      >
+        {mapLoading && <Loading label="Cargando datos de CobranzaMapas…" />}
+        {mapError && !mapLoading && (
+          <Empty
+            title="No pudimos cargar el mapa"
+            text={mapError}
+            action={
+              <button
+                className="btn"
+                onClick={() => selected && setSelected({ ...selected })}
+              >
+                <RefreshCw size={16} /> Reintentar
+              </button>
+            }
+          />
+        )}
+        {mapData && !mapLoading && !mapError && (
+          <CobranzaMapasModal
+            data={mapData}
+            title={selected?.rawName ?? "Ruta"}
+          />
+        )}
+      </Modal>
     </>
+  );
+}
+
+function MonitorLedgerTable({
+  page,
+  rows,
+  onSelect,
+}: {
+  page: Page;
+  rows: MonitorRow[];
+  onSelect: (row: MonitorRow) => void;
+}) {
+  const entityLabel =
+    page === "monitorCollectors"
+      ? "Cobrador"
+      : page === "monitorZones"
+        ? "Zona"
+        : "Ruta";
+  return (
+    <div className="table-scroll legacy-table-scroll">
+      <table className="data-table legacy-data-table dense monitor-ledger-table">
+        <thead>
+          <tr>
+            <th>{entityLabel}</th>
+            <th className="align-right">Lím. de Cobro</th>
+            <th className="align-right">Lím. de Pago</th>
+            <th className="align-right">Cobrado</th>
+            <th className="align-right">Depositado</th>
+            <th className="align-right">Entregado</th>
+            <th className="align-right">Pagado</th>
+            <th className="align-right">Diferencia</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={`${row.entityType}-${row.entityId}`}>
+              <td>
+                <button
+                  className="monitor-row-action"
+                  onClick={() => onSelect(row)}
+                  aria-label={`Abrir mapa de ${row.rawName}`}
+                >
+                  <MapPinned size={15} />
+                  <span>{row.name}</span>
+                </button>
+              </td>
+              <td className="align-right">{row.collectionLimit}</td>
+              <td className="align-right">{row.payoutLimit}</td>
+              <td className="align-right">{row.collected}</td>
+              <td className="align-right">{row.deposited}</td>
+              <td className="align-right">{row.delivered}</td>
+              <td className="align-right">{row.paid}</td>
+              <td className="align-right">{row.difference}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {!rows.length && (
+        <Empty title="Sin resultados" text="Ajusta la búsqueda del monitor." />
+      )}
+    </div>
+  );
+}
+
+function CobranzaMapasModal({ data, title }: { data: MapData; title: string }) {
+  const pending = data.stops.filter((stop) => stop.status !== "paid"),
+    obligated = data.stops.filter((stop) => stop.obligated),
+    totalDue = data.stops.reduce((sum, stop) => sum + stop.amount_due, 0);
+  const allPoints = [
+    { lat: data.collector.lat, lng: data.collector.lng },
+    ...data.stops,
+  ];
+  const minLat = Math.min(...allPoints.map((point) => point.lat)),
+    maxLat = Math.max(...allPoints.map((point) => point.lat)),
+    minLng = Math.min(...allPoints.map((point) => point.lng)),
+    maxLng = Math.max(...allPoints.map((point) => point.lng));
+  const pointStyle = (lat: number, lng: number) => ({
+    top: `${86 - (((lat - minLat) / Math.max(maxLat - minLat, 0.001)) * 70 + 8)}%`,
+    left: `${((lng - minLng) / Math.max(maxLng - minLng, 0.001)) * 78 + 9}%`,
+  });
+  return (
+    <div className="cobranza-map-modal">
+      <div className="map-modal-summary">
+        <div>
+          <span>Entidad</span>
+          <strong>{title}</strong>
+          <small>
+            {data.collector.name} · {data.collector.phone}
+          </small>
+        </div>
+        <div>
+          <span>Dinero en mano</span>
+          <strong>{moneyFromUnits(data.collector.cash_in_hand)}</strong>
+          <small>
+            Límite cobro {moneyFromUnits(data.collector.collection_limit)}
+          </small>
+        </div>
+        <div>
+          <span>Pendientes</span>
+          <strong>
+            {pending.length}/{data.stops.length}
+          </strong>
+          <small>{obligated.length} obligados a cobrar</small>
+        </div>
+        <div>
+          <span>Total ruta</span>
+          <strong>{moneyFromUnits(totalDue)}</strong>
+          <small>Último ping {timeLabel(data.collector.last_ping)}</small>
+        </div>
+      </div>
+      <div className="cobranza-map-grid">
+        <section
+          className="cobranza-map-canvas"
+          aria-label="CobranzaMapas operativo"
+        >
+          <div className="map-grid-lines" />
+          <div className="route-polyline" />
+          <span
+            className="collector-live-pin"
+            style={pointStyle(data.collector.lat, data.collector.lng)}
+          >
+            <MapPinned size={16} />
+          </span>
+          {data.stops.map((stop) => (
+            <button
+              className={`stop-pin ${stop.status} ${stop.obligated ? "obligated" : ""}`}
+              key={stop.id}
+              style={pointStyle(stop.lat, stop.lng)}
+              title={`${stop.order}. ${stop.client_name}`}
+            >
+              {stop.order}
+            </button>
+          ))}
+          <div className="map-module-label">
+            <strong>CobranzaMapas</strong>
+            <span>Ruta calculada · {data.stops.length} PCP</span>
+          </div>
+        </section>
+        <aside className="map-stops-panel">
+          <div className="map-stops-heading">
+            <strong>Paradas</strong>
+            <span>{data.stops.length} puntos</span>
+          </div>
+          <div className="map-stops-list">
+            {data.stops.map((stop) => (
+              <button className="map-stop-row" key={stop.id}>
+                <span className="stop-order">{stop.order}</span>
+                <span>
+                  <strong>{stop.client_name}</strong>
+                  <small>
+                    {stop.obligated ? "Obligado a cobrar" : "Cobro regular"} ·{" "}
+                    {stop.status}
+                  </small>
+                </span>
+                <strong>{moneyFromUnits(stop.amount_due)}</strong>
+              </button>
+            ))}
+          </div>
+        </aside>
+      </div>
+    </div>
   );
 }
 
@@ -2053,54 +2310,66 @@ function ReportsView() {
   );
 }
 
-function monitorRows(page: Page, snapshot: Snapshot): TableRow[] {
-  const byCollector = snapshot.collectors.map((collector) =>
-    ledgerFor(
-      collector.id,
-      collector.name,
-      snapshot,
-      collector.collectionLimit,
-      collector.payoutLimit,
-    ),
+function monitorRows(page: Page, snapshot: Snapshot): MonitorRow[] {
+  if (page === "monitorCollectors") {
+    return snapshot.collectors.map((collector) =>
+      ledgerForEntity(collector.id, "collector", collector.name, snapshot, [
+        collector.id,
+      ]),
+    );
+  }
+
+  if (page === "monitorRoutes") {
+    return snapshot.routes.map((route) =>
+      ledgerForEntity(route.id, "route", route.name, snapshot, [
+        route.collectorId,
+      ]),
+    );
+  }
+
+  const zones = new Map<string, Set<string>>();
+  snapshot.routes.forEach((route) => {
+    const collectorIds = zones.get(route.sector) ?? new Set<string>();
+    collectorIds.add(route.collectorId);
+    zones.set(route.sector, collectorIds);
+  });
+
+  return Array.from(zones.entries()).map(([zone, collectorIds]) =>
+    ledgerForEntity(zone, "zone", zone, snapshot, Array.from(collectorIds)),
   );
-  if (page === "monitorCollectors") return byCollector;
-  const routeRows = snapshot.routes.map((route) => {
-    const collector = snapshot.collectors.find(
-      (item) => item.id === route.collectorId,
-    );
-    return ledgerFor(
-      route.collectorId,
-      page === "monitorZones" ? route.sector : route.name,
-      snapshot,
-      collector?.collectionLimit ?? 0,
-      collector?.payoutLimit ?? 0,
-    );
-  });
-  if (page === "monitorRoutes") return routeRows;
-  const zones = new Map<string, TableRow>();
-  routeRows.forEach((row) => {
-    const key = String(row.name);
-    if (!zones.has(key)) zones.set(key, row);
-  });
-  return Array.from(zones.values());
 }
 
-function ledgerFor(
-  collectorId: string,
+function ledgerForEntity(
+  entityId: string,
+  entityType: MonitorEntity,
   name: string,
   snapshot: Snapshot,
-  collectionLimit: number,
-  payoutLimit: number,
-): TableRow {
-  const movements = snapshot.movements.filter(
-    (movement) => movement.collectorId === collectorId,
+  collectorIds: string[],
+): MonitorRow {
+  const collectorIdSet = new Set(collectorIds);
+  const collectors = snapshot.collectors.filter((collector) =>
+    collectorIdSet.has(collector.id),
   );
-  const collected = sumMovements(movements, "collection"),
+  const movements = snapshot.movements.filter((movement) =>
+    collectorIdSet.has(movement.collectorId),
+  );
+  const collectionLimit = collectors.reduce(
+      (sum, collector) => sum + collector.collectionLimit,
+      0,
+    ),
+    payoutLimit = collectors.reduce(
+      (sum, collector) => sum + collector.payoutLimit,
+      0,
+    ),
+    collected = sumMovements(movements, "collection"),
     deposited = sumMovements(movements, "deposit"),
     delivered = sumMovements(movements, "office_delivery"),
     paid = sumMovements(movements, "payout");
   const difference = collected - deposited + (delivered - paid);
   return {
+    entityId,
+    entityType,
+    rawName: name,
     name,
     collectionLimit: money(collectionLimit),
     payoutLimit: money(payoutLimit),
@@ -2123,6 +2392,13 @@ function sumMovements(
   return movements
     .filter((movement) => movement.type === type)
     .reduce((sum, movement) => sum + movement.amount, 0);
+}
+
+function moneyFromUnits(value: number) {
+  return `RD$ ${new Intl.NumberFormat("es-DO", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value)}`;
 }
 
 function safeDateLabel(value: string) {

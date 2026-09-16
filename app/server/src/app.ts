@@ -312,6 +312,131 @@ export async function buildApp(config: Config) {
     snapshot(await config.store.read(), user(req)),
   );
   describe("get", "/api/snapshot", "Vista operacional autorizada");
+
+  const moneyUnits = (value: number) => Number((value / 100).toFixed(2));
+  const stopCoordinates = (lat: number, lng: number, index: number) => ({
+    lat: Number((lat + 0.003 + index * 0.0017).toFixed(6)),
+    lng: Number((lng + 0.002 - index * 0.0013).toFixed(6)),
+  });
+  const mapDataForCollectors = (state: State, collectorIds: string[]) => {
+    const collectors = state.collectors.filter((collector) =>
+      collectorIds.includes(collector.id),
+    );
+    if (!collectors.length)
+      throw new DomainError(
+        "MAP_ENTITY_NOT_FOUND",
+        "No encontramos datos geográficos para esta selección.",
+        404,
+      );
+    const primary = collectors[0],
+      clients = state.clients.filter((client) =>
+        collectors.some((collector) => {
+          const route = state.routes.find((item) => item.id === client.routeId);
+          return route?.collectorId === collector.id;
+        }),
+      );
+    const stops = clients.map((client, index) => {
+      const charge = state.charges.find((item) => item.clientId === client.id),
+        route = state.routes.find((item) => item.id === client.routeId),
+        routeCollector =
+          collectors.find((collector) => collector.id === route?.collectorId) ??
+          primary,
+        coords = stopCoordinates(routeCollector.lat, routeCollector.lng, index);
+      return {
+        id: `pcp-${client.id}`,
+        order: index + 1,
+        client_name: client.name,
+        lat: coords.lat,
+        lng: coords.lng,
+        amount_due: moneyUnits(
+          (charge?.amount ?? 0) - (charge?.collected ?? 0),
+        ),
+        status: charge?.status ?? "pending",
+        obligated: Boolean(charge?.required),
+      };
+    });
+    return {
+      collector: {
+        id: primary.id,
+        name: primary.name,
+        phone: clients[0]?.phone ?? "809-555-0101",
+        lat: primary.lat,
+        lng: primary.lng,
+        cash_in_hand: moneyUnits(preview(state, primary.id).difference),
+        collection_limit: moneyUnits(primary.collectionLimit),
+        payout_limit: moneyUnits(primary.payoutLimit),
+        last_ping: primary.lastSeen,
+      },
+      stops,
+      route_geometry: null,
+    };
+  };
+  app.get<{ Params: { id: string } }>(
+    "/api/monitoring/collector/:id/map-data",
+    async (req) => {
+      const u = user(req);
+      assertAdmin(u);
+      const state = await config.store.read(),
+        collector = state.collectors.find((item) => item.id === req.params.id);
+      if (!collector)
+        throw new DomainError(
+          "COLLECTOR_NOT_FOUND",
+          "No encontramos este cobrador.",
+          404,
+        );
+      return mapDataForCollectors(state, [collector.id]);
+    },
+  );
+  describe(
+    "get",
+    "/api/monitoring/collector/{id}/map-data",
+    "Datos geográficos y operativos de un cobrador",
+  );
+  app.get<{ Params: { id: string } }>(
+    "/api/monitoring/route/:id/map-data",
+    async (req) => {
+      const u = user(req);
+      assertAdmin(u);
+      const state = await config.store.read(),
+        route = state.routes.find((item) => item.id === req.params.id);
+      if (!route)
+        throw new DomainError(
+          "ROUTE_NOT_FOUND",
+          "No encontramos esta ruta.",
+          404,
+        );
+      return mapDataForCollectors(state, [route.collectorId]);
+    },
+  );
+  describe(
+    "get",
+    "/api/monitoring/route/{id}/map-data",
+    "Datos geográficos y operativos de una ruta",
+  );
+  app.get<{ Params: { id: string } }>(
+    "/api/monitoring/zone/:id/map-data",
+    async (req) => {
+      const u = user(req);
+      assertAdmin(u);
+      const state = await config.store.read(),
+        routes = state.routes.filter((item) => item.sector === req.params.id);
+      if (!routes.length)
+        throw new DomainError(
+          "ZONE_NOT_FOUND",
+          "No encontramos esta zona.",
+          404,
+        );
+      return mapDataForCollectors(
+        state,
+        routes.map((route) => route.collectorId),
+      );
+    },
+  );
+  describe(
+    "get",
+    "/api/monitoring/zone/{id}/map-data",
+    "Datos geográficos y operativos de una zona",
+  );
   for (const [path, key] of [
     ["/api/cargos", "charges"],
     ["/api/descargos", "payouts"],

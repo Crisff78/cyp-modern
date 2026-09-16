@@ -444,6 +444,32 @@ test("file adapter persists and failed transactions never leak changes", async (
   assert.ok((await readFile(path, "utf8")).includes("Colmado"));
   await reopened.close();
 });
+
+test("monitoring map-data returns collector location, stops and decimal money", async () => {
+  const { app, adminToken } = await setup();
+  try {
+    const response = await app.inject({
+      url: "/api/monitoring/collector/col-1/map-data",
+      headers: { authorization: `Bearer ${adminToken}` },
+    });
+    assert.equal(response.statusCode, 200);
+    const body = response.json();
+    assert.equal(body.collector.id, "col-1");
+    assert.equal(body.collector.name, "Ana Martínez");
+    assert.equal(body.collector.collection_limit, 25000);
+    assert.equal(body.collector.payout_limit, 10000);
+    assert.equal(typeof body.collector.lat, "number");
+    assert.equal(Array.isArray(body.stops), true);
+    assert.equal(body.stops[0].order, 1);
+    assert.equal(body.stops[0].client_name, "Colmado La Esquina");
+    assert.equal(body.stops[0].amount_due, 4500);
+    assert.equal(body.stops[0].obligated, true);
+    assert.equal(body.route_geometry, null);
+  } finally {
+    await app.close();
+  }
+});
+
 test("OpenAPI includes typed financial requests and bearer security", async () => {
   const { app } = await setup();
   try {
