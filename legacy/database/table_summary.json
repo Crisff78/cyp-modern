@@ -1,23 +1,670 @@
 {
-  "status": "not_extracted",
-  "audited_on": "2026-09-16",
+  "status": "extracted_metadata_only",
+  "audited_on": "2026-09-17",
   "backup": {
     "filename": "CobrosyPagos-GDemos-2.bak",
     "bytes": 7831040,
-    "sha256": "3406194142696769A0773E17FC9BB857E92D3B128054F29E7F44FCE785CAECB7"
+    "sha256": "3406194142696769A0773E17FC9BB857E92D3B128054F29E7F44FCE785CAECB7",
+    "location": "C:\\Users\\Rardiel Ceballo\\Downloads\\CobrosyPagos",
+    "engine": "Microsoft SQL Server (TAPE header; not restored)"
   },
-  "native_sql_discovery": {
-    "sql_server_services_found": false,
-    "registered_instances_found": false,
-    "localdb_tool_found": false,
-    "sqlcmd_tool_found": false,
-    "sqlserver_powershell_module_found": false
+  "method": "read-only ASCII string extraction from backup bytes; no SQL Server engine, no Docker, no restore",
+  "tables": {
+    "Bancas": {
+      "columns": [
+        "Activo",
+        "Banca",
+        "Direccion",
+        "idBanca",
+        "idGrupo_Banca",
+        "Nro_Banca",
+        "Telefono"
+      ]
+    },
+    "Cargos": {
+      "columns": [
+        "Activo",
+        "Cantidad",
+        "Fecha",
+        "Fecha_Cancelacion",
+        "Fecha_Modificacion",
+        "Fecha_Registro",
+        "idCargo",
+        "idCliente",
+        "idConcepto",
+        "idDocumento_Cargo",
+        "idMoneda",
+        "idServicio",
+        "idUsuario_Cancelacion",
+        "idUsuario_Modificacion",
+        "idUsuario_Registro",
+        "Importe",
+        "ImporteRecibido",
+        "Nota",
+        "Nota_Cancelacion",
+        "Precio"
+      ]
+    },
+    "CargosRecurrentes": {
+      "columns": [
+        "Activo",
+        "Fecha",
+        "Fecha_Cancelacion",
+        "Fecha_Modificacion",
+        "Fecha_Registro",
+        "idCargo",
+        "idCliente",
+        "idConcepto",
+        "idFrecuencia",
+        "idMoneda",
+        "idServicio",
+        "idUsuario_Cancelacion",
+        "idUsuario_Modificacion",
+        "idUsuario_Registro",
+        "Importe",
+        "Nota",
+        "UsarImporte_Concepto"
+      ]
+    },
+    "Clientes": {
+      "columns": [
+        "Activo",
+        "Celular",
+        "Cliente",
+        "Direccion",
+        "Fecha_UltimaVisita",
+        "Fecha_UltimoCobro",
+        "Fecha_UltimoPago",
+        "idCliente",
+        "Identificacion",
+        "idZona",
+        "Nota",
+        "Telefono",
+        "Ubicacion"
+      ]
+    },
+    "Cobradores": {
+      "columns": [
+        "Activo",
+        "Celular",
+        "Cobrador",
+        "idCobrador",
+        "Identificacion",
+        "idUsuario"
+      ]
+    },
+    "Cobros": {
+      "columns": [
+        "Activo",
+        "Confirmado",
+        "EnLaCentral",
+        "EnLinea",
+        "Fecha",
+        "Fecha_Cancelacion",
+        "Fecha_Modificacion",
+        "Fecha_Registro",
+        "idBanco",
+        "idCliente",
+        "idCobrador",
+        "idCobro",
+        "idForma_Pago",
+        "idMoneda",
+        "idUsuario_Cancelacion",
+        "idUsuario_Modificacion",
+        "idUsuario_Registro",
+        "Importe",
+        "Latitud",
+        "Longitud",
+        "Nota",
+        "Nota_Cancelacion",
+        "Numero"
+      ]
+    },
+    "Conceptos": {
+      "columns": [
+        "Concepto",
+        "idConcepto",
+        "idServicio"
+      ]
+    },
+    "DepositosXCobradores": {
+      "columns": [
+        "Aceptado",
+        "Activo",
+        "Cantidad_Cheques",
+        "Conciliado",
+        "Fecha",
+        "Fecha_Cancelado",
+        "Fecha_Modificacion",
+        "Fecha_Registro",
+        "idCobrador",
+        "idDeposito",
+        "idMoneda",
+        "idUsuario_Cancelado",
+        "idUsuario_Modificacion",
+        "idUsuario_Registro",
+        "Importe",
+        "Importe_Cheques",
+        "ImporteReal",
+        "ImporteSobrante",
+        "Nota",
+        "Nota_Cancelado"
+      ]
+    },
+    "Descargos": {
+      "columns": [
+        "Activo",
+        "Cantidad",
+        "Fecha",
+        "Fecha_Cancelacion",
+        "Fecha_Modificacion",
+        "Fecha_Registro",
+        "idCliente",
+        "idConcepto",
+        "idDescargo",
+        "idDocumento_Descargo",
+        "idMoneda",
+        "idServicio",
+        "idUsuario_Cancelacion",
+        "idUsuario_Modificacion",
+        "idUsuario_Registro",
+        "Importe",
+        "ImporteRecibido",
+        "Nota",
+        "Nota_Cancelacion",
+        "Precio"
+      ]
+    },
+    "DescargosRecurrentes": {
+      "columns": [
+        "Activo",
+        "Fecha",
+        "Fecha_Cancelacion",
+        "Fecha_Modificacion",
+        "Fecha_Registro",
+        "idCliente",
+        "idConcepto",
+        "idDescargo",
+        "idFrecuencia",
+        "idMoneda",
+        "idServicio",
+        "idUsuario_Cancelacion",
+        "idUsuario_Modificacion",
+        "idUsuario_Registro",
+        "Importe",
+        "Nota",
+        "UsarImporte_Concepto"
+      ]
+    },
+    "Detalles_Cobros": {
+      "columns": [
+        "idCobro",
+        "idConcepto",
+        "idDetalle",
+        "idServicio",
+        "Importe"
+      ]
+    },
+    "EntidadesContables": {
+      "columns": [
+        "Activo",
+        "Codigo",
+        "EntidadContable",
+        "idEntidadContable",
+        "idTipo_EntidadContable"
+      ]
+    },
+    "EntregasXCobradores": {
+      "columns": [
+        "Aceptado",
+        "Activo",
+        "Cantidad_Cheques",
+        "Conciliado",
+        "Fecha",
+        "Fecha_Cancelado",
+        "Fecha_Modificacion",
+        "Fecha_Registro",
+        "idCobrador",
+        "idEntrega",
+        "idMoneda",
+        "idUsuario_Cancelado",
+        "idUsuario_Modificacion",
+        "idUsuario_Registro",
+        "Importe",
+        "Importe_Cheques",
+        "Nota",
+        "Nota_Cancelado"
+      ]
+    },
+    "Estaciones": {
+      "columns": [
+        "Activo",
+        "Descripcion",
+        "Estacion",
+        "idDispositivo",
+        "idEstacion",
+        "idGrupo_Estacion",
+        "idTipo_Estacion",
+        "Licencia",
+        "Nro_Estacion",
+        "Version"
+      ]
+    },
+    "EstacionesXBancas": {
+      "columns": [
+        "idBanca",
+        "idEstacion"
+      ]
+    },
+    "Formas_Pagos": {
+      "columns": [
+        "Forma_Pago",
+        "idForma_Pago"
+      ]
+    },
+    "Frecuencias": {
+      "columns": [
+        "Frecuencia",
+        "idFrecuencia"
+      ]
+    },
+    "Grupos_Bancas": {
+      "columns": [
+        "Grupo_Banca",
+        "idGrupo_Banca"
+      ]
+    },
+    "Grupos_Estaciones": {
+      "columns": [
+        "Grupo_Estaciones",
+        "idGrupo_Estaciones"
+      ]
+    },
+    "Grupos_Permisos": {
+      "columns": [
+        "Grupo_Permiso",
+        "idGrupo_Permiso"
+      ]
+    },
+    "LimitesXCobradores": {
+      "columns": [
+        "idCobrador",
+        "idMoneda",
+        "Limite_Cobro",
+        "Limite_Pago"
+      ]
+    },
+    "Monedas": {
+      "columns": [
+        "Abrev",
+        "idMoneda",
+        "Moneda"
+      ]
+    },
+    "Motivos_Atrasos": {
+      "columns": [
+        "idMotivo_Atraso",
+        "Motivo_Atraso"
+      ]
+    },
+    "MovimientosContables": {
+      "columns": [
+        "Cancelado",
+        "Credito",
+        "Debito",
+        "Fecha",
+        "Fecha_Cancelado",
+        "Fecha_Modificacion",
+        "Fecha_Registro",
+        "idConcepto",
+        "idDocumentoContable",
+        "idEntidadContable",
+        "idMovimientoContable",
+        "idServicio",
+        "Nota",
+        "Nota_Cancelado",
+        "SaldoFinal",
+        "SaldoInicial"
+      ]
+    },
+    "Pagos": {
+      "columns": [
+        "Activo",
+        "EnLaCentral",
+        "EnLinea",
+        "Fecha",
+        "Fecha_Cancelacion",
+        "Fecha_Modificacion",
+        "Fecha_Registro",
+        "idBanco",
+        "idCliente",
+        "idCobrador",
+        "idForma_Pago",
+        "idMoneda",
+        "idPago",
+        "idUsuario_Cancelacion",
+        "idUsuario_Modificacion",
+        "idUsuario_Registro",
+        "Importe",
+        "Latitud",
+        "Longitud",
+        "Nota",
+        "Nota_Cancelacion",
+        "Numero"
+      ]
+    },
+    "Permisos": {
+      "columns": [
+        "Activo",
+        "idGrupo_Permiso",
+        "idPermiso",
+        "Permiso"
+      ]
+    },
+    "PermisosXUsuarios": {
+      "columns": [
+        "idPermiso",
+        "idUsuario"
+      ]
+    },
+    "RDM_CobrosyPagos": {
+      "columns": [
+        "Cobrado",
+        "Depositado",
+        "Entregado",
+        "Fecha",
+        "idCobrador",
+        "Pagado"
+      ]
+    },
+    "Roles_Usuarios": {
+      "columns": [
+        "idRol_Usuario",
+        "Rol_Usuario"
+      ]
+    },
+    "Rutas": {
+      "columns": [
+        "Desde",
+        "Hasta",
+        "idRuta",
+        "Nro_Ruta",
+        "Ruta"
+      ]
+    },
+    "RutasXClientes": {
+      "columns": [
+        "idCliente",
+        "idRuta"
+      ]
+    },
+    "RutasXUsuarios": {
+      "columns": [
+        "idRuta",
+        "idUsuario"
+      ]
+    },
+    "Servicios": {
+      "columns": [
+        "Abrev",
+        "idServicio",
+        "Servicio"
+      ]
+    },
+    "Sesiones": {
+      "columns": [
+        "Activo",
+        "FechaFinal",
+        "FechaInicial",
+        "idEstacion",
+        "idSesion",
+        "idUsuario"
+      ]
+    },
+    "Solicitudes_Autorizaciones": {
+      "columns": [
+        "Fecha",
+        "Fecha_Cambio_Estado",
+        "idCliente",
+        "idCobrador",
+        "idEstado",
+        "idMotivo_Atraso",
+        "idSolicitud_Autorizacion",
+        "idUsuario",
+        "Nota",
+        "ParaCobro"
+      ]
+    },
+    "Tasas_Canjes": {
+      "columns": [
+        "Cambio",
+        "Compra",
+        "Fecha",
+        "Fecha_Registro",
+        "idMoneda",
+        "Venta"
+      ]
+    },
+    "Tipos_EntidadesContables": {
+      "columns": [
+        "idTipo_EntidadContable",
+        "Tipo_EntidadContable"
+      ]
+    },
+    "Tipos_Estaciones": {
+      "columns": [
+        "idTipo_Estacion",
+        "Tipo_Estacion"
+      ]
+    },
+    "Usuarios": {
+      "columns": [
+        "Activo",
+        "Alias",
+        "Clave",
+        "Cuenta",
+        "idRol_Usuario",
+        "idUsuario",
+        "Usuario"
+      ]
+    },
+    "vwCobradores": {
+      "columns": [
+        "Cobrador",
+        "idCobrador",
+        "idUsuario"
+      ]
+    },
+    "vwCobros": {
+      "columns": [
+        "Activo",
+        "Cliente",
+        "Cobrador",
+        "EnLaCentral",
+        "EnLinea",
+        "Fecha",
+        "Forma_Pago",
+        "idBanco",
+        "idCliente",
+        "idCobrador",
+        "idCobro",
+        "Identificacion",
+        "idForma_Pago",
+        "idMoneda",
+        "idZona",
+        "Latitud",
+        "Longitud",
+        "Nota"
+      ]
+    },
+    "vwDetalles_Cobros": {
+      "columns": [
+        "Abrev",
+        "Concepto",
+        "idCobro",
+        "idConcepto",
+        "idDetalle",
+        "idServicio",
+        "Importe",
+        "Servicio"
+      ]
+    },
+    "Zonas": {
+      "columns": [
+        "Activo",
+        "Desde",
+        "Hasta",
+        "idZona",
+        "Nro_Zona",
+        "Zona"
+      ]
+    },
+    "ZonasXUsuarios": {
+      "columns": [
+        "idUsuario",
+        "idZona"
+      ]
+    }
   },
-  "blocker": "No native SQL Server or LocalDB instance discovered; user prohibited Docker and directed restoration to be skipped in this case.",
-  "tables": null,
-  "procedures": null,
-  "foreign_keys": null,
-  "indexes": null,
-  "row_counts": null,
-  "notes": "Null means unknown, not zero. The modern PostgreSQL schema is newly designed and is not an extraction of this backup."
+  "procedures": [
+    "sp_alterdiagram",
+    "sp_creatediagram",
+    "sp_dropdiagram",
+    "sp_helpdiagramdefinition",
+    "sp_helpdiagrams",
+    "sp_renamediagram",
+    "sp_upgraddiagrams",
+    "stpAceptarDeposito",
+    "stpAceptarEntrega",
+    "stpActivarEstacion",
+    "stpActualizarVersion_Estacion",
+    "stpAgregarEstacionAlaBanca",
+    "stpAgregarRutaAlCobrador",
+    "stpAgregarTraza_Sistema",
+    "stpAgregarZonaAlCobrador",
+    "stpAjustarSaldos_Cobradores",
+    "stpCancelarCargo",
+    "stpCancelarCobro",
+    "stpCancelarDeposito",
+    "stpCancelarDepositoXCobrador",
+    "stpCancelarDescargo",
+    "stpCancelarPago",
+    "stpCancelarRegistro_Tragamoneda",
+    "stpCerrarDia",
+    "stpEliminarEstacion",
+    "stpEliminarRDM_FondosDesgXFecha",
+    "stpEliminarRutaDelCobrador",
+    "stpEliminarUsuario",
+    "stpEliminarZonaDelCobrador",
+    "stpInsertarClienteDesdeListado_Cargos",
+    "stpModificarBanca",
+    "stpModificarCliente_Ruta",
+    "stpModificarCoordenasGPS_Cliente",
+    "stpModificarDeposito",
+    "stpModificarDescargo",
+    "stpModificarDescargoRecurrente",
+    "stpModificarDesglose_EntregaXCobrador",
+    "stpModificarDetalle_Pago",
+    "stpModificarEntrega_Cobrador",
+    "stpModificarEstacion_PCP",
+    "stpModificarGrupo_Banca",
+    "stpModificarRDM_FondoDesgXFecha",
+    "stpModificarRuta",
+    "stpReporte_CobrosPagosyDepositosDetallado",
+    "stpReporte_CobrosXServiciosDetallado",
+    "stpReporte_CobrosXServiciosResumido",
+    "stpReporte_PagosDetallado",
+    "stpReporte_PagosPendientes_Clientes",
+    "stpReporte_PagosPendientes_Rutas",
+    "stpReporte_PagosPendientes_Zonas",
+    "stpReporte_PagosXServiciosDetallado",
+    "stpReporte_PagosXServiciosResumido",
+    "stpReporte_ServiciosXZona",
+    "stpSeleccionarBanca",
+    "stpSeleccionarBancos",
+    "stpSeleccionarCargoRecurrente",
+    "stpSeleccionarCargos_Clientes_ZonasParaPCP",
+    "stpSeleccionarCargosPendientes_Cliente",
+    "stpSeleccionarCargosRec_Cliente",
+    "stpSeleccionarCargosRecurrentes",
+    "stpSeleccionarCargosRecurrentesParaGen",
+    "stpSeleccionarClientePorIdentificacion",
+    "stpSeleccionarClientes_Ruta",
+    "stpSeleccionarClientesParaSel",
+    "stpSeleccionarCobroParaImp",
+    "stpSeleccionarDatos_Creditos_Cobrador",
+    "stpSeleccionarDenominacionesXMoneda",
+    "stpSeleccionarDeposito",
+    "stpSeleccionarDepositos",
+    "stpSeleccionarDescargo",
+    "stpSeleccionarDescargoRecurrente",
+    "stpSeleccionarDescargos_Clientes_RutasParaPCP",
+    "stpSeleccionarDescargos_Clientes_ZonasParaPCP",
+    "stpSeleccionarDescargosPendientes_Cliente",
+    "stpSeleccionarDescargosRecurrentes",
+    "stpSeleccionarDesglose_DepositosEnBanco_Deposito",
+    "stpSeleccionarDesglose_EntregaXCobrador",
+    "stpSeleccionarDetalles_Cobro",
+    "stpSeleccionarDetalles_CobroParaPCP",
+    "stpSeleccionarDetalles_Pago",
+    "stpSeleccionarEntidadesContablesParaSel",
+    "stpSeleccionarEntregasXCobradorParaPCP",
+    "stpSeleccionarEntregaXCobrador",
+    "stpSeleccionarEstacion_PCP",
+    "stpSeleccionarFormas_Pagos",
+    "stpSeleccionarFrecuencias",
+    "stpSeleccionarGrupos_Bancas",
+    "stpSeleccionarGrupos_Conceptos",
+    "stpSeleccionarGrupos_Estaciones",
+    "stpSeleccionarMonedas",
+    "stpSeleccionarMonedasParaPOS",
+    "stpSeleccionarPermisos_Usuario",
+    "stpSeleccionarPermisosParaSel",
+    "stpSeleccionarRDM_CobrosyPagosXCobradores_Fecha",
+    "stpSeleccionarRDM_FondosDesgXFecha",
+    "stpSeleccionarRegistros_Tragamoneda",
+    "stpSeleccionarRoles_Usuarios",
+    "stpSeleccionarServicio",
+    "stpSeleccionarServicios",
+    "stpSeleccionarServiciosParaPOS",
+    "stpSeleccionarSolicitud_Autorizacion",
+    "stpSeleccionarSolicitud_AutorizacionParaHoy",
+    "stpSeleccionarTasa_Cambio",
+    "stpSeleccionarTipos_Conceptos",
+    "stpSeleccionarTipos_EntidadesContables",
+    "stpSeleccionarTipos_Estaciones",
+    "stpSeleccionarUltimoRegistro_Tragamoneda",
+    "stpSeleccionarZonas_Cobrador",
+    "stpSeleccionarZonas_Usuario",
+    "stpValidarUsuario",
+    "vwBancas",
+    "vwCargos",
+    "vwCargosRecurrentes",
+    "vwClientes",
+    "vwCobradores",
+    "vwCobros",
+    "vwCobrosDetallados",
+    "vwDepositosXCobradores",
+    "vwDescargos",
+    "vwDescargosRecurrentes",
+    "vwDetalles_Cobros",
+    "vwEntregasXCobradores",
+    "vwEstaciones",
+    "vwEstaciones_Admins",
+    "vwEstacionesXBancas",
+    "vwLimitesXCobradores",
+    "vwMovimientosContables",
+    "vwPagos",
+    "vwPermisosXUsuarios",
+    "vwRDM_CobrosyPagos",
+    "vwRutasXClientes",
+    "vwRutasXUsuarios",
+    "vwSolicitudes_Autorizaciones",
+    "vwTasas_Canjes",
+    "vwUsuarios",
+    "vwZonasXUsuarios"
+  ],
+  "foreign_keys": "referenced_by_join_predicates_in_embedded_definitions",
+  "row_counts": "not_extracted",
+  "notes": "Column inventory reconstructed from dbo.Table.Column references inside embedded view/procedure definitions. Row counts and exact DDL constraints require a native SQL Server engine. Legacy schema is evidence for mapping only; the PostgreSQL scaffold is a new design and this is not an import."
 }

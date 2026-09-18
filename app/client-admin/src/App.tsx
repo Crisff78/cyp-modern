@@ -13,6 +13,7 @@ import {
   Command,
   Download,
   FileCheck2,
+  KeyRound,
   LayoutDashboard,
   ListFilter,
   LoaderCircle,
@@ -52,6 +53,7 @@ import {
 } from "./components";
 import { exportCsv } from "./Dashboard";
 import OperationModal, { type Operation } from "./Operations";
+import AccountModal, { type AccountOperation } from "./Users";
 import type { Collector, Page, Snapshot } from "./types";
 
 const groupOrder = [
@@ -400,6 +402,8 @@ export default function App() {
       null,
     ),
     [operation, setOperation] = useState<Operation | null>(null),
+    [accountOperation, setAccountOperation] =
+      useState<AccountOperation | null>(null),
     [directorySearch, setDirectorySearch] = useState(""),
     [settlementCollector, setSettlementCollector] = useState("");
   const [clock, setClock] = useState(() => new Date());
@@ -787,6 +791,7 @@ export default function App() {
                   onRefresh={() => void refresh()}
                   onCollector={setSelectedCollector}
                   onOperation={setOperation}
+                  onAccount={setAccountOperation}
                 />
               )}
               <footer className="page-footer">
@@ -1034,6 +1039,12 @@ export default function App() {
                 onClose={() => setOperation(null)}
                 onComplete={refresh}
               />
+              <AccountModal
+                operation={accountOperation}
+                snapshot={snapshot}
+                onClose={() => setAccountOperation(null)}
+                onComplete={refresh}
+              />
             </>
           )}
         </div>
@@ -1095,6 +1106,7 @@ function ModuleRouter({
   onRefresh,
   onCollector,
   onOperation,
+  onAccount,
 }: {
   page: Page;
   snapshot: Snapshot;
@@ -1102,6 +1114,7 @@ function ModuleRouter({
   onRefresh: () => void;
   onCollector: (collector: Collector) => void;
   onOperation: (operation: Operation) => void;
+  onAccount: (operation: AccountOperation) => void;
 }) {
   if (
     [
@@ -1119,6 +1132,7 @@ function ModuleRouter({
         page={page}
         snapshot={snapshot}
         onCollector={onCollector}
+        onAccount={onAccount}
       />
     );
   if (
@@ -1166,13 +1180,15 @@ function MasterDataView({
   page,
   snapshot,
   onCollector,
+  onAccount,
 }: {
   page: Page;
   snapshot: Snapshot;
   onCollector: (collector: Collector) => void;
+  onAccount: (operation: AccountOperation) => void;
 }) {
   const [search, setSearch] = useState("");
-  const config = masterSpec(page, snapshot);
+  const config = masterSpec(page, snapshot, onAccount);
   const rows = config.rows.filter((row) =>
     Object.values(row).join(" ").toLowerCase().includes(search.toLowerCase()),
   );
@@ -1187,10 +1203,20 @@ function MasterDataView({
           </h1>
           <p>{config.subtitle}</p>
         </div>
-        <button className="btn primary">
-          <Plus size={16} />
-          Nuevo registro
-        </button>
+        {page === "users" ? (
+          <button
+            className="btn primary"
+            onClick={() => onAccount({ type: "create" })}
+          >
+            <Plus size={16} />
+            Nueva cuenta
+          </button>
+        ) : (
+          <button className="btn primary">
+            <Plus size={16} />
+            Nuevo registro
+          </button>
+        )}
       </div>
       <section className="panel legacy-list-panel">
         <div className="table-toolbar legacy-toolbar">
@@ -1395,6 +1421,7 @@ function LegacyTable({
 function masterSpec(
   page: Page,
   snapshot: Snapshot,
+  onAccount: (operation: AccountOperation) => void,
 ): {
   title: string;
   subtitle: string;
@@ -1403,6 +1430,15 @@ function masterSpec(
 } {
   const routeName = (routeId: string) =>
     snapshot.routes.find((route) => route.id === routeId)?.name ?? "Sin ruta";
+  const routeNameForCollector = (collectorId?: string) =>
+    snapshot.collectors.find((collector) => collector.id === collectorId)
+      ?.routeId
+      ? routeName(
+          snapshot.collectors.find(
+            (collector) => collector.id === collectorId,
+          )!.routeId,
+        )
+      : "Sin ruta";
   if (page === "collectors")
     return {
       title: "Cobradores",
@@ -1575,6 +1611,64 @@ function masterSpec(
         },
       ],
     };
+  if (page === "users")
+    return {
+      title: "Usuarios",
+      subtitle:
+        "Cuentas reales para administración y cobradores. Cada persona entra con su propio correo y contraseña.",
+      columns: [
+        { key: "user", label: "Usuario" },
+        { key: "account", label: "Cuenta" },
+        { key: "role", label: "Rol" },
+        { key: "state", label: "Estado" },
+        { key: "actions", label: "Acciones" },
+      ],
+      rows: snapshot.accounts.map((account) => ({
+        user: account.name,
+        account: account.email,
+        role:
+          account.role === "admin"
+            ? "Administración"
+            : `Cobrador · ${routeNameForCollector(account.collectorId)}`,
+        state: (
+          <Badge status={account.status === "active" ? "active" : "offline"}>
+            {account.status === "active" ? "Activo" : "Desactivado"}
+          </Badge>
+        ),
+        actions: (
+          <div className="row-actions">
+            <button
+              type="button"
+              className="text-button"
+              title="Restablecer contraseña"
+              onClick={() =>
+                onAccount({ type: "password", account })
+              }
+            >
+              <KeyRound size={15} /> Clave
+            </button>
+            <button
+              type="button"
+              className="text-button"
+              title={
+                account.status === "active"
+                  ? "Desactivar cuenta"
+                  : "Activar cuenta"
+              }
+              onClick={() =>
+                onAccount({
+                  type: "status",
+                  account,
+                  status: account.status === "active" ? "disabled" : "active",
+                })
+              }
+            >
+              {account.status === "active" ? "Desactivar" : "Activar"}
+            </button>
+          </div>
+        ),
+      })),
+    };
   return {
     title: "Usuarios",
     subtitle: "Cuentas del sistema separadas de las tasas de cambio.",
@@ -1584,26 +1678,7 @@ function masterSpec(
       { key: "role", label: "Rol" },
       { key: "state", label: "Estado" },
     ],
-    rows: [
-      {
-        user: "Administrador",
-        account: "admin@cyp.local",
-        role: "Administrador",
-        state: <Badge status="active">Activo</Badge>,
-      },
-      {
-        user: "Ana Martínez",
-        account: "collector@cyp.local",
-        role: "Cobrador",
-        state: <Badge status="active">Activo</Badge>,
-      },
-      {
-        user: "Auditoría",
-        account: "auditoria@cyp.local",
-        role: "Consulta",
-        state: <Badge status="offline">Inactivo</Badge>,
-      },
-    ],
+    rows: [],
   };
 }
 

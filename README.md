@@ -57,7 +57,23 @@ npm run db:migrate
 npm run dev
 ```
 
-La migración está en `app/server/database/001_initial.sql`; crea `users`, `collectors`, `routes`, `zones`, `collection_points`, `clients`, `services`, `charges`, `payouts`, `collections`, `payments`, `cash_handovers` y `daily_settlements`, además de idempotencia, FKs, índices y triggers. `daily_settlements.difference` se genera con `(Cobrado - Depositado) + (Entregado - Pagado)` y el CHECK exige cero. Con demo activa y base vacía, el backend siembra datos ficticios. Con `DEMO_MODE=false`, no siembra datos y exige `DATABASE_URL`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` de 14+ caracteres y `JWT_SECRET`. Se proporciona inicio de sesión de administrador configurado; el aprovisionamiento de usuarios/cobradores reales y una importación validada son trabajo pendiente antes de usar datos reales.
+La migración está en `app/server/database/` (`001_initial.sql` más los scripts posteriores en orden); crea `users`, `collectors`, `routes`, `zones`, `collection_points`, `clients`, `services`, `charges`, `payouts`, `collections`, `payments`, `cash_handovers` y `daily_settlements`, además de idempotencia, FKs, índices y triggers. `daily_settlements.difference` se genera con `(Cobrado - Depositado) + (Entregado - Pagado)` y el CHECK exige cero. Con demo activa y base vacía, el backend siembra datos ficticios. Con `DEMO_MODE=false`, no siembra datos y exige `DATABASE_URL`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` de 14+ caracteres y `JWT_SECRET`. Se proporciona inicio de sesión de administrador configurado; el aprovisionamiento de usuarios/cobradores reales se describe abajo y una importación validada es trabajo pendiente antes de usar datos reales.
+
+## Aprovisionamiento de usuarios
+
+Las identidades `admin@cyp.local` y `collector@cyp.local` son ficticias y solo
+existen con `DEMO_MODE=true`. Para que el jefe y los cobradores entren con su
+propia cuenta, desde el portal administrativo: **Archivos → Usuarios → Nueva
+cuenta**. Una cuenta de cobrador se vincula a un cobrador existente (y por tanto
+a su ruta y sus clientes); una de administración no lleva cobrador asignado. La
+contraseña inicial exige 12 caracteres mínimo, se entrega personalmente y el
+cobrador puede cambiarla; cualquier cambio de contraseña o de estado cierra las
+sesiones abiertas de esa cuenta.
+
+API equivalente (con `Idempotency-Key` en las mutaciones): `GET /api/usuarios`,
+`POST /api/usuarios`, `POST /api/usuarios/:id/clave` y
+`POST /api/usuarios/:id/estado`. Las contraseñas se guardan con scrypt y una sal
+propia por cuenta; la API nunca devuelve el hash ni la sal.
 
 ## Construcción y comprobación
 
@@ -96,7 +112,7 @@ legacy/
   ui_audit.md          Hallazgos observados y límites del acceso
 ```
 
-Leer `docs/ADR-001-postgresql-primary.md`, `docs/DATA_MODEL.md`, `docs/BUSINESS_LOGIC.md`, `docs/API_CONTRACTS.md`, `docs/DESIGN_SYSTEM.md` y `docs/VERIFICATION.md`. Los límites conocidos incluyen falta de importación legada, gestión completa de usuarios, recuperación de jornadas previas, devoluciones/anulaciones contables y paginación servidor para grandes volúmenes. La aplicación es una base funcional para validación, no una migración de producción ya aprobada.
+Leer `docs/ADR-001-postgresql-primary.md`, `docs/DATA_MODEL.md`, `docs/BUSINESS_LOGIC.md`, `docs/API_CONTRACTS.md`, `docs/DESIGN_SYSTEM.md` y `docs/VERIFICATION.md`. Los límites conocidos incluyen falta de importación legada, recuperación de contraseñas por correo (el restablecimiento lo hace un administrador), recuperación de jornadas previas, devoluciones/anulaciones contables y paginación servidor para grandes volúmenes. La aplicación es una base funcional para validación, no una migración de producción ya aprobada.
 
 ## Respaldo legado
 

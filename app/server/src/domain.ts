@@ -1,4 +1,9 @@
-import { randomUUID, randomBytes } from "node:crypto";
+import {
+  randomUUID,
+  randomBytes,
+  scryptSync,
+  timingSafeEqual,
+} from "node:crypto";
 
 export type Role = "admin" | "collector";
 export type User = {
@@ -7,6 +12,20 @@ export type User = {
   role: Role;
   collectorId?: string;
 };
+export type Account = {
+  id: string;
+  name: string;
+  email: string;
+  role: Role;
+  collectorId?: string;
+  salt: string;
+  passwordHash: string;
+  credentialVersion: number;
+  status: "active" | "disabled";
+  createdAt: string;
+  updatedAt: string;
+};
+export type PublicAccount = Omit<Account, "salt" | "passwordHash">;
 export type Client = {
   id: string;
   name: string;
@@ -93,6 +112,7 @@ export type State = {
   movements: Movement[];
   settlements: Settlement[];
   idempotency: Idempotency[];
+  accounts: Account[];
 };
 export class DomainError extends Error {
   constructor(
@@ -119,7 +139,39 @@ export const emptyState = (): State => ({
   movements: [],
   settlements: [],
   idempotency: [],
+  accounts: [],
 });
+export const publicAccount = (account: Account): PublicAccount => {
+  const { salt: _salt, passwordHash: _hash, ...rest } = account;
+  return rest;
+};
+export function hashPassword(password: string, salt = randomBytes(16).toString("base64url")) {
+  return {
+    salt,
+    passwordHash: scryptSync(password, salt, 64).toString("base64url"),
+  };
+}
+export function verifyPassword(
+  password: string,
+  salt: string,
+  passwordHash: string,
+) {
+  try {
+    const provided = scryptSync(password, salt, 64),
+      stored = Buffer.from(passwordHash, "base64url");
+    return (
+      provided.length === stored.length && timingSafeEqual(provided, stored)
+    );
+  } catch {
+    return false;
+  }
+}
+export function findAccount(state: State, email: string) {
+  const normalized = email.trim().toLowerCase();
+  return state.accounts.find(
+    (account) => account.email.toLowerCase() === normalized,
+  );
+}
 export function preview(state: State, collectorId: string, date?: string) {
   const rows = state.movements.filter(
     (m) =>
@@ -394,6 +446,10 @@ export function snapshot(state: State, user: User) {
     clients,
     routes,
     collectors,
+    accounts:
+      user.role === "admin"
+        ? state.accounts.map(publicAccount)
+        : state.accounts.filter((a) => a.id === user.id).map(publicAccount),
     charges: state.charges.filter((c) =>
       clients.some((cl) => cl.id === c.clientId),
     ),

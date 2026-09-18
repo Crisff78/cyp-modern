@@ -1,0 +1,160 @@
+# Estado compartido del proyecto (Claude Code + Codex)
+
+Este archivo es la fuente de verdad del **estado operativo actual** compartido entre
+Claude Code, Codex y ZCode. Todos deben leerlo al iniciar, verificar el estado real
+del proyecto y actualizarlo antes de terminar. La historia detallada y append-only
+vive unicamente en el Superbrain; no seguir aumentando este archivo como cronologia.
+
+La politica global aplicable a este y a todos los proyectos esta en
+`C:\Users\Rardiel Ceballo\Documents\VPS-obsidian\VPS\06-Knowledge-Base\Superbrain\System\Knowledge Retention Policy.md`.
+
+---
+
+# Proyecto: CyP Modern (Cobros y Pagos) — Gamera Software
+
+## Objetivo
+
+Backend REST + portal administrativo + PWA de cobrador para operacion de cobros de
+servicios, pagos autorizados y cuadre diario. Importes en pesos dominicanos (RD$),
+sin impuestos ni amortizacion de prestamos. Proyecto nuevo de Gamera; el jefe esta
+haciendo pruebas funcionales sobre el.
+
+**Origen:** repositorio `https://github.com/Crisff78/cyp-modern` clonado el
+2026-09-17. El esquema moderno es un diseno nuevo para PostgreSQL, no una extraccion
+del respaldo antiguo. No se usa Docker ni SQL Server.
+
+## Contexto de empresa
+
+CyP es un proyecto **separado** de Hermes-BI. El AGENTS.md de
+`Documents/ChatGPT/Gamera Software` describe Hermes-BI (modulo BI-IA); sus
+decisiones y su alcance no se aplican aqui. No mezclar los dos proyectos.
+
+## Stack tecnico
+
+- Node.js >= 22.12, TypeScript estricto, npm workspaces (3 paquetes).
+- `pnpm` es obligatorio para instalar (regla global de Rardiel); nunca npm/yarn.
+  `pnpm-workspace.yaml` anade las 3 apps porque pnpm no lee el campo `workspaces`
+  de package.json. Si se vuelve a npm, borrar ese archivo.
+- Backend: Fastify + PostgreSQL nativo. Sin Docker, sin SQL Server, sin ORM.
+- Frontends: Vite + React + Tailwind.
+- Puerto API 3001, admin 5173, cobrador PWA 5174.
+
+## Estructura
+
+- `app/server` — API, migraciones (`database/001_initial.sql`,
+  `002_accounts_credentials.sql`), seed y tests.
+- `app/client-admin` — portal de administracion.
+- `app/client-collector` — PWA del cobrador.
+- `docs/` — ADR, contratos de API, modelo de datos, logica de negocio, design system.
+
+## Decisiones tomadas (no reabrir sin pedirlo el usuario)
+
+- **Ubicacion 2026-09-17:** el proyecto vive en
+  `C:\Users\Rardiel Ceballo\Documents\Codex\2026-09-17\cyp-modern`. Es la fuente de
+  verdad; no trabajar en copias dentro del workspace de ZCode.
+- **Demo mode:** `DEMO_MODE=true` con FileStore en memoria, sin tocar PostgreSQL.
+  Sirve para que el jefe pruebe la interfaz sin instalar base de datos.
+- **Modo real:** `DEMO_MODE=false` exige `DATABASE_URL`, `ADMIN_EMAIL`,
+  `ADMIN_PASSWORD` de 14+ caracteres y `JWT_SECRET`.
+- **Clientes del respaldo (2026-09-17):** Rardiel pidio integrar la base que paso
+  su companero (CobrosyPagos-GDemos-2.bak). Es base GDemos (demo): mezcla clientes
+  reales con registros de prueba (Jessica Simpson, dfaef, plantilla 123/Cliente/Alias...,
+  Cliente 32684). Se importaron los 24 clientes como dataset legacy en
+  zona/ruta/cobrador semilla `legacy-import-*`, con dry run previo e IDs estables
+  idempotentes. No es verdad de produccion; los registros de prueba se pueden
+  borrar desde la pantalla Clientes del admin.
+
+## Current state - ACTUALIZAR ANTES DE CERRAR
+
+**Last updated:** 2026-09-17 por Codex (Atria-Dawn-Preview)
+
+### Done so far
+
+- Repositorio clonado y dependencias instaladas con pnpm.
+- `pnpm-workspace.yaml` creado (necesario para pnpm; ver Stack).
+- **PostgreSQL 17 levantado en modo real** (2026-09-17): rol `cyp` + DB `cyp` (UTF8)
+  creados; `pg_hba.conf` puesto en `trust` solo para localhost para crear el rol y
+  devuelto a `md5` despues. Migraciones `001_initial.sql` y
+  `002_accounts_credentials.sql` aplicadas (17 tablas en `public`).
+- `.env` ahora con `DEMO_MODE=false`, `DATABASE_URL`, `ADMIN_EMAIL` y
+  `ADMIN_PASSWORD` de 18 caracteres (generados localmente; leerlos del `.env`).
+- Servicios arrancados en modo real y verificados: API 3001 responde
+  `mode: configured` (`PostgreSQL configured`), admin 5173 y cobrador 5174 ok.
+  Login de admin verificado con token; `/api/clientes`, `/api/rutas` y
+  `/api/snapshot` responden sobre PostgreSQL.
+- **Importacion del respaldo legacy ejecutada** (2026-09-17): parser canonico
+  `legacy/database/extract_clients.py` + `clients_extract.json` (24 clientes);
+  script `app/server/legacy-import.mjs` con dry run, IDs estables y transaccion
+  unica. Resultado: 24 clientes + 24 puntos de cobro en zona/ruta/cobrador
+  semilla `legacy-import-*`. La base es GDemos (demo), no verdad de produccion.
+- Recorrido del demo del README verificado conceptualmente.
+- **Aprovisionamiento de usuarios implementado y verificado** (2026-09-17):
+  cuentas reales con correo + contraseña propia (scrypt + sal por cuenta),
+  revocacion de sesiones por `credentialVersion`, pantalla Usuarios del portal
+  administrativo dada de alta/baja/cambio de clave desde la UI, y login de
+  cobrador con cuenta propia verificado en la PWA. Tests del servidor: 15/16
+  pass; el skip era por falta de PostgreSQL, que ya no aplica.
+
+- **Verificacion de integracion backend-DB (2026-09-17):** lectura y escritura
+  probadas en vivo contra PostgreSQL real. Lectura: `/api/clientes` devuelve los
+  24 clientes que hay en la base. Escritura: `POST /api/usuarios` (con
+  `Idempotency-Key`) creo una cuenta de prueba, el row aparecio en `public.users`
+  verificado por psql directo y la API lo leyo de vuelta; despues se borro la
+  prueba y `users` volvio a 0. El store en modo real es `PostgresStore`
+  (transacciones con `pg_advisory_xact_lock` y `SET CONSTRAINTS ALL DEFERRED`),
+  no FileStore. Conteo real de tablas: 17 (clients, routes, zones, collectors,
+  users, charges, payouts, payments, collections, cash_handovers,
+  collection_points, daily_settlements, recurring_charges, services,
+  delay_reasons, exchange_rates, idempotency). `users` inicia en 0 porque el
+  admin de mantenimiento autentica contra `.env`, no contra esa tabla.
+
+### Aprovisionamiento (como usarlo)
+
+1. Entrar al admin (modo real: `ADMIN_EMAIL`/`ADMIN_PASSWORD` del `.env`; `Demo-CyP-2026!` solo vale con `DEMO_MODE=true`) > Archivos >
+   Usuarios > **Nueva cuenta**.
+2. Cobrador: elegir el cobrador asignado (vincula la cuenta a su ruta y sus
+   clientes). Administracion: sin cobrador asignado.
+3. Contrasena de 12+ caracteres. Entregarla personalmente; el cobrador puede
+   cambiarla y eso cierra sus sesiones abiertas.
+4. API: `POST /api/usuarios`, `POST /api/usuarios/:id/clave`,
+   `POST /api/usuarios/:id/estado`, `GET /api/usuarios` (admin). Las tres
+   mutaciones requieren `Idempotency-Key`.
+5. Restricciones: correo unico; rol cobrador exige cobrador existente; un admin
+   no puede desactivar su propia cuenta; la sesion muere al cambiar clave o
+   estado. Las identidades demo (`admin@cyp.local`, `collector@cyp.local`)
+   siguen funcionando solo con `DEMO_MODE=true`.
+
+### Pendiente
+
+1. Dar de alta al jefe y a cada cobrador real desde la pantalla Usuarios (con
+   `DEMO_MODE=false` las identidades demo ya no sirven; el admin real esta en
+   el `.env`).
+2. Limpiar los registros de prueba del respaldo GDemos (Jessica Simpson, dfaef,
+   plantilla 123/Cliente/Alias..., Cliente 32684, Otro Cliente, Cliente NUevo,
+   COLMADO MARIA con relleno) desde la pantalla Clientes.
+3. Decidir si los clientes legacy se quedan en la ruta semilla
+   `legacy-import-route` o se redistribuyen a rutas/zonas reales.
+
+### Next step
+
+- Alta del jefe y los cobradores reales en la pantalla Usuarios del admin
+  (http://127.0.0.1:5173) y limpieza de los registros de prueba del respaldo.
+
+### Blockers / decisiones pendientes
+
+- El shim de `pnpm` falla en shells no interactivas (the global target of the
+  pnpm shim points back at the shim); usar `node node_modules/tsx/dist/cli.mjs` y
+  `node node_modules/vite/bin/vite.js` directo, como en Notas operativas.
+- El sandbox de Codex bloquea abrir el navegador por comando y computer-use no
+  tiene token; Rardiel abre 5173/5174 a mano.
+
+## Notas operativas
+
+- Arrancar todo: `cd app/server && pnpm dev` desde la raiz ejecuta los 3 servicios.
+  `pnpm dev` puede fallar por el shim en shells no interactivas; alternativa probada:
+  Si se usa el tsx/vite directo: server en `app/server` con
+  `node node_modules/tsx/dist/cli.mjs watch --env-file-if-exists=../../.env src/index.ts`,
+  frontends con `node node_modules/vite/bin/vite.js`.
+- Cerrar jornada: la API rechaza un cobro nuevo con `DAY_CLOSED` si la jornada
+  ya cerro. Cada cobrador mantiene su jornada independiente.
+- El cuadre exige cero: `(Cobrado - Depositado) + (Entregado - Pagado) = 0`.

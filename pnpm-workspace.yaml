@@ -1,0 +1,6 @@
+packages:
+  - app/server
+  - app/client-admin
+  - app/client-collector
+allowBuilds:
+  esbuild: true
