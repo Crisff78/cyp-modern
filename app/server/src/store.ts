@@ -45,7 +45,9 @@ export class FileStore extends MemoryStore {
   static async open(path: string, initial: State) {
     let data = initial;
     try {
-      data = JSON.parse(await readFile(path, "utf8"));
+      // Fields added after the first release are absent in older files;
+      // emptyState() keeps the missing collections defined.
+      data = { ...emptyState(), ...JSON.parse(await readFile(path, "utf8")) };
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
     }
@@ -76,6 +78,13 @@ async function ensureUser(client: pg.PoolClient, id: string) {
 }
 async function readState(client: pg.PoolClient): Promise<State> {
   const state = emptyState();
+  state.accounts = (
+    await client.query(
+      `SELECT id,name,email,role,collector_id AS "collectorId",salt,password_hash AS "passwordHash",
+       credential_version AS "credentialVersion",status,created_at AS "createdAt",updated_at AS "updatedAt"
+       FROM users WHERE email IS NOT NULL ORDER BY created_at,id`,
+    )
+  ).rows.map(clean);
   state.collectors = (
     await client.query(
       `SELECT id,name,initials,route_id AS "routeId",status,collection_limit AS "collectionLimit",
@@ -147,6 +156,29 @@ async function saveState(client: pg.PoolClient, state: State, before: State) {
     ...state.settlements.map((s) => s.actorId),
   ]))
     await ensureUser(client, userId);
+  for (const account of state.accounts) {
+    const updatedAt = account.updatedAt || account.createdAt;
+    await client.query(
+      `INSERT INTO users(id,name,email,role,collector_id,salt,password_hash,credential_version,status,created_at,updated_at)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,email=EXCLUDED.email,role=EXCLUDED.role,
+       collector_id=EXCLUDED.collector_id,salt=EXCLUDED.salt,password_hash=EXCLUDED.password_hash,
+       credential_version=EXCLUDED.credential_version,status=EXCLUDED.status,updated_at=EXCLUDED.updated_at`,
+      [
+        account.id,
+        account.name,
+        account.email,
+        account.role,
+        account.collectorId ?? null,
+        account.salt,
+        account.passwordHash,
+        account.credentialVersion,
+        account.status,
+        account.createdAt,
+        updatedAt,
+      ],
+    );
+  }
   for (const route of state.routes)
     await client.query(
       `INSERT INTO zones(id,name,sector) VALUES($1,$2,$3)

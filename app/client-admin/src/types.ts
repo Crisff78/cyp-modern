@@ -130,10 +130,22 @@ export type Balance = {
   paidToClients: number;
   difference: number;
 };
+export type PublicAccount = {
+  id: string;
+  name: string;
+  email: string;
+  role: "admin" | "collector";
+  collectorId?: string;
+  credentialVersion: number;
+  status: "active" | "disabled";
+  createdAt: string;
+  updatedAt: string;
+};
 export type Snapshot = {
   businessDate: string;
   clients: Client[];
   collectors: Collector[];
+  accounts: PublicAccount[];
   charges: Charge[];
   payouts: Payout[];
   movements: Movement[];

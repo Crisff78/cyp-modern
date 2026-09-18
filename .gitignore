@@ -34,3 +34,8 @@ output/playwright/
 Thumbs.db
 .idea/
 .vscode/
+.logs/
+legacy/database/clients_extract.json
+legacy/database/clients_extract.csv
+legacy/database/clients_pre_cleanup_*.sql
+legacy/database/cleanup_backup_*.json

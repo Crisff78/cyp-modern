@@ -18,9 +18,14 @@ import {
   closeDay,
   collectorForClient,
   DomainError,
+  findAccount,
+  hashPassword,
   postMovement,
   preview,
+  publicAccount,
   snapshot,
+  verifyPassword,
+  type Account,
   type State,
   type User,
 } from "./domain.js";
@@ -146,13 +151,32 @@ export async function buildApp(config: Config) {
       return;
     await req.jwtVerify();
     const u = req.user as User & { authVersion?: string };
-    const validIdentity = config.demo
+    const legacyIdentity = config.demo
       ? (u.id === "demo-admin" && u.role === "admin") ||
         (u.id === "demo-collector" &&
           u.role === "collector" &&
           u.collectorId === "col-1")
       : u.id === "configured-admin" && u.role === "admin";
-    if (u.authVersion !== authVersion || !validIdentity)
+    if (legacyIdentity) {
+      if (u.authVersion !== authVersion)
+        throw new DomainError(
+          "SESSION_EXPIRED",
+          "La configuración de acceso cambió. Inicia sesión de nuevo.",
+          401,
+        );
+      return;
+    }
+    // Provisioned accounts: the token carries the account's credential
+    // version, so a password change or a disable revokes older sessions.
+    const state = await config.store.read(),
+      account = state.accounts.find((a) => a.id === u.id);
+    if (
+      !account ||
+      account.status !== "active" ||
+      account.role !== u.role ||
+      account.collectorId !== u.collectorId ||
+      u.authVersion !== String(account.credentialVersion)
+    )
       throw new DomainError(
         "SESSION_EXPIRED",
         "La configuración de acceso cambió. Inicia sesión de nuevo.",
@@ -212,11 +236,11 @@ export async function buildApp(config: Config) {
       },
     };
   };
-  const mutate = <T>(
+  const mutate = <T, P = Record<string, string>>(
     path: string,
     summary: string,
     schema: z.ZodType<T>,
-    fn: (state: State, u: User, body: T) => unknown,
+    fn: (state: State, u: User, body: T, params: P) => unknown,
   ) => {
     describe("post", path, summary, schema);
     app.post(path, async (req) => {
@@ -244,7 +268,7 @@ export async function buildApp(config: Config) {
             );
           return existing.response;
         }
-        const response = fn(state, u, body);
+        const response = fn(state, u, body, (req.params ?? {}) as P);
         state.idempotency.push({
           id: scope,
           fingerprint,
@@ -277,7 +301,8 @@ export async function buildApp(config: Config) {
         scryptSync(body.password, salt, 64),
         expectedPassword,
       );
-      let u: User | undefined;
+      let u: User | undefined,
+        version = authVersion;
       if (config.demo) {
         if (email === "admin@cyp.local" || email === "admin")
           u = { id: "demo-admin", name: "Administración", role: "admin" };
@@ -290,14 +315,40 @@ export async function buildApp(config: Config) {
           };
       } else if (email === config.adminEmail!.toLowerCase())
         u = { id: "configured-admin", name: "Administración", role: "admin" };
-      if (!u || !matches)
+      if (u) {
+        if (!matches)
+          throw new DomainError(
+            "INVALID_CREDENTIALS",
+            "Correo o contraseña incorrectos.",
+            401,
+          );
+      } else {
+        const state = await config.store.read(),
+          account = findAccount(state, email);
+        if (
+          account &&
+          account.status === "active" &&
+          verifyPassword(body.password, account.salt, account.passwordHash)
+        ) {
+          u = {
+            id: account.id,
+            name: account.name,
+            role: account.role,
+            ...(account.collectorId
+              ? { collectorId: account.collectorId }
+              : {}),
+          };
+          version = String(account.credentialVersion);
+        }
+      }
+      if (!u)
         throw new DomainError(
           "INVALID_CREDENTIALS",
           "Correo o contraseña incorrectos.",
           401,
         );
       return {
-        token: app.jwt.sign({ ...u, authVersion }, { expiresIn: "8h" }),
+        token: app.jwt.sign({ ...u, authVersion: version }, { expiresIn: "8h" }),
         user: u,
       };
     },
@@ -308,6 +359,136 @@ export async function buildApp(config: Config) {
     return { id, name, role, collectorId };
   });
   describe("get", "/api/auth/me", "Usuario actual");
+  const emailField = z.email("Escribe un correo válido.").max(200);
+  const passwordField = z
+    .string()
+    .min(12, "La contraseña debe tener al menos 12 caracteres.")
+    .max(200);
+  const accountBody = z
+    .object({
+      name: text,
+      email: emailField,
+      role: z.enum(["admin", "collector"]),
+      collectorId: id.optional(),
+      password: passwordField,
+    })
+    .strict();
+  const passwordBody = z.object({ password: passwordField }).strict();
+  const accountStatusBody = z
+    .object({ status: z.enum(["active", "disabled"]) })
+    .strict();
+  const touch = (account: Account, now = new Date()) => {
+    account.updatedAt = now.toISOString();
+    account.credentialVersion += 1;
+  };
+  app.get("/api/usuarios", async (req) => {
+    assertAdmin(user(req));
+    return (await config.store.read()).accounts.map(publicAccount);
+  });
+  describe("get", "/api/usuarios", "Cuentas provisionadas (sin secretos)");
+  mutate(
+    "/api/usuarios",
+    "Provisionar cuenta de usuario o cobrador",
+    accountBody,
+    (state, u, body) => {
+      assertAdmin(u);
+      const email = body.email.trim().toLowerCase();
+      if (body.role === "collector" && !body.collectorId)
+        throw new DomainError(
+          "COLLECTOR_REQUIRED",
+          "Una cuenta de cobrador necesita un cobrador asignado.",
+          422,
+        );
+      if (body.role === "admin" && body.collectorId)
+        throw new DomainError(
+          "COLLECTOR_NOT_ALLOWED",
+          "Una cuenta de administración no se asocia a un cobrador.",
+          422,
+        );
+      if (
+        body.collectorId &&
+        !state.collectors.some((c) => c.id === body.collectorId)
+      )
+        throw new DomainError(
+          "NOT_FOUND",
+          "El cobrador seleccionado no existe.",
+          404,
+        );
+      if (findAccount(state, email))
+        throw new DomainError(
+          "DUPLICATE_EMAIL",
+          "Ya existe una cuenta con ese correo.",
+          409,
+        );
+      const now = new Date().toISOString(),
+        { salt, passwordHash } = hashPassword(body.password),
+        account: Account = {
+          id: randomUUID(),
+          name: body.name,
+          email,
+          role: body.role,
+          ...(body.collectorId ? { collectorId: body.collectorId } : {}),
+          salt,
+          passwordHash,
+          credentialVersion: 1,
+          status: "active",
+          createdAt: now,
+          updatedAt: now,
+        };
+      state.accounts.push(account);
+      return publicAccount(account);
+    },
+  );
+  mutate(
+    "/api/usuarios/:id/clave",
+    "Cambiar contraseña de una cuenta",
+    passwordBody,
+    (state, u, body, params) => {
+      const account = state.accounts.find((a) => a.id === params.id);
+      if (!account)
+        throw new DomainError(
+          "NOT_FOUND",
+          "La cuenta no existe.",
+          404,
+        );
+      if (u.role !== "admin" && u.id !== account.id)
+        throw new DomainError(
+          "FORBIDDEN",
+          "Solo puedes cambiar tu propia contraseña.",
+          403,
+        );
+      const { salt, passwordHash } = hashPassword(body.password);
+      Object.assign(account, { salt, passwordHash });
+      touch(account);
+      return { ok: true, credentialVersion: account.credentialVersion };
+    },
+  );
+  mutate(
+    "/api/usuarios/:id/estado",
+    "Activar o desactivar una cuenta",
+    accountStatusBody,
+    (state, u, body, params) => {
+      assertAdmin(u);
+      const account = state.accounts.find((a) => a.id === params.id);
+      if (!account)
+        throw new DomainError("NOT_FOUND", "La cuenta no existe.", 404);
+      if (account.status === body.status)
+        throw new DomainError(
+          "NO_CHANGE",
+          "La cuenta ya tiene ese estado.",
+          409,
+        );
+      if (u.id === account.id && body.status === "disabled")
+        throw new DomainError(
+          "FORBIDDEN",
+          "No puedes desactivar tu propia cuenta.",
+          403,
+        );
+      account.status = body.status;
+      touch(account);
+      return publicAccount(account);
+    },
+  );
   app.get("/api/snapshot", async (req) =>
     snapshot(await config.store.read(), user(req)),
   );

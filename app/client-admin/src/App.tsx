@@ -19,6 +19,7 @@ import {
   Command,
   Download,
   FileCheck2,
+  KeyRound,
   LayoutDashboard,
   ListFilter,
   LoaderCircle,
@@ -68,13 +69,7 @@ import {
   type MapMarker,
 } from "./services/mapAdapter";
 import OperationModal, { type Operation } from "./Operations";
-import type { Collector, Page, Snapshot, User } from "./types";
-import {
-  canAccessAdmin,
-  enrichUserRole,
-  isSuspendedUser,
-  normalizeRole,
-} from "./types";
+import type { Collector, Page, Snapshot } from "./types";
 
 const groupOrder = [
   "ARCHIVOS",
@@ -495,6 +490,8 @@ export default function App() {
       null,
     ),
     [operation, setOperation] = useState<Operation | null>(null),
+    [accountOperation, setAccountOperation] =
+      useState<AccountOperation | null>(null),
     [directorySearch, setDirectorySearch] = useState(""),
     [settlementCollector, setSettlementCollector] = useState("");
   const [clock, setClock] = useState(() => new Date());
@@ -902,6 +899,7 @@ export default function App() {
                     })
                   }
                   onOperation={setOperation}
+                  onAccount={setAccountOperation}
                 />
               )}
               <footer className="page-footer">
@@ -1149,6 +1147,12 @@ export default function App() {
                 onClose={() => setOperation(null)}
                 onComplete={refresh}
               />
+              <AccountModal
+                operation={accountOperation}
+                snapshot={snapshot}
+                onClose={() => setAccountOperation(null)}
+                onComplete={refresh}
+              />
             </>
           )}
         </div>
@@ -1227,6 +1231,7 @@ function ModuleRouter({
   onRefresh,
   onCollector,
   onOperation,
+  onAccount,
 }: {
   page: Page;
   snapshot: Snapshot;
@@ -1235,6 +1240,7 @@ function ModuleRouter({
   onRefresh: () => void;
   onCollector: (collector: Collector) => void;
   onOperation: (operation: Operation) => void;
+  onAccount: (operation: AccountOperation) => void;
 }) {
   if (
     [
@@ -1252,8 +1258,6 @@ function ModuleRouter({
         page={page}
         snapshot={snapshot}
         onCollector={onCollector}
-        currentUser={currentUser}
-        onRefresh={onRefresh}
       />
     );
   if (
@@ -1305,35 +1309,28 @@ function MasterDataView({
   snapshot,
   currentUser,
   onCollector,
-  onRefresh,
 }: {
   page: Page;
   snapshot: Snapshot;
   currentUser: User;
   onCollector: (collector: Collector) => void;
-  onRefresh: () => void;
 }) {
   const [search, setSearch] = useState("");
-  const [quickRecord, setQuickRecord] = useState<TableRow | "new" | null>(null);
-  const [collectorEditor, setCollectorEditor] = useState<TableRow | "new" | null>(null);
-  const [collectorFlow, setCollectorFlow] = useState<"zones" | "limits" | "routes" | null>(null);
-  const [selectedCollectorId, setSelectedCollectorId] = useState(snapshot.collectors[0]?.id ?? "");
   const config = masterSpec(page, snapshot);
-  const permissions = permissionsFor(currentUser);
   const rows = config.rows.filter((row) =>
     Object.values(row).join(" ").toLowerCase().includes(search.toLowerCase()),
   );
   const entity = page === "clients" ? "clients" : page;
   const deleteRow = async (row: TableRow) => {
     if (!["clients", "collectors"].includes(page) || !row.__id) {
-      toast.info("Esta vista est� en modo lectura para el mock frontend.");
+      toast.info("Esta vista est� en modo lectura para el mock frontend.");
       return;
     }
     const label = page === "collectors" ? "cobrador" : "cliente";
     const endpoint = page === "collectors" ? "collectors" : "clients";
     if (
       permissions.deleteNeedsConfirm &&
-      !confirm(`Confirma la eliminaci�n de este ${label}.`)
+      !confirm(`Confirma la eliminaci�n de este ${label}.`)
     )
       return;
     await api(`/mock/admin/${endpoint}/${encodeURIComponent(row.__id)}`, {
@@ -1354,22 +1351,7 @@ function MasterDataView({
           </h1>
           <p>{config.subtitle}</p>
         </div>
-        <button
-          className="btn primary"
-          disabled={!permissions.canCreate}
-          title={
-            permissions.canCreate
-              ? "Nuevo registro"
-              : permissions.readOnlyReason
-          }
-          onClick={() =>
-            page === "clients"
-              ? setQuickRecord("new")
-              : page === "collectors"
-                ? setCollectorEditor("new")
-                : toast.info("Vista de lectura preparada para mock frontend.")
-          }
-        >
+        <button className="btn primary">
           <Plus size={16} />
           Nuevo registro
         </button>
@@ -2201,6 +2183,7 @@ function LegacyTable({
 function masterSpec(
   page: Page,
   snapshot: Snapshot,
+  onAccount: (operation: AccountOperation) => void,
 ): {
   title: string;
   subtitle: string;
@@ -2209,6 +2192,15 @@ function masterSpec(
 } {
   const routeName = (routeId: string) =>
     snapshot.routes.find((route) => route.id === routeId)?.name ?? "Sin ruta";
+  const routeNameForCollector = (collectorId?: string) =>
+    snapshot.collectors.find((collector) => collector.id === collectorId)
+      ?.routeId
+      ? routeName(
+          snapshot.collectors.find(
+            (collector) => collector.id === collectorId,
+          )!.routeId,
+        )
+      : "Sin ruta";
   if (page === "collectors")
     return {
       title: "Cobradores",
@@ -2387,6 +2379,64 @@ function masterSpec(
         },
       ],
     };
+  if (page === "users")
+    return {
+      title: "Usuarios",
+      subtitle:
+        "Cuentas reales para administración y cobradores. Cada persona entra con su propio correo y contraseña.",
+      columns: [
+        { key: "user", label: "Usuario" },
+        { key: "account", label: "Cuenta" },
+        { key: "role", label: "Rol" },
+        { key: "state", label: "Estado" },
+        { key: "actions", label: "Acciones" },
+      ],
+      rows: snapshot.accounts.map((account) => ({
+        user: account.name,
+        account: account.email,
+        role:
+          account.role === "admin"
+            ? "Administración"
+            : `Cobrador · ${routeNameForCollector(account.collectorId)}`,
+        state: (
+          <Badge status={account.status === "active" ? "active" : "offline"}>
+            {account.status === "active" ? "Activo" : "Desactivado"}
+          </Badge>
+        ),
+        actions: (
+          <div className="row-actions">
+            <button
+              type="button"
+              className="text-button"
+              title="Restablecer contraseña"
+              onClick={() =>
+                onAccount({ type: "password", account })
+              }
+            >
+              <KeyRound size={15} /> Clave
+            </button>
+            <button
+              type="button"
+              className="text-button"
+              title={
+                account.status === "active"
+                  ? "Desactivar cuenta"
+                  : "Activar cuenta"
+              }
+              onClick={() =>
+                onAccount({
+                  type: "status",
+                  account,
+                  status: account.status === "active" ? "disabled" : "active",
+                })
+              }
+            >
+              {account.status === "active" ? "Desactivar" : "Activar"}
+            </button>
+          </div>
+        ),
+      })),
+    };
   return {
     title: "Usuarios",
     subtitle: "Cuentas del sistema separadas de las tasas de cambio.",
@@ -2396,26 +2446,7 @@ function masterSpec(
       { key: "role", label: "Rol" },
       { key: "state", label: "Estado" },
     ],
-    rows: [
-      {
-        user: "Administrador",
-        account: "admin@cyp.local",
-        role: "Administrador",
-        state: <Badge status="active">Activo</Badge>,
-      },
-      {
-        user: "Ana Martínez",
-        account: "collector@cyp.local",
-        role: "Cobrador",
-        state: <Badge status="active">Activo</Badge>,
-      },
-      {
-        user: "Auditoría",
-        account: "auditoria@cyp.local",
-        role: "Consulta",
-        state: <Badge status="offline">Inactivo</Badge>,
-      },
-    ],
+    rows: [],
   };
 }
 

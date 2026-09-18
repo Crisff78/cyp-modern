@@ -489,6 +489,267 @@ test("OpenAPI includes typed financial requests and bearer security", async () =
     await app.close();
   }
 });
+test("account provisioning: create, login, scope, password rotation and disable", async () => {
+  const { app, post, store } = await setup();
+  const collectorEmail = "ana@example.com",
+    bossEmail = "jefe@example.com",
+    strong = "ClaveDePrueba-2026!";
+  const login = async (email: string, password: string) =>
+    app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email, password },
+    });
+  try {
+    // A collector account needs a collector; an admin account must not have one.
+    assert.equal(
+      (
+        await post("/api/usuarios", {
+          name: "Ana Martínez",
+          email: collectorEmail,
+          role: "collector",
+          password: strong,
+        })
+      ).statusCode,
+      422,
+    );
+    assert.equal(
+      (
+        await post("/api/usuarios", {
+          name: "Jefe",
+          email: bossEmail,
+          role: "admin",
+          collectorId: "col-1",
+          password: strong,
+        })
+      ).statusCode,
+      422,
+    );
+    // Weak passwords are rejected.
+    assert.equal(
+      (
+        await post("/api/usuarios", {
+          name: "Ana Martínez",
+          email: collectorEmail,
+          role: "collector",
+          collectorId: "col-1",
+          password: "corta",
+        })
+      ).statusCode,
+      400,
+    );
+    const created = (
+      await post("/api/usuarios", {
+        name: "Ana Martínez",
+        email: collectorEmail,
+        role: "collector",
+        collectorId: "col-1",
+        password: strong,
+      })
+    ).json();
+    assert.equal(created.status, "active");
+    assert.ok(!("passwordHash" in created) && !("salt" in created));
+    // Duplicate e-mail is rejected.
+    assert.equal(
+      (
+        await post("/api/usuarios", {
+          name: "Ana Martínez",
+          email: collectorEmail.toUpperCase(),
+          role: "collector",
+          collectorId: "col-1",
+          password: strong,
+        })
+      ).statusCode,
+      409,
+    );
+    // Wrong password cannot log in.
+    assert.equal(
+      (await login(collectorEmail, "incorrecta-2026")).statusCode,
+      401,
+    );
+    // The provisioned collector logs in and only sees her own route.
+    const session = (await login(collectorEmail, strong)).json();
+    assert.equal(session.user.role, "collector");
+    assert.equal(session.user.collectorId, "col-1");
+    const snapshot = (
+      await app.inject({
+        url: "/api/snapshot",
+        headers: { authorization: `Bearer ${session.token}` },
+      })
+    ).json();
+    assert.equal(snapshot.collectors.length, 1);
+    assert.equal(snapshot.accounts.length, 1);
+    assert.equal(snapshot.accounts[0].email, collectorEmail);
+    // The demo admin can list every account.
+    const listed = (
+      await app.inject({
+        url: "/api/usuarios",
+        headers: { authorization: `Bearer ${session.token}` },
+      })
+    ).statusCode;
+    assert.equal(listed, 403);
+    // The collector can collect with her own account.
+    assert.equal(
+      (
+        await post(
+          "/api/cobros",
+          { chargeId: "chg-1", amount: 10000 },
+          session.token,
+        )
+      ).statusCode,
+      200,
+    );
+    // Rotating the password revokes the previous session.
+    assert.equal(
+      (
+        await post(
+          `/api/usuarios/${created.id}/clave`,
+          { password: "NuevaClave-2026!" },
+          session.token,
+        )
+      ).statusCode,
+      200,
+    );
+    assert.equal(
+      (await app.inject({
+        url: "/api/snapshot",
+        headers: { authorization: `Bearer ${session.token}` },
+      })).statusCode,
+      401,
+    );
+    assert.equal((await login(collectorEmail, strong)).statusCode, 401);
+    const renewed = (await login(collectorEmail, "NuevaClave-2026!")).json();
+    assert.equal(
+      (
+        await app.inject({
+          url: "/api/auth/me",
+          headers: { authorization: `Bearer ${renewed.token}` },
+        })
+      ).statusCode,
+      200,
+    );
+    // A collector cannot reset another account's password.
+    const boss = (
+      await post("/api/usuarios", {
+        name: "Jefe",
+        email: bossEmail,
+        role: "admin",
+        password: strong,
+      })
+    ).json();
+    assert.equal(
+      (
+        await post(
+          `/api/usuarios/${boss.id}/clave`,
+          { password: "OtraClave-2026!" },
+          renewed.token,
+        )
+      ).statusCode,
+      403,
+    );
+    // Disabling the account revokes outstanding sessions and blocks login.
+    assert.equal(
+      (
+        await post(
+          `/api/usuarios/${created.id}/estado`,
+          { status: "disabled" },
+          renewed.token,
+        )
+      ).statusCode,
+      403,
+    );
+    const adminToken = (
+      await login("admin@cyp.local", "Demo-CyP-2026!")
+    ).json().token;
+    assert.equal(
+      (
+        await post(
+          `/api/usuarios/${created.id}/estado`,
+          { status: "disabled" },
+          adminToken,
+        )
+      ).statusCode,
+      200,
+    );
+    assert.equal(
+      (await login(collectorEmail, "NuevaClave-2026!")).statusCode,
+      401,
+    );
+    assert.equal(
+      (
+        await app.inject({
+          url: "/api/snapshot",
+          headers: { authorization: `Bearer ${renewed.token}` },
+        })
+      ).statusCode,
+      401,
+    );
+    // The admin cannot disable their own account.
+    const bossSession = (await login(bossEmail, strong)).json();
+    assert.equal(
+      (
+        await post(
+          `/api/usuarios/${boss.id}/estado`,
+          { status: "disabled" },
+          bossSession.token,
+        )
+      ).statusCode,
+      403,
+    );
+    assert.equal(
+      (
+        await app.inject({
+          url: "/api/usuarios",
+          headers: { authorization: `Bearer ${bossSession.token}` },
+        })
+      ).json().length,
+      2,
+    );
+    // Credentials are stored hashed, never in plain text.
+    const stored = (await store.read()).accounts.find(
+      (a) => a.id === created.id,
+    );
+    assert.ok(stored);
+    assert.notEqual(stored!.passwordHash, "NuevaClave-2026!");
+    assert.notEqual(stored!.passwordHash, strong);
+  } finally {
+    await app.close();
+  }
+});
+test("account creation is idempotent under replay", async () => {
+  const { app, post } = await setup();
+  const key = randomUUID(),
+    email = `replay-${key.slice(0, 8)}@example.com`;
+  try {
+    const first = await post(
+      "/api/usuarios",
+      {
+        name: "Replay",
+        email,
+        role: "admin",
+        password: "ClaveDePrueba-2026!",
+      },
+      undefined,
+      key,
+    );
+    assert.equal(first.statusCode, 200);
+    const retry = await post(
+      "/api/usuarios",
+      {
+        name: "Replay",
+        email,
+        role: "admin",
+        password: "ClaveDePrueba-2026!",
+      },
+      undefined,
+      key,
+    );
+    assert.equal(retry.statusCode, 200);
+    assert.deepEqual(retry.json(), first.json());
+  } finally {
+    await app.close();
+  }
+});
 test(
   "native PostgreSQL store integration",
   { skip: !process.env.TEST_DATABASE_URL },
