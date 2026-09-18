@@ -108,6 +108,20 @@ decisiones y su alcance no se aplican aqui. No mezclar los dos proyectos.
   delay_reasons, exchange_rates, idempotency). `users` inicia en 0 porque el
   admin de mantenimiento autentica contra `.env`, no contra esa tabla.
 
+- **Limpieza de registros de prueba ejecutada (2026-09-17):** borrado en una
+  transaccion unica contra PostgreSQL real, con backup previo en
+  `legacy/database/cleanup_backup_20260917_*.json` y guardas que verificaron 0
+  cargos/cobros/pagos atados a los borrados. Se eliminaron 24 collection_points
+  huerfanos (resto de una pasada vieja del importe con otra convencion de IDs:
+  cp-c* y cp-leg-*) y 3 clientes duplicados con sufijo -2 (cl-c00013-2,
+  cl-c00016-2, cl-c00032-2) mas sus 3 puntos liberados. Resultado: clientes
+  17 -> 14, collection_points 41 -> 14, 0 huerfanos restantes. Verificado luego
+  contra la API admin: /api/health mode: configured y /api/clientes devolviendo
+  los mismos 14. users sigue en 0 (el usuario de la prueba de integracion se
+  borro). Commit ffae2ea + push a origin/main; .gitignore ahora excluye los
+  volcados de datos de clientes (.logs/, clients_extract.*, cleanup_backup_*,
+  clients_pre_cleanup_*). Quedan pendientes solo los ambiguos del punto 2.
+
 ### Aprovisionamiento (como usarlo)
 
 1. Entrar al admin (modo real: `ADMIN_EMAIL`/`ADMIN_PASSWORD` del `.env`; `Demo-CyP-2026!` solo vale con `DEMO_MODE=true`) > Archivos >
@@ -129,16 +143,18 @@ decisiones y su alcance no se aplican aqui. No mezclar los dos proyectos.
 1. Dar de alta al jefe y a cada cobrador real desde la pantalla Usuarios (con
    `DEMO_MODE=false` las identidades demo ya no sirven; el admin real esta en
    el `.env`).
-2. Limpiar los registros de prueba del respaldo GDemos (Jessica Simpson, dfaef,
-   plantilla 123/Cliente/Alias..., Cliente 32684, Otro Cliente, Cliente NUevo,
-   COLMADO MARIA con relleno) desde la pantalla Clientes.
+2. Confirmar con Rardiel si son de prueba o reales los clientes legacy ambiguos
+   que quedaron: mendez (cl-leg-rodrigo), los dos PORFIRIO (cl-c00019 Porfirio
+   de leon y cl-leg-1721 PORFIRIO), NOEL USA, MAYITO YO y PRESTAMO DE LA 149.
+   No borrarlos sin su decision.
 3. Decidir si los clientes legacy se quedan en la ruta semilla
    `legacy-import-route` o se redistribuyen a rutas/zonas reales.
 
 ### Next step
 
 - Alta del jefe y los cobradores reales en la pantalla Usuarios del admin
-  (http://127.0.0.1:5173) y limpieza de los registros de prueba del respaldo.
+  (http://127.0.0.1:5173). Lo segundo es decidir con Rardiel los clientes legacy
+  ambiguos (mendez, PORFIRIO x2, NOEL USA, MAYITO YO, PRESTAMO DE LA 149).
 
 ### Blockers / decisiones pendientes
 
