@@ -2910,3 +2910,31 @@ strong {
     max-width: 66%;
   }
 }
+.route-marker.emerald {
+  background: #059669;
+}
+.route-marker.amber {
+  background: #d97706;
+}
+.route-marker.rose {
+  background: #e11d48;
+  box-shadow: 0 0 0 5px #fee2e2;
+}
+.delay-reason-sheet {
+  display: grid;
+  gap: 12px;
+}
+.delay-reason-option {
+  min-height: 48px;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: #fff;
+  color: #0f172a;
+  font-weight: 800;
+  text-align: left;
+}
+.delay-reason-option:hover {
+  border-color: #f59e0b;
+  background: #fffbeb;
+}

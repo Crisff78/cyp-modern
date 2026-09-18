@@ -1,8 +1,13 @@
+import { isMockToken, mockApi, MockApiError } from "./mock";
+
 const TOKEN_KEY = "cyp-admin-token";
-export const getToken = () => sessionStorage.getItem(TOKEN_KEY);
+export const getToken = () => localStorage.getItem(TOKEN_KEY);
 export const setToken = (token: string) =>
-  sessionStorage.setItem(TOKEN_KEY, token);
-export const clearToken = () => sessionStorage.removeItem(TOKEN_KEY);
+  localStorage.setItem(TOKEN_KEY, token);
+export const clearToken = () => {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem("cyp-admin-force-mock");
+};
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -11,33 +16,83 @@ export class ApiError extends Error {
     super(message);
   }
 }
+const shouldUseMock = (path: string, token: string | null) =>
+  isMockToken(token) ||
+  localStorage.getItem("cyp-admin-force-mock") === "true" ||
+  path === "/auth/login";
+
+const isBackendUnavailable = (status: number) =>
+  status === 0 || status === 502 || status === 503 || status === 504;
+
+function toApiError(error: unknown) {
+  if (error instanceof ApiError) return error;
+  if (error instanceof MockApiError)
+    return new ApiError(error.message, error.status);
+  return new ApiError(
+    error instanceof Error
+      ? error.message
+      : "No pudimos completar la operación.",
+    0,
+  );
+}
+
 export async function api<T>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
-  const response = await fetch(`/api${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
-      ...options.headers,
-    },
-  });
-  let body;
-  try {
-    body = await response.json();
-  } catch {
-    throw new ApiError(
-      "El servidor no devolvió una respuesta válida.",
-      response.status,
-    );
+  const token = getToken();
+  if (path.startsWith("/mock/")) {
+    localStorage.setItem("cyp-admin-force-mock", "true");
+    return mockApi<T>(path, options);
   }
-  if (!response.ok)
-    throw new ApiError(
-      body.error?.message ?? "No pudimos completar la operación.",
-      response.status,
-    );
-  return body as T;
+  if (
+    isMockToken(token) ||
+    localStorage.getItem("cyp-admin-force-mock") === "true"
+  )
+    return mockApi<T>(path, options);
+  const request = () =>
+    fetch(`/api${path}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...options.headers,
+      },
+    });
+  try {
+    const response = await request();
+    let body;
+    try {
+      body = await response.json();
+    } catch (error) {
+      if (shouldUseMock(path, token) && isBackendUnavailable(response.status))
+        return mockApi<T>(path, options);
+      throw new ApiError(
+        "El servidor no devolvió una respuesta válida.",
+        response.status,
+      );
+    }
+    if (!response.ok) {
+      if (shouldUseMock(path, token) && isBackendUnavailable(response.status))
+        return mockApi<T>(path, options);
+      throw new ApiError(
+        body.error?.message ?? "No pudimos completar la operación.",
+        response.status,
+      );
+    }
+    return body as T;
+  } catch (error) {
+    const unavailable =
+      !(error instanceof ApiError) || isBackendUnavailable(error.status);
+    if (unavailable) {
+      try {
+        return await mockApi<T>(path, options);
+      } catch (mockError) {
+        throw toApiError(mockError);
+      }
+    }
+    throw error;
+  }
 }
 export const money = (value: number) =>
   `RD$ ${new Intl.NumberFormat("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value / 100)}`;

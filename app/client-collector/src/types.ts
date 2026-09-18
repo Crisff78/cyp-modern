@@ -1,9 +1,65 @@
+export const ROLE_DEFINITIONS = {
+  SUPERADMIN: {
+    code: "ROLE_SUPERADMIN",
+    id: "UUID-FFF",
+    label: "Superadministrador",
+  },
+  ADMIN: { code: "ROLE_ADMIN", id: "UUID-AAA", label: "Administrador" },
+  SUPERVISOR: { code: "ROLE_SUPERVISOR", id: "UUID-333", label: "Supervisor" },
+  COLLECTOR: { code: "ROLE_COLLECTOR", id: "UUID-111", label: "Cobrador" },
+  CLIENT: { code: "ROLE_CLIENT", id: "UUID-001", label: "Cliente" },
+} as const;
+export type RoleName = keyof typeof ROLE_DEFINITIONS;
+export type RoleCode = (typeof ROLE_DEFINITIONS)[RoleName]["code"];
 export type User = {
   id: string;
   name: string;
-  role: string;
+  role: RoleName | RoleCode | string;
+  roleCode?: RoleCode;
+  roleId?: string;
   collectorId?: string;
+  isActive?: boolean;
+  hasWorkPermission?: boolean;
 };
+export const normalizeRole = (role: User["role"]): RoleName => {
+  const normalized = String(role).trim().toUpperCase();
+  if (normalized === "SUPERADMIN" || normalized === "ROLE_SUPERADMIN")
+    return "SUPERADMIN";
+  if (normalized === "ADMIN" || normalized === "ROLE_ADMIN") return "ADMIN";
+  if (normalized === "SUPERVISOR" || normalized === "ROLE_SUPERVISOR")
+    return "SUPERVISOR";
+  if (
+    normalized === "COLLECTOR" ||
+    normalized === "COBRADOR" ||
+    normalized === "ROLE_COLLECTOR"
+  )
+    return "COLLECTOR";
+  if (
+    normalized === "CLIENT" ||
+    normalized === "CLIENTE" ||
+    normalized === "ROLE_CLIENT"
+  )
+    return "CLIENT";
+  return normalized as RoleName;
+};
+export const enrichUserRole = <T extends User>(user: T): T => {
+  const role = normalizeRole(user.role);
+  const definition = ROLE_DEFINITIONS[role as keyof typeof ROLE_DEFINITIONS];
+  return {
+    ...user,
+    role,
+    roleCode: definition?.code ?? user.roleCode,
+    roleId: definition?.id ?? user.roleId,
+    isActive: user.isActive ?? true,
+    hasWorkPermission: user.hasWorkPermission ?? true,
+  };
+};
+export const canAccessAdmin = (user: User) =>
+  ["SUPERADMIN", "ADMIN", "SUPERVISOR"].includes(normalizeRole(user.role));
+export const canAccessCollector = (user: User) =>
+  ["COLLECTOR", "SUPERADMIN"].includes(normalizeRole(user.role));
+export const isSuspendedUser = (user: User) =>
+  user.isActive === false || user.hasWorkPermission === false;
 export type Client = {
   id: string;
   name: string;

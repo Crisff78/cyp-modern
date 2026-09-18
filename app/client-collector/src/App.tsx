@@ -52,6 +52,7 @@ import {
 } from "./api";
 import { CollectionSheet } from "./CollectionSheet";
 import { ReceiptView } from "./ReceiptView";
+import { transformRouteToMap } from "./services/mapAdapter";
 import type {
   Charge,
   Client,
@@ -60,6 +61,7 @@ import type {
   Snapshot,
   User,
 } from "./types";
+import { canAccessCollector, enrichUserRole, isSuspendedUser } from "./types";
 
 type View = "route" | "payouts" | "receipts" | "pocket";
 type Filter = "Todos" | "Pendientes" | "Cobrados" | "Con atraso";
@@ -137,12 +139,15 @@ export function App() {
     try {
       const result = await api<User | { user: User }>("/auth/me");
       const candidate = "user" in result ? result.user : result;
-      if (candidate.role !== "collector")
+      const next = enrichUserRole(candidate);
+      if (isSuspendedUser(next))
+        throw new ApiError("Cuenta o empresa suspendida.", 401);
+      if (!canAccessCollector(next))
         throw new ApiError(
           "Usa una cuenta de cobrador para entrar a este portal.",
           401,
         );
-      setUser(candidate);
+      setUser(next);
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) setToken(null);
       setAuthError(
@@ -578,12 +583,15 @@ function Login({
           password: demo ? "Demo-CyP-2026!" : password,
         }),
       });
-      if (result.user.role !== "collector")
+      const next = enrichUserRole(result.user);
+      if (isSuspendedUser(next))
+        throw new Error("Cuenta o empresa suspendida.");
+      if (!canAccessCollector(next))
         throw new Error(
           "Esta cuenta corresponde a administración. Entra con una cuenta de cobrador.",
         );
       setToken(result.token);
-      onLogin(result.user);
+      onLogin(next);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "No se pudo iniciar sesión.",
@@ -765,6 +773,11 @@ function RouteView({
   const [query, setQuery] = useState("");
   const [display, setDisplay] = useState<"map" | "list">("map");
   const [routeMode, setRouteMode] = useState<RouteMode>("Por rutas");
+  const [delayReasons, setDelayReasons] = useState<Record<string, string>>({});
+  const [delaySelector, setDelaySelector] = useState<{
+    clientId: string;
+    chargeId: string;
+  } | null>(null);
   const [gpsStatus, setGpsStatus] = useState<
     "Solicitando GPS" | "GPS activo" | "GPS no disponible"
   >("Solicitando GPS");
@@ -830,8 +843,32 @@ function RouteView({
   const currentCharge = currentStop?.charges.find(
     (row) => row.status !== "paid",
   );
-  const estimatedKm = Math.max(0.7, list.length * 1.35);
-  const estimatedMinutes = Math.max(8, list.length * 7);
+  const routeMap = transformRouteToMap(
+    list.map(({ client, charges: rows }, index) => {
+      const pendingCharge =
+        rows.find((row) => row.status !== "paid") ?? rows[0];
+      return {
+        id: client.id,
+        order: index + 1,
+        clientName: client.name,
+        lat: 19.4517 + index * 0.0021,
+        lng: -70.697 - index * 0.0014,
+        amountDue: rows.reduce(
+          (sum, row) => sum + row.amount - row.collected,
+          0,
+        ),
+        status: delayReasons[pendingCharge?.id]
+          ? "late"
+          : rows.every((row) => row.status === "paid")
+            ? "paid"
+            : "pending",
+        obligated: rows.some((row) => row.required),
+        delayReason: delayReasons[pendingCharge?.id],
+      };
+    }),
+  );
+  const estimatedKm = Math.max(0.7, routeMap.waypoints.length * 1.35);
+  const estimatedMinutes = Math.max(8, routeMap.waypoints.length * 7);
   return (
     <>
       <div className="page-greeting">
@@ -954,16 +991,17 @@ function RouteView({
             <span className="gps-origin" style={{ left: "16%", top: "72%" }}>
               Tú
             </span>
-            {list.slice(0, 6).map(({ client }, index) => (
+            {routeMap.markers.slice(0, 8).map((marker, index) => (
               <span
-                className="route-marker"
-                key={client.id}
+                className={`route-marker ${marker.color}`}
+                key={marker.id}
+                title={`${marker.popupTitle} · ${marker.popupSubtitle}`}
                 style={{
                   left: `${24 + ((index * 17) % 58)}%`,
                   top: `${20 + ((index * 23) % 48)}%`,
                 }}
               >
-                {index + 1}
+                {marker.order}
               </span>
             ))}
             <i />
@@ -1026,12 +1064,62 @@ function RouteView({
             >
               Registrar Cobro
             </button>
-            <button className="amber-action" disabled={!online}>
+            <button
+              className="amber-action"
+              disabled={!online}
+              onClick={() =>
+                setDelaySelector({
+                  clientId: currentStop.client.id,
+                  chargeId: currentCharge.id,
+                })
+              }
+            >
               Sin Cobro / Atraso
             </button>
             <button className="secondary">Omitir / Siguiente</button>
           </div>
         </section>
+      )}
+      {delaySelector && (
+        <Dialog.Root
+          open
+          onOpenChange={(open) => !open && setDelaySelector(null)}
+        >
+          <Dialog.Portal>
+            <Dialog.Overlay className="sheet-overlay" />
+            <Dialog.Content className="sheet delay-reason-sheet">
+              <div className="sheet-handle" />
+              <Dialog.Title>Motivo de atraso</Dialog.Title>
+              <Dialog.Description>
+                Selecciona por qué no fue posible cobrar esta parada.
+              </Dialog.Description>
+              {["Local cerrado", "Cliente ausente", "Promesa de pago"].map(
+                (reason) => (
+                  <button
+                    className="delay-reason-option"
+                    key={reason}
+                    onClick={() => {
+                      setDelayReasons((items) => ({
+                        ...items,
+                        [delaySelector.chargeId]: reason,
+                      }));
+                      toast.info(`Atraso guardado: ${reason}`);
+                      setDelaySelector(null);
+                    }}
+                  >
+                    {reason}
+                  </button>
+                ),
+              )}
+              <button
+                className="secondary"
+                onClick={() => setDelaySelector(null)}
+              >
+                Cancelar
+              </button>
+            </Dialog.Content>
+          </Dialog.Portal>
+        </Dialog.Root>
       )}
       <div className="section-heading">
         <h2>
