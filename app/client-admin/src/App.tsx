@@ -1,5 +1,6 @@
 import {
   type FormEvent,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
   useCallback,
   useEffect,
@@ -9,16 +10,20 @@ import {
   ArrowDownLeft,
   ArrowRight,
   ArrowUpRight,
+  Activity,
   Bell,
+  Building2,
   ChartNoAxesCombined,
   ChevronDown,
   ChevronLeft,
   ChevronsUpDown,
   CircleAlert,
   CircleHelp,
+  ClipboardCheck,
   Command,
   Download,
   FileCheck2,
+  FolderOpen,
   KeyRound,
   LayoutDashboard,
   ListFilter,
@@ -31,6 +36,8 @@ import {
   ReceiptText,
   RefreshCw,
   Search,
+  ServerCog,
+  Settings,
   ShieldCheck,
   Trash2,
   Users,
@@ -90,62 +97,16 @@ const groupOrder = [
 type NavGroup = (typeof groupOrder)[number];
 const navigation: {
   key: string;
-  page: Page;
+  page?: Page;
+  action?: "controlPanel";
   label: string;
   icon: typeof LayoutDashboard;
   group: NavGroup;
   primary?: boolean;
   badge?: "pendingCharges";
 }[] = [
-  {
-    key: "collectors",
-    page: "collectors",
-    label: "Cobradores",
-    icon: Users,
-    group: "ARCHIVOS",
-  },
-  {
-    key: "clients",
-    page: "clients",
-    label: "Clientes",
-    icon: Users,
-    group: "ARCHIVOS",
-  },
-  {
-    key: "routes-zones",
-    page: "routesZones",
-    label: "Rutas y Zonas",
-    icon: MapPinned,
-    group: "ARCHIVOS",
-  },
-  {
-    key: "services-products",
-    page: "servicesProducts",
-    label: "Servicios y Productos",
-    icon: ListFilter,
-    group: "ARCHIVOS",
-  },
-  {
-    key: "late-reasons",
-    page: "delayReasons",
-    label: "Motivos de Atraso",
-    icon: CircleAlert,
-    group: "ARCHIVOS",
-  },
-  {
-    key: "exchange-rates",
-    page: "exchangeRates",
-    label: "Tasas de Cambio",
-    icon: RefreshCw,
-    group: "ARCHIVOS",
-  },
-  {
-    key: "system-users",
-    page: "users",
-    label: "Usuarios",
-    icon: ShieldCheck,
-    group: "ARCHIVOS",
-  },
+  { key: "admin-panel", action: "controlPanel", label: "Admin.", icon: ServerCog, group: "ARCHIVOS" },
+  { key: "clients", page: "clients", label: "Clientes", icon: FolderOpen, group: "ARCHIVOS" },
   {
     key: "direct-charges",
     page: "charges",
@@ -204,47 +165,32 @@ const navigation: {
     group: "REPORTES & MONITOREO",
     primary: true,
   },
-  {
-    key: "monitor-zones",
-    page: "monitorZones",
-    label: "Monitor Z",
-    icon: MapPinned,
-    group: "REPORTES & MONITOREO",
-  },
-  {
-    key: "monitor-routes",
-    page: "monitorRoutes",
-    label: "Monitor R",
-    icon: MapPinned,
-    group: "REPORTES & MONITOREO",
-  },
-  {
-    key: "daily-settlements",
-    page: "dailySettlements",
-    label: "Cuadres Diarios",
-    icon: FileCheck2,
-    group: "REPORTES & MONITOREO",
-  },
-  {
-    key: "general-reports",
-    page: "reports",
-    label: "Reportes",
-    icon: ChartNoAxesCombined,
-    group: "REPORTES & MONITOREO",
-  },
+  { key: "monitor-zones", page: "monitorZones", label: "Monitor Z", icon: MapPinned, group: "REPORTES & MONITOREO" },
+  { key: "monitor-routes", page: "monitorRoutes", label: "Monitor R", icon: MapPinned, group: "REPORTES & MONITOREO" },
+  { key: "daily-settlements", page: "dailySettlements", label: "Cuadres Diarios", icon: FileCheck2, group: "REPORTES & MONITOREO" },
+  { key: "general-reports", page: "reports", label: "Reportes", icon: ChartNoAxesCombined, group: "REPORTES & MONITOREO" },
 ];
 const pageFromHash = (): Page =>
-  navigation.some((n) => n.page === location.hash.slice(1))
+  location.hash.slice(1) in pageTitles
     ? (location.hash.slice(1) as Page)
     : "monitorCollectors";
 const pageTitles: Record<Page, string> = {
   collectors: "Cobradores",
   clients: "Clientes",
   routesZones: "Rutas y Zonas",
+  stations: "Estaciones de PCP",
+  groups: "Grupos de PCPs",
+  pcps: "Puntos de Cobros y Pagos",
+  routes: "Rutas",
+  zones: "Zonas",
   servicesProducts: "Servicios y Productos",
   delayReasons: "Motivos de Atraso",
   exchangeRates: "Tasas de Cambio",
+  sessions: "Listado de Sesiones",
+  traces: "Trazas del Sistema",
   users: "Usuarios",
+  generalConfig: "Configuración General",
+  authorizationRequests: "Solicitudes de Autorización",
   charges: "Cargos",
   recurringCharges: "Cargos Recurrentes",
   collections: "Cobros",
@@ -306,6 +252,442 @@ function permissionsFor(user: User): AdminPermissions {
     canDelete: true,
     deleteNeedsConfirm: false,
   };
+}
+
+
+type ControlPanelTile = {
+  label: string;
+  page: Page;
+  navKey: string;
+  icon: typeof LayoutDashboard;
+};
+
+type ReportPageId =
+  | "reportClientPendingCharges"
+  | "reportClientPendingChargesByRoutes"
+  | "reportClientPendingChargesByZones"
+  | "reportPendingChargesByRoutes"
+  | "reportPendingChargesByZones"
+  | "reportClientChargesByZoneService"
+  | "reportCollectionsSummary"
+  | "reportCollectionsGeneralSummary"
+  | "reportCollectionsByService";
+type ReportDefinition = {
+  id: ReportPageId;
+  label: string;
+  category: "-- Cargos --" | "-- Cobros --";
+  filters: ("route" | "zone" | "service" | "collectorCheck")[];
+};
+type MdiPage = Page | "controlPanel" | ReportPageId;
+const reportDefinitions: ReportDefinition[] = [
+  { id: "reportClientPendingCharges", label: "Cargos pendientes de clientes.", category: "-- Cargos --", filters: [] },
+  { id: "reportClientPendingChargesByRoutes", label: "Cargos pendientes de clientes por rutas.", category: "-- Cargos --", filters: ["route"] },
+  { id: "reportClientPendingChargesByZones", label: "Cargos pendientes de clientes por zonas.", category: "-- Cargos --", filters: ["zone"] },
+  { id: "reportPendingChargesByRoutes", label: "Cargos pendientes por rutas.", category: "-- Cargos --", filters: [] },
+  { id: "reportPendingChargesByZones", label: "Cargos pendientes por zonas.", category: "-- Cargos --", filters: [] },
+  { id: "reportClientChargesByZoneService", label: "Cargos de clientes por zona por servicio.", category: "-- Cargos --", filters: ["zone", "service"] },
+  { id: "reportCollectionsSummary", label: "Cobros Res.", category: "-- Cobros --", filters: ["collectorCheck"] },
+  { id: "reportCollectionsGeneralSummary", label: "Cobros Gen. Resumido", category: "-- Cobros --", filters: ["collectorCheck"] },
+  { id: "reportCollectionsByService", label: "Cobros x Servicio", category: "-- Cobros --", filters: ["zone", "service"] },
+];
+const reportTitle = (page: ReportPageId) =>
+  reportDefinitions.find((report) => report.id === page)?.label.replace(/\.$/, "") ?? "Reporte";
+const isReportPage = (page: MdiPage): page is ReportPageId =>
+  reportDefinitions.some((report) => report.id === page);
+const mdiOperationPages: Page[] = [
+  "charges",
+  "recurringCharges",
+  "collections",
+  "deposits",
+  "payouts",
+  "payments",
+  "cashDeliveries",
+];
+const mdiMonitoringPages: Page[] = [
+  "monitorCollectors",
+  "monitorZones",
+  "monitorRoutes",
+  "dailySettlements",
+];
+const isMdiOperationPage = (page: MdiPage): page is Page =>
+  page !== "controlPanel" && !isReportPage(page) && mdiOperationPages.includes(page);
+const isMdiMonitoringPage = (page: MdiPage): page is Page =>
+  page !== "controlPanel" && !isReportPage(page) && mdiMonitoringPages.includes(page);
+const mdiTitle = (page: MdiPage) =>
+  page === "controlPanel" ? "Panel de Control" : isReportPage(page) ? reportTitle(page) : pageTitles[page];
+
+type MdiWindowState = {
+  id: string;
+  page: MdiPage;
+  title: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  zIndex: number;
+  isFocused: boolean;
+};
+
+const codifierTiles: ControlPanelTile[] = [
+  { label: "Cobradores", page: "collectors", navKey: "control-collectors", icon: Users },
+  { label: "Estaciones", page: "stations", navKey: "control-stations", icon: Building2 },
+  { label: "Grupos", page: "groups", navKey: "control-groups", icon: Users },
+  { label: "Motivos Atraso", page: "delayReasons", navKey: "control-delay-reasons", icon: CircleAlert },
+  { label: "PCPs", page: "pcps", navKey: "control-pcps", icon: MapPinned },
+  { label: "Rutas", page: "routes", navKey: "control-routes", icon: MapPinned },
+  { label: "Servicios y Prods.", page: "servicesProducts", navKey: "control-services", icon: ListFilter },
+  { label: "Sesiones", page: "sessions", navKey: "control-sessions", icon: Activity },
+  { label: "Tasas de cambio", page: "exchangeRates", navKey: "control-exchange", icon: RefreshCw },
+  { label: "Trazas", page: "traces", navKey: "control-traces", icon: ClipboardCheck },
+  { label: "Usuarios", page: "users", navKey: "control-users", icon: ShieldCheck },
+  { label: "Zonas", page: "zones", navKey: "control-zones", icon: MapPinned },
+];
+
+const toolTiles: ControlPanelTile[] = [
+  { label: "Configuracion General", page: "generalConfig", navKey: "control-general-config", icon: Settings },
+  { label: "Solicitudes de Autoriz.", page: "authorizationRequests", navKey: "control-authorizations", icon: FileCheck2 },
+];
+
+function ControlPanelContent({ onLaunch }: { onLaunch: (page: Page, navKey: string) => void }) {
+  const renderTile = (tile: ControlPanelTile) => (
+    <button type="button" className="control-panel-tile" key={tile.navKey} onClick={() => onLaunch(tile.page, tile.navKey)}>
+      <span className="control-panel-icon"><tile.icon size={22} /></span>
+      <strong>{tile.label}</strong>
+    </button>
+  );
+  return (
+    <div className="control-panel-body in-mdi">
+      <section className="control-panel-section"><div className="control-panel-section-heading"><span>Codificadores</span><small>Accesos rapidos</small></div><div className="control-panel-grid">{codifierTiles.map(renderTile)}</div></section>
+      <section className="control-panel-section tools-section"><div className="control-panel-section-heading"><span>Herramientas</span><small>Control interno</small></div><div className="control-panel-grid tools-grid">{toolTiles.map(renderTile)}</div></section>
+    </div>
+  );
+}
+
+function ReportesLauncher({ onLaunch }: { onLaunch: (page: ReportPageId, navKey: string) => void }) {
+  const renderGroup = (category: ReportDefinition["category"]) => (
+    <section className="reports-launcher-section" key={category}>
+      <div className="control-panel-section-heading"><span>{category}</span><small>Seleccione un reporte</small></div>
+      <div className="reports-launcher-grid">
+        {reportDefinitions.filter((report) => report.category === category).map((report) => (
+          <button
+            type="button"
+            className="report-launcher-tile"
+            key={report.id}
+            onClick={() => onLaunch(report.id, `reports-${report.id}`)}
+          >
+            <ChartNoAxesCombined size={18} aria-hidden="true" />
+            <span>{report.label}</span>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+  return (
+    <div className="reports-launcher">
+      {renderGroup("-- Cargos --")}
+      {renderGroup("-- Cobros --")}
+    </div>
+  );
+}
+
+function ReportLayout({ title, snapshot, children }: { title: string; snapshot: Snapshot; children?: ReactNode }) {
+  return (
+    <div className="report-layout">
+      <aside className="report-filter-panel">
+        <div className="report-filter-fields">
+          <label>Fecha inicial<input type="date" defaultValue="2026-09-01" /></label>
+          <label>Fecha final<input type="date" defaultValue={snapshot.businessDate} /></label>
+          <label>Moneda<select defaultValue="Peso Dominicano"><option>Peso Dominicano</option><option>Dólar Estadounidense</option><option>Euro</option></select></label>
+          {children}
+        </div>
+        <div className="report-filter-actions">
+          <div className="report-separator">---</div>
+          <button type="button" className="btn full"><RefreshCw size={14} /> Refrescar</button>
+          <div className="report-action-row">
+            <button type="button"><FileCheck2 size={14} /> Imprimir</button>
+            <button type="button"><Download size={14} /> Exportar</button>
+          </div>
+        </div>
+      </aside>
+      <section className="report-results-panel" aria-label={`Resultados de ${title}`}>
+        <div className="report-results-header">
+          <strong>{title}</strong>
+          <span>Vista preliminar</span>
+        </div>
+        <div className="legacy-mdi-table-wrap report-empty-grid">
+          <table className="legacy-mdi-table">
+            <thead><tr><th>Nro.</th><th>Fecha</th><th>Descripción</th><th>Moneda</th><th>Importe</th></tr></thead>
+            <tbody><tr><td colSpan={5}>Use los filtros y presione Refrescar para generar el reporte.</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ReportView({ page, snapshot }: { page: ReportPageId; snapshot: Snapshot }) {
+  const definition = reportDefinitions.find((report) => report.id === page);
+  const title = definition ? definition.label.replace(/\.$/, "") : "Reporte";
+  const zones = Array.from(new Set(snapshot.routes.map((route) => route.sector)));
+  const services = Array.from(new Set([...snapshot.charges.map((charge) => charge.service), ...snapshot.payouts.map((payout) => payout.concept)]));
+  return (
+    <ReportLayout title={title} snapshot={snapshot}>
+      {definition?.filters.includes("route") && (
+        <label>Ruta:<select defaultValue=""><option value="">Todas</option>{snapshot.routes.map((route) => <option key={route.id}>{route.name}</option>)}</select></label>
+      )}
+      {definition?.filters.includes("zone") && (
+        <label>Zona:<select defaultValue=""><option value="">Todas</option>{zones.map((zone) => <option key={zone}>{zone}</option>)}</select></label>
+      )}
+      {definition?.filters.includes("service") && (
+        <label>Servicio:<select defaultValue=""><option value="">Todos</option>{services.map((service) => <option key={service}>{service}</option>)}</select></label>
+      )}
+      {definition?.filters.includes("collectorCheck") && (
+        <label className="report-inline-check"><span><input type="checkbox" /> Cobrador</span><select defaultValue=""><option value="">Todos</option>{snapshot.collectors.map((collector) => <option key={collector.id}>{collector.name}</option>)}</select></label>
+      )}
+    </ReportLayout>
+  );
+}
+
+function MdiWindow({ windowState, onClose, onFocus, onMove, children }: { windowState: MdiWindowState; onClose: (id: string) => void; onFocus: (id: string) => void; onMove: (id: string, x: number, y: number) => void; children: ReactNode }) {
+  const [drag, setDrag] = useState<null | { startX: number; startY: number; x: number; y: number }>(null);
+  useEffect(() => {
+    if (!drag) return;
+    const onMouseMove = (event: MouseEvent) => onMove(windowState.id, Math.max(8, drag.x + event.clientX - drag.startX), Math.max(8, drag.y + event.clientY - drag.startY));
+    const onMouseUp = () => setDrag(null);
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp, { once: true });
+    return () => { document.removeEventListener("mousemove", onMouseMove); document.removeEventListener("mouseup", onMouseUp); };
+  }, [drag, onMove, windowState.id]);
+  const startDrag = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if ((event.target as HTMLElement).closest("button")) return;
+    event.preventDefault();
+    onFocus(windowState.id);
+    setDrag({ startX: event.clientX, startY: event.clientY, x: windowState.x, y: windowState.y });
+  };
+  return (
+    <section className={`mdi-window ${windowState.isFocused ? "focused" : ""}`} style={{ left: windowState.x, top: windowState.y, width: windowState.width, height: windowState.height, zIndex: windowState.zIndex }} onMouseDown={() => onFocus(windowState.id)} role="dialog" aria-label={windowState.title}>
+      <div className="mdi-window-titlebar" onMouseDown={startDrag}><span>{windowState.title}</span><button type="button" aria-label={`Cerrar ${windowState.title}`} onClick={() => onClose(windowState.id)}><X size={15} /></button></div>
+      <div className="mdi-window-content">{children}</div><span className="mdi-resize-cue" aria-hidden="true" />
+    </section>
+  );
+}
+
+function LegacyToolbar({ onNew, onEdit, onDelete, onRefresh, extra }: { onNew?: () => void; onEdit?: () => void; onDelete?: () => void; onRefresh?: () => void; extra?: ReactNode }) {
+  return <div className="legacy-mdi-toolbar" aria-label="Barra de herramientas legacy"><button type="button" className="nav-tool" title="Ir al inicio">|&lt;</button><button type="button" className="nav-tool" title="Anterior">&lt;</button><button type="button" className="nav-tool" title="Siguiente">&gt;</button><button type="button" className="nav-tool" title="Ir al final">&gt;|</button><span className="mdi-toolbar-separator" /><button type="button" title="Nuevo" onClick={onNew}><Plus size={15} /></button><button type="button" title="Editar" onClick={onEdit}><Pencil size={15} /></button><button type="button" className="danger-tool" title="Eliminar" onClick={onDelete}><Trash2 size={15} /></button><button type="button" title="Refrescar" onClick={onRefresh}><RefreshCw size={15} /></button>{extra && <span className="mdi-toolbar-extra">{extra}</span>}</div>;
+}
+function LegacyCheck({ checked = true }: { checked?: boolean }) { return <input type="checkbox" checked={checked} readOnly aria-label={checked ? "Activo" : "Inactivo"} />; }
+function LegacyDenseTable({ columns, rows }: { columns: string[]; rows: ReactNode[][] }) { return <div className="legacy-mdi-table-wrap"><table className="legacy-mdi-table"><thead><tr>{columns.map((column) => <th key={column}>{column}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={index}>{row.map((cell, cellIndex) => <td key={cellIndex}>{cell}</td>)}</tr>)}</tbody></table></div>; }
+function LegacySidePanel({ children }: { children: ReactNode }) { return <aside className="legacy-mdi-side-panel">{children}</aside>; }
+
+function LegacyDialog({ title, onClose, children, className = "" }: { title: string; onClose: () => void; children: ReactNode; className?: string }) {
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onClose]);
+  return (
+    <div className="legacy-dialog-overlay" role="presentation">
+      <section className={`legacy-dialog ${className}`} role="dialog" aria-modal="true" aria-label={title} onClick={(event) => event.stopPropagation()}>
+        <div className="legacy-dialog-titlebar">
+          <span>{title}</span>
+          <button type="button" aria-label={`Cerrar ${title}`} onClick={onClose}>X</button>
+        </div>
+        <div className="legacy-dialog-body">{children}</div>
+      </section>
+    </div>
+  );
+}
+
+type CollectorFormDraft = {
+  name: string;
+  ident: string;
+  cellular: string;
+  accountId: string;
+};
+
+function CollectorFormLegacyDialog({ collector, onClose, onSave }: { collector?: Collector; onClose: () => void; onSave: (draft: CollectorFormDraft) => void }) {
+  const [draft, setDraft] = useState<CollectorFormDraft>({
+    name: collector?.name ?? "",
+    ident: collector?.ident ?? "",
+    cellular: collector?.cellular ?? "",
+    accountId: collector?.accountId ?? "cob",
+  });
+  const update = (field: keyof CollectorFormDraft, value: string) => setDraft((current) => ({ ...current, [field]: value }));
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (!draft.name.trim()) return toast.error("El nombre del cobrador es requerido.");
+    onSave(draft);
+  };
+  return (
+    <LegacyDialog title="Datos de Cobrador..." onClose={onClose} className="collector-form-dialog">
+      <form className="legacy-dialog-form" onSubmit={submit}>
+        <label>Cobrador:<input autoFocus value={draft.name} onChange={(event) => update("name", event.target.value)} /></label>
+        <div className="legacy-dialog-row two-cols">
+          <label>Ident.:<input value={draft.ident} onChange={(event) => update("ident", event.target.value)} /></label>
+          <label>Celular:<input value={draft.cellular} onChange={(event) => update("cellular", event.target.value)} /></label>
+        </div>
+        <label>Cuenta:<span className="legacy-lookup-field"><input value={draft.accountId} disabled readOnly /><button type="button" aria-label="Buscar cuenta">...</button></span></label>
+        <div className="legacy-dialog-actions centered"><button type="submit">oK</button><button type="button" onClick={onClose}>Cancelar</button></div>
+      </form>
+    </LegacyDialog>
+  );
+}
+
+function LegacyConfirmDialog({ title = "Confirm", message, onYes, onNo }: { title?: string; message: string; onYes: () => void; onNo: () => void }) {
+  return (
+    <LegacyDialog title={title} onClose={onNo} className="legacy-confirm-dialog">
+      <div className="legacy-confirm-content"><span className="legacy-question-icon">?</span><p>{message}</p></div>
+      <div className="legacy-dialog-actions centered"><button type="button" onClick={onYes}>Sí</button><button type="button" onClick={onNo}>No</button></div>
+    </LegacyDialog>
+  );
+}
+
+function CollectorZonesLegacyDialog({ collector, onClose }: { collector: Collector; onClose: () => void }) {
+  const [zones, setZones] = useState(() => collector.zones?.length ? collector.zones : [{ id: "zone-default", name: "Zona Centro", from: "001", to: "999" }]);
+  const [selectedZoneId, setSelectedZoneId] = useState(zones[0]?.id ?? "");
+  const [adding, setAdding] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const removeSelected = () => {
+    setZones((current) => current.filter((zone) => zone.id !== selectedZoneId));
+    setSelectedZoneId("");
+    setConfirmDelete(false);
+    toast.success("Zona eliminada del cobrador");
+  };
+  return (
+    <LegacyDialog title="Zonas del Cobrador..." onClose={onClose} className="collector-relation-dialog">
+      <div className="legacy-relation-manager">
+        <div className="legacy-relation-toolbar"><button type="button" onClick={() => setAdding(true)}>Agregar</button><button type="button" onClick={() => setConfirmDelete(true)} disabled={!selectedZoneId}>Eliminar</button></div>
+        <LegacyDenseTable columns={["Nro", "Zona", "Desde", "Hasta"]} rows={zones.map((zone, index) => [<button type="button" className={`mdi-row-select ${selectedZoneId === zone.id ? "selected" : ""}`} onClick={() => setSelectedZoneId(zone.id)}>{index + 1}</button>, zone.name, zone.from, zone.to])} />
+        <div className="legacy-mdi-pager"><button type="button">|&lt;</button><button type="button">&lt;</button><span>Página 1 de 1</span><button type="button">&gt;</button><button type="button">&gt;|</button></div>
+      </div>
+      {adding && <ZoneSelectDialog onClose={() => setAdding(false)} onSelect={(name) => { const next = { id: `zone-${Date.now()}`, name, from: "001", to: "999" }; setZones((current) => [...current, next]); setSelectedZoneId(next.id); setAdding(false); toast.success("Zona agregada al cobrador"); }} />}
+      {confirmDelete && <LegacyConfirmDialog message="¿Está seguro que desea eliminar la Zona actual del Cobrador?" onYes={removeSelected} onNo={() => setConfirmDelete(false)} />}
+    </LegacyDialog>
+  );
+}
+
+function ZoneSelectDialog({ onClose, onSelect }: { onClose: () => void; onSelect: (name: string) => void }) {
+  const [selected, setSelected] = useState("Zona Centro");
+  return (
+    <LegacyDialog title="Seleccionar..." onClose={onClose} className="legacy-select-dialog">
+      <div className="legacy-dialog-form">
+        <label>Seleccione:<select autoFocus value={selected} onChange={(event) => setSelected(event.target.value)}><option>Zona Centro</option><option>Zona Norte</option><option>Zona Sur</option><option>Zona Este</option><option>Mercado</option></select></label>
+        <div className="legacy-dialog-actions centered"><button type="button" onClick={() => onSelect(selected)}>oK</button><button type="button" onClick={onClose}>Cancelar</button></div>
+      </div>
+    </LegacyDialog>
+  );
+}
+
+function CollectorLimitsLegacyDialog({ collector, onClose }: { collector: Collector; onClose: () => void }) {
+  const [limits, setLimits] = useState(() => collector.limits?.length ? collector.limits : [{ currency: "Peso Dominicano", abbr: "DOP", collectionLimit: collector.collectionLimit, payoutLimit: collector.payoutLimit }]);
+  const [selectedAbbr, setSelectedAbbr] = useState(limits[0]?.abbr ?? "");
+  const addLimit = () => {
+    const next = { currency: "Dólar Americano", abbr: `USD${limits.length + 1}`, collectionLimit: 25000, payoutLimit: 10000 };
+    setLimits((current) => [...current, next]);
+    setSelectedAbbr(next.abbr);
+  };
+  const removeLimit = () => {
+    setLimits((current) => current.filter((limit) => limit.abbr !== selectedAbbr));
+    setSelectedAbbr("");
+  };
+  return (
+    <LegacyDialog title="Limites del Cobrador" onClose={onClose} className="collector-relation-dialog limits-dialog">
+      <div className="legacy-relation-manager">
+        <div className="legacy-relation-toolbar"><button type="button" onClick={addLimit}>Agregar</button><button type="button" onClick={removeLimit} disabled={!selectedAbbr}>Eliminar</button><button type="button" onClick={() => toast.success("Límites guardados")}>Guardar</button></div>
+        <LegacyDenseTable columns={["Moneda", "Abrev", "Lim. de Cobro", "Lim. de Pago"]} rows={limits.map((limit) => [<button type="button" className={`mdi-row-select ${selectedAbbr === limit.abbr ? "selected" : ""}`} onClick={() => setSelectedAbbr(limit.abbr)}>{limit.currency}</button>, limit.abbr, money(limit.collectionLimit), money(limit.payoutLimit)])} />
+      </div>
+    </LegacyDialog>
+  );
+}
+
+function CollectorRoutesLegacyDialog({ collector, snapshot, onClose }: { collector: Collector; snapshot: Snapshot; onClose: () => void }) {
+  const [routes, setRoutes] = useState(() => collector.assignedRoutes?.length ? collector.assignedRoutes : [collector.routeId]);
+  const [selectedRouteId, setSelectedRouteId] = useState(routes[0] ?? "");
+  const addRoute = () => {
+    const available = snapshot.routes.find((route) => !routes.includes(route.id));
+    if (!available) return toast.info("No hay rutas disponibles para agregar.");
+    setRoutes((current) => [...current, available.id]);
+    setSelectedRouteId(available.id);
+  };
+  const removeRoute = () => {
+    setRoutes((current) => current.filter((routeId) => routeId !== selectedRouteId));
+    setSelectedRouteId("");
+  };
+  return (
+    <LegacyDialog title="Rutas del Cobrador..." onClose={onClose} className="collector-relation-dialog routes-dialog">
+      <div className="legacy-relation-manager">
+        <div className="legacy-relation-toolbar"><button type="button" onClick={addRoute}>Agregar</button><button type="button" onClick={removeRoute} disabled={!selectedRouteId}>Eliminar</button></div>
+        <LegacyDenseTable columns={["Nro_Ruta", "Ruta"]} rows={routes.map((routeId, index) => [<button type="button" className={`mdi-row-select ${selectedRouteId === routeId ? "selected" : ""}`} onClick={() => setSelectedRouteId(routeId)}>{index + 1}</button>, snapshot.routes.find((route) => route.id === routeId)?.name ?? routeId])} />
+        <div className="legacy-mdi-pager"><button type="button">|&lt;</button><button type="button">&lt;</button><span>Página 1 de 1</span><button type="button">&gt;</button><button type="button">&gt;|</button></div>
+      </div>
+    </LegacyDialog>
+  );
+}
+
+function CollectorsLegacyView({ snapshot, onRefresh }: { snapshot: Snapshot; onRefresh: () => void }) {
+  const [collectors, setCollectors] = useState<Collector[]>(() => snapshot.collectors);
+  const [selectedCollectorId, setSelectedCollectorId] = useState(snapshot.collectors[0]?.id ?? "");
+  const [formMode, setFormMode] = useState<"new" | "edit" | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [relationDialog, setRelationDialog] = useState<"zones" | "limits" | "routes" | null>(null);
+  const selectedCollector = collectors.find((collector) => collector.id === selectedCollectorId) ?? collectors[0];
+  const saveCollector = (draft: CollectorFormDraft) => {
+    if (formMode === "edit" && selectedCollector) {
+      setCollectors((current) => current.map((collector) => collector.id === selectedCollector.id ? { ...collector, name: draft.name, ident: draft.ident, cellular: draft.cellular, accountId: draft.accountId } : collector));
+      toast.success("Cobrador actualizado");
+    } else {
+      const next: Collector = { id: `local-collector-${Date.now()}`, name: draft.name, initials: draft.name.slice(0, 2).toUpperCase(), routeId: snapshot.routes[0]?.id ?? "route-local", status: "active", cashInHand: 0, collectionLimit: 25000, payoutLimit: 10000, lat: 19.45, lng: -70.7, lastSeen: new Date().toISOString(), ident: draft.ident, cellular: draft.cellular, accountId: draft.accountId, zones: [], limits: [], assignedRoutes: [] };
+      setCollectors((current) => [...current, next]);
+      setSelectedCollectorId(next.id);
+      toast.success("Cobrador creado");
+    }
+    setFormMode(null);
+  };
+  const inactivateCollector = () => {
+    if (!selectedCollector) return;
+    setCollectors((current) => current.map((collector) => collector.id === selectedCollector.id ? { ...collector, status: "offline" } : collector));
+    setConfirmDelete(false);
+    toast.success("Cobrador inactivado");
+  };
+  return (
+    <div className="legacy-mdi-view">
+      <LegacyToolbar onNew={() => setFormMode("new")} onEdit={() => selectedCollector ? setFormMode("edit") : toast.info("Seleccione un cobrador.")} onDelete={() => selectedCollector ? setConfirmDelete(true) : toast.info("Seleccione un cobrador.")} onRefresh={onRefresh} extra={<><button type="button" disabled={!selectedCollector} onClick={() => setRelationDialog("zones")}>Z</button><button type="button" disabled={!selectedCollector} onClick={() => setRelationDialog("limits")}>L</button><button type="button" disabled={!selectedCollector} onClick={() => setRelationDialog("routes")}>R</button></>} />
+      <LegacyDenseTable columns={["Cod.", "Cobrador", "Celular", "Cuenta", "Act."]} rows={collectors.map((collector, index) => [<button type="button" className={`mdi-row-select ${selectedCollectorId === collector.id ? "selected" : ""}`} onClick={() => setSelectedCollectorId(collector.id)}>{String(index + 1).padStart(3, "0")}</button>, collector.name, collector.cellular ?? "809-000-0000", collector.accountId ?? "cob", <LegacyCheck checked={collector.status !== "offline"} />])} />
+      {formMode && <CollectorFormLegacyDialog collector={formMode === "edit" ? selectedCollector : undefined} onClose={() => setFormMode(null)} onSave={saveCollector} />}
+      {confirmDelete && <LegacyConfirmDialog message="¿Inactivar datos?" onYes={inactivateCollector} onNo={() => setConfirmDelete(false)} />}
+      {relationDialog === "zones" && selectedCollector && <CollectorZonesLegacyDialog collector={selectedCollector} onClose={() => setRelationDialog(null)} />}
+      {relationDialog === "limits" && selectedCollector && <CollectorLimitsLegacyDialog collector={selectedCollector} onClose={() => setRelationDialog(null)} />}
+      {relationDialog === "routes" && selectedCollector && <CollectorRoutesLegacyDialog collector={selectedCollector} snapshot={snapshot} onClose={() => setRelationDialog(null)} />}
+    </div>
+  );
+}
+
+function LegacyCodifierView({ page, snapshot, onRefresh, onAccount }: { page: Page; snapshot: Snapshot; onRefresh: () => void; onAccount: (operation: AccountOperation) => void }) {
+  const [configTab, setConfigTab] = useState("General");
+  const services = Array.from(new Set([...snapshot.charges.map((charge) => charge.service), ...snapshot.payouts.map((payout) => payout.concept)]));
+  const routeName = (routeId: string) => snapshot.routes.find((route) => route.id === routeId)?.name ?? "Sin ruta";
+  const baseToolbar = (extra?: ReactNode) => <LegacyToolbar onRefresh={onRefresh} extra={extra} />;
+  if (page === "collectors") return <CollectorsLegacyView snapshot={snapshot} onRefresh={onRefresh} />;
+  if (page === "stations") return <div className="legacy-mdi-view">{baseToolbar()}<LegacyDenseTable columns={["Nro", "Estacion", "idDispositivo", "Licencia", "Version", "VersionRec", "Activa"]} rows={[["1", "ADM001", "PC-ADM001", "CYP-ADM-001", "1.0.0", "1.0.0", <LegacyCheck />], ["2", "ECP001", "TERM-ECP001", "CYP-ECP-001", "1.0.0", "1.0.0", <LegacyCheck />], ["3", "ECP002", "TERM-ECP002", "CYP-ECP-002", "1.0.0", "1.0.0", <LegacyCheck checked={false} />]]} /></div>;
+  if (page === "groups") return <div className="legacy-mdi-view">{baseToolbar()}<LegacyDenseTable columns={["Nro.", "Grupo"]} rows={[["1", "Grupo Principal"], ["2", "df"], ["3", "GRUPO MAYITO"]]} /></div>;
+  if (page === "delayReasons") return <div className="legacy-mdi-view">{baseToolbar()}<LegacyDenseTable columns={["Nro.", "Motivo", "Activo"]} rows={[["1", "Local cerrado", <LegacyCheck />], ["2", "Cliente ausente", <LegacyCheck />], ["3", "Promesa de pago", <LegacyCheck />], ["4", "Sin efectivo disponible", <LegacyCheck />]]} /></div>;
+  if (page === "routes") return <div className="legacy-mdi-view">{baseToolbar()}<LegacyDenseTable columns={["Nro.", "Ruta", "Desde", "Hasta", "Activo"]} rows={snapshot.routes.map((route, index) => [index + 1, route.name, "001", "999", <LegacyCheck />])} /></div>;
+  if (page === "servicesProducts") return <div className="legacy-mdi-view">{baseToolbar()}<LegacyDenseTable columns={["Nro.", "Servicio", "Abrev", "Caption", "Ob. Cob.", "Activo"]} rows={services.map((service, index) => [index + 1, service, abbreviation(service), service, <LegacyCheck checked={index === 0} />, <LegacyCheck />])} /></div>;
+  if (page === "exchangeRates") return <div className="legacy-mdi-view">{baseToolbar()}<LegacyDenseTable columns={["Fecha", "Moneda", "Abrev", "Compra", "Venta"]} rows={[["18/09/2026", "Peso Dominicano", "DOP", "1.00", "1.00"], ["18/09/2026", "Dolar Estadounidense", "USD", "59.20", "60.15"], ["18/09/2026", "Euro", "EUR", "64.30", "65.80"]]} /></div>;
+  if (page === "pcps") return <div className="legacy-mdi-split-view"><LegacySidePanel><LegacyToolbar onRefresh={onRefresh} /><label><input type="radio" name="pcp-filter" defaultChecked /> Todos</label><label><input type="radio" name="pcp-filter" /> del Grupo</label><label>Grupo<select defaultValue="Grupo Principal"><option>Grupo Principal</option><option>df</option><option>GRUPO MAYITO</option></select></label></LegacySidePanel><LegacyDenseTable columns={["Nro.", "PCP", "Cliente", "Grupo", "Ruta", "Activo"]} rows={snapshot.clients.map((client, index) => [index + 1, `PCP-${client.code}`, client.name, index % 2 ? "df" : "Grupo Principal", routeName(client.routeId), <LegacyCheck />])} /></div>;
+  if (page === "sessions") return <div className="legacy-mdi-split-view"><LegacySidePanel><div className="legacy-vertical-toolbar"><button>Filtro</button><button>|&lt;</button><button>&lt;</button><button>&gt;</button><button>X</button><button>Ref.</button></div><label><input type="radio" name="session-filter" defaultChecked /> Todas</label><label><input type="radio" name="session-filter" /> del Usuario</label><label>Usuario<select><option>admin@cyp.local</option><option>collector@cyp.local</option></select></label><label>Fecha inicial<input type="date" defaultValue="2026-09-18" /></label><label>Fecha final<input type="date" defaultValue="2026-09-18" /></label><label><input type="checkbox" defaultChecked /> Activa</label></LegacySidePanel><LegacyDenseTable columns={["Nro.", "Usuario", "Estacion", "Inicio", "Estado"]} rows={snapshot.accounts.map((account, index) => [index + 1, account.email, account.role === "admin" ? "ADM001" : "ECP001", "18/09/2026 08:00", account.status === "active" ? "Activa" : "Cerrada"])} /></div>;
+  if (page === "traces") return <div className="legacy-mdi-split-view traces-layout"><LegacySidePanel><div className="legacy-vertical-toolbar"><button>Filtro</button><button>|&lt;</button><button>&lt;</button><button>&gt;</button><button>X</button><button>Ref.</button></div><label>Fecha Inicial<input type="datetime-local" defaultValue="2026-09-18T00:00" /></label><label>Fecha final<input type="datetime-local" defaultValue="2026-09-18T23:59" /></label><label>Buscar<input placeholder="Digite texto..." /></label></LegacySidePanel><div className="legacy-mdi-table-with-footer"><LegacyDenseTable columns={["Nro.", "Fecha", "Traza"]} rows={[[1, "18/09/2026 08:00", "Inicio de sesion administrativa"], [2, "18/09/2026 08:04", "Consulta de cobradores"], [3, "18/09/2026 08:15", "Apertura de Panel de Control"]]} /><div className="legacy-mdi-pager"><button>|&lt;</button><button>&lt;</button><span>Pagina 1 de 1</span><button>&gt;</button><button>&gt;|</button></div></div></div>;
+  if (page === "users") return <div className="legacy-mdi-view">{baseToolbar(<button type="button" onClick={() => onAccount({ type: "create" })}>Nueva cuenta</button>)}<LegacyDenseTable columns={["Usuario", "Cuenta", "Rol", "Act."]} rows={snapshot.accounts.map((account) => [account.name, account.email, account.role === "admin" ? "Administracion" : "Cobrador", <LegacyCheck checked={account.status === "active"} />])} /></div>;
+  if (page === "zones") return <div className="legacy-mdi-view">{baseToolbar()}<LegacyDenseTable columns={["Nro", "Zona", "Desde", "Hasta", "Act."]} rows={Array.from(new Set(snapshot.routes.map((route) => route.sector))).map((sector, index) => [index + 1, sector, "001", "999", <LegacyCheck />])} /></div>;
+  if (page === "authorizationRequests") return <div className="legacy-mdi-split-view authorizations-layout"><LegacySidePanel><LegacyToolbar onRefresh={onRefresh} /><label>Fecha Inicial<input type="date" defaultValue="2026-09-18" /></label><label>Fecha Final<input type="date" defaultValue="2026-09-18" /></label><label>Estado<select defaultValue="Todas"><option>Todas</option><option>Pendiente</option><option>Aprobada</option><option>Rechazada</option></select></label><label>Cliente<span className="legacy-lookup-field"><input placeholder="Cliente..." /><button type="button">...</button></span></label></LegacySidePanel><LegacyDenseTable columns={["Nro.", "Fecha", "Cobrador", "Código", "Cliente", "Telefono", "Celular"]} rows={snapshot.clients.slice(0, 8).map((client, index) => { const collector = snapshot.collectors[index % Math.max(1, snapshot.collectors.length)]; return [index + 1, "18/09/2026", collector?.name ?? "Cobrador", client.code, client.name, client.phone, collector?.cellular ?? "809-000-0000"]; })} /></div>;
+  if (page === "generalConfig") {
+    const tabs = ["General", "Clientes", "Cargos y Descargos", "Cobros y Pagos", "Interfaz", "GPS"];
+    const CheckLine = ({ label, checked = true, disabled = false }: { label: string; checked?: boolean; disabled?: boolean }) => <label className={`legacy-check-line ${disabled ? "disabled" : ""}`}><input type="checkbox" defaultChecked={checked} disabled={disabled} /><span>{label}</span></label>;
+    return <div className="legacy-config-layout"><div className="legacy-config-main"><div className="legacy-tabs" role="tablist" aria-label="Configuracion General">{tabs.map((tab) => <button type="button" key={tab} className={configTab === tab ? "active" : ""} onClick={() => setConfigTab(tab)}>{tab}</button>)}</div>{configTab === "General" && <fieldset className="legacy-config-fieldset"><legend>General</legend><label>Empresa:<input defaultValue="Gamera Software - Cobros y Pagos" /></label><label>Dirección:<input defaultValue="Santiago de los Caballeros, República Dominicana" /></label><div className="legacy-config-row"><label>Teléfono:<input defaultValue="809-555-0100" /></label><label>Correo Electrónico:<input defaultValue="admin@cyp.local" /></label></div><label className="short-field">Fax:<input defaultValue="809-555-0199" /></label><label>Licencia:<input defaultValue="CYP-DEMO-2026-ADM001" /></label><label className="short-field">Moneda por defecto:<select defaultValue="Peso Dominicano"><option>Peso Dominicano</option><option>Dólar Estadounidense</option><option>Euro</option></select></label></fieldset>}{configTab === "Clientes" && <fieldset className="legacy-config-fieldset"><legend>Clientes</legend><CheckLine label="Permitir Modificar Código de Cliente Nuevo" /><CheckLine label="Requerir Identificacion para Cliente" /><CheckLine label="Requerir Identificacion única para Cliente" /></fieldset>}{configTab === "Cargos y Descargos" && <fieldset className="legacy-config-fieldset"><legend>Cargos y Descargos</legend><CheckLine label="Utilizar Importe de Concepto" /><CheckLine label="Permitir modificar importe de Concepto" /><div className="legacy-config-separator">--- Cargos ---</div><CheckLine label="Permitir modificar precio en cargos" /><CheckLine label="Permitir modificar cantidad en cargos" /><CheckLine label="Permitir cargos en PCP" /><CheckLine label="Tragamonedas" checked={false} disabled /><div className="legacy-config-row"><label>Servicio para TM:<select defaultValue="MANEJO DE MAQUINITAS"><option>MANEJO DE MAQUINITAS</option></select></label><label>Concepto para TM:<select defaultValue=""><option value=""></option></select></label></div><div className="legacy-config-separator">--- Descargos ---</div><CheckLine label="Permitir modificar cantidad en Descargos" /></fieldset>}{configTab === "Cobros y Pagos" && <fieldset className="legacy-config-fieldset"><legend>Cobros y Pagos</legend><div className="legacy-config-two-col"><div><CheckLine label="Guardar GPS" /><CheckLine label="Permitir Mezclar Servicios en Recibo" /><CheckLine label="Permitir Cobros Parciales" /><CheckLine label="Permitir Cobro con Saldo Pendiente (Para Cob.)" /><CheckLine label="Obligar a Cobrar Clientes con Saldo Vencido (Para Clientes)" checked={false} /></div><label className="short-field">Porciento Mín. para chequeo de CDC:<input type="number" defaultValue="0" /></label></div><fieldset className="legacy-inner-fieldset"><legend>Impresión</legend><div className="legacy-inner-tabs"><button type="button">Listados</button><button type="button" className="active">Recibos</button></div><CheckLine label="Usar la misma Impresora de los Listados" checked={false} /><CheckLine label="Imprimir Recibo en HTML" checked={false} /><CheckLine label="Imprimir Recibo en Impresora de Matriz" checked={false} /><CheckLine label="Imprimir Recibo en Impresora Virtual" checked={false} /><div className="legacy-config-row url-port-row"><label>URL:<input /></label><label>Puerto:<input /></label></div><label>Nombre:<input /></label></fieldset></fieldset>}{configTab === "Interfaz" && <fieldset className="legacy-config-fieldset"><legend>Interfaz</legend><CheckLine label="Mostrar Monitor de Cobradores al Inicio" /></fieldset>}{configTab === "GPS" && <fieldset className="legacy-config-fieldset"><legend>GPS</legend><div className="legacy-config-row"><label>Latitud:<input type="number" step="0.0000000000001" defaultValue="19.4499607086182" /></label><label>Longitud:<input type="number" step="0.0000000000001" defaultValue="-70.68701171875" /></label></div></fieldset>}</div><aside className="legacy-config-actions"><button type="button" className="ok-button">oK</button><button type="button">Cancelar</button></aside></div>;
+  }
+  return <div className="legacy-mdi-view">{baseToolbar()}<LegacyDenseTable columns={["Nro.", "Opcion", "Estado"]} rows={[[1, pageTitles[page], "Disponible"]]} /></div>;
 }
 
 function Login({
@@ -505,12 +887,14 @@ export default function App() {
     [directorySearch, setDirectorySearch] = useState(""),
     [settlementCollector, setSettlementCollector] = useState("");
   const [clock, setClock] = useState(() => new Date());
+  const [mdiWindows, setMdiWindows] = useState<MdiWindowState[]>([]);
   const logout = useCallback(() => {
     clearToken();
     setAuthenticated(false);
     setSnapshot(null);
     setUser(null);
     setAccountOpen(false);
+    setMdiWindows([]);
   }, []);
   const refresh = useCallback(async () => {
     setRefreshing(true);
@@ -594,10 +978,58 @@ export default function App() {
     setDirectorySearch("");
     window.scrollTo({ top: 0, behavior: "instant" });
   }
+  const openMdiWindow = useCallback((next: MdiPage, navKey = "") => {
+    setActiveNavKey(navKey);
+    setMdiWindows((windows) => {
+      const existing = windows.find((item) => item.page === next);
+      const maxZ = Math.max(140, ...windows.map((item) => item.zIndex));
+      if (existing)
+        return windows.map((item) => item.id === existing.id ? { ...item, zIndex: maxZ + 1, isFocused: true } : { ...item, isFocused: false });
+      const offset = windows.length * 26;
+      const reportLauncher = next === "reports";
+      const reportWindow = isReportPage(next);
+      const wide = next === "traces" || next === "pcps" || next === "sessions" || next === "clients" || isMdiOperationPage(next) || isMdiMonitoringPage(next) || reportLauncher || reportWindow;
+      const compact = next === "controlPanel";
+      return [
+        ...windows.map((item) => ({ ...item, isFocused: false })),
+        {
+          id: `${next}-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`,
+          page: next,
+          title: mdiTitle(next),
+          x: compact ? 180 : 118 + offset,
+          y: compact ? 78 : 78 + offset,
+          width: compact ? 600 : reportLauncher ? 720 : wide ? 860 : 720,
+          height: compact ? 390 : reportLauncher ? 430 : wide ? 520 : 440,
+          zIndex: maxZ + 1,
+          isFocused: true,
+        },
+      ];
+    });
+  }, []);
+  const focusMdiWindow = useCallback((id: string) => {
+    setMdiWindows((windows) => {
+      const maxZ = Math.max(140, ...windows.map((item) => item.zIndex));
+      return windows.map((item) => item.id === id ? { ...item, zIndex: maxZ + 1, isFocused: true } : { ...item, isFocused: false });
+    });
+  }, []);
+  const moveMdiWindow = useCallback((id: string, x: number, y: number) => {
+    setMdiWindows((windows) => windows.map((item) => item.id === id ? { ...item, x, y } : item));
+  }, []);
+  const closeMdiWindow = useCallback((id: string) => {
+    setMdiWindows((windows) => windows.filter((item) => item.id !== id));
+  }, []);
+  const createOperationForPage = useCallback((targetPage: Page): Operation => ({
+    type:
+      targetPage === "payouts" || targetPage === "payments"
+        ? "payout"
+        : targetPage === "recurringCharges"
+          ? "recurring"
+          : "charge",
+  }), []);
   const activeNav =
     (activeNavKey && navigation.find((n) => n.key === activeNavKey)) ||
     navigation.find((n) => n.page === page && n.primary) ||
-    navigation.find((n) => n.page === page)!;
+    navigation.find((n) => n.page === page);
   const alertCount = snapshot
     ? snapshot.collectors.filter((c) => c.status !== "active").length +
       (snapshot.totals.difference !== 0 ? 1 : 0)
@@ -618,6 +1050,7 @@ export default function App() {
           .includes(commandQuery.toLowerCase()),
       )
       .slice(0, 3) ?? [];
+  const effectiveUser = user ?? enrichUserRole({ id: "UUID-AAA", name: "Administración", role: "ADMIN" });
   return (
     <>
       <Toaster position="top-right" richColors closeButton />
@@ -672,7 +1105,7 @@ export default function App() {
                   (item) => item.group === group,
                 );
                 const groupActive = groupItems.some((item) =>
-                  activeNavKey ? activeNavKey === item.key : page === item.page,
+                  activeNavKey ? activeNavKey === item.key : item.page === page,
                 );
                 return (
                   <div
@@ -707,16 +1140,28 @@ export default function App() {
                               ? activeNavKey === item.key
                                 ? "active"
                                 : ""
-                              : page === item.page
+                              : item.page === page
                                 ? "active"
                                 : ""
                           }`}
                           key={item.key}
-                          onClick={() => navigate(item.page, item.key)}
+                          onClick={() => {
+                            if (item.action === "controlPanel") {
+                              openMdiWindow("controlPanel", item.key);
+                              setMobileMenu(false);
+                              return;
+                            }
+                            if (item.page === "clients" || item.page === "reports" || (item.page && (isMdiOperationPage(item.page) || isMdiMonitoringPage(item.page)))) {
+                              openMdiWindow(item.page, item.key);
+                              setMobileMenu(false);
+                              return;
+                            }
+                            if (item.page) navigate(item.page, item.key);
+                          }}
                           title={collapsed ? item.label : undefined}
                           aria-current={
                             activeNavKey === item.key ||
-                            (!activeNavKey && page === item.page)
+                            (!activeNavKey && item.page === page)
                               ? "page"
                               : undefined
                           }
@@ -733,7 +1178,7 @@ export default function App() {
                             </small>
                           )}
                           {(activeNavKey === item.key ||
-                            (!activeNavKey && page === item.page)) && <i />}
+                            (!activeNavKey && item.page === page)) && <i />}
                         </button>
                       ))}
                     </div>
@@ -900,14 +1345,7 @@ export default function App() {
                   refreshing={refreshing}
                   onRefresh={() => void refresh()}
                   onCollector={setSelectedCollector}
-                  currentUser={
-                    user ??
-                    enrichUserRole({
-                      id: "UUID-AAA",
-                      name: "Administración",
-                      role: "ADMIN",
-                    })
-                  }
+                  currentUser={effectiveUser}
                   onOperation={setOperation}
                   onAccount={setAccountOperation}
                 />
@@ -927,6 +1365,64 @@ export default function App() {
               </footer>
             </main>
           </div>
+          {snapshot && mdiWindows.map((windowState) => (
+            <MdiWindow
+              key={windowState.id}
+              windowState={windowState}
+              onClose={closeMdiWindow}
+              onFocus={focusMdiWindow}
+              onMove={moveMdiWindow}
+            >
+              {windowState.page === "controlPanel" ? (
+                <ControlPanelContent onLaunch={openMdiWindow} />
+              ) : windowState.page === "reports" ? (
+                <ReportesLauncher onLaunch={openMdiWindow} />
+              ) : isReportPage(windowState.page) ? (
+                <ReportView page={windowState.page} snapshot={snapshot} />
+              ) : windowState.page === "clients" ? (
+                <MasterDataView
+                  page="clients"
+                  snapshot={snapshot}
+                  currentUser={effectiveUser}
+                  onCollector={setSelectedCollector}
+                  onRefresh={() => void refresh()}
+                  onAccount={setAccountOperation}
+                />
+              ) : isMdiOperationPage(windowState.page) ? (
+                (() => {
+                  const operationPage = windowState.page;
+                  return (
+                    <LegacyOperationView
+                      spec={operationSpec(operationPage, snapshot)}
+                      currentUser={effectiveUser}
+                      snapshot={snapshot}
+                      onCreate={() => setOperation(createOperationForPage(operationPage))}
+                      onRefresh={() => void refresh()}
+                    />
+                  );
+                })()
+              ) : isMdiMonitoringPage(windowState.page) ? (
+                windowState.page === "dailySettlements" ? (
+                  <DailySettlementsView snapshot={snapshot} onRefresh={() => void refresh()} />
+                ) : (
+                  <MonitorView
+                    page={windowState.page}
+                    snapshot={snapshot}
+                    refreshing={refreshing}
+                    currentUser={effectiveUser}
+                    onRefresh={() => void refresh()}
+                  />
+                )
+              ) : (
+                <LegacyCodifierView
+                  page={windowState.page}
+                  snapshot={snapshot}
+                  onRefresh={() => void refresh()}
+                  onAccount={setAccountOperation}
+                />
+              )}
+            </MdiWindow>
+          ))}
           <Modal
             open={commandOpen}
             onClose={() => setCommandOpen(false)}
