@@ -66,7 +66,7 @@ decisiones y su alcance no se aplican aqui. No mezclar los dos proyectos.
 
 ## Current state - ACTUALIZAR ANTES DE CERRAR
 
-**Last updated:** 2026-09-17 por Codex (Atria-Dawn-Preview)
+**Last updated:** 2026-09-18 por Codex
 
 ### Done so far
 
@@ -121,6 +121,14 @@ decisiones y su alcance no se aplican aqui. No mezclar los dos proyectos.
   borro). Commit ffae2ea + push a origin/main; .gitignore ahora excluye los
   volcados de datos de clientes (.logs/, clients_extract.*, cleanup_backup_*,
   clients_pre_cleanup_*). Quedan pendientes solo los ambiguos del punto 2.
+
+- **Fix runtime admin login (2026-09-18):** corregido `enrichUserRole is not defined`
+  en `app/client-admin/src/App.tsx` importando los helpers de rol desde
+  `types.ts` como valores runtime. Se reconecto `AccountModal/AccountOperation`,
+  se restauro la propagacion de `currentUser`, `onRefresh` y `onAccount` hacia
+  `MasterDataView`, y el snapshot mock admin ahora incluye `accounts`.
+  Verificacion ejecutada: `npm run check` completo, con typecheck de los 3
+  workspaces, 15 tests pass + 1 skip del servidor, y builds de admin/cobrador ok.
 
 ### Aprovisionamiento (como usarlo)
 

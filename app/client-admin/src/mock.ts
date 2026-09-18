@@ -124,6 +124,29 @@ const initialSnapshot = (): Snapshot => ({
       routeId: "rt-3",
     },
   ],
+  accounts: [
+    {
+      id: "acct-admin",
+      name: "Administracion",
+      email: "admin@cyp.local",
+      role: "admin",
+      credentialVersion: 1,
+      status: "active",
+      createdAt: now(),
+      updatedAt: now(),
+    },
+    {
+      id: "acct-collector",
+      name: "Ana Martinez",
+      email: "collector@cyp.local",
+      role: "collector",
+      collectorId: "col-1",
+      credentialVersion: 1,
+      status: "active",
+      createdAt: now(),
+      updatedAt: now(),
+    },
+  ],
   collectors: [
     {
       id: "col-1",

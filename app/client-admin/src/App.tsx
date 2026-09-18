@@ -69,7 +69,17 @@ import {
   type MapMarker,
 } from "./services/mapAdapter";
 import OperationModal, { type Operation } from "./Operations";
-import type { Collector, Page, Snapshot } from "./types";
+import AccountModal, { type AccountOperation } from "./Users";
+import {
+  canAccessAdmin,
+  enrichUserRole,
+  isSuspendedUser,
+  normalizeRole,
+  type Collector,
+  type Page,
+  type Snapshot,
+  type User,
+} from "./types";
 
 const groupOrder = [
   "ARCHIVOS",
@@ -1257,7 +1267,10 @@ function ModuleRouter({
       <MasterDataView
         page={page}
         snapshot={snapshot}
+        currentUser={currentUser}
         onCollector={onCollector}
+        onRefresh={onRefresh}
+        onAccount={onAccount}
       />
     );
   if (
@@ -1309,14 +1322,23 @@ function MasterDataView({
   snapshot,
   currentUser,
   onCollector,
+  onRefresh,
+  onAccount,
 }: {
   page: Page;
   snapshot: Snapshot;
   currentUser: User;
   onCollector: (collector: Collector) => void;
+  onRefresh: () => void;
+  onAccount: (operation: AccountOperation) => void;
 }) {
   const [search, setSearch] = useState("");
-  const config = masterSpec(page, snapshot);
+  const [quickRecord, setQuickRecord] = useState<TableRow | "new" | null>(null);
+  const [collectorEditor, setCollectorEditor] = useState<TableRow | "new" | null>(null);
+  const [collectorFlow, setCollectorFlow] = useState<"zones" | "limits" | "routes" | null>(null);
+  const [selectedCollectorId, setSelectedCollectorId] = useState(snapshot.collectors[0]?.id ?? "");
+  const config = masterSpec(page, snapshot, onAccount);
+  const permissions = permissionsFor(currentUser);
   const rows = config.rows.filter((row) =>
     Object.values(row).join(" ").toLowerCase().includes(search.toLowerCase()),
   );
@@ -1351,7 +1373,20 @@ function MasterDataView({
           </h1>
           <p>{config.subtitle}</p>
         </div>
-        <button className="btn primary">
+        <button
+          className="btn primary"
+          disabled={!permissions.canCreate}
+          title={permissions.canCreate ? "Nuevo registro" : permissions.readOnlyReason}
+          onClick={() =>
+            page === "clients"
+              ? setQuickRecord("new")
+              : page === "collectors"
+                ? setCollectorEditor("new")
+                : page === "users"
+                  ? onAccount({ type: "create" })
+                  : toast.info("Vista de lectura preparada para mock frontend.")
+          }
+        >
           <Plus size={16} />
           Nuevo registro
         </button>
