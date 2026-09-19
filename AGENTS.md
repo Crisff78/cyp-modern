@@ -66,7 +66,7 @@ decisiones y su alcance no se aplican aqui. No mezclar los dos proyectos.
 
 ## Current state - ACTUALIZAR ANTES DE CERRAR
 
-**Last updated:** 2026-09-19 por ZCode (sync con commits del companero f0f50f6; entradas 2026-09-18 re-fusionadas)
+**Last updated:** 2026-09-19 por ZCode (sync f0f50f6 + inventario del original + docs/legacy-parity.md)
 
 ### Done so far
 
@@ -158,6 +158,23 @@ decisiones y su alcance no se aplican aqui. No mezclar los dos proyectos.
   **Ambiguedad sin resolver:** el pedido coincide casi dato por dato con el
   visor de trazas de la sesion Hermes-BI; confirmar con Rardiel si es para CyP
   o si callo en la sesion equivocada antes de construir trabajo duplicado.
+
+- **Inventario del original + matriz de paridad (2026-09-19, ZCode):** Rardiel
+  activo la meta de incorporar TODAS las funciones del original
+  (gdemos.ddns.net/cypdemo) y pedir primero sync con el companero. Sync hecho
+  (abbda3a..f0f50f6: modales legacy Cargos/Cobradores, mock.ts, mapAdapter.ts;
+  conflicto de AGENTS.md fusionado en b070dd6). `npm run check` completo PASS.
+  Inventario en vivo con el navegador (sesion Admin viva): menu completo,
+  toolbars/filtros/columnas de los 12 modulos, catalogo de 9 reportes, cuadres
+  con Procesar/Cerrar dia, monitores con auto-refresco. Verificacion cruzada
+  contra el codigo nuevo: cobertura de modulos 1:1 (incluye Tragamonedas y
+  Configuracion General replicada). Brechas reales documentadas y priorizadas
+  en `docs/legacy-parity.md`: G1 aceptar/cancelar deposito, G2 importacion
+  masiva Cargos/Descargos, G3 Descargos Recurrentes (modulo), G4 estado de
+  cuenta del cliente, G5 ventanas auxiliares (Facturas/Que hay de nuevo/
+  Ventana de Pagos), G6 persistencia de Configuracion General, G7 reportes de
+  Pagos del legacy, G8 contabilidad (decision). El demo se congolo antes de
+  capturar formularios de alta campo por campo (pendiente, §7 del doc).
 
 ### Aprovisionamiento (como usarlo)
 
