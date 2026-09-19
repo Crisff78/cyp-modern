@@ -66,7 +66,7 @@ decisiones y su alcance no se aplican aqui. No mezclar los dos proyectos.
 
 ## Current state - ACTUALIZAR ANTES DE CERRAR
 
-**Last updated:** 2026-09-18 por Codex
+**Last updated:** 2026-09-19 por ZCode (sync con commits del companero f0f50f6; entradas 2026-09-18 re-fusionadas)
 
 ### Done so far
 
@@ -130,6 +130,35 @@ decisiones y su alcance no se aplican aqui. No mezclar los dos proyectos.
   Verificacion ejecutada: `npm run check` completo, con typecheck de los 3
   workspaces, 15 tests pass + 1 skip del servidor, y builds de admin/cobrador ok.
 
+- **Verificacion de esquema (2026-09-18):** se confirmo que NO existen tablas
+  duplicadas ni esquemas paralelos. public tiene 17 tablas reales en ingles
+  (clients, collectors, charges, payouts, collections, payments, cash_handovers,
+  daily_settlements, collection_points, routes, zones, users, recurring_charges,
+  services, delay_reasons, exchange_rates, idempotency) y 10 VISTAS de
+  compatibilidad en espanol (clientes, cobradores, cobros, pagos, cargos,
+  cargos_recurrentes, descargos, entregas, depositos, cuadres) definidas en
+  `001_initial.sql:223-276` como alias legibles sobre las tablas en ingles.
+  `store.ts` y `App.tsx` leen/escriben solo las tablas en ingles. No hay nada
+  que limpiar; no borrar las vistas. Conteos reales: clients 14,
+  collection_points 14, collectors 1, zones 2, routes 1, users 0 (el admin real
+  autentica contra .env, no contra esa tabla);
+  charges/collections/payments/payouts/cash_handovers/daily_settlements en 0.
+  La base esta limpia y lista para operar.
+- **Transcripcion del jefe analizada (2026-09-18):** llego el texto real (audio
+  transcrito, fragmentos inaudibles). El pedido central es **observabilidad**:
+  ver la peticion (GET query o POST body, con parametros) y la respuesta (casi
+  siempre JSON) separadas visualmente, para NO entrar al servidor a leer logs;
+  quiere revisar desde la calle o el celular. Caso citado: cobrador llama
+  "estoy tardando, no me deja" y el jefe lo ve en el log (ej. DAY_CLOSED).
+  **Verificado: CyP NO tiene nada de esto.** `App.tsx:90` crea Fastify con
+  `logger: false`; `onSend` (98) solo anade Cache-Control: no-store;
+  `preHandler` (142) solo valida JWT; `describe` (188) genera OpenAPI
+  (documentacion, NO trazas); el manejador de errores hace console.error sin
+  persistir. La unica huella de operacion es `actor_id` y la tabla idempotency.
+  **Ambiguedad sin resolver:** el pedido coincide casi dato por dato con el
+  visor de trazas de la sesion Hermes-BI; confirmar con Rardiel si es para CyP
+  o si callo en la sesion equivocada antes de construir trabajo duplicado.
+
 ### Aprovisionamiento (como usarlo)
 
 1. Entrar al admin (modo real: `ADMIN_EMAIL`/`ADMIN_PASSWORD` del `.env`; `Demo-CyP-2026!` solo vale con `DEMO_MODE=true`) > Archivos >
@@ -155,7 +184,8 @@ decisiones y su alcance no se aplican aqui. No mezclar los dos proyectos.
    que quedaron: mendez (cl-leg-rodrigo), los dos PORFIRIO (cl-c00019 Porfirio
    de leon y cl-leg-1721 PORFIRIO), NOEL USA, MAYITO YO y PRESTAMO DE LA 149.
    No borrarlos sin su decision.
-3. Decidir si los clientes legacy se quedan en la ruta semilla
+3. **Sincronizar con el companero (2026-09-18):** el lleva la parte de diseno por su lado; Rardiel avisara cuando tocar sincronizar. Sincronizacion base aplicada 2026-09-19 (pull abbda3a..f0f50f6: modales legacy Cargos/Cobradores, flujos Z/L/R, mock.ts y mapAdapter.ts). Hasta el proximo aviso, no avanzar UI/diseno desde este clone.
+4. Decidir si los clientes legacy se quedan en la ruta semilla
    `legacy-import-route` o se redistribuyen a rutas/zonas reales.
 
 ### Next step
