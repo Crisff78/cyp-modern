@@ -66,7 +66,7 @@ decisiones y su alcance no se aplican aqui. No mezclar los dos proyectos.
 
 ## Current state - ACTUALIZAR ANTES DE CERRAR
 
-**Last updated:** 2026-09-19 por ZCode (matriz de paridad CERRADA: G1-G7+G9+menores implementados, G8 fuera de alcance por decisión de Rardiel)
+**Last updated:** 2026-09-20 por ZCode (sync del avance del companero ca4b067 fusionado; matriz de paridad CERRADA)
 
 ### Done so far
 
@@ -295,6 +295,15 @@ decisiones y su alcance no se aplican aqui. No mezclar los dos proyectos.
   'MostrarQueHayDeNuevo'"). Conclusion: sin brechas nuevas accionables;
   las ventanas F/P son facturacion del vendedor legacy (slot ya cubierto en
   el admin). Documentado en docs/legacy-parity.md §7.
+
+- **Sync del avance del companero completado (2026-09-20, ZCode).** El
+  companero publico 2 commits sobre el ultimo push (fast-forward, sin
+  conflictos): 88d6f5e limpieza del fondo y renderizado exclusivo en ventanas
+  MDI, y ca4b067 telemetria legacy en el topbar del admin (version + fecha/
+  hora del servidor en es-DO, conservando herramientas modernas). Verificado
+  tras la fusion: los marcadores de G1-G10+G9+menores siguen presentes y
+  `npm run check` completo en verde (20 pass + 1 skip); el dev server
+  recargo sin problemas. Matriz de paridad: CERRADA.
 
 ### Aprovisionamiento (como usarlo)
 
