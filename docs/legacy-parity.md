@@ -75,9 +75,9 @@ trazas, usuarios/roles, limites de cobrador, motivos de atraso, frecuencias
 | G2 | ~~Importar datos / Subir archivo~~ **IMPLEMENTADO 2026-09-19** (CSV con separador autodetectado, cabecera opcional, reporte por fila) | rutas `/api/cargos/importar` y `/api/descargos/importar`, `importCharges`/`importPayouts` en domain.ts, botones Subir archivo/Importar datos en el admin, mock demo, test de integración | ALTA |
 | G3 | ~~Descargos Recurrentes~~ **IMPLEMENTADO 2026-09-19** (tabla `recurring_payouts`, rutas crear/modificar/archivar, página admin con frecuencia y estado, alcance admin-only, mock demo). Pendiente menor: formulario de alta/edición de plantilla en el admin (hoy vía API) | `004_recurring_payouts.sql`, `createRecurringPayout`/`updateRecurringPayout`, spec en App.tsx, test de integración | ALTA |
 | G4 | ~~Cobros y Pagos del Cliente~~ **IMPLEMENTADO 2026-09-19** (GET `/api/clientes/:id/estado` con cargos/cobros/autorizaciones/pagos + resumen; botón en Clientes con diálogo estado de cuenta; alcance por ruta para cobradores) | `clientStatement` en domain.ts, diálogo en MasterDataView, mock demo, test de integración | MEDIA |
-| G5 | **Ventanas auxiliares**: Facturas, Que hay de nuevo, Ventana de Pagos | 0 hits | MEDIA |
-| G6 | **Configuración General persistente** (hoy `defaultValue` cosmetico) | App.tsx:688 | MEDIA |
-| G7 | Reportes legacy de Pagos (`stpReporte_Pagos*`) + ServiciosXZona | table_summary.json | BAJA |
+| G5 | ~~Ventanas auxiliares~~ **IMPLEMENTADO 2026-09-19** (barra superior: Facturas = últimos cobros con recibo; Qué hay de nuevo = novedades de la modernización; Ventana de Pagos = autorizaciones pendientes + últimos pagos) | App.tsx, diálogos legacy sobre snapshot | MEDIA |
+| G6 | ~~Configuración General persistente~~ **IMPLEMENTADO 2026-09-19** (tabla `system_config` jsonb, GET/POST `/api/configuracion` admin-only, diálogo controlado con carga y guardado, mock demo) | `005_system_config.sql`, `saveSystemConfigData`, LegacyCodifierView controlado | MEDIA |
+| G7 | ~~Reportes legacy de Pagos + ServiciosXZona~~ **IMPLEMENTADO 2026-09-19** (7 definiciones nuevas en el lanzador: Pagos detallado, pendientes clientes/rutas/zonas, x servicio detallado/resumido, Servicios por zona — al mismo nivel de vista preliminar que los 9 existentes) | reportDefinitions + ReportPageId | BAJA |
 | G8 | Contabilidad legacy (EntidadesContables/MovimientosContables) | sin equivalente nuevo | DECISIÓN (¿fuera de alcance?) |
 
 Decisiones cerradas que explican diferencias intencionales (no son brechas):

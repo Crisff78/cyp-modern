@@ -282,11 +282,18 @@ type ReportPageId =
   | "reportClientChargesByZoneService"
   | "reportCollectionsSummary"
   | "reportCollectionsGeneralSummary"
-  | "reportCollectionsByService";
+  | "reportCollectionsByService"
+  | "reportPaymentsDetailed"
+  | "reportClientPendingPayouts"
+  | "reportPendingPayoutsByRoutes"
+  | "reportPendingPayoutsByZones"
+  | "reportPaymentsByServiceDetailed"
+  | "reportPaymentsByServiceSummary"
+  | "reportServicesByZone";
 type ReportDefinition = {
   id: ReportPageId;
   label: string;
-  category: "-- Cargos --" | "-- Cobros --";
+  category: "-- Cargos --" | "-- Cobros --" | "-- Pagos --" | "-- Servicios --";
   filters: ("route" | "zone" | "service" | "collectorCheck")[];
 };
 type MdiPage = Page | "controlPanel" | ReportPageId;
@@ -300,6 +307,13 @@ const reportDefinitions: ReportDefinition[] = [
   { id: "reportCollectionsSummary", label: "Cobros Res.", category: "-- Cobros --", filters: ["collectorCheck"] },
   { id: "reportCollectionsGeneralSummary", label: "Cobros Gen. Resumido", category: "-- Cobros --", filters: ["collectorCheck"] },
   { id: "reportCollectionsByService", label: "Cobros x Servicio", category: "-- Cobros --", filters: ["zone", "service"] },
+  { id: "reportPaymentsDetailed", label: "Pagos detallado.", category: "-- Pagos --", filters: ["collectorCheck"] },
+  { id: "reportClientPendingPayouts", label: "Pagos pendientes de clientes.", category: "-- Pagos --", filters: [] },
+  { id: "reportPendingPayoutsByRoutes", label: "Pagos pendientes por rutas.", category: "-- Pagos --", filters: ["route"] },
+  { id: "reportPendingPayoutsByZones", label: "Pagos pendientes por zonas.", category: "-- Pagos --", filters: ["zone"] },
+  { id: "reportPaymentsByServiceDetailed", label: "Pagos x servicio detallado.", category: "-- Pagos --", filters: ["zone", "service"] },
+  { id: "reportPaymentsByServiceSummary", label: "Pagos x servicio resumido.", category: "-- Pagos --", filters: ["zone", "service"] },
+  { id: "reportServicesByZone", label: "Servicios por zona.", category: "-- Servicios --", filters: ["zone"] },
 ];
 const reportTitle = (page: ReportPageId) =>
   reportDefinitions.find((report) => report.id === page)?.label.replace(/\.$/, "") ?? "Reporte";
@@ -398,6 +412,8 @@ function ReportesLauncher({ onLaunch }: { onLaunch: (page: ReportPageId, navKey:
     <div className="reports-launcher">
       {renderGroup("-- Cargos --")}
       {renderGroup("-- Cobros --")}
+      {renderGroup("-- Pagos --")}
+      {renderGroup("-- Servicios --")}
     </div>
   );
 }
@@ -676,8 +692,81 @@ function CollectorsLegacyView({ snapshot, onRefresh }: { snapshot: Snapshot; onR
   );
 }
 
+const SYSTEM_CONFIG_DEFAULTS: Record<string, string | number | boolean> = {
+  "general.empresa": "Gamera Software - Cobros y Pagos",
+  "general.direccion": "Santiago de los Caballeros, República Dominicana",
+  "general.telefono": "809-555-0100",
+  "general.correo": "admin@cyp.local",
+  "general.fax": "809-555-0199",
+  "general.licencia": "CYP-DEMO-2026-ADM001",
+  "general.moneda": "Peso Dominicano",
+  "clientes.modificarCodigo": true,
+  "clientes.requerirIdentificacion": true,
+  "clientes.identificacionUnica": true,
+  "cargos.importeConcepto": true,
+  "cargos.modificarImporteConcepto": true,
+  "cargos.modificarPrecio": true,
+  "cargos.modificarCantidad": true,
+  "cargos.enPcp": true,
+  "cargos.tragamonedas": false,
+  "cargos.servicioTm": "MANEJO DE MAQUINITAS",
+  "cargos.conceptoTm": "",
+  "descargos.modificarCantidad": true,
+  "cobros.guardarGps": true,
+  "cobros.mezclarServiciosRecibo": true,
+  "cobros.cobrosParciales": true,
+  "cobros.cobroSaldoPendiente": true,
+  "cobros.obligarVencidos": false,
+  "cobros.porcientoCdc": "0",
+  "impresion.mismaImpresora": false,
+  "impresion.reciboHtml": false,
+  "impresion.reciboMatriz": false,
+  "impresion.reciboVirtual": false,
+  "impresion.url": "",
+  "impresion.puerto": "",
+  "impresion.nombre": "",
+  "interfaz.monitorInicio": true,
+  "gps.latitud": "19.4499607086182",
+  "gps.longitud": "-70.68701171875",
+};
+
 function LegacyCodifierView({ page, snapshot, onRefresh, onAccount }: { page: Page; snapshot: Snapshot; onRefresh: () => void; onAccount: (operation: AccountOperation) => void }) {
   const [configTab, setConfigTab] = useState("General");
+  const [systemCfg, setSystemCfg] = useState<Record<string, string | number | boolean>>(SYSTEM_CONFIG_DEFAULTS);
+  const [savedCfg, setSavedCfg] = useState<Record<string, string | number | boolean>>(SYSTEM_CONFIG_DEFAULTS);
+  const [cfgBusy, setCfgBusy] = useState(false);
+  useEffect(() => {
+    if (page !== "generalConfig") return;
+    let active = true;
+    api<{ config: Record<string, string | number | boolean> }>("/configuracion")
+      .then((data) => {
+        if (!active) return;
+        const merged = { ...SYSTEM_CONFIG_DEFAULTS, ...(data.config ?? {}) };
+        setSystemCfg(merged);
+        setSavedCfg(merged);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [page]);
+  const saveSystemCfg = async () => {
+    setCfgBusy(true);
+    try {
+      await api("/configuracion", {
+        method: "POST",
+        body: JSON.stringify({ config: systemCfg }),
+      });
+      setSavedCfg(systemCfg);
+      toast.success("Configuración guardada");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "No se pudo guardar la configuración.",
+      );
+    } finally {
+      setCfgBusy(false);
+    }
+  };
   const services = Array.from(new Set([...snapshot.charges.map((charge) => charge.service), ...snapshot.payouts.map((payout) => payout.concept)]));
   const routeName = (routeId: string) => snapshot.routes.find((route) => route.id === routeId)?.name ?? "Sin ruta";
   const baseToolbar = (extra?: ReactNode) => <LegacyToolbar onRefresh={onRefresh} extra={extra} />;
@@ -696,8 +785,118 @@ function LegacyCodifierView({ page, snapshot, onRefresh, onAccount }: { page: Pa
   if (page === "authorizationRequests") return <div className="legacy-mdi-split-view authorizations-layout"><LegacySidePanel><LegacyToolbar onRefresh={onRefresh} /><label>Fecha Inicial<input type="date" defaultValue="2026-09-18" /></label><label>Fecha Final<input type="date" defaultValue="2026-09-18" /></label><label>Estado<select defaultValue="Todas"><option>Todas</option><option>Pendiente</option><option>Aprobada</option><option>Rechazada</option></select></label><label>Cliente<span className="legacy-lookup-field"><input placeholder="Cliente..." /><button type="button">...</button></span></label></LegacySidePanel><LegacyDenseTable columns={["Nro.", "Fecha", "Cobrador", "Código", "Cliente", "Telefono", "Celular"]} rows={snapshot.clients.slice(0, 8).map((client, index) => { const collector = snapshot.collectors[index % Math.max(1, snapshot.collectors.length)]; return [index + 1, "18/09/2026", collector?.name ?? "Cobrador", client.code, client.name, client.phone, collector?.cellular ?? "809-000-0000"]; })} /></div>;
   if (page === "generalConfig") {
     const tabs = ["General", "Clientes", "Cargos y Descargos", "Cobros y Pagos", "Interfaz", "GPS"];
-    const CheckLine = ({ label, checked = true, disabled = false }: { label: string; checked?: boolean; disabled?: boolean }) => <label className={`legacy-check-line ${disabled ? "disabled" : ""}`}><input type="checkbox" defaultChecked={checked} disabled={disabled} /><span>{label}</span></label>;
-    return <div className="legacy-config-layout"><div className="legacy-config-main"><div className="legacy-tabs" role="tablist" aria-label="Configuracion General">{tabs.map((tab) => <button type="button" key={tab} className={configTab === tab ? "active" : ""} onClick={() => setConfigTab(tab)}>{tab}</button>)}</div>{configTab === "General" && <fieldset className="legacy-config-fieldset"><legend>General</legend><label>Empresa:<input defaultValue="Gamera Software - Cobros y Pagos" /></label><label>Dirección:<input defaultValue="Santiago de los Caballeros, República Dominicana" /></label><div className="legacy-config-row"><label>Teléfono:<input defaultValue="809-555-0100" /></label><label>Correo Electrónico:<input defaultValue="admin@cyp.local" /></label></div><label className="short-field">Fax:<input defaultValue="809-555-0199" /></label><label>Licencia:<input defaultValue="CYP-DEMO-2026-ADM001" /></label><label className="short-field">Moneda por defecto:<select defaultValue="Peso Dominicano"><option>Peso Dominicano</option><option>Dólar Estadounidense</option><option>Euro</option></select></label></fieldset>}{configTab === "Clientes" && <fieldset className="legacy-config-fieldset"><legend>Clientes</legend><CheckLine label="Permitir Modificar Código de Cliente Nuevo" /><CheckLine label="Requerir Identificacion para Cliente" /><CheckLine label="Requerir Identificacion única para Cliente" /></fieldset>}{configTab === "Cargos y Descargos" && <fieldset className="legacy-config-fieldset"><legend>Cargos y Descargos</legend><CheckLine label="Utilizar Importe de Concepto" /><CheckLine label="Permitir modificar importe de Concepto" /><div className="legacy-config-separator">--- Cargos ---</div><CheckLine label="Permitir modificar precio en cargos" /><CheckLine label="Permitir modificar cantidad en cargos" /><CheckLine label="Permitir cargos en PCP" /><CheckLine label="Tragamonedas" checked={false} disabled /><div className="legacy-config-row"><label>Servicio para TM:<select defaultValue="MANEJO DE MAQUINITAS"><option>MANEJO DE MAQUINITAS</option></select></label><label>Concepto para TM:<select defaultValue=""><option value=""></option></select></label></div><div className="legacy-config-separator">--- Descargos ---</div><CheckLine label="Permitir modificar cantidad en Descargos" /></fieldset>}{configTab === "Cobros y Pagos" && <fieldset className="legacy-config-fieldset"><legend>Cobros y Pagos</legend><div className="legacy-config-two-col"><div><CheckLine label="Guardar GPS" /><CheckLine label="Permitir Mezclar Servicios en Recibo" /><CheckLine label="Permitir Cobros Parciales" /><CheckLine label="Permitir Cobro con Saldo Pendiente (Para Cob.)" /><CheckLine label="Obligar a Cobrar Clientes con Saldo Vencido (Para Clientes)" checked={false} /></div><label className="short-field">Porciento Mín. para chequeo de CDC:<input type="number" defaultValue="0" /></label></div><fieldset className="legacy-inner-fieldset"><legend>Impresión</legend><div className="legacy-inner-tabs"><button type="button">Listados</button><button type="button" className="active">Recibos</button></div><CheckLine label="Usar la misma Impresora de los Listados" checked={false} /><CheckLine label="Imprimir Recibo en HTML" checked={false} /><CheckLine label="Imprimir Recibo en Impresora de Matriz" checked={false} /><CheckLine label="Imprimir Recibo en Impresora Virtual" checked={false} /><div className="legacy-config-row url-port-row"><label>URL:<input /></label><label>Puerto:<input /></label></div><label>Nombre:<input /></label></fieldset></fieldset>}{configTab === "Interfaz" && <fieldset className="legacy-config-fieldset"><legend>Interfaz</legend><CheckLine label="Mostrar Monitor de Cobradores al Inicio" /></fieldset>}{configTab === "GPS" && <fieldset className="legacy-config-fieldset"><legend>GPS</legend><div className="legacy-config-row"><label>Latitud:<input type="number" step="0.0000000000001" defaultValue="19.4499607086182" /></label><label>Longitud:<input type="number" step="0.0000000000001" defaultValue="-70.68701171875" /></label></div></fieldset>}</div><aside className="legacy-config-actions"><button type="button" className="ok-button">oK</button><button type="button">Cancelar</button></aside></div>;
+    const CheckLine = ({ label, checked, disabled = false, onChange }: { label: string; checked: boolean; disabled?: boolean; onChange: (value: boolean) => void }) => <label className={`legacy-check-line ${disabled ? "disabled" : ""}`}><input type="checkbox" checked={checked} disabled={disabled} onChange={(event) => onChange(event.target.checked)} /><span>{label}</span></label>;
+    const fld = (key: string) => ({
+      value: String(systemCfg[key] ?? ""),
+      onChange: (event: { target: { value: string } }) =>
+        setSystemCfg((current) => ({ ...current, [key]: event.target.value })),
+    });
+    const chk = (key: string) => (value: boolean) =>
+      setSystemCfg((current) => ({ ...current, [key]: value }));
+    return (
+      <div className="legacy-config-layout">
+        <div className="legacy-config-main">
+          <div className="legacy-tabs" role="tablist" aria-label="Configuracion General">
+            {tabs.map((tab) => (
+              <button type="button" key={tab} className={configTab === tab ? "active" : ""} onClick={() => setConfigTab(tab)}>{tab}</button>
+            ))}
+          </div>
+          {configTab === "General" && (
+            <fieldset className="legacy-config-fieldset">
+              <legend>General</legend>
+              <label>Empresa:<input {...fld("general.empresa")} /></label>
+              <label>Dirección:<input {...fld("general.direccion")} /></label>
+              <div className="legacy-config-row">
+                <label>Teléfono:<input {...fld("general.telefono")} /></label>
+                <label>Correo Electrónico:<input {...fld("general.correo")} /></label>
+              </div>
+              <label className="short-field">Fax:<input {...fld("general.fax")} /></label>
+              <label className="short-field">Licencia:<input {...fld("general.licencia")} /></label>
+              <label className="short-field">Moneda por defecto:
+                <select {...fld("general.moneda")}>
+                  <option>Peso Dominicano</option>
+                  <option>Dólar Estadounidense</option>
+                  <option>Euro</option>
+                </select>
+              </label>
+            </fieldset>
+          )}
+          {configTab === "Clientes" && (
+            <fieldset className="legacy-config-fieldset">
+              <legend>Clientes</legend>
+              <CheckLine label="Permitir Modificar Código de Cliente Nuevo" checked={Boolean(systemCfg["clientes.modificarCodigo"])} onChange={chk("clientes.modificarCodigo")} />
+              <CheckLine label="Requerir Identificacion para Cliente" checked={Boolean(systemCfg["clientes.requerirIdentificacion"])} onChange={chk("clientes.requerirIdentificacion")} />
+              <CheckLine label="Requerir Identificacion única para Cliente" checked={Boolean(systemCfg["clientes.identificacionUnica"])} onChange={chk("clientes.identificacionUnica")} />
+            </fieldset>
+          )}
+          {configTab === "Cargos y Descargos" && (
+            <fieldset className="legacy-config-fieldset">
+              <legend>Cargos y Descargos</legend>
+              <CheckLine label="Utilizar Importe de Concepto" checked={Boolean(systemCfg["cargos.importeConcepto"])} onChange={chk("cargos.importeConcepto")} />
+              <CheckLine label="Permitir modificar importe de Concepto" checked={Boolean(systemCfg["cargos.modificarImporteConcepto"])} onChange={chk("cargos.modificarImporteConcepto")} />
+              <div className="legacy-config-separator">--- Cargos ---</div>
+              <CheckLine label="Permitir modificar precio en cargos" checked={Boolean(systemCfg["cargos.modificarPrecio"])} onChange={chk("cargos.modificarPrecio")} />
+              <CheckLine label="Permitir modificar cantidad en cargos" checked={Boolean(systemCfg["cargos.modificarCantidad"])} onChange={chk("cargos.modificarCantidad")} />
+              <CheckLine label="Permitir cargos en PCP" checked={Boolean(systemCfg["cargos.enPcp"])} onChange={chk("cargos.enPcp")} />
+              <CheckLine label="Tragamonedas" checked={Boolean(systemCfg["cargos.tragamonedas"])} disabled onChange={chk("cargos.tragamonedas")} />
+              <div className="legacy-config-row">
+                <label>Servicio para TM:<select {...fld("cargos.servicioTm")}><option>MANEJO DE MAQUINITAS</option></select></label>
+                <label>Concepto para TM:<select {...fld("cargos.conceptoTm")}><option value=""></option></select></label>
+              </div>
+              <div className="legacy-config-separator">--- Descargos ---</div>
+              <CheckLine label="Permitir modificar cantidad en Descargos" checked={Boolean(systemCfg["descargos.modificarCantidad"])} onChange={chk("descargos.modificarCantidad")} />
+            </fieldset>
+          )}
+          {configTab === "Cobros y Pagos" && (
+            <fieldset className="legacy-config-fieldset">
+              <legend>Cobros y Pagos</legend>
+              <div className="legacy-config-two-col">
+                <div>
+                  <CheckLine label="Guardar GPS" checked={Boolean(systemCfg["cobros.guardarGps"])} onChange={chk("cobros.guardarGps")} />
+                  <CheckLine label="Permitir Mezclar Servicios en Recibo" checked={Boolean(systemCfg["cobros.mezclarServiciosRecibo"])} onChange={chk("cobros.mezclarServiciosRecibo")} />
+                  <CheckLine label="Permitir Cobros Parciales" checked={Boolean(systemCfg["cobros.cobrosParciales"])} onChange={chk("cobros.cobrosParciales")} />
+                  <CheckLine label="Permitir Cobro con Saldo Pendiente (Para Cob.)" checked={Boolean(systemCfg["cobros.cobroSaldoPendiente"])} onChange={chk("cobros.cobroSaldoPendiente")} />
+                  <CheckLine label="Obligar a Cobrar Clientes con Saldo Vencido (Para Clientes)" checked={Boolean(systemCfg["cobros.obligarVencidos"])} onChange={chk("cobros.obligarVencidos")} />
+                </div>
+                <label className="short-field">Porciento Mín. para chequeo de CDC:<input type="number" {...fld("cobros.porcientoCdc")} /></label>
+              </div>
+              <fieldset className="legacy-inner-fieldset">
+                <legend>Impresión</legend>
+                <div className="legacy-inner-tabs"><button type="button">Listados</button><button type="button" className="active">Recibos</button></div>
+                <CheckLine label="Usar la misma Impresora de los Listados" checked={Boolean(systemCfg["impresion.mismaImpresora"])} onChange={chk("impresion.mismaImpresora")} />
+                <CheckLine label="Imprimir Recibo en HTML" checked={Boolean(systemCfg["impresion.reciboHtml"])} onChange={chk("impresion.reciboHtml")} />
+                <CheckLine label="Imprimir Recibo en Impresora de Matriz" checked={Boolean(systemCfg["impresion.reciboMatriz"])} onChange={chk("impresion.reciboMatriz")} />
+                <CheckLine label="Imprimir Recibo en Impresora Virtual" checked={Boolean(systemCfg["impresion.reciboVirtual"])} onChange={chk("impresion.reciboVirtual")} />
+                <div className="legacy-config-row url-port-row">
+                  <label>URL:<input {...fld("impresion.url")} /></label>
+                  <label>Puerto:<input {...fld("impresion.puerto")} /></label>
+                </div>
+                <label>Nombre:<input {...fld("impresion.nombre")} /></label>
+              </fieldset>
+            </fieldset>
+          )}
+          {configTab === "Interfaz" && (
+            <fieldset className="legacy-config-fieldset">
+              <legend>Interfaz</legend>
+              <CheckLine label="Mostrar Monitor de Cobradores al Inicio" checked={Boolean(systemCfg["interfaz.monitorInicio"])} onChange={chk("interfaz.monitorInicio")} />
+            </fieldset>
+          )}
+          {configTab === "GPS" && (
+            <fieldset className="legacy-config-fieldset">
+              <legend>GPS</legend>
+              <div className="legacy-config-row">
+                <label>Latitud:<input type="number" step="0.0000000000001" {...fld("gps.latitud")} /></label>
+                <label>Longitud:<input type="number" step="0.0000000000001" {...fld("gps.longitud")} /></label>
+              </div>
+            </fieldset>
+          )}
+        </div>
+        <aside className="legacy-config-actions">
+          <button type="button" className="ok-button" disabled={cfgBusy} onClick={() => void saveSystemCfg()}>{cfgBusy ? "Guardando..." : "oK"}</button>
+          <button type="button" disabled={cfgBusy} onClick={() => setSystemCfg(savedCfg)}>Cancelar</button>
+        </aside>
+      </div>
+    );
   }
   return <div className="legacy-mdi-view">{baseToolbar()}<LegacyDenseTable columns={["Nro.", "Opcion", "Estado"]} rows={[[1, pageTitles[page], "Disponible"]]} /></div>;
 }
@@ -1042,6 +1241,9 @@ export default function App() {
     (activeNavKey && navigation.find((n) => n.key === activeNavKey)) ||
     navigation.find((n) => n.page === page && n.primary) ||
     navigation.find((n) => n.page === page);
+  const [auxWindow, setAuxWindow] = useState<
+    null | "facturas" | "novedades" | "pagos"
+  >(null);
   const alertCount = snapshot
     ? snapshot.collectors.filter((c) => c.status !== "active").length +
       (snapshot.totals.difference !== 0 ? 1 : 0)
@@ -1299,6 +1501,107 @@ export default function App() {
                   <Bell size={19} />
                   {alertCount > 0 && <i />}
                 </button>
+                <button
+                  className="icon-button"
+                  aria-label="Facturas"
+                  title="Ventana de Facturas"
+                  onClick={() => setAuxWindow("facturas")}
+                >
+                  <ReceiptText size={19} />
+                </button>
+                <button
+                  className="icon-button"
+                  aria-label="Qué hay de nuevo"
+                  title="Qué hay de nuevo"
+                  onClick={() => setAuxWindow("novedades")}
+                >
+                  <CircleHelp size={19} />
+                </button>
+                <button
+                  className="icon-button"
+                  aria-label="Ventana de Pagos"
+                  title="Ventana de Pagos"
+                  onClick={() => setAuxWindow("pagos")}
+                >
+                  <Wallet size={19} />
+                </button>
+                {auxWindow === "facturas" && snapshot && (
+                  <LegacyDialog
+                    title="Ventana de Facturas"
+                    onClose={() => setAuxWindow(null)}
+                  >
+                    <div className="statement-body">
+                      <LegacyDenseTable
+                        columns={["Fecha", "Cliente", "Importe", "Recibo"]}
+                        rows={snapshot.movements
+                          .filter((m) => m.type === "collection")
+                          .slice(-15)
+                          .reverse()
+                          .map((m) => [
+                            safeDateLabel(m.createdAt.slice(0, 10)),
+                            snapshot.clients.find((c) => c.id === m.clientId)?.name ?? "—",
+                            money(m.amount),
+                            m.receiptToken ?? "—",
+                          ])}
+                      />
+                    </div>
+                  </LegacyDialog>
+                )}
+                {auxWindow === "novedades" && snapshot && (
+                  <LegacyDialog
+                    title="Qué hay de nuevo"
+                    onClose={() => setAuxWindow(null)}
+                  >
+                    <div className="statement-body">
+                      <p className="statement-meta">
+                        CyP Modern — novedades frente al sistema original
+                      </p>
+                      <ul className="novedades-list">
+                        <li>Versión modernizada: API Fastify, portal administrativo y PWA de cobrador.</li>
+                        <li>Moneda única DOP con importes en centavos exactos.</li>
+                        <li>Aceptar/Cancelar depósitos y Descargos Recurrentes.</li>
+                        <li>Importación masiva de Cargos y Descargos desde CSV.</li>
+                        <li>Estado de cuenta por cliente (Cobros y Pagos del Cliente).</li>
+                        <li>Configuración General persistente y reportes de Pagos del legacy.</li>
+                      </ul>
+                    </div>
+                  </LegacyDialog>
+                )}
+                {auxWindow === "pagos" && snapshot && (
+                  <LegacyDialog
+                    title="Ventana de Pagos"
+                    onClose={() => setAuxWindow(null)}
+                  >
+                    <div className="statement-body">
+                      <h3>Autorizaciones pendientes</h3>
+                      <LegacyDenseTable
+                        columns={["Cliente", "Concepto", "Autorizado", "Pagado", "Estado"]}
+                        rows={snapshot.payouts
+                          .filter((p) => p.status !== "cancelled" && p.paid < p.amount)
+                          .map((p) => [
+                            snapshot.clients.find((c) => c.id === p.clientId)?.name ?? "—",
+                            p.concept,
+                            money(p.amount),
+                            money(p.paid),
+                            p.status,
+                          ])}
+                      />
+                      <h3>Últimos pagos</h3>
+                      <LegacyDenseTable
+                        columns={["Fecha", "Cliente", "Importe"]}
+                        rows={snapshot.movements
+                          .filter((m) => m.type === "payout")
+                          .slice(-10)
+                          .reverse()
+                          .map((m) => [
+                            safeDateLabel(m.createdAt.slice(0, 10)),
+                            snapshot.clients.find((c) => c.id === m.clientId)?.name ?? "—",
+                            money(m.amount),
+                          ])}
+                      />
+                    </div>
+                  </LegacyDialog>
+                )}
                 <button
                   className="profile-button"
                   onClick={() => setAccountOpen(true)}

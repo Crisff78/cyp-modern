@@ -29,6 +29,7 @@ import {
   postMovement,
   preview,
   publicAccount,
+  saveSystemConfigData,
   snapshot,
   updateRecurringPayout,
   verifyPassword,
@@ -747,6 +748,17 @@ export async function buildApp(config: Config) {
       },
     );
   }
+  app.get("/api/configuracion", async (req) => {
+    assertAdmin(user(req));
+    return { config: (await config.store.read()).systemConfig ?? {} };
+  });
+  describe("get", "/api/configuracion", "Configuración general del sistema");
+  mutate(
+    "/api/configuracion",
+    "Guardar configuración general",
+    z.object({ config: z.record(z.string(), z.unknown()) }).strict(),
+    (s, u, b) => saveSystemConfigData(s, u, b.config),
+  );
   app.get<{ Params: { id: string } }>(
     "/api/clientes/:id/estado",
     async (req) =>

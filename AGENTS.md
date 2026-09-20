@@ -66,7 +66,7 @@ decisiones y su alcance no se aplican aqui. No mezclar los dos proyectos.
 
 ## Current state - ACTUALIZAR ANTES DE CERRAR
 
-**Last updated:** 2026-09-19 por ZCode (G1-G4 de legacy-parity.md implementados y empujados)
+**Last updated:** 2026-09-19 por ZCode (G1-G7 implementados; G8 y menores pendientes de decisión/captura)
 
 ### Done so far
 
@@ -225,6 +225,19 @@ decisiones y su alcance no se aplican aqui. No mezclar los dos proyectos.
   "Cobros y Pagos del Cliente" que abre el diálogo con las cuatro tablas y el
   resumen; mock demo soporta el GET; test de integración nuevo.
   `npm run check` PASS (19 pass + 1 skip).
+
+- **G5+G6+G7 implementados: matriz de paridad cerrada salvo decisiones
+  (2026-09-19, ZCode).** G5: barra superior con Facturas (últimos cobros con
+  recibo), Qué hay de nuevo (novedades) y Ventana de Pagos (autorizaciones
+  pendientes + últimos pagos). G6: persistencia real de la Configuración
+  General — migración `005_system_config.sql` (jsonb), GET/POST
+  `/api/configuracion` solo administración, diálogo controlado que carga al
+  abrir y guarda con oK (Cancelar restaura lo guardado), mock demo incluido.
+  G7: 7 reportes nuevos de Pagos y Servicios por zona en el lanzador, mismo
+  nivel de vista preliminar que los 9 existentes. `npm run check` PASS
+  (19 pass + 1 skip). Quedan: G8 contabilidad (decisión de Rardiel), menores
+  (desglose de denominaciones, formulario de plantilla recurrente) y captura
+  en vivo §7 (formularios de alta y ventanas N/F/Q/P del demo).
 
 ### Aprovisionamiento (como usarlo)
 

@@ -378,6 +378,7 @@ const initialSnapshot = (): Snapshot => ({
   history: [],
 });
 
+let mockSystemConfig: Record<string, string | number | boolean> = {};
 let state = derive(initialSnapshot());
 
 function derive(snapshot: Snapshot): Snapshot {
@@ -807,6 +808,12 @@ export async function mockApi<T>(
         createdAt: now(),
       });
     state = derive(state);
+    return { ok: true } as T;
+  }
+  if (path === "/configuracion" && method === "GET")
+    return { config: { ...mockSystemConfig } } as T;
+  if (path === "/configuracion" && method === "POST") {
+    mockSystemConfig = jsonBody(options).config ?? {};
     return { ok: true } as T;
   }
   const statementMatch = path.match(/^\/clientes\/([^/]+)\/estado$/);

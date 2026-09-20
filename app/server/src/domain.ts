@@ -128,6 +128,7 @@ export type State = {
   settlements: Settlement[];
   idempotency: Idempotency[];
   accounts: Account[];
+  systemConfig?: Record<string, unknown>;
 };
 export class DomainError extends Error {
   constructor(
@@ -318,6 +319,22 @@ export function updateRecurringPayout(
     template.nextRunDate = cambio.nextRunDate;
   if (cambio.status !== undefined) template.status = cambio.status;
   return template;
+}
+
+export function saveSystemConfigData(
+  state: State,
+  user: User,
+  data: Record<string, unknown>,
+) {
+  assertAdmin(user);
+  if (JSON.stringify(data).length > 65536)
+    throw new DomainError(
+      "CONFIG_TOO_LARGE",
+      "La configuración excede el tamaño permitido.",
+      400,
+    );
+  state.systemConfig = data;
+  return { ok: true };
 }
 
 export function clientStatement(state: State, user: User, clientId: string) {

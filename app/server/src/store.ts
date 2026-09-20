@@ -156,6 +156,12 @@ async function readState(client: pg.PoolClient): Promise<State> {
        FROM recurring_payouts ORDER BY created_at, id`,
     )
   ).rows.map(clean);
+  const configRow = (
+    await client.query(`SELECT data FROM system_config WHERE id = 'default'`)
+  ).rows[0];
+  state.systemConfig = configRow
+    ? (configRow.data as Record<string, unknown>)
+    : undefined;
   state.idempotency = (
     await client.query(
       `SELECT id,fingerprint,response,created_at AS "createdAt" FROM idempotency ORDER BY created_at,id`,
@@ -380,6 +386,15 @@ async function saveState(client: pg.PoolClient, state: State, before: State) {
         template.createdAt,
       ],
     );
+  }
+  if (state.systemConfig) {
+    const prevConfig = before.systemConfig;
+    if (JSON.stringify(prevConfig) !== JSON.stringify(state.systemConfig))
+      await client.query(
+        `INSERT INTO system_config(id, data, updated_at) VALUES('default', $1, now())
+         ON CONFLICT(id) DO UPDATE SET data = EXCLUDED.data, updated_at = now()`,
+        [JSON.stringify(state.systemConfig)],
+      );
   }
   for (const row of state.idempotency) {
     const prev = before.idempotency.find((r) => r.id === row.id);
