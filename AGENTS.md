@@ -320,6 +320,13 @@ decisiones y su alcance no se aplican aqui. No mezclar los dos proyectos.
   (20 pass + 1 skip). Decision de Rardiel (2026-09-20): los datos
   PRUEBA SE QUEDAN en la BD real como dataset demo (no borrar).
 
+- **Onboarding para agentes nuevos (2026-09-20, ZCode):** se creo
+  `docs/ONBOARDING-AGENTES.md` — traspaso completo del proyecto (que es,
+  donde esta todo, mapa del Superbrain, estado, decisiones cerradas,
+  pendientes, convenciones) + plantilla de 16 agentes para Hermes/AutoClaw
+  con nombres, areas y descripciones. Cualquier modelo/agente nuevo debe
+  leer ese documento Y este AGENTS.md antes de tocar codigo.
+
 ### Aprovisionamiento (como usarlo)
 
 1. Entrar al admin (modo real: `ADMIN_EMAIL`/`ADMIN_PASSWORD` del `.env`; `Demo-CyP-2026!` solo vale con `DEMO_MODE=true`) > Archivos >
