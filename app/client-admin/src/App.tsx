@@ -1471,20 +1471,21 @@ export default function App() {
                   <strong>{activeNav?.label ?? "Escritorio"}</strong>
                 </div>
               </div>
-              <div className="topbar-actions">
-                <span className="server-clock">
-                  {clock.toLocaleDateString("es-DO", {
+              <div className="legacy-telemetry" aria-label="Telemetría del sistema legacy">
+                <span>Versión: 8.5.9600.16384 (winblue_rtm.130821-1623)</span>
+                <span>
+                  Fecha/Hora del Servidor: {clock.toLocaleDateString("es-DO", {
                     day: "2-digit",
                     month: "2-digit",
                     year: "numeric",
+                  })}{" "}
+                  {clock.toLocaleTimeString("es-DO", {
+                    hour: "2-digit",
+                    minute: "2-digit",
                   })}
-                  <strong>
-                    {clock.toLocaleTimeString("es-DO", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </strong>
                 </span>
+              </div>
+              <div className="topbar-actions">
                 <span className="status-badge">
                   {snapshot?.totals.activeCollectors ?? 0} cobradores en calle
                 </span>
