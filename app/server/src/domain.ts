@@ -92,6 +92,7 @@ export type Movement = {
   acceptedBy?: string;
   cancelledAt?: string;
   cancelledBy?: string;
+  denominations?: Array<{ denominacion: number; cantidad: number }>;
 };
 export type Settlement = {
   id: string;
@@ -216,7 +217,12 @@ export function preview(state: State, collectorId: string, date?: string) {
     difference: collected - deposited + (officeDelivered - paidToClients),
   };
 }
-export function acceptDeposit(state: State, user: User, movementId: string) {
+export function acceptDeposit(
+  state: State,
+  user: User,
+  movementId: string,
+  desglose?: Array<{ denominacion: number; cantidad: number }>,
+) {
   assertAdmin(user);
   const movement = state.movements.find(
     (m) => m.id === movementId && m.type === "deposit",
@@ -229,6 +235,30 @@ export function acceptDeposit(state: State, user: User, movementId: string) {
       "No se puede aceptar un depósito cancelado.",
       422,
     );
+  if (desglose?.length) {
+    let total = 0;
+    for (const item of desglose) {
+      if (
+        !Number.isInteger(item.denominacion) ||
+        item.denominacion <= 0 ||
+        !Number.isInteger(item.cantidad) ||
+        item.cantidad < 0
+      )
+        throw new DomainError(
+          "DEPOSIT_BREAKDOWN_INVALID",
+          "El desglose contiene valores inválidos.",
+          422,
+        );
+      total += item.denominacion * item.cantidad;
+    }
+    if (total !== movement.amount)
+      throw new DomainError(
+        "DEPOSIT_BREAKDOWN_MISMATCH",
+        `El desglose suma ${total} centavos y el depósito es ${movement.amount}.`,
+        422,
+      );
+    movement.denominations = desglose;
+  }
   if (!movement.acceptedAt) {
     movement.acceptedAt = new Date().toISOString();
     movement.acceptedBy = user.id;

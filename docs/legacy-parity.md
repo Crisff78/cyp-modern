@@ -86,6 +86,18 @@ moneda unica DOP (selectores de Moneda del original quedan como pantalla),
 cobros sin detalle de lineas (collections→charges), clientes no importados
 directo del .bak, credenciales hasheadas.
 
+## 6b. Menores del deposito y plantillas — IMPLEMENTADOS 2026-09-19
+
+- **Desglose de denominaciones (Panel de Detalles):** al aceptar un deposito
+  el admin pide el desglose por billetes/monedas DOP (2000..1); el servidor
+  valida que el desglose cuadre exactamente con el importe (422 si no) y lo
+  guarda en `cash_handovers.denominations` (jsonb, migracion 007). Aceptar sin
+  desglose sigue permitido (compatibilidad).
+- **Formulario de plantilla de Descargo Recurrente:** modal nuevo
+  (`RecurringPayoutModal`) en la pantalla Descargos Rec. para alta y edicion
+  (cliente, concepto, monto, frecuencia, proxima fecha); mock demo incluido.
+  El boton Archivar ya existia.
+
 ## 7. Pendientes de verificacion en vivo
 
 **Intento 2026-09-19 (ZCode):** el demo esta CAIDO del lado del servidor —

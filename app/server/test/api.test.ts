@@ -1046,3 +1046,58 @@ test("client statement: cargos, cobros, autorizaciones, pagos y alcance", async 
     await app.close();
   }
 });
+
+test("deposit accept with denominations breakdown", async () => {
+  const { app, post, adminToken, store } = await setup();
+  const auth = { authorization: `Bearer ${adminToken}` };
+  try {
+    await store.transaction((s) => {
+      s.movements.push({
+        id: "mov-seed-cash-2",
+        collectorId: "col-1",
+        type: "collection",
+        amount: 100000,
+        createdAt: new Date().toISOString(),
+        actorId: "usr-seed",
+      });
+    });
+    const created = await post("/api/depositos", {
+      collectorId: "col-1",
+      amount: 10000,
+    });
+    assert.equal(created.statusCode, 200);
+    const id = created.json().movement.id as string;
+    // desglose que no cuadra
+    assert.equal(
+      (
+        await post(`/api/depositos/${id}/aceptar`, {
+          desglose: [{ denominacion: 500, cantidad: 10 }],
+        })
+      ).statusCode,
+      422,
+    );
+    // desglose que cuadra
+    assert.equal(
+      (
+        await post(`/api/depositos/${id}/aceptar`, {
+          desglose: [
+            { denominacion: 500, cantidad: 20 },
+            { denominacion: 50, cantidad: 0 },
+          ],
+        })
+      ).statusCode,
+      200,
+    );
+    const snap = (await app.inject({ url: "/api/snapshot", headers: auth })).json();
+    const movement = snap.movements.find(
+      (m: { id: string }) => m.id === id,
+    );
+    assert.ok(movement);
+    assert.deepEqual(movement.denominations, [
+      { denominacion: 500, cantidad: 20 },
+      { denominacion: 50, cantidad: 0 },
+    ]);
+  } finally {
+    await app.close();
+  }
+});

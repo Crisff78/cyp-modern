@@ -815,6 +815,49 @@ export async function mockApi<T>(
     state = derive(state);
     return { ok: true } as T;
   }
+  if (path === "/descargos-recurrentes" && method === "POST") {
+    const body = jsonBody(options);
+    state.payoutRecurring.push({
+      id: uid("rpo"),
+      clientId: String(body.clientId ?? state.clients[0]?.id ?? "cli-1"),
+      concept: String(body.concept ?? ""),
+      amount: Number(body.amount ?? 0),
+      frequency:
+        body.frequency === "weekly" || body.frequency === "quarterly"
+          ? body.frequency
+          : "monthly",
+      nextRunDate: String(body.nextRunDate ?? state.businessDate),
+      status: "active",
+      createdAt: now(),
+    });
+    state = derive(state);
+    return { ok: true } as T;
+  }
+  const recMatch = path.match(/^\/descargos-recurrentes\/([^/]+)$/);
+  if (recMatch && method === "POST") {
+    const body = jsonBody(options);
+    const template = state.payoutRecurring.find((t) => t.id === recMatch[1]);
+    if (!template)
+      throw new MockApiError("El descargo recurrente no existe.", 404);
+    if (body.concept !== undefined) template.concept = String(body.concept);
+    if (body.amount !== undefined) template.amount = Number(body.amount);
+    if (
+      body.frequency === "weekly" ||
+      body.frequency === "monthly" ||
+      body.frequency === "quarterly"
+    )
+      template.frequency = body.frequency;
+    if (body.nextRunDate !== undefined)
+      template.nextRunDate = String(body.nextRunDate);
+    if (
+      body.status === "active" ||
+      body.status === "paused" ||
+      body.status === "archived"
+    )
+      template.status = body.status;
+    state = derive(state);
+    return { ok: true } as T;
+  }
   if (path === "/configuracion" && method === "GET")
     return { config: { ...mockSystemConfig } } as T;
   if (path === "/configuracion" && method === "POST") {

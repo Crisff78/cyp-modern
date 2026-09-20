@@ -250,6 +250,19 @@ decisiones y su alcance no se aplican aqui. No mezclar los dos proyectos.
   formulario de cliente en QuickRecordModal con los campos nuevos y ruta
   seleccionable, mock actualizado. `npm run check` PASS (19 pass + 1 skip).
 
+- **Menores implementados: desglose de denominaciones y formulario de
+  plantilla recurrente (2026-09-19, ZCode).** Migracion
+  `007_deposit_denominations.sql` (jsonb en cash_handovers); acceptDeposit
+  valida desglose opcional que debe cuadrar con el importe (422 si no) y lo
+  persiste; dialogo "Desglose de denominaciones" (billetes/monedas DOP) al
+  aceptar un deposito en el admin. Modal `RecurringPayoutModal` para alta y
+  edicion de plantillas en Descargos Rec. (cliente, concepto, monto,
+  frecuencia, proxima fecha); mock demo de ambas rutas. Test de integracion
+  nuevo. `npm run check` PASS (20 pass + 1 skip). La captura en vivo del demo
+  sigue bloqueada: la BD de gdemos.ddns.net esta caida (reinicio probado);
+  se requiere ademas login manual de Rardiel cuando vuelva. G8 contabilidad
+  sigue esperando decision explicita.
+
 ### Aprovisionamiento (como usarlo)
 
 1. Entrar al admin (modo real: `ADMIN_EMAIL`/`ADMIN_PASSWORD` del `.env`; `Demo-CyP-2026!` solo vale con `DEMO_MODE=true`) > Archivos >

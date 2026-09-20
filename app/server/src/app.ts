@@ -770,11 +770,20 @@ export async function buildApp(config: Config) {
     "Estado de cuenta del cliente (cargos, cobros, autorizaciones y pagos)",
   );
   const depositLifecycleBody = z.object({}).strict();
+  const depositAcceptBody = z
+    .object({
+      desglose: z
+        .array(
+          z.object({ denominacion: z.number(), cantidad: z.number() }).strict(),
+        )
+        .optional(),
+    })
+    .strict();
   mutate(
     "/api/depositos/:id/aceptar",
     "Aceptar depósito de cobrador",
-    depositLifecycleBody,
-    (s, u, _body, params) => acceptDeposit(s, u, params.id),
+    depositAcceptBody,
+    (s, u, b, params) => acceptDeposit(s, u, params.id, b.desglose),
   );
   mutate(
     "/api/depositos/:id/cancelar",

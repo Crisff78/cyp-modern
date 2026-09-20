@@ -2406,6 +2406,8 @@ function MasterDataView({
   );
 }
 
+const DENOMS = [2000, 1000, 500, 200, 100, 50, 20, 10, 5, 1];
+
 function LegacyOperationView({
   spec,
   snapshot,
@@ -2432,6 +2434,15 @@ function LegacyOperationView({
     Record<string, unknown>[] | null
   >(null);
   const canImport = spec.entity === "charges" || spec.entity === "payouts";
+  const [acceptTarget, setAcceptTarget] = useState<TableRow | null>(null);
+  const [denoms, setDenoms] = useState<Record<number, string>>({});
+  const denomsTotal = Object.entries(denoms).reduce(
+    (sum, [d, q]) => sum + Number(d) * (Number(q) || 0),
+    0,
+  );
+  const [recurringModal, setRecurringModal] = useState<
+    TableRow | "new" | null
+  >(null);
   const permissions = permissionsFor(currentUser);
   const rows = spec.rows.filter((row) => {
     const haystack =
@@ -2504,12 +2515,18 @@ function LegacyOperationView({
   const depositAction = async (
     row: TableRow,
     action: "aceptar" | "cancelar",
+    desglose?: { denominacion: number; cantidad: number }[],
   ) => {
     if (!row.__id) return;
     try {
       await api(
         `/depositos/${encodeURIComponent(String(row.__id))}/${action}`,
-        { method: "POST", body: JSON.stringify({}) },
+        {
+          method: "POST",
+          body: JSON.stringify(
+            action === "aceptar" && desglose?.length ? { desglose } : {},
+          ),
+        },
       );
       toast.success(
         action === "aceptar" ? "Depósito aceptado" : "Depósito cancelado",
@@ -2637,7 +2654,11 @@ function LegacyOperationView({
                 permissions.canCreate ? "Nuevo" : permissions.readOnlyReason
               }
               disabled={!permissions.canCreate}
-              onClick={() => setQuickRecord("new")}
+              onClick={() =>
+                spec.entity === "recurringPayouts"
+                  ? setRecurringModal("new")
+                  : setQuickRecord("new")
+              }
             >
               <Plus size={16} />
             </button>
@@ -2659,9 +2680,7 @@ function LegacyOperationView({
                 <button
                   title="Aceptar depósito"
                   disabled={!selectedRow}
-                  onClick={() =>
-                    selectedRow && depositAction(selectedRow, "aceptar")
-                  }
+                  onClick={() => selectedRow && setAcceptTarget(selectedRow)}
                 >
                   <ClipboardCheck size={16} />
                 </button>
@@ -2756,7 +2775,11 @@ function LegacyOperationView({
                 ? setSelectedRow(row)
                 : undefined
             }
-            onEdit={(row) => setQuickRecord(row)}
+            onEdit={(row) =>
+              spec.entity === "recurringPayouts"
+                ? setRecurringModal(row)
+                : setQuickRecord(row)
+            }
             onDelete={deleteRow}
           />
           <div className="legacy-footerbar">
@@ -2793,7 +2816,226 @@ function LegacyOperationView({
             }}
           />
         ))}
+      {recurringModal && spec.entity === "recurringPayouts" && (
+        <RecurringPayoutModal
+          row={recurringModal === "new" ? null : recurringModal}
+          snapshot={snapshot}
+          onClose={() => setRecurringModal(null)}
+          onSaved={async () => {
+            setRecurringModal(null);
+            await onRefresh();
+          }}
+        />
+      )}
+      {acceptTarget && (
+        <LegacyDialog
+          title="Desglose de denominaciones"
+          onClose={() => setAcceptTarget(null)}
+        >
+          <div className="statement-body">
+            <p className="statement-meta">
+              Depósito de {money(Number(acceptTarget.__amount ?? 0))} — indique
+              billetes y monedas:
+            </p>
+            {DENOMS.map((d) => (
+              <label key={d} className="field compact-field">
+                RD$ {d}
+                <input
+                  type="number"
+                  min="0"
+                  value={denoms[d] ?? ""}
+                  onChange={(event) =>
+                    setDenoms((current) => ({
+                      ...current,
+                      [d]: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+            ))}
+            <div className="legacy-footerbar">
+              <span>
+                Desglosado: <strong>{money(denomsTotal)}</strong> de{" "}
+                {money(Number(acceptTarget.__amount ?? 0))}
+              </span>
+            </div>
+            {denomsTotal !== 0 &&
+              denomsTotal !== Number(acceptTarget.__amount ?? 0) && (
+                <div className="inline-error" role="alert">
+                  El desglose debe cuadrar exactamente con el importe.
+                </div>
+              )}
+            <div className="dialog-actions">
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setAcceptTarget(null)}
+              >
+                Cancelar
+              </button>
+              <button
+                className="btn primary"
+                disabled={
+                  denomsTotal !== 0 &&
+                  denomsTotal !== Number(acceptTarget.__amount ?? 0)
+                }
+                onClick={() => {
+                  const desglose = DENOMS.filter(
+                    (d) => Number(denoms[d] ?? 0) > 0,
+                  ).map((d) => ({
+                    denominacion: d,
+                    cantidad: Number(denoms[d]),
+                  }));
+                  void depositAction(acceptTarget, "aceptar", desglose);
+                  setAcceptTarget(null);
+                }}
+              >
+                Aceptar depósito
+              </button>
+            </div>
+          </div>
+        </LegacyDialog>
+      )}
     </>
+  );
+}
+
+function RecurringPayoutModal({
+  row,
+  snapshot,
+  onClose,
+  onSaved,
+}: {
+  row: TableRow | null;
+  snapshot: Snapshot;
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  const raw = row?.__raw ?? {};
+  const [clientId, setClientId] = useState(
+    String(raw.clientId ?? snapshot.clients[0]?.id ?? ""),
+  );
+  const [concept, setConcept] = useState(String(raw.concept ?? ""));
+  const [amount, setAmount] = useState(
+    String(Number(raw.amount ?? 10000) / 100),
+  );
+  const [frequency, setFrequency] = useState(
+    String(raw.frequency ?? "monthly"),
+  );
+  const [nextRunDate, setNextRunDate] = useState(
+    String(raw.nextRunDate ?? snapshot.businessDate),
+  );
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const save = async (event: FormEvent) => {
+    event.preventDefault();
+    const cents = Math.round(Number(amount) * 100);
+    if (!concept.trim() || !Number.isFinite(cents) || cents <= 0) {
+      setError("Complete concepto e importe (mayor a cero).");
+      return;
+    }
+    setBusy(true);
+    try {
+      await api(
+        row?.__id
+          ? `/descargos-recurrentes/${encodeURIComponent(String(row.__id))}`
+          : "/descargos-recurrentes",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            clientId,
+            concept: concept.trim(),
+            amount: cents,
+            frequency,
+            nextRunDate: nextRunDate || snapshot.businessDate,
+          }),
+        },
+      );
+      toast.success(row ? "Plantilla actualizada" : "Plantilla creada");
+      await onSaved();
+    } catch (error) {
+      setError(
+        error instanceof Error ? error.message : "No se pudo guardar la plantilla.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={row ? "Editar Descargo Recurrente" : "Nuevo Descargo Recurrente"}
+      description="Plantilla de descargo periódico por cliente."
+    >
+      <form className="operation-form" onSubmit={save}>
+        <label className="field">
+          Cliente
+          <select
+            value={clientId}
+            onChange={(event) => setClientId(event.target.value)}
+          >
+            {snapshot.clients.map((client) => (
+              <option value={client.id} key={client.id}>
+                {client.name} ({client.code})
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          Concepto
+          <input
+            value={concept}
+            onChange={(event) => setConcept(event.target.value)}
+            required
+          />
+        </label>
+        <label className="field">
+          Monto (RD$)
+          <input
+            type="number"
+            min="0.01"
+            step="0.01"
+            value={amount}
+            onChange={(event) => setAmount(event.target.value)}
+            required
+          />
+        </label>
+        <label className="field">
+          Frecuencia
+          <select
+            value={frequency}
+            onChange={(event) => setFrequency(event.target.value)}
+          >
+            <option value="weekly">Semanal</option>
+            <option value="monthly">Mensual</option>
+            <option value="quarterly">Trimestral</option>
+          </select>
+        </label>
+        <label className="field">
+          Próxima fecha
+          <input
+            type="date"
+            value={nextRunDate}
+            onChange={(event) => setNextRunDate(event.target.value)}
+            required
+          />
+        </label>
+        {error && (
+          <div className="inline-error" role="alert">
+            {error}
+          </div>
+        )}
+        <div className="dialog-actions">
+          <button type="button" className="btn" disabled={busy} onClick={onClose}>
+            Cancelar
+          </button>
+          <button className="btn primary" disabled={busy}>
+            {busy ? "Guardando..." : "Guardar (oK)"}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
