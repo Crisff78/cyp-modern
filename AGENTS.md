@@ -317,8 +317,8 @@ decisiones y su alcance no se aplican aqui. No mezclar los dos proyectos.
   (settlement creado). Rechazos del negocio verificados como correctos:
   cobro duplicado 422, deposito sin efectivo 409, pago sin fondos de oficina
   409, cierre descuadrado 409 UNBALANCED. `npm run check` verde
-  (20 pass + 1 skip). Pendiente menor: los cargos/datos PRUEBA quedaron en
-  la BD real (borrables desde admin/SQL cuando se decida).
+  (20 pass + 1 skip). Decision de Rardiel (2026-09-20): los datos
+  PRUEBA SE QUEDAN en la BD real como dataset demo (no borrar).
 
 ### Aprovisionamiento (como usarlo)
 
