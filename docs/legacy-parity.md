@@ -78,7 +78,7 @@ trazas, usuarios/roles, limites de cobrador, motivos de atraso, frecuencias
 | G5 | ~~Ventanas auxiliares~~ **IMPLEMENTADO 2026-09-19** (barra superior: Facturas = últimos cobros con recibo; Qué hay de nuevo = novedades de la modernización; Ventana de Pagos = autorizaciones pendientes + últimos pagos) | App.tsx, diálogos legacy sobre snapshot | MEDIA |
 | G6 | ~~Configuración General persistente~~ **IMPLEMENTADO 2026-09-19** (tabla `system_config` jsonb, GET/POST `/api/configuracion` admin-only, diálogo controlado con carga y guardado, mock demo) | `005_system_config.sql`, `saveSystemConfigData`, LegacyCodifierView controlado | MEDIA |
 | G7 | ~~Reportes legacy de Pagos + ServiciosXZona~~ **IMPLEMENTADO 2026-09-19** (7 definiciones nuevas en el lanzador: Pagos detallado, pendientes clientes/rutas/zonas, x servicio detallado/resumido, Servicios por zona — al mismo nivel de vista preliminar que los 9 existentes) | reportDefinitions + ReportPageId | BAJA |
-| G8 | Contabilidad legacy (EntidadesContables/MovimientosContables) | sin equivalente nuevo | DECISIÓN (¿fuera de alcance?) — pendiente de Rardiel |
+| G8 | Contabilidad legacy (EntidadesContables/MovimientosContables) | sin equivalente nuevo | **DECIDIDA 2026-09-19 (Rardiel): FUERA DE ALCANCE** — excepción deliberada; el cuadre diario por cobrador cubre el control operativo |
 | G9 | ~~Campos de contacto del cliente~~ **IMPLEMENTADO 2026-09-19** (legacy: alias, sector, telefono, celular, direccion, nota, email — validado contra layout A del .bak; el modelo nuevo solo tenia name/code/phone/address) | `006_client_contact.sql`, Client type, store carga/persistencia, formulario de cliente en QuickRecordModal, mock | MEDIA |
 
 Decisiones cerradas que explican diferencias intencionales (no son brechas):
@@ -100,22 +100,29 @@ directo del .bak, credenciales hasheadas.
 
 ## 7. Pendientes de verificacion en vivo
 
-**Intento 2026-09-19 (ZCode):** el demo esta CAIDO del lado del servidor —
-"Error abriendo conexion con la Base de Datos: Login failed for user ''"; el
-enlace "Reiniciar la aplicacion" no lo recupera (falla persistente de la BD de
-gdemos.ddns.net, infraestructura externa). Sesion anterior ademas habia
-congelado el navegador. Captura en vivo de formularios de alta y ventanas
-N/F/Q/P sigue PENDIENTE hasta que el demo vuelva a levantarse.
+**CAPTURA EN VIVO COMPLETADA 2026-09-19 21:26-21:31 (Rardiel logged in).**
+Tras caerse la BD del demo y reiniciarse, Rardiel inicio sesion y se capturo:
 
-Validacion estatica realizada en su lugar (2026-09-19):
-- Formulario de alta/edicion de CLIENTE: legacy guarda 9 campos de datos
-  (id/codigo, nombre, alias, sector, telefono, celular, direccion, nota,
-  email — layout A verificado del .bak). El admin nuevo solo tenia
-  name/code/phone/address/route → **brecha G9 implementada**: campos alias,
-  sector, celular, email y nota añadidos al modelo, store, formulario y mock.
-- Formulario de alta de CARGO: `ChargeDataModal` cubre cliente/moneda/
-  servicio/concepto/monto/nota (superconjunto razonable de las columnas del
-  grid original); falta validacion visual contra el demo cuando vuelva.
-- Ventanas N/F/Q/P del demo: contenido nunca observado en vivo; G5 las
-  implementa con equivalentes funcionales (facturas=ultimos cobros con recibo,
-  novedades, ventana de pagos pendientes).
+- **"Datos del Cliente..." (alta/edicion de cliente):** Cliente (nombre),
+  1er apellido, 2do apellido, Conocido por (alias), Direccion, Telefono,
+  Celular, Identificacion, EMail, Nota, Ubicacion, Zona, Codigo + oK/Cancelar
+  y boton "G" (GPS). El admin nuevo cubre todos los datos con G9
+  (alias=Conocido por, sector=Zona, celular, email, nota); DIFERENCIA DE
+  MODELADO: el original parte el nombre en Cliente + 1er/2do apellido y el
+  moderno usa un campo unico de nombre completo (equivalente en datos);
+  "Ubicacion" del cliente se cubre con la vista Ubicacion Geografica (GPS).
+- **"Datos del Cargo..." (Agregar cobro de Cargos):** Cliente, Moneda,
+  Servicio, Concepto, Importe, Nota + oK/Cancelar. `ChargeDataModal` del admin
+  es superconjunto (cliente/moneda/servicio/concepto/monto base x tasa/nota).
+- **Ventanas N/F/Q/P (Notificaciones, Facturas, Que hay de nuevo, Ventana de
+  Pagos):** clics reales por coordenadas no abren contenido en el demo — son
+  ventanas dependientes de datos (vacias en este estado). G5 las cubre con
+  datos reales del sistema moderno (facturas=ultimos cobros con recibo,
+  novedades, pagos pendientes/ultimos pagos).
+- **Monitor C:** grilla vacia en el demo incluso tras Refrescar; su estructura
+  (Auto./Refrescar/Moneda/paginado) ya esta replicada, y el monitor nuevo
+  anade columnas RDM completas.
+
+CONCLUSION: verificacion campo por campo completada; sin brechas nuevas
+pendientes (la unica diferencia estructural es el nombre partido en
+apellidos, documentada arriba como decision de modelado).

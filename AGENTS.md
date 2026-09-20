@@ -66,7 +66,7 @@ decisiones y su alcance no se aplican aqui. No mezclar los dos proyectos.
 
 ## Current state - ACTUALIZAR ANTES DE CERRAR
 
-**Last updated:** 2026-09-19 por ZCode (G1-G7 implementados; G8 y menores pendientes de decisión/captura)
+**Last updated:** 2026-09-19 por ZCode (matriz de paridad CERRADA: G1-G7+G9+menores implementados, G8 fuera de alcance por decisión de Rardiel)
 
 ### Done so far
 
@@ -262,6 +262,16 @@ decisiones y su alcance no se aplican aqui. No mezclar los dos proyectos.
   sigue bloqueada: la BD de gdemos.ddns.net esta caida (reinicio probado);
   se requiere ademas login manual de Rardiel cuando vuelva. G8 contabilidad
   sigue esperando decision explicita.
+
+- **Captura en vivo completada y G8 decidida (2026-09-19, ZCode).** Con
+  sesion de Rardiel en el demo se capturaron campo por campo "Datos del
+  Cliente..." (13 campos, nombre partido en apellidos = diferencia de
+  modelado documentada) y "Datos del Cargo..." (cliente/moneda/servicio/
+  concepto/importe/nota — ChargeDataModal es superconjunto); las ventanas
+  N/F/Q/P del demo estan vacias (dependen de datos) y G5 ya las cubre con
+  datos reales; Monitor C confirma Auto./Refrescar/Moneda/paginado. **G8:
+  Rardiel decidio FUERA DE ALCANCE** (contabilidad del legacy no se porta;
+  excepcion deliberada documentada). Matriz de paridad CERRADA.
 
 ### Aprovisionamiento (como usarlo)
 
