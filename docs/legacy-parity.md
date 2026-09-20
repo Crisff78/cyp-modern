@@ -98,6 +98,19 @@ directo del .bak, credenciales hasheadas.
   (cliente, concepto, monto, frecuencia, proxima fecha); mock demo incluido.
   El boton Archivar ya existia.
 
+## 6c. Detalles de grillas, impresion y respaldo — IMPLEMENTADOS 2026-09-19 (G10)
+
+- **Ordenar por columna:** clic en cualquier encabezado alterna ascendente/
+  descendente con indicador (equivalente del menu Ordenar del original).
+- **Selector de columnas:** boton "Columnas" sobre cada grilla para
+  mostrar/ocultar columnas (equivalente del menu Columnas del original).
+- **Imprimir cableado:** botones Imprimir en Cobros, Depositos y Reportes
+  ejecutan la impresion del panel de resultados (CSS de impresion oculta
+  filtros, barras y paneles laterales).
+- **Hacer copia de respaldo:** boton en la barra superior que descarga el
+  snapshot completo del sistema como JSON con fecha (equivalente moderno del
+  respaldo del menu Cerrar).
+
 ## 7. Pendientes de verificacion en vivo
 
 **CAPTURA EN VIVO COMPLETADA 2026-09-19 21:26-21:31 (Rardiel logged in).**

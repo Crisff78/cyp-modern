@@ -6426,3 +6426,60 @@ table {
   display: grid;
   gap: 0.3rem;
 }
+
+.sortable-col {
+  cursor: pointer;
+  user-select: none;
+}
+
+.sort-indicator {
+  font-size: 0.7rem;
+}
+
+.legacy-column-chooser-bar {
+  position: relative;
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.25rem;
+}
+
+.legacy-column-menu {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 40;
+  background: #fff;
+  border: 1px solid #d4d4d8;
+  border-radius: 6px;
+  padding: 0.4rem 0.6rem;
+  display: grid;
+  gap: 0.25rem;
+  max-height: 240px;
+  overflow: auto;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+}
+
+.legacy-column-menu label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+@media print {
+  .legacy-filter-panel,
+  .legacy-icon-toolbar,
+  .legacy-detail-panel,
+  .legacy-footerbar,
+  .legacy-column-chooser-bar,
+  .report-filter-panel,
+  .report-action-row {
+    display: none !important;
+  }
+
+  .legacy-grid-panel,
+  .report-results-panel {
+    width: 100% !important;
+  }
+}

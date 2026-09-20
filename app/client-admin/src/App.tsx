@@ -4,6 +4,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -22,8 +23,10 @@ import {
   CircleHelp,
   ClipboardCheck,
   Command,
+  Database,
   Download,
   FileCheck2,
+  Printer,
   FolderOpen,
   KeyRound,
   LayoutDashboard,
@@ -432,7 +435,7 @@ function ReportLayout({ title, snapshot, children }: { title: string; snapshot: 
           <div className="report-separator">---</div>
           <button type="button" className="btn full"><RefreshCw size={14} /> Refrescar</button>
           <div className="report-action-row">
-            <button type="button"><FileCheck2 size={14} /> Imprimir</button>
+            <button type="button" onClick={() => window.print()}><Printer size={14} /> Imprimir</button>
             <button type="button"><Download size={14} /> Exportar</button>
           </div>
         </div>
@@ -1244,6 +1247,25 @@ export default function App() {
   const [auxWindow, setAuxWindow] = useState<
     null | "facturas" | "novedades" | "pagos"
   >(null);
+  const downloadBackup = async () => {
+    try {
+      const data = await api<unknown>("/snapshot");
+      const blob = new Blob([JSON.stringify(data, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `cyp-respaldo-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Copia de respaldo descargada");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "No se pudo generar el respaldo.",
+      );
+    }
+  };
   const alertCount = snapshot
     ? snapshot.collectors.filter((c) => c.status !== "active").length +
       (snapshot.totals.difference !== 0 ? 1 : 0)
@@ -1524,6 +1546,14 @@ export default function App() {
                   onClick={() => setAuxWindow("pagos")}
                 >
                   <Wallet size={19} />
+                </button>
+                <button
+                  className="icon-button"
+                  aria-label="Hacer copia de respaldo"
+                  title="Hacer copia de respaldo"
+                  onClick={() => void downloadBackup()}
+                >
+                  <Database size={19} />
                 </button>
                 {auxWindow === "facturas" && snapshot && (
                   <LegacyDialog
@@ -2695,6 +2725,11 @@ function LegacyOperationView({
                 </button>
               </>
             )}
+            {["collections", "deposits"].includes(String(spec.entity)) && (
+              <button title="Imprimir" onClick={() => window.print()}>
+                <Printer size={16} />
+              </button>
+            )}
             {canImport && (
               <>
                 <input
@@ -3486,6 +3521,7 @@ function LegacyTable({
   onSelect,
   onEdit,
   onDelete,
+  sortable = true,
 }: {
   columns: LegacyColumn[];
   rows: TableRow[];
@@ -3495,33 +3531,95 @@ function LegacyTable({
   onSelect?: (row: TableRow) => void;
   onEdit?: (row: TableRow) => void;
   onDelete?: (row: TableRow) => void;
+  sortable?: boolean;
 }) {
   const actionTitle = permissions?.readOnlyReason ?? "Acciones de registro";
+  const [sortKey, setSortKey] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [hiddenCols, setHiddenCols] = useState<string[]>([]);
+  const [chooserOpen, setChooserOpen] = useState(false);
+  const visibleColumns = columns.filter((c) => !hiddenCols.includes(c.key));
+  const displayRows = useMemo(() => {
+    if (!sortKey) return rows;
+    const sorted = [...rows].sort((a, b) => {
+      const av = a[sortKey];
+      const bv = b[sortKey];
+      const an = Number(av);
+      const bn = Number(bv);
+      const numeric =
+        String(av ?? "").trim() !== "" &&
+        String(bv ?? "").trim() !== "" &&
+        !Number.isNaN(an) &&
+        !Number.isNaN(bn);
+      const r = numeric
+        ? an - bn
+        : String(av ?? "").localeCompare(String(bv ?? ""));
+      return sortDir === "asc" ? r : -r;
+    });
+    return sorted;
+  }, [rows, sortKey, sortDir]);
+  const toggleSort = (key: string) => {
+    if (sortKey !== key) {
+      setSortKey(key);
+      setSortDir("asc");
+      return;
+    }
+    setSortDir((dir) => (dir === "asc" ? "desc" : "asc"));
+  };
   return (
     <div className="table-scroll legacy-table-scroll">
+      <div className="legacy-column-chooser-bar">
+        <button type="button" className="text-button" onClick={() => setChooserOpen((v) => !v)}>
+          Columnas
+        </button>
+        {chooserOpen && (
+          <div className="legacy-column-menu">
+            {columns.map((column) => (
+              <label key={column.key}>
+                <input
+                  type="checkbox"
+                  checked={!hiddenCols.includes(column.key)}
+                  onChange={(event) =>
+                    setHiddenCols((current) =>
+                      event.target.checked
+                        ? current.filter((k) => k !== column.key)
+                        : [...current, column.key],
+                    )
+                  }
+                />
+                {column.label}
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
       <table className={`data-table legacy-data-table ${dense ? "dense" : ""}`}>
         <thead>
           <tr>
-            {columns.map((column) => (
+            {visibleColumns.map((column) => (
               <th
                 key={column.key}
-                className={column.align ? `align-${column.align}` : undefined}
+                className={`${column.align ? `align-${column.align}` : ""} ${sortable ? "sortable-col" : ""}`.trim() || undefined}
+                onClick={sortable ? () => toggleSort(column.key) : undefined}
               >
                 {column.label}
+                {sortable && sortKey === column.key && (
+                  <span className="sort-indicator">{sortDir === "asc" ? " ▲" : " ▼"}</span>
+                )}
               </th>
             ))}
             {(onEdit || onDelete) && <th className="align-center">Acciones</th>}
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, index) => (
+          {displayRows.map((row, index) => (
             <tr
               key={row.__id ?? index}
               className={selectedRowId && row.__id === selectedRowId ? "selected-row" : undefined}
               onClick={() => onSelect?.(row)}
               onDoubleClick={() => onEdit?.(row)}
             >
-              {columns.map((column) => (
+              {visibleColumns.map((column) => (
                 <td
                   key={column.key}
                   className={column.align ? `align-${column.align}` : undefined}
@@ -3559,7 +3657,7 @@ function LegacyTable({
           ))}
         </tbody>
       </table>
-      {!rows.length && (
+      {!displayRows.length && (
         <Empty
           title="Sin registros"
           text="No hay datos para los filtros aplicados."

@@ -273,6 +273,15 @@ decisiones y su alcance no se aplican aqui. No mezclar los dos proyectos.
   Rardiel decidio FUERA DE ALCANCE** (contabilidad del legacy no se porta;
   excepcion deliberada documentada). Matriz de paridad CERRADA.
 
+- **G10 implementado: detalles de grillas, impresion y respaldo (2026-09-19,
+  ZCode).** Ordenamiento por columna (clic en encabezado asc/desc) y selector
+  de columnas en todas las grillas legacy; botones Imprimir cableados en
+  Cobros, Depositos y Reportes con CSS de impresion; boton "Hacer copia de
+  respaldo" en la barra superior que descarga el snapshot JSON con fecha.
+  `npm run check` PASS (20 pass + 1 skip). Nota de sync: origin/main no tiene
+  commits nuevos del companero todavia (su avance no esta empujado); al
+  publicarlo, re-sincronizar y re-auditar la matriz.
+
 ### Aprovisionamiento (como usarlo)
 
 1. Entrar al admin (modo real: `ADMIN_EMAIL`/`ADMIN_PASSWORD` del `.env`; `Demo-CyP-2026!` solo vale con `DEMO_MODE=true`) > Archivos >
