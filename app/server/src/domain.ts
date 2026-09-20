@@ -83,6 +83,10 @@ export type Movement = {
   receiptToken?: string;
   receiptRevoked?: boolean;
   actorId: string;
+  acceptedAt?: string;
+  acceptedBy?: string;
+  cancelledAt?: string;
+  cancelledBy?: string;
 };
 export type Settlement = {
   id: string;
@@ -179,7 +183,9 @@ export function preview(state: State, collectorId: string, date?: string) {
       (!date || businessDate(new Date(m.createdAt)) === date),
   );
   const sum = (type: Movement["type"]) =>
-    rows.filter((m) => m.type === type).reduce((a, m) => a + m.amount, 0);
+    rows
+      .filter((m) => m.type === type && !m.cancelledAt)
+      .reduce((a, m) => a + m.amount, 0);
   const collected = sum("collection"),
     deposited = sum("deposit"),
     officeDelivered = sum("office_delivery"),
@@ -192,6 +198,46 @@ export function preview(state: State, collectorId: string, date?: string) {
     difference: collected - deposited + (officeDelivered - paidToClients),
   };
 }
+export function acceptDeposit(state: State, user: User, movementId: string) {
+  assertAdmin(user);
+  const movement = state.movements.find(
+    (m) => m.id === movementId && m.type === "deposit",
+  );
+  if (!movement)
+    throw new DomainError("DEPOSIT_NOT_FOUND", "El depósito no existe.", 404);
+  if (movement.cancelledAt)
+    throw new DomainError(
+      "DEPOSIT_CANCELLED",
+      "No se puede aceptar un depósito cancelado.",
+      422,
+    );
+  if (!movement.acceptedAt) {
+    movement.acceptedAt = new Date().toISOString();
+    movement.acceptedBy = user.id;
+  }
+  return movement;
+}
+
+export function cancelDeposit(state: State, user: User, movementId: string) {
+  assertAdmin(user);
+  const movement = state.movements.find(
+    (m) => m.id === movementId && m.type === "deposit",
+  );
+  if (!movement)
+    throw new DomainError("DEPOSIT_NOT_FOUND", "El depósito no existe.", 404);
+  if (movement.acceptedAt)
+    throw new DomainError(
+      "DEPOSIT_ALREADY_ACCEPTED",
+      "No se puede cancelar un depósito ya aceptado.",
+      422,
+    );
+  if (!movement.cancelledAt) {
+    movement.cancelledAt = new Date().toISOString();
+    movement.cancelledBy = user.id;
+  }
+  return movement;
+}
+
 export function assertAdmin(user: User) {
   if (user.role !== "admin")
     throw new DomainError(
@@ -419,7 +465,9 @@ export function snapshot(state: State, user: User) {
     (m) => businessDate(new Date(m.createdAt)) === date,
   );
   const sum = (type: Movement["type"]) =>
-    daily.filter((m) => m.type === type).reduce((s, m) => s + m.amount, 0);
+    daily
+      .filter((m) => m.type === type && !m.cancelledAt)
+      .reduce((s, m) => s + m.amount, 0);
   const collected = sum("collection"),
     paid = sum("payout"),
     deposited = sum("deposit"),

@@ -797,5 +797,23 @@ export async function mockApi<T>(
     state = derive(state);
     return { ok: true } as T;
   }
+  const depositAction = path.match(/^\/depositos\/([^/]+)\/(aceptar|cancelar)$/);
+  if (depositAction && method === "POST") {
+    const movement = state.movements.find(
+      (m) => m.id === depositAction[1] && m.type === "deposit",
+    );
+    if (!movement) throw new MockApiError("El depósito no existe.", 404);
+    if (depositAction[2] === "aceptar") {
+      if (movement.cancelledAt)
+        throw new MockApiError("El depósito ya fue cancelado.", 422);
+      movement.acceptedAt ??= now();
+    } else {
+      if (movement.acceptedAt)
+        throw new MockApiError("El depósito ya fue aceptado.", 422);
+      movement.cancelledAt ??= now();
+    }
+    state = derive(state);
+    return { ok: true } as T;
+  }
   throw new MockApiError("Ruta mock no implementada para esta vista.", 404);
 }

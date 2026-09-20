@@ -785,3 +785,83 @@ test(
     }
   },
 );
+
+test("deposit lifecycle: accept, cancel, idempotency and balance exclusion", async () => {
+  const { app, post, adminToken, collectorToken, store } = await setup();
+  const auth = { authorization: `Bearer ${adminToken}` };
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Santo_Domingo",
+  }).format(new Date());
+  const depositedOf = async () =>
+    (
+      await app.inject({
+        url: `/api/cuadres/preview?collectorId=col-1&date=${today}`,
+        headers: auth,
+      })
+    ).json().deposited as number;
+  try {
+    await store.transaction((s) => {
+      s.movements.push({
+        id: "mov-seed-cash",
+        collectorId: "col-1",
+        type: "collection",
+        amount: 100000,
+        createdAt: new Date().toISOString(),
+        actorId: "usr-seed",
+      });
+    });
+    const before = await depositedOf();
+    const createA = await post("/api/depositos", {
+      collectorId: "col-1",
+      amount: 100,
+    });
+    assert.equal(createA.statusCode, 200);
+    const idA = createA.json().movement.id as string;
+    assert.equal(await depositedOf(), before + 100);
+    assert.equal(
+      (await post(`/api/depositos/${idA}/aceptar`, {})).statusCode,
+      200,
+    );
+    assert.equal(
+      (await post(`/api/depositos/${idA}/aceptar`, {})).statusCode,
+      200,
+    );
+    assert.equal(await depositedOf(), before + 100);
+    assert.equal(
+      (await post(`/api/depositos/${idA}/cancelar`, {})).statusCode,
+      422,
+    );
+    const createB = await post("/api/depositos", {
+      collectorId: "col-1",
+      amount: 100,
+    });
+    assert.equal(createB.statusCode, 200);
+    const idB = createB.json().movement.id as string;
+    assert.equal(await depositedOf(), before + 200);
+    assert.equal(
+      (await post(`/api/depositos/${idB}/cancelar`, {})).statusCode,
+      200,
+    );
+    assert.equal(
+      (await post(`/api/depositos/${idB}/cancelar`, {})).statusCode,
+      200,
+    );
+    assert.equal(await depositedOf(), before + 100);
+    assert.equal(
+      (await post(`/api/depositos/${idB}/aceptar`, {})).statusCode,
+      422,
+    );
+    assert.equal(
+      (
+        await post(`/api/depositos/${idA}/aceptar`, {}, collectorToken)
+      ).statusCode,
+      403,
+    );
+    assert.equal(
+      (await post("/api/depositos/mov-inexistente/aceptar", {})).statusCode,
+      404,
+    );
+  } finally {
+    await app.close();
+  }
+});

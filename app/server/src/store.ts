@@ -120,17 +120,23 @@ async function readState(client: pg.PoolClient): Promise<State> {
     await client.query(
       `SELECT id,collector_id AS "collectorId",client_id AS "clientId",charge_id AS "chargeId",
         NULL::text AS "payoutId",'collection' AS type,amount,collected_at AS "createdAt",
-        receipt_token AS "receiptToken",receipt_revoked AS "receiptRevoked",actor_id AS "actorId"
+        receipt_token AS "receiptToken",receipt_revoked AS "receiptRevoked",actor_id AS "actorId",
+        NULL::timestamptz AS "acceptedAt",NULL::text AS "acceptedBy",
+        NULL::timestamptz AS "cancelledAt",NULL::text AS "cancelledBy"
        FROM collections
        UNION ALL
        SELECT id,collector_id AS "collectorId",client_id AS "clientId",NULL::text AS "chargeId",
         payout_id AS "payoutId",'payout' AS type,amount,paid_at AS "createdAt",
-        receipt_token AS "receiptToken",receipt_revoked AS "receiptRevoked",actor_id AS "actorId"
+        receipt_token AS "receiptToken",receipt_revoked AS "receiptRevoked",actor_id AS "actorId",
+        NULL::timestamptz AS "acceptedAt",NULL::text AS "acceptedBy",
+        NULL::timestamptz AS "cancelledAt",NULL::text AS "cancelledBy"
        FROM payments
        UNION ALL
        SELECT id,collector_id AS "collectorId",NULL::text AS "clientId",NULL::text AS "chargeId",
         NULL::text AS "payoutId",type,amount,handed_over_at AS "createdAt",
-        NULL::text AS "receiptToken",NULL::boolean AS "receiptRevoked",actor_id AS "actorId"
+        NULL::text AS "receiptToken",NULL::boolean AS "receiptRevoked",actor_id AS "actorId",
+        accepted_at AS "acceptedAt",accepted_by AS "acceptedBy",
+        cancelled_at AS "cancelledAt",cancelled_by AS "cancelledBy"
        FROM cash_handovers
        ORDER BY "createdAt", id`,
     )
@@ -311,8 +317,12 @@ async function saveState(client: pg.PoolClient, state: State, before: State) {
       );
     else
       await client.query(
-        `INSERT INTO cash_handovers(id,collector_id,type,amount,handed_over_at,actor_id)
-         VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(id) DO NOTHING`,
+        `INSERT INTO cash_handovers(id,collector_id,type,amount,handed_over_at,actor_id,
+           accepted_at,accepted_by,cancelled_at,cancelled_by)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         ON CONFLICT(id) DO UPDATE SET accepted_at=EXCLUDED.accepted_at,
+           accepted_by=EXCLUDED.accepted_by,cancelled_at=EXCLUDED.cancelled_at,
+           cancelled_by=EXCLUDED.cancelled_by`,
         [
           movement.id,
           movement.collectorId,
@@ -320,6 +330,10 @@ async function saveState(client: pg.PoolClient, state: State, before: State) {
           movement.amount,
           movement.createdAt,
           movement.actorId,
+          movement.acceptedAt ?? null,
+          movement.acceptedBy ?? null,
+          movement.cancelledAt ?? null,
+          movement.cancelledBy ?? null,
         ],
       );
   }

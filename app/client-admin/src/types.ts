@@ -122,6 +122,10 @@ export type Movement = {
   amount: number;
   createdAt: string;
   receiptToken?: string;
+  acceptedAt?: string;
+  acceptedBy?: string;
+  cancelledAt?: string;
+  cancelledBy?: string;
 };
 export type Balance = {
   collected: number;

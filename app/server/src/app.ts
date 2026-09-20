@@ -12,9 +12,11 @@ import {
 } from "node:crypto";
 import { z } from "zod";
 import {
+  acceptDeposit,
   assertAdmin,
   assertCollectorAccess,
   businessDate,
+  cancelDeposit,
   closeDay,
   collectorForClient,
   DomainError,
@@ -740,6 +742,19 @@ export async function buildApp(config: Config) {
       },
     );
   }
+  const depositLifecycleBody = z.object({}).strict();
+  mutate(
+    "/api/depositos/:id/aceptar",
+    "Aceptar depósito de cobrador",
+    depositLifecycleBody,
+    (s, u, _body, params) => acceptDeposit(s, u, params.id),
+  );
+  mutate(
+    "/api/depositos/:id/cancelar",
+    "Cancelar depósito de cobrador",
+    depositLifecycleBody,
+    (s, u, _body, params) => cancelDeposit(s, u, params.id),
+  );
   app.get("/api/cuadres/preview", async (req) => {
     const q = z.object({ collectorId: id, date }).parse(req.query);
     assertCollectorAccess(user(req), q.collectorId);
