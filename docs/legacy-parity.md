@@ -139,3 +139,27 @@ Tras caerse la BD del demo y reiniciarse, Rardiel inicio sesion y se capturo:
 CONCLUSION: verificacion campo por campo completada; sin brechas nuevas
 pendientes (la unica diferencia estructural es el nombre partido en
 apellidos, documentada arriba como decision de modelado).
+
+**SEGUNDA PASADA DE CAPTURA 2026-09-20 (con sesion fresca de Rardiel):**
+- **Notificaciones (N):** grilla paginada Nro./Fecha/Titulo/Registro/Leido/
+  Fecha de Leido, 0 filas en el demo. El admin nuevo ya tiene notificaciones
+  (campana con contador).
+- **Facturas del Soporte Tecnico (F):** "Facturas del Soporte Tecnico" con
+  Nro./Fecha/Plazo/Trans./Estado/Importe/Recibido/Pendiente + Descargar/
+  Refrescar/Ver original + filtro Estado, 0 filas. Es facturacion del VENDEDOR
+  del software hacia Gamera; en el sistema moderno interno no aplica como
+  modulo, y el slot de Facturas ya esta cubierto en el admin.
+- **Que hay de nuevo (Q):** ROTO en el propio original — abre error
+  "Invalid column name 'MostrarQueHayDeNuevo'" (falta una columna en su BD).
+  Nuestro dialogo de novedades cumple el slot con contenido real.
+- **Ventana de Pagos (P):** "Pagos al Soporte Tecnico" con Nro./Fecha/Importe/
+  Facturas/Registro + Refrescar/Descargar/Ver original, 0 filas. Pagos hacia
+  el vendedor; misma consideracion que Facturas.
+- **Monitor de Cobradores:** columnas confirmadas Cobrador/Lim. de Cob./
+  Lim. de Pag./Cobrado/Depositado/Entregado/Pagado/Diferencia con 10 filas y
+  cuenta regresiva "Faltan: N seg"; coincide con el monitor nuevo (RDM +
+  limites + Auto-refresh).
+CONCLUSION 2: sin brechas nuevas accionables; las ventanas F/Q/P del original
+son dependientes del vendedor del software legacy o estan rotas en el demo.; sin brechas nuevas
+pendientes (la unica diferencia estructural es el nombre partido en
+apellidos, documentada arriba como decision de modelado).

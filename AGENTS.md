@@ -282,6 +282,20 @@ decisiones y su alcance no se aplican aqui. No mezclar los dos proyectos.
   commits nuevos del companero todavia (su avance no esta empujado); al
   publicarlo, re-sincronizar y re-auditar la matriz.
 
+- **Captura en vivo segunda pasada completada (2026-09-20, ZCode).** Con
+  sesion fresca de Rardiel en el demo se capturaron las ventanas pendientes:
+  Notificaciones (grilla Nro./Fecha/Titulo/Registro/Leido/Fecha de Leido),
+  Facturas del Soporte Tecnico (Nro./Fecha/Plazo/Trans./Estado/Importe/
+  Recibido/Pendiente + Descargar/Refrescar/Ver original), Ventana de Pagos
+  ("Pagos al Soporte Tecnico": Nro./Fecha/Importe/Facturas/Registro) y
+  Monitor de Cobradores con columnas confirmadas (Cobrador/Lim. de Cob./
+  Lim. de Pag./Cobrado/Depositado/Entregado/Pagado/Diferencia, 10 filas,
+  cuenta regresiva "Faltan: N seg"). Hallazgo: "Que hay de nuevo" esta ROTO
+  en el propio original (error "Invalid column name
+  'MostrarQueHayDeNuevo'"). Conclusion: sin brechas nuevas accionables;
+  las ventanas F/P son facturacion del vendedor legacy (slot ya cubierto en
+  el admin). Documentado en docs/legacy-parity.md §7.
+
 ### Aprovisionamiento (como usarlo)
 
 1. Entrar al admin (modo real: `ADMIN_EMAIL`/`ADMIN_PASSWORD` del `.env`; `Demo-CyP-2026!` solo vale con `DEMO_MODE=true`) > Archivos >
