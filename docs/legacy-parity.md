@@ -111,6 +111,33 @@ directo del .bak, credenciales hasheadas.
   snapshot completo del sistema como JSON con fecha (equivalente moderno del
   respaldo del menu Cerrar).
 
+## 6d. Pruebas E2E con datos en modo real — 2026-09-20 (G11)
+
+- Migraciones 001-008 aplicadas a la BD real; datos de prueba insertados via
+  API (cargos, cobros, depositos, entregas, descargos, plantilla recurrente).
+- Bateria `e2e-pruebas.mjs` (39 checks): login real, G1 aceptar con desglose
+  exacto/cancelar/transiciones 422, G2 importacion con reporte por fila,
+  G3 recurrentes CRUD+archivo, G4 estado de cuenta, G6 configuracion
+  persistente, cobros/entregas/pagos, cierre de dia con cuadre en cero
+  (settlement creado) y negativos de autenticacion.
+- Correcciones aplicadas durante las pruebas:
+  1. G1 persistia el ciclo de vida via UPDATE sobre cash_handovers, violando
+     el trigger `Cash handovers are immutable` (001_initial.sql:207) =>
+     500 en modo PostgreSQL (en FileStore pasaba). REDISENO: eventos
+     append-only en `deposit_lifecycle` (migracion 008), accept/cancel crean
+     eventos, loadState los mezcla en los movimientos, saveState solo anade
+     filas nuevas. `cash_handovers` vuelve a ser INSERT-only puro.
+  2. Hallazgo operativa: `npm run dev` puede caer en fallback demo silencioso
+     (MemoryStore) si PostgreSQL no conecta al arrancar — el login real da 401
+     y los datos van a memoria. Mitigado: el login ya no precarga credenciales
+     demo cuando /api/health reporta modo != demo.
+  3. Dato faltante: el cobrador legacy-import necesitaba entrega de efectivo
+     en oficina antes de poder pagar descargos (409 correcto del negocio) y
+     el cierre exige diferencia exacta en cero (409 UNBALANCED correcto).
+- Rechazos observados y CORRECTOS del negocio: cobro sobre cargo ya pagado
+  (422), deposito que excede efectivo en mano (409), pago sin fondos de
+  oficina (409), cierre con diferencia (409 UNBALANCED).
+
 ## 7. Pendientes de verificacion en vivo
 
 **CAPTURA EN VIVO COMPLETADA 2026-09-19 21:26-21:31 (Rardiel logged in).**

@@ -166,6 +166,25 @@ async function readState(client: pg.PoolClient): Promise<State> {
   state.systemConfig = configRow
     ? (configRow.data as Record<string, unknown>)
     : undefined;
+  state.depositEvents = (
+    await client.query(
+      `SELECT id,movement_id AS "movementId",action,actor_id AS "actorId",
+       denominations,created_at AS "createdAt"
+       FROM deposit_lifecycle ORDER BY created_at, id`,
+    )
+  ).rows.map(clean);
+  for (const ev of state.depositEvents) {
+    const m = state.movements.find((x) => x.id === ev.movementId);
+    if (!m) continue;
+    if (ev.action === "accepted") {
+      m.acceptedAt = ev.createdAt;
+      m.acceptedBy = ev.actorId;
+      if (ev.denominations) m.denominations = ev.denominations;
+    } else {
+      m.cancelledAt = ev.createdAt;
+      m.cancelledBy = ev.actorId;
+    }
+  }
   state.idempotency = (
     await client.query(
       `SELECT id,fingerprint,response,created_at AS "createdAt" FROM idempotency ORDER BY created_at,id`,
@@ -342,12 +361,8 @@ async function saveState(client: pg.PoolClient, state: State, before: State) {
       );
     else
       await client.query(
-        `INSERT INTO cash_handovers(id,collector_id,type,amount,handed_over_at,actor_id,
-           accepted_at,accepted_by,cancelled_at,cancelled_by,denominations)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-         ON CONFLICT(id) DO UPDATE SET accepted_at=EXCLUDED.accepted_at,
-           accepted_by=EXCLUDED.accepted_by,cancelled_at=EXCLUDED.cancelled_at,
-           cancelled_by=EXCLUDED.cancelled_by,denominations=EXCLUDED.denominations`,
+        `INSERT INTO cash_handovers(id,collector_id,type,amount,handed_over_at,actor_id)
+         VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(id) DO NOTHING`,
         [
           movement.id,
           movement.collectorId,
@@ -355,11 +370,6 @@ async function saveState(client: pg.PoolClient, state: State, before: State) {
           movement.amount,
           movement.createdAt,
           movement.actorId,
-          movement.acceptedAt ?? null,
-          movement.acceptedBy ?? null,
-          movement.cancelledAt ?? null,
-          movement.cancelledBy ?? null,
-          movement.denominations ? JSON.stringify(movement.denominations) : null,
         ],
       );
   }
@@ -408,6 +418,22 @@ async function saveState(client: pg.PoolClient, state: State, before: State) {
          ON CONFLICT(id) DO UPDATE SET data = EXCLUDED.data, updated_at = now()`,
         [JSON.stringify(state.systemConfig)],
       );
+  }
+  for (const ev of state.depositEvents) {
+    const prev = before.depositEvents.find((r) => r.id === ev.id);
+    if (prev && JSON.stringify(prev) === JSON.stringify(ev)) continue;
+    await client.query(
+      `INSERT INTO deposit_lifecycle(id,movement_id,action,actor_id,denominations,created_at)
+       VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(id) DO NOTHING`,
+      [
+        ev.id,
+        ev.movementId,
+        ev.action,
+        ev.actorId,
+        ev.denominations ? JSON.stringify(ev.denominations) : null,
+        ev.createdAt,
+      ],
+    );
   }
   for (const row of state.idempotency) {
     const prev = before.idempotency.find((r) => r.id === row.id);

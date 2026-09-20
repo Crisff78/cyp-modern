@@ -66,7 +66,7 @@ decisiones y su alcance no se aplican aqui. No mezclar los dos proyectos.
 
 ## Current state - ACTUALIZAR ANTES DE CERRAR
 
-**Last updated:** 2026-09-20 por ZCode (sync del avance del companero ca4b067 fusionado; matriz de paridad CERRADA)
+**Last updated:** 2026-09-20 por ZCode (datos PRUEBA insertados, E2E 39 checks en verde sobre PostgreSQL; fallo de persistencia G1 resuelto con eventos append-only)
 
 ### Done so far
 
@@ -304,6 +304,21 @@ decisiones y su alcance no se aplican aqui. No mezclar los dos proyectos.
   tras la fusion: los marcadores de G1-G10+G9+menores siguen presentes y
   `npm run check` completo en verde (20 pass + 1 skip); el dev server
   recargo sin problemas. Matriz de paridad: CERRADA.
+
+- **Datos de prueba + E2E en modo real completados (2026-09-20, ZCode).**
+  Migraciones 001-008 aplicadas a la BD real. Datos PRUEBA insertados via API
+  (cargos, cobros, depositos, entregas, descargos, plantilla recurrente).
+  Bateria `e2e-pruebas.mjs` (39 checks) en verde contra PostgreSQL tras
+  correcciones: (1) G1 redisenado con eventos append-only en
+  `deposit_lifecycle` (migracion 008) — el trigger de inmutabilidad de
+  cash_handovers bloqueaba el UPDATE del ciclo de vida (500); (2) login del
+  admin ya no precarga credenciales demo cuando /api/health reporta modo real;
+  (3) flujo completo verificado INCLUYENDO cierre de dia con cuadre en cero
+  (settlement creado). Rechazos del negocio verificados como correctos:
+  cobro duplicado 422, deposito sin efectivo 409, pago sin fondos de oficina
+  409, cierre descuadrado 409 UNBALANCED. `npm run check` verde
+  (20 pass + 1 skip). Pendiente menor: los cargos/datos PRUEBA quedaron en
+  la BD real (borrables desde admin/SQL cuando se decida).
 
 ### Aprovisionamiento (como usarlo)
 
