@@ -155,6 +155,20 @@ export type RecurringPayout = {
   status: "active" | "paused" | "archived";
   createdAt: string;
 };
+export type ClientStatement = {
+  client: { id: string; code: string; name: string };
+  cargos: Charge[];
+  cobros: Movement[];
+  autorizaciones: Payout[];
+  pagos: Movement[];
+  resumen: {
+    totalCargado: number;
+    totalCobrado: number;
+    totalPendiente: number;
+    totalAutorizado: number;
+    totalPagadoACliente: number;
+  };
+};
 export type Snapshot = {
   businessDate: string;
   clients: Client[];

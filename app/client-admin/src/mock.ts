@@ -809,6 +809,39 @@ export async function mockApi<T>(
     state = derive(state);
     return { ok: true } as T;
   }
+  const statementMatch = path.match(/^\/clientes\/([^/]+)\/estado$/);
+  if (statementMatch && method === "GET") {
+    const client = state.clients.find(
+      (c) => c.id === decodeURIComponent(statementMatch[1]),
+    );
+    if (!client) throw new MockApiError("Cliente no encontrado.", 404);
+    const cargos = state.charges.filter((c) => c.clientId === client.id);
+    const autorizaciones = state.payouts.filter(
+      (p) => p.clientId === client.id,
+    );
+    const cobros = state.movements.filter(
+      (m) => m.type === "collection" && m.clientId === client.id,
+    );
+    const pagos = state.movements.filter(
+      (m) => m.type === "payout" && m.clientId === client.id,
+    );
+    return {
+      client: { id: client.id, code: client.code, name: client.name },
+      cargos,
+      cobros,
+      autorizaciones,
+      pagos,
+      resumen: {
+        totalCargado: cargos.reduce((a, c) => a + c.amount, 0),
+        totalCobrado: cobros.reduce((a, m) => a + m.amount, 0),
+        totalPendiente: cargos
+          .filter((c) => c.status !== "cancelled")
+          .reduce((a, c) => a + Math.max(0, c.amount - c.collected), 0),
+        totalAutorizado: autorizaciones.reduce((a, p) => a + p.amount, 0),
+        totalPagadoACliente: pagos.reduce((a, m) => a + m.amount, 0),
+      },
+    } as T;
+  }
   if (path === "/cargos/importar" && method === "POST") {
     const body = jsonBody(options);
     const errores: { fila: number; mensaje: string }[] = [];

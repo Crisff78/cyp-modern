@@ -17,6 +17,7 @@ import {
   assertCollectorAccess,
   businessDate,
   cancelDeposit,
+  clientStatement,
   closeDay,
   createRecurringPayout,
   collectorForClient,
@@ -746,6 +747,16 @@ export async function buildApp(config: Config) {
       },
     );
   }
+  app.get<{ Params: { id: string } }>(
+    "/api/clientes/:id/estado",
+    async (req) =>
+      clientStatement(await config.store.read(), user(req), req.params.id),
+  );
+  describe(
+    "get",
+    "/api/clientes/{id}/estado",
+    "Estado de cuenta del cliente (cargos, cobros, autorizaciones y pagos)",
+  );
   const depositLifecycleBody = z.object({}).strict();
   mutate(
     "/api/depositos/:id/aceptar",

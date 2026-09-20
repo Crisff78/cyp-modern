@@ -320,6 +320,46 @@ export function updateRecurringPayout(
   return template;
 }
 
+export function clientStatement(state: State, user: User, clientId: string) {
+  const client = state.clients.find((c) => c.id === clientId);
+  if (!client)
+    throw new DomainError("NOT_FOUND", "Cliente no encontrado.", 404);
+  if (user.role !== "admin") {
+    const collectorId = collectorForClient(state, clientId);
+    if (user.collectorId !== collectorId)
+      throw new DomainError(
+        "FORBIDDEN",
+        "Este cliente no pertenece a su ruta.",
+        403,
+      );
+  }
+  const cargos = state.charges.filter((c) => c.clientId === clientId);
+  const autorizaciones = state.payouts.filter((p) => p.clientId === clientId);
+  const cobros = state.movements.filter(
+    (m) =>
+      m.type === "collection" && m.clientId === clientId && !m.cancelledAt,
+  );
+  const pagos = state.movements.filter(
+    (m) => m.type === "payout" && m.clientId === clientId && !m.cancelledAt,
+  );
+  return {
+    client: { id: client.id, code: client.code, name: client.name },
+    cargos,
+    cobros,
+    autorizaciones,
+    pagos,
+    resumen: {
+      totalCargado: cargos.reduce((a, c) => a + c.amount, 0),
+      totalCobrado: cobros.reduce((a, m) => a + m.amount, 0),
+      totalPendiente: cargos
+        .filter((c) => c.status !== "cancelled")
+        .reduce((a, c) => a + Math.max(0, c.amount - c.collected), 0),
+      totalAutorizado: autorizaciones.reduce((a, p) => a + p.amount, 0),
+      totalPagadoACliente: pagos.reduce((a, m) => a + m.amount, 0),
+    },
+  };
+}
+
 export type ImportRowError = { fila: number; mensaje: string };
 
 const MAX_IMPORT_ROWS = 1000;

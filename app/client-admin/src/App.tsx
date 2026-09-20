@@ -85,6 +85,7 @@ import {
   isSuspendedUser,
   normalizeRole,
   type Collector,
+  type ClientStatement,
   type Page,
   type Snapshot,
   type User,
@@ -1845,12 +1846,29 @@ function MasterDataView({
   const [collectorEditor, setCollectorEditor] = useState<TableRow | "new" | null>(null);
   const [collectorFlow, setCollectorFlow] = useState<"zones" | "limits" | "routes" | null>(null);
   const [selectedCollectorId, setSelectedCollectorId] = useState(snapshot.collectors[0]?.id ?? "");
+  const [selectedClientId, setSelectedClientId] = useState("");
+  const [statement, setStatement] = useState<ClientStatement | null>(null);
   const config = masterSpec(page, snapshot, onAccount);
   const permissions = permissionsFor(currentUser);
   const rows = config.rows.filter((row) =>
     Object.values(row).join(" ").toLowerCase().includes(search.toLowerCase()),
   );
   const entity = page === "clients" ? "clients" : page;
+  const openStatement = async (clientId: string) => {
+    if (!clientId) return;
+    try {
+      const data = await api<ClientStatement>(
+        `/clientes/${encodeURIComponent(clientId)}/estado`,
+      );
+      setStatement(data);
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "No se pudo cargar el estado de cuenta.",
+      );
+    }
+  };
   const deleteRow = async (row: TableRow) => {
     if (!["clients", "collectors"].includes(page) || !row.__id) {
       toast.info("Esta vista est� en modo lectura para el mock frontend.");
@@ -1928,6 +1946,16 @@ function MasterDataView({
               <button className="btn" disabled={!selectedCollectorId} onClick={() => setCollectorFlow("routes")}>[R]</button>
             </div>
           )}
+          {page === "clients" && (
+            <button
+              className="btn"
+              disabled={!selectedClientId}
+              title="Cobros y Pagos del Cliente"
+              onClick={() => void openStatement(selectedClientId)}
+            >
+              <ReceiptText size={16} /> Cobros y Pagos del Cliente
+            </button>
+          )}
           <button
             className="btn"
             onClick={() => {
@@ -1945,8 +1973,18 @@ function MasterDataView({
           columns={config.columns}
           rows={rows}
           permissions={permissions}
-          selectedRowId={page === "collectors" ? selectedCollectorId : undefined}
-          onSelect={(row) => row.__id && page === "collectors" && setSelectedCollectorId(row.__id)}
+          selectedRowId={
+            page === "collectors"
+              ? selectedCollectorId
+              : page === "clients"
+                ? selectedClientId || undefined
+                : undefined
+          }
+          onSelect={(row) => {
+            if (!row.__id) return;
+            if (page === "collectors") setSelectedCollectorId(row.__id);
+            if (page === "clients") setSelectedClientId(String(row.__id));
+          }}
           onEdit={(row) =>
             page === "clients"
               ? setQuickRecord(row)
@@ -1980,6 +2018,64 @@ function MasterDataView({
             await onRefresh();
           }}
         />
+      )}
+      {statement && page === "clients" && (
+        <LegacyDialog
+          title={`Cobros y Pagos del Cliente - ${statement.client.name}`}
+          onClose={() => setStatement(null)}
+          className="legacy-dialog-wide"
+        >
+          <div className="statement-body">
+            <p className="statement-meta">
+              Código: {statement.client.code} · Identif.: {statement.client.id}
+            </p>
+            <h3>Cargos</h3>
+            <LegacyDenseTable
+              columns={["Fecha", "Servicio", "Importe", "Cobrado", "Pendiente", "Estado"]}
+              rows={statement.cargos.map((c) => [
+                safeDateLabel(c.dueDate),
+                c.service,
+                money(c.amount),
+                money(c.collected),
+                money(Math.max(0, c.amount - c.collected)),
+                c.status,
+              ])}
+            />
+            <h3>Cobros</h3>
+            <LegacyDenseTable
+              columns={["Fecha", "Importe"]}
+              rows={statement.cobros.map((m) => [
+                safeDateLabel(m.createdAt.slice(0, 10)),
+                money(m.amount),
+              ])}
+            />
+            <h3>Autorizaciones (descargos)</h3>
+            <LegacyDenseTable
+              columns={["Concepto", "Autorizado", "Pagado", "Estado"]}
+              rows={statement.autorizaciones.map((p) => [
+                p.concept,
+                money(p.amount),
+                money(p.paid),
+                p.status,
+              ])}
+            />
+            <h3>Pagos al cliente</h3>
+            <LegacyDenseTable
+              columns={["Fecha", "Importe"]}
+              rows={statement.pagos.map((m) => [
+                safeDateLabel(m.createdAt.slice(0, 10)),
+                money(m.amount),
+              ])}
+            />
+            <div className="legacy-footerbar">
+              <span>Cargado: <strong>{money(statement.resumen.totalCargado)}</strong></span>
+              <span>Cobrado: <strong>{money(statement.resumen.totalCobrado)}</strong></span>
+              <span>Pendiente: <strong>{money(statement.resumen.totalPendiente)}</strong></span>
+              <span>Autorizado: <strong>{money(statement.resumen.totalAutorizado)}</strong></span>
+              <span>Pagado: <strong>{money(statement.resumen.totalPagadoACliente)}</strong></span>
+            </div>
+          </div>
+        </LegacyDialog>
       )}
       {collectorEditor && page === "collectors" && (
         <CollectorDataModal

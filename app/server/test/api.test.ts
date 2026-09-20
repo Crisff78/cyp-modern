@@ -994,3 +994,55 @@ test("recurring payouts: crear, modificar, archivar y alcance por rol", async ()
     await app.close();
   }
 });
+
+test("client statement: cargos, cobros, autorizaciones, pagos y alcance", async () => {
+  const { app, post, adminToken, collectorToken } = await setup();
+  const auth = { authorization: `Bearer ${adminToken}` };
+  try {
+    const before = (
+      await app.inject({ url: "/api/clientes/cli-1/estado", headers: auth })
+    ).json();
+    const cobro = await post("/api/cobros", {
+      chargeId: "chg-1",
+      amount: 100000,
+    });
+    assert.equal(cobro.statusCode, 200);
+    const after = (
+      await app.inject({ url: "/api/clientes/cli-1/estado", headers: auth })
+    ).json();
+    assert.equal(after.client.code, "CL-0001");
+    assert.equal(after.cobros.length, before.cobros.length + 1);
+    assert.equal(
+      after.resumen.totalCobrado,
+      before.resumen.totalCobrado + 100000,
+    );
+    assert.ok(after.resumen.totalCargado >= 450000);
+    assert.ok(after.resumen.totalPendiente >= 350000);
+    assert.equal(
+      (
+        await app.inject({
+          url: "/api/clientes/cli-5/estado",
+          headers: { authorization: `Bearer ${collectorToken}` },
+        })
+      ).statusCode,
+      403,
+    );
+    assert.equal(
+      (
+        await app.inject({
+          url: "/api/clientes/cli-1/estado",
+          headers: { authorization: `Bearer ${collectorToken}` },
+        })
+      ).statusCode,
+      200,
+    );
+    assert.equal(
+      (
+        await app.inject({ url: "/api/clientes/nope/estado", headers: auth })
+      ).statusCode,
+      404,
+    );
+  } finally {
+    await app.close();
+  }
+});

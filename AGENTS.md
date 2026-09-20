@@ -66,7 +66,7 @@ decisiones y su alcance no se aplican aqui. No mezclar los dos proyectos.
 
 ## Current state - ACTUALIZAR ANTES DE CERRAR
 
-**Last updated:** 2026-09-19 por ZCode (G1+G2+G3 de legacy-parity.md implementados y empujados)
+**Last updated:** 2026-09-19 por ZCode (G1-G4 de legacy-parity.md implementados y empujados)
 
 ### Done so far
 
@@ -215,6 +215,16 @@ decisiones y su alcance no se aplican aqui. No mezclar los dos proyectos.
   demo con una plantilla de ejemplo. Test de integración nuevo.
   `npm run check` PASS (18 pass + 1 skip). Pendiente menor: formulario de
   alta/edición de plantilla en el admin (operable hoy por API).
+
+- **G4 implementado: Cobros y Pagos del Cliente (2026-09-19, ZCode).**
+  `clientStatement` en domain.ts + `GET /api/clientes/:id/estado`: cargos,
+  cobros, autorizaciones (descargos) y pagos del cliente con resumen
+  (totalCargado/totalCobrado/totalPendiente/totalAutorizado/
+  totalPagadoACliente); los cobradores solo acceden a clientes de su ruta
+  (403 si no). Admin: selección de cliente en el Listado de Clientes + botón
+  "Cobros y Pagos del Cliente" que abre el diálogo con las cuatro tablas y el
+  resumen; mock demo soporta el GET; test de integración nuevo.
+  `npm run check` PASS (19 pass + 1 skip).
 
 ### Aprovisionamiento (como usarlo)
 

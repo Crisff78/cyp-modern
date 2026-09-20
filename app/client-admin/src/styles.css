@@ -6398,3 +6398,24 @@ table {
     grid-template-columns: 1fr;
   }
 }
+
+.statement-body {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.statement-body h3 {
+  margin: 0.35rem 0 0;
+  font-size: 0.92rem;
+}
+
+.statement-meta {
+  margin: 0;
+  font-weight: 600;
+}
+
+.legacy-dialog-wide {
+  width: min(860px, 94vw);
+  max-height: 90vh;
+  overflow: auto;
+}
