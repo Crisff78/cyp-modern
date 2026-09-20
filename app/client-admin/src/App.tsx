@@ -4,6 +4,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import {
@@ -75,6 +76,7 @@ import {
   type AdaptedMap,
   type MapMarker,
 } from "./services/mapAdapter";
+import { parseImportCsv } from "./services/importCsv";
 import OperationModal, { type Operation } from "./Operations";
 import AccountModal, { type AccountOperation } from "./Users";
 import {
@@ -2016,6 +2018,11 @@ function LegacyOperationView({
     [quickRecord, setQuickRecord] = useState<TableRow | "new" | null>(null),
     [flash, setFlash] = useState(false),
     [selectedRow, setSelectedRow] = useState<TableRow | null>(null);
+  const importFileRef = useRef<HTMLInputElement | null>(null);
+  const [importFilas, setImportFilas] = useState<
+    Record<string, unknown>[] | null
+  >(null);
+  const canImport = spec.entity === "charges" || spec.entity === "payouts";
   const permissions = permissionsFor(currentUser);
   const rows = spec.rows.filter((row) => {
     const haystack =
@@ -2103,6 +2110,42 @@ function LegacyOperationView({
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "No se pudo completar.",
+      );
+    }
+  };
+  const onImportFile = async (file: File) => {
+    const text = await file.text();
+    const { filas } = parseImportCsv(
+      text,
+      spec.entity === "payouts" ? "payouts" : "charges",
+    );
+    setImportFilas(filas.length ? filas : null);
+    toast.success(
+      filas.length
+        ? `${filas.length} fila(s) lista(s) para importar.`
+        : "El archivo no contiene filas válidas.",
+    );
+  };
+  const runImport = async () => {
+    if (!importFilas?.length || !spec.entity) return;
+    try {
+      const result = await api<{
+        creados: number;
+        errores: { fila: number; mensaje: string }[];
+      }>(spec.entity === "payouts" ? "/descargos/importar" : "/cargos/importar", {
+        method: "POST",
+        body: JSON.stringify({ filas: importFilas }),
+      });
+      toast.success(
+        `Importación: ${result.creados} creada(s), ${result.errores.length} con error.`,
+      );
+      for (const e of result.errores.slice(0, 5))
+        toast.error(`Fila ${e.fila}: ${e.mensaje}`);
+      setImportFilas(null);
+      onRefresh();
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "La importación falló.",
       );
     }
   };
@@ -2221,6 +2264,35 @@ function LegacyOperationView({
                   }
                 >
                   <X size={16} />
+                </button>
+              </>
+            )}
+            {canImport && (
+              <>
+                <input
+                  ref={importFileRef}
+                  type="file"
+                  accept=".csv,text/csv"
+                  style={{ display: "none" }}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = "";
+                    if (file) void onImportFile(file);
+                  }}
+                />
+                <button
+                  title="Subir archivo"
+                  disabled={!permissions.canCreate}
+                  onClick={() => importFileRef.current?.click()}
+                >
+                  <FolderOpen size={16} />
+                </button>
+                <button
+                  title="Importar datos"
+                  disabled={!importFilas || !permissions.canCreate}
+                  onClick={() => void runImport()}
+                >
+                  <FileCheck2 size={16} />
                 </button>
               </>
             )}

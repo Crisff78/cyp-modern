@@ -865,3 +865,67 @@ test("deposit lifecycle: accept, cancel, idempotency and balance exclusion", asy
     await app.close();
   }
 });
+
+test("bulk import: cargos y descargos con reporte por fila", async () => {
+  const { app, post, adminToken, collectorToken, store } = await setup();
+  const auth = { authorization: `Bearer ${adminToken}` };
+  try {
+    await store.transaction((s) => {
+      const target = s.clients.find(
+        (c) => s.routes.find((r) => r.id === c.routeId)?.collectorId,
+      );
+      if (!target) throw new Error("seed sin cliente con cobrador");
+      target.code = "IMP-0001";
+    });
+    const res = await post("/api/cargos/importar", {
+      filas: [
+        {
+          identificacion: "IMP-0001",
+          servicio: "Internet",
+          importe: 5000,
+          fecha: "2026-10-01",
+        },
+        { identificacion: "NO-EXISTE", servicio: "X", importe: 100 },
+        { identificacion: "IMP-0001", servicio: "Agua", importe: -5 },
+      ],
+    });
+    assert.equal(res.statusCode, 200);
+    const body = res.json();
+    assert.equal(body.creados, 1);
+    assert.equal(body.errores.length, 2);
+    assert.equal(body.errores[0].fila, 2);
+    assert.equal(body.errores[1].fila, 3);
+    const snap = (await app.inject({ url: "/api/snapshot", headers: auth })).json();
+    const imported = snap.charges.find(
+      (c: { service?: string; amount?: number }) =>
+        c.service === "Internet" && c.amount === 5000,
+    );
+    assert.ok(imported);
+    assert.equal(imported.dueDate, "2026-10-01");
+    const resP = await post("/api/descargos/importar", {
+      filas: [
+        { identificacion: "IMP-0001", concepto: "Cheque reembolso", importe: 2500 },
+      ],
+    });
+    assert.equal(resP.statusCode, 200);
+    assert.equal(resP.json().creados, 1);
+    assert.equal(
+      (
+        await post(
+          "/api/cargos/importar",
+          { filas: [{ identificacion: "IMP-0001", servicio: "X", importe: 100 }] },
+          collectorToken,
+        )
+      ).statusCode,
+      403,
+    );
+    const many = Array.from({ length: 1001 }, () => ({
+      identificacion: "IMP-0001",
+      servicio: "X",
+      importe: 100,
+    }));
+    assert.equal((await post("/api/cargos/importar", { filas: many })).statusCode, 400);
+  } finally {
+    await app.close();
+  }
+});

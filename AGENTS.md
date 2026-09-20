@@ -189,6 +189,19 @@ decisiones y su alcance no se aplican aqui. No mezclar los dos proyectos.
   `npm run check` completo PASS. Pendiente menor G1: desglose de denominaciones
   del Panel de Detalles.
 
+- **G2 implementado: importación masiva de Cargos y Descargos (2026-09-19,
+  ZCode).** Rutas `POST /api/cargos/importar` y `POST /api/descargos/importar`
+  (Idempotency-Key, máx 1000 filas por llamada). `importCharges`/`importPayouts`
+  en domain.ts: cliente por identificación (campo `code`, insensible a
+  mayúsculas), importe entero positivo en centavos, verificación de
+  cobrador/ruta, fecha opcional (usa fecha de negocio) y reporte por fila
+  `{ creados, errores[{fila, mensaje}] }` — las filas válidas se aplican, las
+  inválidas se reportan sin abortar. Admin: botones "Subir archivo" (CSV con
+  separador ; o , autodetectado y cabecera opcional) + "Importar datos" en las
+  vistas Cargos y Descargos, con toasts de resumen y errores por fila; mock
+  demo soporta ambas rutas. Test de integración nuevo. `npm run check` PASS
+  (17 pass + 1 skip).
+
 ### Aprovisionamiento (como usarlo)
 
 1. Entrar al admin (modo real: `ADMIN_EMAIL`/`ADMIN_PASSWORD` del `.env`; `Demo-CyP-2026!` solo vale con `DEMO_MODE=true`) > Archivos >

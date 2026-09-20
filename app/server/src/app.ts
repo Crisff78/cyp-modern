@@ -22,6 +22,8 @@ import {
   DomainError,
   findAccount,
   hashPassword,
+  importCharges,
+  importPayouts,
   postMovement,
   preview,
   publicAccount,
@@ -754,6 +756,35 @@ export async function buildApp(config: Config) {
     "Cancelar depósito de cobrador",
     depositLifecycleBody,
     (s, u, _body, params) => cancelDeposit(s, u, params.id),
+  );
+  const importChargeRow = z
+    .object({
+      identificacion: z.string().trim().min(1).max(80),
+      servicio: z.string().trim().min(1).max(160),
+      importe: z.number(),
+      fecha: z.iso.date().optional(),
+      requerido: z.boolean().optional(),
+    })
+    .strict();
+  const importPayoutRow = z
+    .object({
+      identificacion: z.string().trim().min(1).max(80),
+      concepto: z.string().trim().min(1).max(160),
+      importe: z.number(),
+      cobrador: z.string().trim().min(1).max(80).optional(),
+    })
+    .strict();
+  mutate(
+    "/api/cargos/importar",
+    "Importación masiva de cargos",
+    z.object({ filas: z.array(importChargeRow).min(1).max(1000) }).strict(),
+    (s, u, b) => importCharges(s, u, b.filas),
+  );
+  mutate(
+    "/api/descargos/importar",
+    "Importación masiva de descargos",
+    z.object({ filas: z.array(importPayoutRow).min(1).max(1000) }).strict(),
+    (s, u, b) => importPayouts(s, u, b.filas),
   );
   app.get("/api/cuadres/preview", async (req) => {
     const q = z.object({ collectorId: id, date }).parse(req.query);

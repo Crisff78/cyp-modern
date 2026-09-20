@@ -72,7 +72,7 @@ trazas, usuarios/roles, limites de cobrador, motivos de atraso, frecuencias
 | # | Brecha | Evidencia | Prioridad |
 |---|---|---|---|
 | G1 | ~~Aceptar / Cancelar depósito~~ **IMPLEMENTADO 2026-09-19** (flujo pendiente→aceptado/cancelado; falta solo el desglose de denominaciones del Panel de Detalles) | `003_deposit_lifecycle.sql`, `acceptDeposit`/`cancelDeposit` en domain.ts, rutas `/api/depositos/:id/aceptar|cancelar`, botones+y columna Acep. en el admin, test de integración | ALTA |
-| G2 | **Importar datos / Subir archivo** en Cargos y Descargos (carga masiva) | 0 hits "importar/bulk"; legacy `lblImporting`, botones del demo | ALTA |
+| G2 | ~~Importar datos / Subir archivo~~ **IMPLEMENTADO 2026-09-19** (CSV con separador autodetectado, cabecera opcional, reporte por fila) | rutas `/api/cargos/importar` y `/api/descargos/importar`, `importCharges`/`importPayouts` en domain.ts, botones Subir archivo/Importar datos en el admin, mock demo, test de integración | ALTA |
 | G3 | **Descargos Recurrentes** — modulo completo (tabla, API, pantalla) | 0 hits; legacy tabla `DescargosRecurrentes` + procs | ALTA |
 | G4 | **Cobros y Pagos del Cliente** (estado de cuenta desde Clientes) | 0 hits; boton del demo | MEDIA |
 | G5 | **Ventanas auxiliares**: Facturas, Que hay de nuevo, Ventana de Pagos | 0 hits | MEDIA |

@@ -238,6 +238,128 @@ export function cancelDeposit(state: State, user: User, movementId: string) {
   return movement;
 }
 
+export type ImportRowError = { fila: number; mensaje: string };
+
+const MAX_IMPORT_ROWS = 1000;
+
+function assertImportAmount(amount: number) {
+  if (!Number.isInteger(amount) || amount <= 0)
+    throw new DomainError(
+      "IMPORT_INVALID_AMOUNT",
+      "El importe debe ser un entero positivo en centavos.",
+      422,
+    );
+}
+
+function findClientByIdentificacion(state: State, identificacion: string) {
+  const client = state.clients.find(
+    (c) => c.code.toLowerCase() === identificacion.trim().toLowerCase(),
+  );
+  if (!client)
+    throw new DomainError(
+      "CLIENT_NOT_FOUND",
+      `No existe un cliente con identificación ${identificacion}.`,
+      404,
+    );
+  return client;
+}
+
+export function importCharges(
+  state: State,
+  user: User,
+  filas: Array<{
+    identificacion: string;
+    servicio: string;
+    importe: number;
+    fecha?: string;
+    requerido?: boolean;
+  }>,
+) {
+  assertAdmin(user);
+  if (filas.length > MAX_IMPORT_ROWS)
+    throw new DomainError(
+      "IMPORT_TOO_LARGE",
+      `Máximo ${MAX_IMPORT_ROWS} filas por importación.`,
+      400,
+    );
+  const errores: ImportRowError[] = [];
+  let creados = 0;
+  filas.forEach((fila, index) => {
+    try {
+      assertImportAmount(fila.importe);
+      const client = findClientByIdentificacion(state, fila.identificacion);
+      collectorForClient(state, client.id);
+      state.charges.push({
+        id: randomUUID(),
+        clientId: client.id,
+        service: fila.servicio.trim(),
+        amount: fila.importe,
+        dueDate: fila.fecha ?? businessDate(),
+        required: fila.requerido ?? false,
+        collected: 0,
+        status: "pending" as const,
+      });
+      creados += 1;
+    } catch (error) {
+      errores.push({
+        fila: index + 1,
+        mensaje: error instanceof Error ? error.message : "Fila inválida.",
+      });
+    }
+  });
+  return { creados, errores };
+}
+
+export function importPayouts(
+  state: State,
+  user: User,
+  filas: Array<{
+    identificacion: string;
+    concepto: string;
+    importe: number;
+    cobrador?: string;
+  }>,
+) {
+  assertAdmin(user);
+  if (filas.length > MAX_IMPORT_ROWS)
+    throw new DomainError(
+      "IMPORT_TOO_LARGE",
+      `Máximo ${MAX_IMPORT_ROWS} filas por importación.`,
+      400,
+    );
+  const errores: ImportRowError[] = [];
+  let creados = 0;
+  filas.forEach((fila, index) => {
+    try {
+      assertImportAmount(fila.importe);
+      const client = findClientByIdentificacion(state, fila.identificacion);
+      const collectorId = collectorForClient(state, client.id);
+      if (fila.cobrador && fila.cobrador !== collectorId)
+        throw new DomainError(
+          "ROUTE_MISMATCH",
+          "El cobrador indicado no corresponde a la ruta del cliente.",
+          422,
+        );
+      state.payouts.push({
+        id: randomUUID(),
+        clientId: client.id,
+        collectorId,
+        concept: fila.concepto.trim(),
+        amount: fila.importe,
+        paid: 0,
+        status: "pending" as const,
+      });
+      creados += 1;
+    } catch (error) {
+      errores.push({
+        fila: index + 1,
+        mensaje: error instanceof Error ? error.message : "Fila inválida.",
+      });
+    }
+  });
+  return { creados, errores };
+}
+
 export function assertAdmin(user: User) {
   if (user.role !== "admin")
     throw new DomainError(

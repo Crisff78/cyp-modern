@@ -797,6 +797,78 @@ export async function mockApi<T>(
     state = derive(state);
     return { ok: true } as T;
   }
+  if (path === "/cargos/importar" && method === "POST") {
+    const body = jsonBody(options);
+    const errores: { fila: number; mensaje: string }[] = [];
+    let creados = 0;
+    (Array.isArray(body.filas) ? body.filas : []).forEach(
+      (fila: Record<string, unknown>, index: number) => {
+        const importe = Number(fila.importe);
+        const client = state.clients.find(
+          (c) =>
+            (c.code ?? "").toLowerCase() ===
+            String(fila.identificacion ?? "").trim().toLowerCase(),
+        );
+        if (!client)
+          errores.push({ fila: index + 1, mensaje: "Cliente no encontrado." });
+        else if (!Number.isInteger(importe) || importe <= 0)
+          errores.push({ fila: index + 1, mensaje: "Importe inválido." });
+        else {
+          state.charges.push({
+            id: uid("chg"),
+            clientId: client.id,
+            service: String(fila.servicio ?? "").trim(),
+            amount: importe,
+            dueDate:
+              String(fila.fecha ?? "") ||
+              new Date().toISOString().slice(0, 10),
+            required: Boolean(fila.requerido),
+            collected: 0,
+            status: "pending",
+          });
+          creados += 1;
+        }
+      },
+    );
+    state = derive(state);
+    return { creados, errores } as T;
+  }
+  if (path === "/descargos/importar" && method === "POST") {
+    const body = jsonBody(options);
+    const errores: { fila: number; mensaje: string }[] = [];
+    let creados = 0;
+    (Array.isArray(body.filas) ? body.filas : []).forEach(
+      (fila: Record<string, unknown>, index: number) => {
+        const importe = Number(fila.importe);
+        const client = state.clients.find(
+          (c) =>
+            (c.code ?? "").toLowerCase() ===
+            String(fila.identificacion ?? "").trim().toLowerCase(),
+        );
+        if (!client)
+          errores.push({ fila: index + 1, mensaje: "Cliente no encontrado." });
+        else if (!Number.isInteger(importe) || importe <= 0)
+          errores.push({ fila: index + 1, mensaje: "Importe inválido." });
+        else {
+          state.payouts.push({
+            id: uid("pay"),
+            clientId: client.id,
+            collectorId:
+              String(fila.cobrador ?? "") ||
+              state.collectors[0]?.id ||
+              "col-1",
+            concept: String(fila.concepto ?? "").trim(),
+            amount: importe,
+            paid: 0,
+            status: "pending",
+          });
+          creados += 1;
+        }
+      },
+    );
+    state = derive(state);
+    return { creados, errores } as T;
+  }
   const depositAction = path.match(/^\/depositos\/([^/]+)\/(aceptar|cancelar)$/);
   if (depositAction && method === "POST") {
     const movement = state.movements.find(
