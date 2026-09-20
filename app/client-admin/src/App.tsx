@@ -1240,10 +1240,9 @@ export default function App() {
           ? "recurring"
           : "charge",
   }), []);
-  const activeNav =
-    (activeNavKey && navigation.find((n) => n.key === activeNavKey)) ||
-    navigation.find((n) => n.page === page && n.primary) ||
-    navigation.find((n) => n.page === page);
+  const activeNav = activeNavKey
+    ? navigation.find((n) => n.key === activeNavKey)
+    : undefined;
   const [auxWindow, setAuxWindow] = useState<
     null | "facturas" | "novedades" | "pagos"
   >(null);
@@ -1341,7 +1340,7 @@ export default function App() {
                   (item) => item.group === group,
                 );
                 const groupActive = groupItems.some((item) =>
-                  activeNavKey ? activeNavKey === item.key : item.page === page,
+                  activeNavKey ? activeNavKey === item.key : false,
                 );
                 return (
                   <div
@@ -1376,9 +1375,7 @@ export default function App() {
                               ? activeNavKey === item.key
                                 ? "active"
                                 : ""
-                              : item.page === page
-                                ? "active"
-                                : ""
+                              : ""
                           }`}
                           key={item.key}
                           onClick={() => {
@@ -1387,19 +1384,14 @@ export default function App() {
                               setMobileMenu(false);
                               return;
                             }
-                            if (item.page === "clients" || item.page === "reports" || (item.page && (isMdiOperationPage(item.page) || isMdiMonitoringPage(item.page)))) {
+                            if (item.page) {
                               openMdiWindow(item.page, item.key);
                               setMobileMenu(false);
-                              return;
                             }
-                            if (item.page) navigate(item.page, item.key);
                           }}
                           title={collapsed ? item.label : undefined}
                           aria-current={
-                            activeNavKey === item.key ||
-                            (!activeNavKey && item.page === page)
-                              ? "page"
-                              : undefined
+                            activeNavKey === item.key ? "page" : undefined
                           }
                         >
                           <item.icon size={18} />
@@ -1413,8 +1405,7 @@ export default function App() {
                               }
                             </small>
                           )}
-                          {(activeNavKey === item.key ||
-                            (!activeNavKey && item.page === page)) && <i />}
+                          {activeNavKey === item.key && <i />}
                         </button>
                       ))}
                     </div>
@@ -1437,7 +1428,7 @@ export default function App() {
                   <br />
                   de cerrar la jornada.
                 </p>
-                <button onClick={() => navigate("dailySettlements")}>
+                <button onClick={() => openMdiWindow("dailySettlements", "daily-settlements")}>
                   Ir al cuadre
                   <ArrowRight size={14} />
                 </button>
@@ -1477,7 +1468,7 @@ export default function App() {
                 </span>
                 <div className="module-context">
                   <span>Módulo activo</span>
-                  <strong>{activeNav?.label ?? pageTitles[page]}</strong>
+                  <strong>{activeNav?.label ?? "Escritorio"}</strong>
                 </div>
               </div>
               <div className="topbar-actions">
@@ -1648,68 +1639,7 @@ export default function App() {
                 </button>
               </div>
             </header>
-            <main id="main-content" className="main-content" tabIndex={-1}>
-              {initialError && snapshot && (
-                <div className="connection-error" role="alert">
-                  <CircleAlert size={16} />
-                  <span>
-                    {initialError} Mostrando los últimos datos recibidos.
-                  </span>
-                  <button
-                    className="text-button"
-                    onClick={() => void refresh()}
-                  >
-                    Reintentar
-                  </button>
-                </div>
-              )}
-              {!snapshot ? (
-                initialError ? (
-                  <div className="panel initial-error">
-                    <Empty
-                      title="No pudimos conectar con tu operación"
-                      text={initialError}
-                      action={
-                        <button
-                          className="btn primary"
-                          onClick={() => void refresh()}
-                        >
-                          <RefreshCw size={16} />
-                          Volver a intentar
-                        </button>
-                      }
-                    />
-                  </div>
-                ) : (
-                  <Loading />
-                )
-              ) : (
-                <ModuleRouter
-                  page={page}
-                  snapshot={snapshot}
-                  refreshing={refreshing}
-                  onRefresh={() => void refresh()}
-                  onCollector={setSelectedCollector}
-                  currentUser={effectiveUser}
-                  onOperation={setOperation}
-                  onAccount={setAccountOperation}
-                />
-              )}
-              <footer className="page-footer">
-                <span>
-                  <i />
-                  Entorno de demostración · Datos ficticios
-                </span>
-                <span>
-                  {lastUpdated
-                    ? `Actualizado a las ${lastUpdated.toLocaleTimeString("es-DO", { hour: "2-digit", minute: "2-digit" })}`
-                    : "Conectando…"}
-                  <span className="footer-dot">·</span>Hecho para estar en
-                  control.
-                </span>
-              </footer>
-            </main>
-          </div>
+            <main id="main-content" className="main-content desktop-canvas" tabIndex={-1}>
           {snapshot && mdiWindows.map((windowState) => (
             <MdiWindow
               key={windowState.id}
@@ -1768,6 +1698,8 @@ export default function App() {
               )}
             </MdiWindow>
           ))}
+            </main>
+          </div>
           <Modal
             open={commandOpen}
             onClose={() => setCommandOpen(false)}
@@ -1801,8 +1733,9 @@ export default function App() {
                 <button
                   key={client.id}
                   onClick={() => {
-                    navigate("clients");
+                    openMdiWindow("clients", "clients");
                     setDirectorySearch(client.name);
+                    setCommandOpen(false);
                   }}
                 >
                   <Avatar name={client.name} />
@@ -1820,11 +1753,12 @@ export default function App() {
                 <button
                   key={route.id}
                   onClick={() => {
-                    navigate("routesZones");
+                    openMdiWindow("routes", "control-routes");
                     const collector = snapshot?.collectors.find(
                       (c) => c.id === route.collectorId,
                     );
                     if (collector) setSelectedCollector(collector);
+                    setCommandOpen(false);
                   }}
                 >
                   <span className="command-route-icon">
@@ -1855,7 +1789,7 @@ export default function App() {
             {snapshot && (
               <div className="notifications">
                 {snapshot.totals.difference !== 0 && (
-                  <button onClick={() => navigate("dailySettlements")}>
+                  <button onClick={() => openMdiWindow("dailySettlements", "daily-settlements")}>
                     <span className="notification-icon amber">
                       <FileCheck2 size={20} />
                     </span>
@@ -1989,7 +1923,7 @@ export default function App() {
                 onSettle={(id) => {
                   setSelectedCollector(null);
                   setSettlementCollector(id);
-                  navigate("dailySettlements");
+                  openMdiWindow("dailySettlements", "daily-settlements");
                 }}
               />
               <OperationModal

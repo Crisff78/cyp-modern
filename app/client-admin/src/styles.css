@@ -6483,3 +6483,33 @@ table {
     width: 100% !important;
   }
 }
+
+/* MDI desktop canvas: pages are no longer rendered as background content. */
+.main-shell {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.main-content.desktop-canvas {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  outline: none;
+  background: #e2e8f0;
+  background-image:
+    linear-gradient(rgba(148, 163, 184, 0.16) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.16) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.desktop-canvas .mdi-window {
+  position: absolute;
+  max-width: calc(100% - 20px);
+  max-height: calc(100% - 20px);
+}
