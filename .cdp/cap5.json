@@ -1,0 +1,730 @@
+{
+ "capturado": {
+  "Admin.": {
+   "title": "",
+   "texto": "Configuración General\nTasas de\ncambio\nUsuarios\nZonas\nCobradores\nEstaciones\nPCPs\nGrupos\nServicios\ny Prods.\nSesiones\nRutas\nTrazas\n--- Codificadores ---\n--- Herramientas ---\nSolicitudes\nde Autoriz.\nMotivos\nAtraso",
+   "grids": [],
+   "forms": [],
+   "labels": [
+    "Configuración General",
+    "Tasas de\ncambio",
+    "Usuarios",
+    "Zonas",
+    "Cobradores",
+    "Estaciones",
+    "PCPs",
+    "Grupos",
+    "Servicios\ny Prods.",
+    "Sesiones",
+    "Rutas",
+    "Trazas",
+    "--- Codificadores ---",
+    "--- Herramientas ---",
+    "Solicitudes\nde Autoriz.",
+    "Motivos\nAtraso"
+   ],
+   "btns": [],
+   "tabs": [],
+   "toolbars": [],
+   "combos": [],
+   "winId": "O2DD_id",
+   "clicEn": {
+    "item": "O164_id",
+    "x": 74,
+    "y": 180
+   },
+   "red": [
+    {
+     "id": "17720.3410",
+     "postData": "Ajax=1&IsEvent=1&Obj=O22A&Evt=deactivate&This=O22A&_S_ID=DbWFJDJTi5piIoj&_seq_=26",
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3411",
+     "postData": "Ajax=1&IsEvent=1&Obj=OBF&Evt=activate&This=OBF&_S_ID=DbWFJDJTi5piIoj&_seq_=27",
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3413",
+     "postData": "Ajax=1&IsEvent=1&Obj=O164&Evt=click&This=O164&_S_ID=DbWFJDJTi5piIoj&_seq_=28",
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3414",
+     "postData": "Ajax=1&IsEvent=1&Obj=O2CD&Evt=resize&This=O2CD&Width=449&Height=392&_S_ID=DbWFJDJTi5piIoj&_seq_=29&_a_=1",
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3415",
+     "postData": "Ajax=1&IsEvent=1&Obj=O2CD&Evt=move&This=O2CD&X=714&Y=24&_S_ID=DbWFJDJTi5piIoj&_seq_=2a&_a_=1",
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3416",
+     "postData": "Ajax=1&IsEvent=1&Obj=OBF&Evt=deactivate&This=OBF&_S_ID=DbWFJDJTi5piIoj&_seq_=2b&_a_=1",
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3417",
+     "postData": "Ajax=1&IsEvent=1&Obj=O2CD&Evt=activate&This=O2CD&_S_ID=DbWFJDJTi5piIoj&_seq_=2c&_a_=1",
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3418",
+     "postData": null,
+     "respStatus": 200
+    }
+   ],
+   "gridsData": [],
+   "recarga": {
+    "gridIds": [],
+    "recargados": []
+   }
+  },
+  "Clientes": {
+   "title": "",
+   "texto": "Todos\npor Identificación:\npor Nombre:\nEstado:\nPor Zona:\nPor Ruta:\nPanel de Filtro",
+   "grids": [],
+   "forms": [
+    {
+     "id": "O3DF_id",
+     "tipo": "radio",
+     "val": "on"
+    },
+    {
+     "id": "O3E3_id",
+     "tipo": "radio",
+     "val": "on"
+    },
+    {
+     "id": "O3E7_id",
+     "tipo": "text",
+     "val": ""
+    },
+    {
+     "id": "O3EB_id",
+     "tipo": "radio",
+     "val": "on"
+    },
+    {
+     "id": "O3EF_id",
+     "tipo": "text",
+     "val": ""
+    },
+    {
+     "id": "O3FB_id",
+     "tipo": "text",
+     "val": "Activo"
+    },
+    {
+     "id": "O406_id",
+     "tipo": "radio",
+     "val": "on"
+    },
+    {
+     "id": "O40A_id",
+     "tipo": "text",
+     "val": ""
+    },
+    {
+     "id": "O415_id",
+     "tipo": "radio",
+     "val": "on"
+    },
+    {
+     "id": "O419_id",
+     "tipo": "text",
+     "val": ""
+    }
+   ],
+   "labels": [
+    "Todos",
+    "por Identificación:",
+    "por Nombre:",
+    "Estado:",
+    "Por Zona:",
+    "Por Ruta:",
+    "Panel de Filtro"
+   ],
+   "btns": [],
+   "tabs": [],
+   "toolbars": [],
+   "combos": [],
+   "winId": "O3C7_id",
+   "clicEn": {
+    "item": "O16C_id",
+    "x": 73,
+    "y": 287
+   },
+   "red": [
+    {
+     "id": "17720.3434",
+     "postData": "Ajax=1&IsEvent=1&Obj=O2CD&Evt=deactivate&This=O2CD&_S_ID=DbWFJDJTi5piIoj&_seq_=2d",
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3435",
+     "postData": "Ajax=1&IsEvent=1&Obj=OBF&Evt=activate&This=OBF&_S_ID=DbWFJDJTi5piIoj&_seq_=2e",
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3437",
+     "postData": "Ajax=1&IsEvent=1&Obj=O16C&Evt=click&This=O16C&_S_ID=DbWFJDJTi5piIoj&_seq_=2f",
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3438",
+     "postData": "Ajax=1&IsEvent=1&Obj=O365&Evt=resize&This=O365&Width=902&Height=474&_S_ID=DbWFJDJTi5piIoj&_seq_=30&_a_=1",
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3439",
+     "postData": "Ajax=1&IsEvent=1&Obj=O365&Evt=move&This=O365&X=488&Y=24&_S_ID=DbWFJDJTi5piIoj&_seq_=31&_a_=1",
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3444",
+     "postData": "Ajax=1&IsEvent=1&Obj=OBF&Evt=deactivate&This=OBF&_S_ID=DbWFJDJTi5piIoj&_seq_=32&_a_=1",
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3446",
+     "postData": null,
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3447",
+     "postData": null,
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3448",
+     "postData": null,
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3449",
+     "postData": null,
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3450",
+     "postData": null,
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3451",
+     "postData": null,
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3452",
+     "postData": null,
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3453",
+     "postData": null,
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3454",
+     "postData": null,
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3455",
+     "postData": null,
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3456",
+     "postData": null,
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3457",
+     "postData": null,
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3458",
+     "postData": null,
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3459",
+     "postData": null,
+     "respStatus": 200
+    }
+   ],
+   "gridsData": [],
+   "recarga": {
+    "gridIds": [],
+    "recargados": []
+   }
+  },
+  "Descargos": {
+   "title": "",
+   "texto": "Todos\npor Cliente:\n\t...\t\nFecha Inicial:\nFecha final:\nEstado:\nPanel de Filtro\nPor Zona:\nPor Ruta:",
+   "grids": [],
+   "forms": [
+    {
+     "id": "O506_id",
+     "tipo": "radio",
+     "val": "on"
+    },
+    {
+     "id": "O50A_id",
+     "tipo": "radio",
+     "val": "on"
+    },
+    {
+     "id": "O50E_id",
+     "tipo": "text",
+     "val": ""
+    },
+    {
+     "id": "O522_id",
+     "tipo": "text",
+     "val": "Activo"
+    },
+    {
+     "id": "O535_id",
+     "tipo": "radio",
+     "val": "on"
+    },
+    {
+     "id": "O539_id",
+     "tipo": "text",
+     "val": ""
+    },
+    {
+     "id": "O544_id",
+     "tipo": "radio",
+     "val": "on"
+    },
+    {
+     "id": "O548_id",
+     "tipo": "text",
+     "val": ""
+    },
+    {
+     "id": "O573_id",
+     "tipo": "text",
+     "val": "18/09/2026"
+    },
+    {
+     "id": "O579_id",
+     "tipo": "text",
+     "val": "18/09/2026"
+    }
+   ],
+   "labels": [
+    "Todos",
+    "por Cliente:",
+    "Fecha Inicial:",
+    "Fecha final:",
+    "Estado:",
+    "lblImporting",
+    "Panel de Filtro",
+    "Por Zona:",
+    "Por Ruta:"
+   ],
+   "btns": [
+    "...",
+    "..."
+   ],
+   "tabs": [],
+   "toolbars": [],
+   "combos": [],
+   "winId": "O4EE_id",
+   "clicEn": {
+    "item": "O1C1_id",
+    "x": 75,
+    "y": 222
+   },
+   "red": [
+    {
+     "id": "17720.3463",
+     "postData": "Ajax=1&IsEvent=1&Obj=O365&Evt=deactivate&This=O365&_S_ID=DbWFJDJTi5piIoj&_seq_=34",
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3464",
+     "postData": "Ajax=1&IsEvent=1&Obj=OBF&Evt=activate&This=OBF&_S_ID=DbWFJDJTi5piIoj&_seq_=35",
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3466",
+     "postData": "Ajax=1&IsEvent=1&Obj=O19F&Evt=click&This=O19F&_S_ID=DbWFJDJTi5piIoj&_seq_=36",
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3468",
+     "postData": "Ajax=1&IsEvent=1&Obj=O1C1&Evt=click&This=O1C1&_S_ID=DbWFJDJTi5piIoj&_seq_=37",
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3469",
+     "postData": "Ajax=1&IsEvent=1&Obj=O48C&Evt=resize&This=O48C&Width=902&Height=504&_S_ID=DbWFJDJTi5piIoj&_seq_=38&_a_=1",
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3470",
+     "postData": "Ajax=1&IsEvent=1&Obj=O48C&Evt=move&This=O48C&X=488&Y=24&_S_ID=DbWFJDJTi5piIoj&_seq_=39&_a_=1",
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3483",
+     "postData": "Ajax=1&IsEvent=1&Obj=OBF&Evt=deactivate&This=OBF&_S_ID=DbWFJDJTi5piIoj&_seq_=3a&_a_=1",
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3494",
+     "postData": null,
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3496",
+     "postData": "Ajax=1&IsEvent=1&Obj=O48C&Evt=activate&This=O48C&_S_ID=DbWFJDJTi5piIoj&_seq_=3b&_a_=1",
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3497",
+     "postData": "options=2&_seq_=3c&_a_=1",
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3507",
+     "postData": "Ajax=1&IsEvent=1&Obj=O4E2&Evt=load&This=O4E2&Records=undefined&Options=undefined&_S_ID=DbWFJDJTi5piIoj&_seq_=3d&_a_=1",
+     "respStatus": 200
+    }
+   ],
+   "gridsData": [],
+   "recarga": {
+    "gridIds": [],
+    "recargados": []
+   }
+  },
+  "Pagos": {
+   "title": "",
+   "texto": "Todos\npor Cliente:\n\t...\t\npor Cobrador:\nFecha Inicial:\nFecha final:\nEstado:\nPanel de Filtro\nPor Zona:\nPor Ruta:",
+   "grids": [],
+   "forms": [
+    {
+     "id": "O63F_id",
+     "tipo": "radio",
+     "val": "on"
+    },
+    {
+     "id": "O643_id",
+     "tipo": "radio",
+     "val": "on"
+    },
+    {
+     "id": "O647_id",
+     "tipo": "text",
+     "val": ""
+    },
+    {
+     "id": "O64F_id",
+     "tipo": "radio",
+     "val": "on"
+    },
+    {
+     "id": "O653_id",
+     "tipo": "text",
+     "val": ""
+    },
+    {
+     "id": "O66A_id",
+     "tipo": "text",
+     "val": "Activo"
+    },
+    {
+     "id": "O679_id",
+     "tipo": "radio",
+     "val": "on"
+    },
+    {
+     "id": "O67D_id",
+     "tipo": "text",
+     "val": ""
+    },
+    {
+     "id": "O688_id",
+     "tipo": "radio",
+     "val": "on"
+    },
+    {
+     "id": "O68C_id",
+     "tipo": "text",
+     "val": ""
+    },
+    {
+     "id": "O6B3_id",
+     "tipo": "text",
+     "val": "18/09/2026"
+    },
+    {
+     "id": "O6B9_id",
+     "tipo": "text",
+     "val": "18/09/2026"
+    }
+   ],
+   "labels": [
+    "Todos",
+    "por Cliente:",
+    "por Cobrador:",
+    "Fecha Inicial:",
+    "Fecha final:",
+    "Estado:",
+    "Panel de Filtro",
+    "Por Zona:",
+    "Por Ruta:"
+   ],
+   "btns": [
+    "...",
+    "..."
+   ],
+   "tabs": [],
+   "toolbars": [],
+   "combos": [],
+   "winId": "O627_id",
+   "clicEn": {
+    "item": "O1D1_id",
+    "x": 75,
+    "y": 426
+   },
+   "red": [
+    {
+     "id": "17720.3511",
+     "postData": "Ajax=1&IsEvent=1&Obj=O48C&Evt=deactivate&This=O48C&_S_ID=DbWFJDJTi5piIoj&_seq_=3e",
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3512",
+     "postData": "Ajax=1&IsEvent=1&Obj=OBF&Evt=activate&This=OBF&_S_ID=DbWFJDJTi5piIoj&_seq_=3f",
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3513",
+     "postData": "Ajax=1&IsEvent=1&Obj=O1D1&Evt=click&This=O1D1&_S_ID=DbWFJDJTi5piIoj&_seq_=40",
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3514",
+     "postData": "Ajax=1&IsEvent=1&Obj=O5C5&Evt=resize&This=O5C5&Width=902&Height=504&_S_ID=DbWFJDJTi5piIoj&_seq_=41&_a_=1",
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3515",
+     "postData": "Ajax=1&IsEvent=1&Obj=O5C5&Evt=move&This=O5C5&X=488&Y=24&_S_ID=DbWFJDJTi5piIoj&_seq_=42&_a_=1",
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3533",
+     "postData": "Ajax=1&IsEvent=1&Obj=OBF&Evt=deactivate&This=OBF&_S_ID=DbWFJDJTi5piIoj&_seq_=43&_a_=1",
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3549",
+     "postData": "Ajax=1&IsEvent=1&Obj=O5C5&Evt=activate&This=O5C5&_S_ID=DbWFJDJTi5piIoj&_seq_=44&_a_=1",
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3550",
+     "postData": "options=2&_seq_=45&_a_=1",
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3565",
+     "postData": "Ajax=1&IsEvent=1&Obj=O61B&Evt=load&This=O61B&Records=undefined&Options=undefined&_S_ID=DbWFJDJTi5piIoj&_seq_=46&_a_=1",
+     "respStatus": 200
+    }
+   ],
+   "gridsData": [],
+   "recarga": {
+    "gridIds": [],
+    "recargados": []
+   }
+  },
+  "Entregas": {
+   "title": "",
+   "texto": "Todos\npor Cobrador:\nFecha Inicial:\nFecha final:\nEstado:\nPanel de Filtro",
+   "grids": [],
+   "forms": [
+    {
+     "id": "O786_id",
+     "tipo": "radio",
+     "val": "on"
+    },
+    {
+     "id": "O78A_id",
+     "tipo": "radio",
+     "val": "on"
+    },
+    {
+     "id": "O78E_id",
+     "tipo": "text",
+     "val": ""
+    },
+    {
+     "id": "O7A5_id",
+     "tipo": "text",
+     "val": "Activo"
+    },
+    {
+     "id": "O7D0_id",
+     "tipo": "text",
+     "val": "18/09/2026"
+    },
+    {
+     "id": "O7D6_id",
+     "tipo": "text",
+     "val": "18/09/2026"
+    }
+   ],
+   "labels": [
+    "Todos",
+    "por Cobrador:",
+    "Fecha Inicial:",
+    "Fecha final:",
+    "Estado:",
+    "Panel de Filtro"
+   ],
+   "btns": [],
+   "tabs": [],
+   "toolbars": [],
+   "combos": [],
+   "winId": "O76E_id",
+   "clicEn": {
+    "item": "O1D9_id",
+    "x": 73,
+    "y": 523
+   },
+   "red": [
+    {
+     "id": "17720.3568",
+     "postData": "Ajax=1&IsEvent=1&Obj=O5C5&Evt=deactivate&This=O5C5&_S_ID=DbWFJDJTi5piIoj&_seq_=47",
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3569",
+     "postData": "Ajax=1&IsEvent=1&Obj=OBF&Evt=activate&This=OBF&_S_ID=DbWFJDJTi5piIoj&_seq_=48",
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3570",
+     "postData": "Ajax=1&IsEvent=1&Obj=O1D9&Evt=click&This=O1D9&_S_ID=DbWFJDJTi5piIoj&_seq_=49",
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3571",
+     "postData": "Ajax=1&IsEvent=1&Obj=O70C&Evt=resize&This=O70C&Width=953&Height=504&_S_ID=DbWFJDJTi5piIoj&_seq_=4a&_a_=1",
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3572",
+     "postData": "Ajax=1&IsEvent=1&Obj=O70C&Evt=move&This=O70C&X=462&Y=24&_S_ID=DbWFJDJTi5piIoj&_seq_=4b&_a_=1",
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3585",
+     "postData": "Ajax=1&IsEvent=1&Obj=OBF&Evt=deactivate&This=OBF&_S_ID=DbWFJDJTi5piIoj&_seq_=4c&_a_=1",
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3598",
+     "postData": "Ajax=1&IsEvent=1&Obj=O70C&Evt=activate&This=O70C&_S_ID=DbWFJDJTi5piIoj&_seq_=4d&_a_=1",
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3600",
+     "postData": "options=2&_seq_=4e&_a_=1",
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3611",
+     "postData": "Ajax=1&IsEvent=1&Obj=O762&Evt=load&This=O762&Records=undefined&Options=undefined&_S_ID=DbWFJDJTi5piIoj&_seq_=4f&_a_=1",
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3614",
+     "postData": "Ajax=1&IsEvent=1&Obj=OBA&Evt=timer&_S_ID=DbWFJDJTi5piIoj&_seq_=50",
+     "respStatus": 200
+    },
+    {
+     "id": "17720.3624",
+     "postData": "start=0&limit=25&options=2&_seq_=51&_a_=1"
+    }
+   ],
+   "gridsData": [],
+   "recarga": {
+    "gridIds": [],
+    "recargados": []
+   }
+  }
+ },
+ "errores": [
+  "Descargos Rec.: item O1C9_id no visible",
+  "Monitor C: no se abrio ventana nueva (posible clic en ventana equívoca)"
+ ],
+ "grupoCerrar": {
+  "cabecera": "O139_id",
+  "altura": 150,
+  "items": [
+   {
+    "id": "O150_id",
+    "txt": "",
+    "tag": "DIV"
+   },
+   {
+    "id": "O154_id",
+    "txt": "",
+    "tag": "DIV"
+   },
+   {
+    "id": "O158_id",
+    "txt": "",
+    "tag": "DIV"
+   },
+   {
+    "id": "O15C_id",
+    "txt": "",
+    "tag": "DIV"
+   }
+  ]
+ },
+ "grupoCerrarExpandido": [
+  {
+   "id": "O150_id",
+   "txt": "",
+   "lab": "",
+   "onclick": null,
+   "vis": "block"
+  },
+  {
+   "id": "O154_id",
+   "txt": "",
+   "lab": "",
+   "onclick": null,
+   "vis": "block"
+  },
+  {
+   "id": "O158_id",
+   "txt": "",
+   "lab": "",
+   "onclick": null,
+   "vis": "block"
+  },
+  {
+   "id": "O15C_id",
+   "txt": "",
+   "lab": "",
+   "onclick": null,
+   "vis": "block"
+  }
+ ]
+}

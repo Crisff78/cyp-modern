@@ -1,0 +1,432 @@
+{
+ "Clientes": {
+  "title": "Confirm",
+  "z": 9033,
+  "texto": " \nConfirm\n¿Desea salir?\n\tSí\t\n\tNo\t\n ",
+  "grids": [],
+  "forms": [],
+  "labels": [],
+  "btns": [
+   {
+    "txt": "Sí",
+    "id": "ext-comp-1038"
+   },
+   {
+    "txt": "Sí",
+    "id": "ext-gen270"
+   },
+   {
+    "txt": "No",
+    "id": "ext-comp-1039"
+   },
+   {
+    "txt": "No",
+    "id": "ext-gen272"
+   }
+  ],
+  "tabs": [],
+  "toolbars": [],
+  "combos": [],
+  "checks": []
+ },
+ "Admin.": {
+  "title": "Confirm",
+  "z": 9033,
+  "texto": " \nConfirm\n¿Desea salir?\n\tSí\t\n\tNo\t\n ",
+  "grids": [],
+  "forms": [],
+  "labels": [],
+  "btns": [
+   {
+    "txt": "Sí",
+    "id": "ext-comp-1038"
+   },
+   {
+    "txt": "Sí",
+    "id": "ext-gen270"
+   },
+   {
+    "txt": "No",
+    "id": "ext-comp-1039"
+   },
+   {
+    "txt": "No",
+    "id": "ext-gen272"
+   }
+  ],
+  "tabs": [],
+  "toolbars": [],
+  "combos": [],
+  "checks": []
+ },
+ "Cargos": {
+  "title": "Confirm",
+  "z": 9033,
+  "texto": " \nConfirm\n¿Desea salir?\n\tSí\t\n\tNo\t\n ",
+  "grids": [],
+  "forms": [],
+  "labels": [],
+  "btns": [
+   {
+    "txt": "Sí",
+    "id": "ext-comp-1038"
+   },
+   {
+    "txt": "Sí",
+    "id": "ext-gen270"
+   },
+   {
+    "txt": "No",
+    "id": "ext-comp-1039"
+   },
+   {
+    "txt": "No",
+    "id": "ext-gen272"
+   }
+  ],
+  "tabs": [],
+  "toolbars": [],
+  "combos": [],
+  "checks": []
+ },
+ "Cargos Rec.": {
+  "title": "Confirm",
+  "z": 9033,
+  "texto": " \nConfirm\n¿Desea salir?\n\tSí\t\n\tNo\t\n ",
+  "grids": [],
+  "forms": [],
+  "labels": [],
+  "btns": [
+   {
+    "txt": "Sí",
+    "id": "ext-comp-1038"
+   },
+   {
+    "txt": "Sí",
+    "id": "ext-gen270"
+   },
+   {
+    "txt": "No",
+    "id": "ext-comp-1039"
+   },
+   {
+    "txt": "No",
+    "id": "ext-gen272"
+   }
+  ],
+  "tabs": [],
+  "toolbars": [],
+  "combos": [],
+  "checks": []
+ },
+ "Cobros": {
+  "title": "Confirm",
+  "z": 9033,
+  "texto": " \nConfirm\n¿Desea salir?\n\tSí\t\n\tNo\t\n ",
+  "grids": [],
+  "forms": [],
+  "labels": [],
+  "btns": [
+   {
+    "txt": "Sí",
+    "id": "ext-comp-1038"
+   },
+   {
+    "txt": "Sí",
+    "id": "ext-gen270"
+   },
+   {
+    "txt": "No",
+    "id": "ext-comp-1039"
+   },
+   {
+    "txt": "No",
+    "id": "ext-gen272"
+   }
+  ],
+  "tabs": [],
+  "toolbars": [],
+  "combos": [],
+  "checks": []
+ },
+ "Depositos": {
+  "title": "Confirm",
+  "z": 9033,
+  "texto": " \nConfirm\n¿Desea salir?\n\tSí\t\n\tNo\t\n ",
+  "grids": [],
+  "forms": [],
+  "labels": [],
+  "btns": [
+   {
+    "txt": "Sí",
+    "id": "ext-comp-1038"
+   },
+   {
+    "txt": "Sí",
+    "id": "ext-gen270"
+   },
+   {
+    "txt": "No",
+    "id": "ext-comp-1039"
+   },
+   {
+    "txt": "No",
+    "id": "ext-gen272"
+   }
+  ],
+  "tabs": [],
+  "toolbars": [],
+  "combos": [],
+  "checks": []
+ },
+ "Cerrar": {
+  "title": "Confirm",
+  "z": 9033,
+  "texto": " \nConfirm\n¿Desea salir?\n\tSí\t\n\tNo\t\n ",
+  "grids": [],
+  "forms": [],
+  "labels": [],
+  "btns": [
+   {
+    "txt": "Sí",
+    "id": "ext-comp-1038"
+   },
+   {
+    "txt": "Sí",
+    "id": "ext-gen270"
+   },
+   {
+    "txt": "No",
+    "id": "ext-comp-1039"
+   },
+   {
+    "txt": "No",
+    "id": "ext-gen272"
+   }
+  ],
+  "tabs": [],
+  "toolbars": [],
+  "combos": [],
+  "checks": []
+ },
+ "Descargos": {
+  "title": "Confirm",
+  "z": 9033,
+  "texto": " \nConfirm\n¿Desea salir?\n\tSí\t\n\tNo\t\n ",
+  "grids": [],
+  "forms": [],
+  "labels": [],
+  "btns": [
+   {
+    "txt": "Sí",
+    "id": "ext-comp-1038"
+   },
+   {
+    "txt": "Sí",
+    "id": "ext-gen270"
+   },
+   {
+    "txt": "No",
+    "id": "ext-comp-1039"
+   },
+   {
+    "txt": "No",
+    "id": "ext-gen272"
+   }
+  ],
+  "tabs": [],
+  "toolbars": [],
+  "combos": [],
+  "checks": []
+ },
+ "Descargos Rec.": {
+  "err": "no-loc",
+  "L": {
+   "x": 0,
+   "y": 0,
+   "vis": "none",
+   "txt": "Descargos Rec.",
+   "w": 0
+  }
+ },
+ "Pagos": {
+  "title": "Confirm",
+  "z": 9033,
+  "texto": " \nConfirm\n¿Desea salir?\n\tSí\t\n\tNo\t\n ",
+  "grids": [],
+  "forms": [],
+  "labels": [],
+  "btns": [
+   {
+    "txt": "Sí",
+    "id": "ext-comp-1038"
+   },
+   {
+    "txt": "Sí",
+    "id": "ext-gen270"
+   },
+   {
+    "txt": "No",
+    "id": "ext-comp-1039"
+   },
+   {
+    "txt": "No",
+    "id": "ext-gen272"
+   }
+  ],
+  "tabs": [],
+  "toolbars": [],
+  "combos": [],
+  "checks": []
+ },
+ "Entregas": {
+  "title": "Confirm",
+  "z": 9033,
+  "texto": " \nConfirm\n¿Desea salir?\n\tSí\t\n\tNo\t\n ",
+  "grids": [],
+  "forms": [],
+  "labels": [],
+  "btns": [
+   {
+    "txt": "Sí",
+    "id": "ext-comp-1038"
+   },
+   {
+    "txt": "Sí",
+    "id": "ext-gen270"
+   },
+   {
+    "txt": "No",
+    "id": "ext-comp-1039"
+   },
+   {
+    "txt": "No",
+    "id": "ext-gen272"
+   }
+  ],
+  "tabs": [],
+  "toolbars": [],
+  "combos": [],
+  "checks": []
+ },
+ "Monitor C": {
+  "title": "Confirm",
+  "z": 9033,
+  "texto": " \nConfirm\n¿Desea salir?\n\tSí\t\n\tNo\t\n ",
+  "grids": [],
+  "forms": [],
+  "labels": [],
+  "btns": [
+   {
+    "txt": "Sí",
+    "id": "ext-comp-1038"
+   },
+   {
+    "txt": "Sí",
+    "id": "ext-gen270"
+   },
+   {
+    "txt": "No",
+    "id": "ext-comp-1039"
+   },
+   {
+    "txt": "No",
+    "id": "ext-gen272"
+   }
+  ],
+  "tabs": [],
+  "toolbars": [],
+  "combos": [],
+  "checks": []
+ },
+ "Cuadres": {
+  "title": "Confirm",
+  "z": 9033,
+  "texto": " \nConfirm\n¿Desea salir?\n\tSí\t\n\tNo\t\n ",
+  "grids": [],
+  "forms": [],
+  "labels": [],
+  "btns": [
+   {
+    "txt": "Sí",
+    "id": "ext-comp-1038"
+   },
+   {
+    "txt": "Sí",
+    "id": "ext-gen270"
+   },
+   {
+    "txt": "No",
+    "id": "ext-comp-1039"
+   },
+   {
+    "txt": "No",
+    "id": "ext-gen272"
+   }
+  ],
+  "tabs": [],
+  "toolbars": [],
+  "combos": [],
+  "checks": []
+ },
+ "Reportes": {
+  "title": "Confirm",
+  "z": 9033,
+  "texto": " \nConfirm\n¿Desea salir?\n\tSí\t\n\tNo\t\n ",
+  "grids": [],
+  "forms": [],
+  "labels": [],
+  "btns": [
+   {
+    "txt": "Sí",
+    "id": "ext-comp-1038"
+   },
+   {
+    "txt": "Sí",
+    "id": "ext-gen270"
+   },
+   {
+    "txt": "No",
+    "id": "ext-comp-1039"
+   },
+   {
+    "txt": "No",
+    "id": "ext-gen272"
+   }
+  ],
+  "tabs": [],
+  "toolbars": [],
+  "combos": [],
+  "checks": []
+ },
+ "Monitor Z": {
+  "title": "Confirm",
+  "z": 9033,
+  "texto": " \nConfirm\n¿Desea salir?\n\tSí\t\n\tNo\t\n ",
+  "grids": [],
+  "forms": [],
+  "labels": [],
+  "btns": [
+   {
+    "txt": "Sí",
+    "id": "ext-comp-1038"
+   },
+   {
+    "txt": "Sí",
+    "id": "ext-gen270"
+   },
+   {
+    "txt": "No",
+    "id": "ext-comp-1039"
+   },
+   {
+    "txt": "No",
+    "id": "ext-gen272"
+   }
+  ],
+  "tabs": [],
+  "toolbars": [],
+  "combos": [],
+  "checks": []
+ }
+}

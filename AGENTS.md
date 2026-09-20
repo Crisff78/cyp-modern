@@ -66,7 +66,7 @@ decisiones y su alcance no se aplican aqui. No mezclar los dos proyectos.
 
 ## Current state - ACTUALIZAR ANTES DE CERRAR
 
-**Last updated:** 2026-09-19 por ZCode (sync f0f50f6 + inventario del original + docs/legacy-parity.md)
+**Last updated:** 2026-09-19 por ZCode (G1 aceptar/cancelar depósito implementado; parity doc en docs/legacy-parity.md)
 
 ### Done so far
 
@@ -175,6 +175,19 @@ decisiones y su alcance no se aplican aqui. No mezclar los dos proyectos.
   Ventana de Pagos), G6 persistencia de Configuracion General, G7 reportes de
   Pagos del legacy, G8 contabilidad (decision). El demo se congolo antes de
   capturar formularios de alta campo por campo (pendiente, §7 del doc).
+
+- **G1 implementado: aceptar/cancelar depósito (2026-09-19, ZCode).** Migración
+  `003_deposit_lifecycle.sql` (accepted_at/by + cancelled_at/by en
+  cash_handovers, excluyentes entre sí); `acceptDeposit`/`cancelDeposit` en
+  domain.ts (solo admin, idempotentes, 422 en transición inválida); los
+  movimientos cancelados dejan de contar en preview y snapshot; rutas
+  `POST /api/depositos/:id/aceptar|cancelar` con Idempotency-Key; store carga y
+  persiste el ciclo de vida; admin: columna "Acep." (Pendiente/Aceptado/
+  Cancelado), selección de fila y botones Aceptar/Cancelar en la barra (vía
+  capa mock, mismo estadio que el resto de las vistas operativas); mock demo
+  soporta las acciones; test de integración nuevo (16 pass + 1 skip).
+  `npm run check` completo PASS. Pendiente menor G1: desglose de denominaciones
+  del Panel de Detalles.
 
 ### Aprovisionamiento (como usarlo)
 

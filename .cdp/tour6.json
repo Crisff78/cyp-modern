@@ -1,0 +1,1187 @@
+{
+ "Admin.": null,
+ "Clientes": {
+  "title": "Cargos",
+  "z": 9023,
+  "texto": " \nCargos\nNro.\nFecha\nCód.\nIdentif.\nCliente\nAbrev\nServicio\nImporte\nRecibido\nPendiente\nAct.\npnlClient\nTodos\npor Cliente:\n\t...\t\nFecha Inicial:\nFecha final:\nEstado:\nPanel de Filtro\nPor Zona:\nPor Ruta:\nRelación de Pago:\nCantidad:\nTotal:\nRecib.:\nPend.:\n ",
+  "grids": [
+   {
+    "cols": [
+     "Nro.",
+     "Fecha",
+     "Cód.",
+     "Identif.",
+     "Cliente",
+     "Abrev",
+     "Servicio",
+     "Importe",
+     "Recibido",
+     "Pendiente",
+     "Act."
+    ],
+    "rows": 0,
+    "rowsTxt": []
+   }
+  ],
+  "forms": [
+   {
+    "id": "O36C_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "O370_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "O374_id",
+    "tipo": "text",
+    "val": ""
+   },
+   {
+    "id": "O388_id",
+    "tipo": "text",
+    "val": "Activo"
+   },
+   {
+    "id": "O39B_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "O39F_id",
+    "tipo": "text",
+    "val": ""
+   },
+   {
+    "id": "O3AA_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "O3AE_id",
+    "tipo": "text",
+    "val": ""
+   },
+   {
+    "id": "O3BD_id",
+    "tipo": "text",
+    "val": "Todos"
+   },
+   {
+    "id": "O3E8_id",
+    "tipo": "text",
+    "val": "18/09/2026"
+   },
+   {
+    "id": "O3EE_id",
+    "tipo": "text",
+    "val": "18/09/2026"
+   }
+  ],
+  "labels": [
+   "Todos",
+   "por Cliente:",
+   "Fecha Inicial:",
+   "Fecha final:",
+   "Estado:",
+   "lblImporting",
+   "Panel de Filtro",
+   "Por Zona:",
+   "Por Ruta:",
+   "Relación de Pago:"
+  ],
+  "btns": [
+   "...",
+   "..."
+  ],
+  "tabs": [],
+  "toolbars": [
+   "",
+   "Cantidad:\nTotal:\nRecib.:\nPend.:"
+  ],
+  "combos": [],
+  "red": [
+   "Ajax=1&IsEvent=1&Obj=OBA&Evt=timer&_S_ID=I9TfCM2RLKbkttq&_seq_=28",
+   "Ajax=1&IsEvent=1&Obj=O276&Evt=viewrefresh&_S_ID=I9TfCM2RLKbkttq&_seq_=29&_a_=1",
+   "start=0&limit=25&options=2&_seq_=2a&_a_=1",
+   "http://gdemos.ddns.net/cypdemo/cyp10_front.dll/cache/cyp10_front/__FCDAE2B137E0306934BB6285.png",
+   "http://gdemos.ddns.net/cypdemo/cyp10_front.dll/cache/cyp10_front/__38A658808EA2A54EC74A74E1.png",
+   "http://gdemos.ddns.net/cypdemo/cyp10_front.dll/cache/cyp10_front/__D37058FC064EA4F6D9C07167.png",
+   "http://gdemos.ddns.net/cypdemo/cyp10_front.dll/cache/cyp10_front/__A2EF5A3D7D03A6191FF45C77.png",
+   "http://gdemos.ddns.net/cypdemo/cyp10_front.dll/cache/cyp10_front/__8C55623514BCAEB5A1135805.png",
+   "http://gdemos.ddns.net/cypdemo/cyp10_front.dll/cache/cyp10_front/__B46C9D6CA60AE39A5A78701A.png",
+   "http://gdemos.ddns.net/cypdemo/cyp10_front.dll/cache/cyp10_front/__D30AC78E4EFA0CBE22056149.png",
+   "http://gdemos.ddns.net/cypdemo/cyp10_front.dll/cache/cyp10_front/__FA29AEB5DDDAEE97D8056CB9.png",
+   "http://gdemos.ddns.net/cypdemo/cyp10_front.dll/cache/cyp10_front/__FB55CB2381B710717D0D5E64.png",
+   "http://gdemos.ddns.net/cypdemo/cyp10_front.dll/cache/cyp10_front/__51A3C5629F6F07C7F113601C.png",
+   "http://gdemos.ddns.net/cypdemo/cyp10_front.dll/cache/cyp10_front/__36E88877F8B4DCB42F9E3727.png",
+   "http://gdemos.ddns.net/cypdemo/cyp10_front.dll/cache/cyp10_front/__6909607A8851A208F15C7639.png",
+   "http://gdemos.ddns.net/cypdemo/cyp10_front.dll/cache/cyp10_front/__01E57B9F74B5C63D769C5442.png",
+   "http://gdemos.ddns.net/cypdemo/cyp10_front.dll/ext-3.4.0/resources/images/xp/form/date-trigger.gif",
+   "Ajax=1&IsEvent=1&Obj=O2EE&Evt=resize&This=O2EE&Width=902&Height=504&_S_ID=I9TfCM2RLKbkttq&_seq_=2b&_a_=1"
+  ]
+ },
+ "Cargos": {
+  "title": "Cargos",
+  "z": 9023,
+  "texto": " \nCargos\nNro.\nFecha\nCód.\nIdentif.\nCliente\nAbrev\nServicio\nImporte\nRecibido\nPendiente\nAct.\npnlClient\nTodos\npor Cliente:\n\t...\t\nFecha Inicial:\nFecha final:\nEstado:\nPanel de Filtro\nPor Zona:\nPor Ruta:\nRelación de Pago:\nCantidad:\nTotal:\nRecib.:\nPend.:\n ",
+  "grids": [
+   {
+    "cols": [
+     "Nro.",
+     "Fecha",
+     "Cód.",
+     "Identif.",
+     "Cliente",
+     "Abrev",
+     "Servicio",
+     "Importe",
+     "Recibido",
+     "Pendiente",
+     "Act."
+    ],
+    "rows": 0,
+    "rowsTxt": []
+   }
+  ],
+  "forms": [
+   {
+    "id": "O36C_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "O370_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "O374_id",
+    "tipo": "text",
+    "val": ""
+   },
+   {
+    "id": "O388_id",
+    "tipo": "text",
+    "val": "Activo"
+   },
+   {
+    "id": "O39B_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "O39F_id",
+    "tipo": "text",
+    "val": ""
+   },
+   {
+    "id": "O3AA_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "O3AE_id",
+    "tipo": "text",
+    "val": ""
+   },
+   {
+    "id": "O3BD_id",
+    "tipo": "text",
+    "val": "Todos"
+   },
+   {
+    "id": "O3E8_id",
+    "tipo": "text",
+    "val": "18/09/2026"
+   },
+   {
+    "id": "O3EE_id",
+    "tipo": "text",
+    "val": "18/09/2026"
+   }
+  ],
+  "labels": [
+   "Todos",
+   "por Cliente:",
+   "Fecha Inicial:",
+   "Fecha final:",
+   "Estado:",
+   "lblImporting",
+   "Panel de Filtro",
+   "Por Zona:",
+   "Por Ruta:",
+   "Relación de Pago:"
+  ],
+  "btns": [
+   "...",
+   "..."
+  ],
+  "tabs": [],
+  "toolbars": [
+   "",
+   "Cantidad:\nTotal:\nRecib.:\nPend.:"
+  ],
+  "combos": [],
+  "red": []
+ },
+ "Cargos Rec.": {
+  "title": "Cargos",
+  "z": 9023,
+  "texto": " \nCargos\nNro.\nFecha\nCód.\nIdentif.\nCliente\nAbrev\nServicio\nImporte\nRecibido\nPendiente\nAct.\npnlClient\nTodos\npor Cliente:\n\t...\t\nFecha Inicial:\nFecha final:\nEstado:\nPanel de Filtro\nPor Zona:\nPor Ruta:\nRelación de Pago:\nCantidad:\nTotal:\nRecib.:\nPend.:\n ",
+  "grids": [
+   {
+    "cols": [
+     "Nro.",
+     "Fecha",
+     "Cód.",
+     "Identif.",
+     "Cliente",
+     "Abrev",
+     "Servicio",
+     "Importe",
+     "Recibido",
+     "Pendiente",
+     "Act."
+    ],
+    "rows": 0,
+    "rowsTxt": []
+   }
+  ],
+  "forms": [
+   {
+    "id": "O36C_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "O370_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "O374_id",
+    "tipo": "text",
+    "val": ""
+   },
+   {
+    "id": "O388_id",
+    "tipo": "text",
+    "val": "Activo"
+   },
+   {
+    "id": "O39B_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "O39F_id",
+    "tipo": "text",
+    "val": ""
+   },
+   {
+    "id": "O3AA_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "O3AE_id",
+    "tipo": "text",
+    "val": ""
+   },
+   {
+    "id": "O3BD_id",
+    "tipo": "text",
+    "val": "Todos"
+   },
+   {
+    "id": "O3E8_id",
+    "tipo": "text",
+    "val": "18/09/2026"
+   },
+   {
+    "id": "O3EE_id",
+    "tipo": "text",
+    "val": "18/09/2026"
+   }
+  ],
+  "labels": [
+   "Todos",
+   "por Cliente:",
+   "Fecha Inicial:",
+   "Fecha final:",
+   "Estado:",
+   "lblImporting",
+   "Panel de Filtro",
+   "Por Zona:",
+   "Por Ruta:",
+   "Relación de Pago:"
+  ],
+  "btns": [
+   "...",
+   "..."
+  ],
+  "tabs": [],
+  "toolbars": [
+   "",
+   "Cantidad:\nTotal:\nRecib.:\nPend.:"
+  ],
+  "combos": [],
+  "red": []
+ },
+ "Cobros": {
+  "title": "Cargos",
+  "z": 9023,
+  "texto": " \nCargos\nNro.\nFecha\nCód.\nIdentif.\nCliente\nAbrev\nServicio\nImporte\nRecibido\nPendiente\nAct.\npnlClient\nTodos\npor Cliente:\n\t...\t\nFecha Inicial:\nFecha final:\nEstado:\nPanel de Filtro\nPor Zona:\nPor Ruta:\nRelación de Pago:\nCantidad:\nTotal:\nRecib.:\nPend.:\n ",
+  "grids": [
+   {
+    "cols": [
+     "Nro.",
+     "Fecha",
+     "Cód.",
+     "Identif.",
+     "Cliente",
+     "Abrev",
+     "Servicio",
+     "Importe",
+     "Recibido",
+     "Pendiente",
+     "Act."
+    ],
+    "rows": 0,
+    "rowsTxt": []
+   }
+  ],
+  "forms": [
+   {
+    "id": "O36C_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "O370_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "O374_id",
+    "tipo": "text",
+    "val": ""
+   },
+   {
+    "id": "O388_id",
+    "tipo": "text",
+    "val": "Activo"
+   },
+   {
+    "id": "O39B_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "O39F_id",
+    "tipo": "text",
+    "val": ""
+   },
+   {
+    "id": "O3AA_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "O3AE_id",
+    "tipo": "text",
+    "val": ""
+   },
+   {
+    "id": "O3BD_id",
+    "tipo": "text",
+    "val": "Todos"
+   },
+   {
+    "id": "O3E8_id",
+    "tipo": "text",
+    "val": "18/09/2026"
+   },
+   {
+    "id": "O3EE_id",
+    "tipo": "text",
+    "val": "18/09/2026"
+   }
+  ],
+  "labels": [
+   "Todos",
+   "por Cliente:",
+   "Fecha Inicial:",
+   "Fecha final:",
+   "Estado:",
+   "lblImporting",
+   "Panel de Filtro",
+   "Por Zona:",
+   "Por Ruta:",
+   "Relación de Pago:"
+  ],
+  "btns": [
+   "...",
+   "..."
+  ],
+  "tabs": [],
+  "toolbars": [
+   "",
+   "Cantidad:\nTotal:\nRecib.:\nPend.:"
+  ],
+  "combos": [],
+  "red": []
+ },
+ "Depositos": {
+  "title": "Cargos",
+  "z": 9023,
+  "texto": " \nCargos\nNro.\nFecha\nCód.\nIdentif.\nCliente\nAbrev\nServicio\nImporte\nRecibido\nPendiente\nAct.\npnlClient\nTodos\npor Cliente:\n\t...\t\nFecha Inicial:\nFecha final:\nEstado:\nPanel de Filtro\nPor Zona:\nPor Ruta:\nRelación de Pago:\nCantidad:\nTotal:\nRecib.:\nPend.:\n ",
+  "grids": [
+   {
+    "cols": [
+     "Nro.",
+     "Fecha",
+     "Cód.",
+     "Identif.",
+     "Cliente",
+     "Abrev",
+     "Servicio",
+     "Importe",
+     "Recibido",
+     "Pendiente",
+     "Act."
+    ],
+    "rows": 0,
+    "rowsTxt": []
+   }
+  ],
+  "forms": [
+   {
+    "id": "O36C_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "O370_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "O374_id",
+    "tipo": "text",
+    "val": ""
+   },
+   {
+    "id": "O388_id",
+    "tipo": "text",
+    "val": "Activo"
+   },
+   {
+    "id": "O39B_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "O39F_id",
+    "tipo": "text",
+    "val": ""
+   },
+   {
+    "id": "O3AA_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "O3AE_id",
+    "tipo": "text",
+    "val": ""
+   },
+   {
+    "id": "O3BD_id",
+    "tipo": "text",
+    "val": "Todos"
+   },
+   {
+    "id": "O3E8_id",
+    "tipo": "text",
+    "val": "18/09/2026"
+   },
+   {
+    "id": "O3EE_id",
+    "tipo": "text",
+    "val": "18/09/2026"
+   }
+  ],
+  "labels": [
+   "Todos",
+   "por Cliente:",
+   "Fecha Inicial:",
+   "Fecha final:",
+   "Estado:",
+   "lblImporting",
+   "Panel de Filtro",
+   "Por Zona:",
+   "Por Ruta:",
+   "Relación de Pago:"
+  ],
+  "btns": [
+   "...",
+   "..."
+  ],
+  "tabs": [],
+  "toolbars": [
+   "",
+   "Cantidad:\nTotal:\nRecib.:\nPend.:"
+  ],
+  "combos": [],
+  "red": [
+   "Ajax=1&IsEvent=1&Obj=O2EE&Evt=move&This=O2EE&X=488&Y=24&_S_ID=I9TfCM2RLKbkttq&_seq_=2c&_a_=1",
+   "Ajax=1&IsEvent=1&Obj=OBF&Evt=deactivate&This=OBF&_S_ID=I9TfCM2RLKbkttq&_seq_=2d&_a_=1",
+   "Ajax=1&IsEvent=1&Obj=O2EE&Evt=activate&This=O2EE&_S_ID=I9TfCM2RLKbkttq&_seq_=2e&_a_=1",
+   "options=2&_seq_=2f&_a_=1"
+  ]
+ },
+ "Descargos": {
+  "title": "Cargos",
+  "z": 9023,
+  "texto": " \nCargos\nNro.\nFecha\nCód.\nIdentif.\nCliente\nAbrev\nServicio\nImporte\nRecibido\nPendiente\nAct.\npnlClient\nTodos\npor Cliente:\n\t...\t\nFecha Inicial:\nFecha final:\nEstado:\nPanel de Filtro\nPor Zona:\nPor Ruta:\nRelación de Pago:\nCantidad:\nTotal:\nRecib.:\nPend.:\n ",
+  "grids": [
+   {
+    "cols": [
+     "Nro.",
+     "Fecha",
+     "Cód.",
+     "Identif.",
+     "Cliente",
+     "Abrev",
+     "Servicio",
+     "Importe",
+     "Recibido",
+     "Pendiente",
+     "Act."
+    ],
+    "rows": 0,
+    "rowsTxt": []
+   }
+  ],
+  "forms": [
+   {
+    "id": "O36C_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "O370_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "O374_id",
+    "tipo": "text",
+    "val": ""
+   },
+   {
+    "id": "O388_id",
+    "tipo": "text",
+    "val": "Activo"
+   },
+   {
+    "id": "O39B_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "O39F_id",
+    "tipo": "text",
+    "val": ""
+   },
+   {
+    "id": "O3AA_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "O3AE_id",
+    "tipo": "text",
+    "val": ""
+   },
+   {
+    "id": "O3BD_id",
+    "tipo": "text",
+    "val": "Todos"
+   },
+   {
+    "id": "O3E8_id",
+    "tipo": "text",
+    "val": "18/09/2026"
+   },
+   {
+    "id": "O3EE_id",
+    "tipo": "text",
+    "val": "18/09/2026"
+   }
+  ],
+  "labels": [
+   "Todos",
+   "por Cliente:",
+   "Fecha Inicial:",
+   "Fecha final:",
+   "Estado:",
+   "lblImporting",
+   "Panel de Filtro",
+   "Por Zona:",
+   "Por Ruta:",
+   "Relación de Pago:"
+  ],
+  "btns": [
+   "...",
+   "..."
+  ],
+  "tabs": [],
+  "toolbars": [
+   "",
+   "Cantidad:\nTotal:\nRecib.:\nPend.:"
+  ],
+  "combos": [],
+  "red": []
+ },
+ "Descargos Rec.": {
+  "err": "no-loc"
+ },
+ "Pagos": {
+  "title": "Cargos",
+  "z": 9023,
+  "texto": " \nCargos\nNro.\nFecha\nCód.\nIdentif.\nCliente\nAbrev\nServicio\nImporte\nRecibido\nPendiente\nAct.\npnlClient\nTodos\npor Cliente:\n\t...\t\nFecha Inicial:\nFecha final:\nEstado:\nPanel de Filtro\nPor Zona:\nPor Ruta:\nRelación de Pago:\nCantidad:\nTotal:\nRecib.:\nPend.:\n ",
+  "grids": [
+   {
+    "cols": [
+     "Nro.",
+     "Fecha",
+     "Cód.",
+     "Identif.",
+     "Cliente",
+     "Abrev",
+     "Servicio",
+     "Importe",
+     "Recibido",
+     "Pendiente",
+     "Act."
+    ],
+    "rows": 0,
+    "rowsTxt": []
+   }
+  ],
+  "forms": [
+   {
+    "id": "O36C_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "O370_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "O374_id",
+    "tipo": "text",
+    "val": ""
+   },
+   {
+    "id": "O388_id",
+    "tipo": "text",
+    "val": "Activo"
+   },
+   {
+    "id": "O39B_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "O39F_id",
+    "tipo": "text",
+    "val": ""
+   },
+   {
+    "id": "O3AA_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "O3AE_id",
+    "tipo": "text",
+    "val": ""
+   },
+   {
+    "id": "O3BD_id",
+    "tipo": "text",
+    "val": "Todos"
+   },
+   {
+    "id": "O3E8_id",
+    "tipo": "text",
+    "val": "18/09/2026"
+   },
+   {
+    "id": "O3EE_id",
+    "tipo": "text",
+    "val": "18/09/2026"
+   }
+  ],
+  "labels": [
+   "Todos",
+   "por Cliente:",
+   "Fecha Inicial:",
+   "Fecha final:",
+   "Estado:",
+   "lblImporting",
+   "Panel de Filtro",
+   "Por Zona:",
+   "Por Ruta:",
+   "Relación de Pago:"
+  ],
+  "btns": [
+   "...",
+   "..."
+  ],
+  "tabs": [],
+  "toolbars": [
+   "",
+   "Cantidad:\nTotal:\nRecib.:\nPend.:"
+  ],
+  "combos": [],
+  "red": []
+ },
+ "Entregas": {
+  "title": "Cargos",
+  "z": 9023,
+  "texto": " \nCargos\nNro.\nFecha\nCód.\nIdentif.\nCliente\nAbrev\nServicio\nImporte\nRecibido\nPendiente\nAct.\npnlClient\nTodos\npor Cliente:\n\t...\t\nFecha Inicial:\nFecha final:\nEstado:\nPanel de Filtro\nPor Zona:\nPor Ruta:\nRelación de Pago:\nCantidad:\nTotal:\nRecib.:\nPend.:\n ",
+  "grids": [
+   {
+    "cols": [
+     "Nro.",
+     "Fecha",
+     "Cód.",
+     "Identif.",
+     "Cliente",
+     "Abrev",
+     "Servicio",
+     "Importe",
+     "Recibido",
+     "Pendiente",
+     "Act."
+    ],
+    "rows": 0,
+    "rowsTxt": []
+   }
+  ],
+  "forms": [
+   {
+    "id": "O36C_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "O370_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "O374_id",
+    "tipo": "text",
+    "val": ""
+   },
+   {
+    "id": "O388_id",
+    "tipo": "text",
+    "val": "Activo"
+   },
+   {
+    "id": "O39B_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "O39F_id",
+    "tipo": "text",
+    "val": ""
+   },
+   {
+    "id": "O3AA_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "O3AE_id",
+    "tipo": "text",
+    "val": ""
+   },
+   {
+    "id": "O3BD_id",
+    "tipo": "text",
+    "val": "Todos"
+   },
+   {
+    "id": "O3E8_id",
+    "tipo": "text",
+    "val": "18/09/2026"
+   },
+   {
+    "id": "O3EE_id",
+    "tipo": "text",
+    "val": "18/09/2026"
+   }
+  ],
+  "labels": [
+   "Todos",
+   "por Cliente:",
+   "Fecha Inicial:",
+   "Fecha final:",
+   "Estado:",
+   "lblImporting",
+   "Panel de Filtro",
+   "Por Zona:",
+   "Por Ruta:",
+   "Relación de Pago:"
+  ],
+  "btns": [
+   "...",
+   "..."
+  ],
+  "tabs": [],
+  "toolbars": [
+   "",
+   "Cantidad:\nTotal:\nRecib.:\nPend.:"
+  ],
+  "combos": [],
+  "red": []
+ },
+ "Monitor C": {
+  "title": "Cargos",
+  "z": 9023,
+  "texto": " \nCargos\nNro.\nFecha\nCód.\nIdentif.\nCliente\nAbrev\nServicio\nImporte\nRecibido\nPendiente\nAct.\npnlClient\nTodos\npor Cliente:\n\t...\t\nFecha Inicial:\nFecha final:\nEstado:\nPanel de Filtro\nPor Zona:\nPor Ruta:\nRelación de Pago:\nCantidad:\nTotal:\nRecib.:\nPend.:\n ",
+  "grids": [
+   {
+    "cols": [
+     "Nro.",
+     "Fecha",
+     "Cód.",
+     "Identif.",
+     "Cliente",
+     "Abrev",
+     "Servicio",
+     "Importe",
+     "Recibido",
+     "Pendiente",
+     "Act."
+    ],
+    "rows": 0,
+    "rowsTxt": []
+   }
+  ],
+  "forms": [
+   {
+    "id": "O36C_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "O370_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "O374_id",
+    "tipo": "text",
+    "val": ""
+   },
+   {
+    "id": "O388_id",
+    "tipo": "text",
+    "val": "Activo"
+   },
+   {
+    "id": "O39B_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "O39F_id",
+    "tipo": "text",
+    "val": ""
+   },
+   {
+    "id": "O3AA_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "O3AE_id",
+    "tipo": "text",
+    "val": ""
+   },
+   {
+    "id": "O3BD_id",
+    "tipo": "text",
+    "val": "Todos"
+   },
+   {
+    "id": "O3E8_id",
+    "tipo": "text",
+    "val": "18/09/2026"
+   },
+   {
+    "id": "O3EE_id",
+    "tipo": "text",
+    "val": "18/09/2026"
+   }
+  ],
+  "labels": [
+   "Todos",
+   "por Cliente:",
+   "Fecha Inicial:",
+   "Fecha final:",
+   "Estado:",
+   "lblImporting",
+   "Panel de Filtro",
+   "Por Zona:",
+   "Por Ruta:",
+   "Relación de Pago:"
+  ],
+  "btns": [
+   "...",
+   "..."
+  ],
+  "tabs": [],
+  "toolbars": [
+   "",
+   "Cantidad:\nTotal:\nRecib.:\nPend.:"
+  ],
+  "combos": [],
+  "red": []
+ },
+ "Cuadres": {
+  "title": "Cargos Recurrentes",
+  "z": 9043,
+  "texto": " \nCargos Recurrentes\nNro.\nFecha\nFrecuencia\nIdentif.\nCliente\nServicio\nImporte\nActivo\nFecha de Registro\npnlClient\nTodos\npor Cliente:\n\t...\t\nFecha Inicial:\nFecha final:\nEstado:\n ",
+  "grids": [
+   {
+    "cols": [
+     "Nro.",
+     "Fecha",
+     "Frecuencia",
+     "Identif.",
+     "Cliente",
+     "Servicio",
+     "Importe",
+     "Activo",
+     "Fecha de Registro"
+    ],
+    "rows": 0,
+    "rowsTxt": []
+   }
+  ],
+  "forms": [
+   {
+    "id": "O4CA_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "O4CE_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "O4D2_id",
+    "tipo": "text",
+    "val": ""
+   },
+   {
+    "id": "O4E6_id",
+    "tipo": "text",
+    "val": "Activo"
+   },
+   {
+    "id": "O4FD_id",
+    "tipo": "text",
+    "val": "01/09/2026"
+   },
+   {
+    "id": "O503_id",
+    "tipo": "text",
+    "val": "18/09/2026"
+   }
+  ],
+  "labels": [
+   "Todos",
+   "por Cliente:",
+   "Fecha Inicial:",
+   "Fecha final:",
+   "Estado:"
+  ],
+  "btns": [
+   "...",
+   "..."
+  ],
+  "tabs": [],
+  "toolbars": [
+   "",
+   ""
+  ],
+  "combos": [],
+  "red": [
+   "Ajax=1&IsEvent=1&Obj=O2EE&Evt=minimize&This=O2EE&_S_ID=I9TfCM2RLKbkttq&_seq_=34",
+   "Ajax=1&IsEvent=1&Obj=O2EE&Evt=minimize&This=O2EE&_S_ID=I9TfCM2RLKbkttq&_seq_=35",
+   "Ajax=1&IsEvent=1&Obj=O2EE&Evt=minimize&This=O2EE&_S_ID=I9TfCM2RLKbkttq&_seq_=36",
+   "Ajax=1&IsEvent=1&Obj=O2EE&Evt=minimize&This=O2EE&_S_ID=I9TfCM2RLKbkttq&_seq_=37"
+  ]
+ },
+ "Reportes": {
+  "title": "Cargos Recurrentes",
+  "z": 9033,
+  "texto": " \nCargos Recurrentes\nNro.\nFecha\nFrecuencia\nIdentif.\nCliente\nServicio\nImporte\nActivo\nFecha de Registro\npnlClient\nTodos\npor Cliente:\n\t...\t\nFecha Inicial:\nFecha final:\nEstado:\n ",
+  "grids": [
+   {
+    "cols": [
+     "Nro.",
+     "Fecha",
+     "Frecuencia",
+     "Identif.",
+     "Cliente",
+     "Servicio",
+     "Importe",
+     "Activo",
+     "Fecha de Registro"
+    ],
+    "rows": 0,
+    "rowsTxt": []
+   }
+  ],
+  "forms": [
+   {
+    "id": "O4CA_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "O4CE_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "O4D2_id",
+    "tipo": "text",
+    "val": ""
+   },
+   {
+    "id": "O4E6_id",
+    "tipo": "text",
+    "val": "Activo"
+   },
+   {
+    "id": "O4FD_id",
+    "tipo": "text",
+    "val": "01/09/2026"
+   },
+   {
+    "id": "O503_id",
+    "tipo": "text",
+    "val": "18/09/2026"
+   }
+  ],
+  "labels": [
+   "Todos",
+   "por Cliente:",
+   "Fecha Inicial:",
+   "Fecha final:",
+   "Estado:"
+  ],
+  "btns": [
+   "...",
+   "..."
+  ],
+  "tabs": [],
+  "toolbars": [
+   "",
+   ""
+  ],
+  "combos": [],
+  "red": []
+ },
+ "Monitor Z": {
+  "title": "Cargos Recurrentes",
+  "z": 9033,
+  "texto": " \nCargos Recurrentes\nNro.\nFecha\nFrecuencia\nIdentif.\nCliente\nServicio\nImporte\nActivo\nFecha de Registro\npnlClient\nTodos\npor Cliente:\n\t...\t\nFecha Inicial:\nFecha final:\nEstado:\n ",
+  "grids": [
+   {
+    "cols": [
+     "Nro.",
+     "Fecha",
+     "Frecuencia",
+     "Identif.",
+     "Cliente",
+     "Servicio",
+     "Importe",
+     "Activo",
+     "Fecha de Registro"
+    ],
+    "rows": 0,
+    "rowsTxt": []
+   }
+  ],
+  "forms": [
+   {
+    "id": "O4CA_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "O4CE_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "O4D2_id",
+    "tipo": "text",
+    "val": ""
+   },
+   {
+    "id": "O4E6_id",
+    "tipo": "text",
+    "val": "Activo"
+   },
+   {
+    "id": "O4FD_id",
+    "tipo": "text",
+    "val": "01/09/2026"
+   },
+   {
+    "id": "O503_id",
+    "tipo": "text",
+    "val": "18/09/2026"
+   }
+  ],
+  "labels": [
+   "Todos",
+   "por Cliente:",
+   "Fecha Inicial:",
+   "Fecha final:",
+   "Estado:"
+  ],
+  "btns": [
+   "...",
+   "..."
+  ],
+  "tabs": [],
+  "toolbars": [
+   "",
+   ""
+  ],
+  "combos": [],
+  "red": []
+ }
+}

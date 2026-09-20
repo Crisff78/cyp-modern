@@ -1,0 +1,54 @@
+{
+ "Admin.": {
+  "err": "click-blocked",
+  "hay": "O1BD_id"
+ },
+ "Clientes": {
+  "err": "click-blocked",
+  "hay": "ext-gen115"
+ },
+ "Cargos": {
+  "err": "click-blocked",
+  "hay": "O1BD_id"
+ },
+ "Cargos Rec.": {
+  "err": "click-blocked",
+  "hay": "ext-gen115"
+ },
+ "Cobros": {
+  "err": "click-blocked",
+  "hay": "ext-gen115"
+ },
+ "Depositos": {
+  "err": "click-blocked",
+  "hay": "O1D9_id"
+ },
+ "Descargos": {
+  "err": "no-window"
+ },
+ "Descargos Rec.": {
+  "err": "no-loc"
+ },
+ "Pagos": {
+  "err": "no-window"
+ },
+ "Entregas": {
+  "err": "no-window"
+ },
+ "Monitor C": {
+  "err": "click-blocked",
+  "hay": "O148_id"
+ },
+ "Cuadres": {
+  "err": "click-blocked",
+  "hay": null
+ },
+ "Reportes": {
+  "err": "click-blocked",
+  "hay": null
+ },
+ "Monitor Z": {
+  "err": "click-blocked",
+  "hay": null
+ }
+}

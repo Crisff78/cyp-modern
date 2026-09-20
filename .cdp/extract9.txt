@@ -1,0 +1,56 @@
+
+======== Admin. ========
+  ERR: click-blocked (hay:O20A_id) expandio:true
+
+======== Clientes ========
+  ERR: click-blocked (hay:O222_id) expandio:true
+
+======== Cargos ========
+  ERR: click-blocked (hay:O20A_id) expandio:false
+
+======== Cargos Rec. ========
+  ERR: click-blocked (hay:O222_id) expandio:false
+
+======== Cobros ========
+  ERR: click-blocked (hay:O212_id) expandio:false
+
+======== Depositos ========
+  ERR: click-blocked (hay:O21A_id) expandio:false
+
+======== Descargos ========
+  ERR: click-blocked (hay:O20A_id) expandio:false
+
+======== Descargos Rec. ========
+  ERR: no-loc  expandio:false
+
+======== Pagos ========
+  ERR: click-blocked (hay:O212_id) expandio:false
+
+======== Entregas ========
+  ERR: click-blocked (hay:O21A_id) expandio:false
+
+======== Monitor C ========
+  ERR: no-window  expandio:true
+
+======== Cuadres ========
+  ventana: Cuadres diarios
+  grid cols: Fecha, Total, Efectivo, Cheque, Balance_Cheque | filas: 0
+  labels: Fecha Inicial: | Fecha Final: | Moneda:
+  toolbars:  ;; 
+  red: 10 peticiones
+    REQ: Ajax=1&IsEvent=1&Obj=O22A&Evt=deactivate&This=O22A&_S_ID=I9TfCM2RLKbkttq&_seq_=eb
+    RESP 200: 
+    REQ: Ajax=1&IsEvent=1&Obj=OBF&Evt=activate&This=OBF&_S_ID=I9TfCM2RLKbkttq&_seq_=ec
+    RESP 200: 
+    REQ: Ajax=1&IsEvent=1&Obj=O216&Evt=click&This=O216&_S_ID=I9TfCM2RLKbkttq&_seq_=ed
+    RESP 200: 
+    REQ: Ajax=1&IsEvent=1&Obj=OBB9&Evt=resize&This=OBB9&Width=852&Height=504&_S_ID=I9TfCM2RLKbkttq&_seq_=ee&_a_=1
+    RESP 200: 
+    REQ: Ajax=1&IsEvent=1&Obj=OBB9&Evt=move&This=OBB9&X=513&Y=24&_S_ID=I9TfCM2RLKbkttq&_seq_=ef&_a_=1
+    RESP 200: 
+
+======== Reportes ========
+  ERR: no-window  expandio:true
+
+======== Monitor Z ========
+  ERR: no-window  expandio:true

@@ -71,7 +71,7 @@ trazas, usuarios/roles, limites de cobrador, motivos de atraso, frecuencias
 
 | # | Brecha | Evidencia | Prioridad |
 |---|---|---|---|
-| G1 | **Aceptar / Cancelar depósito** (flujo pendiente→aceptado + desglose de denominaciones) | 0 hits "aceptar" en apps; legacy `stpAceptarDeposito`/`stpCancelarDeposito`, columna Acep. | ALTA |
+| G1 | ~~Aceptar / Cancelar depósito~~ **IMPLEMENTADO 2026-09-19** (flujo pendiente→aceptado/cancelado; falta solo el desglose de denominaciones del Panel de Detalles) | `003_deposit_lifecycle.sql`, `acceptDeposit`/`cancelDeposit` en domain.ts, rutas `/api/depositos/:id/aceptar|cancelar`, botones+y columna Acep. en el admin, test de integración | ALTA |
 | G2 | **Importar datos / Subir archivo** en Cargos y Descargos (carga masiva) | 0 hits "importar/bulk"; legacy `lblImporting`, botones del demo | ALTA |
 | G3 | **Descargos Recurrentes** — modulo completo (tabla, API, pantalla) | 0 hits; legacy tabla `DescargosRecurrentes` + procs | ALTA |
 | G4 | **Cobros y Pagos del Cliente** (estado de cuenta desde Clientes) | 0 hits; boton del demo | MEDIA |

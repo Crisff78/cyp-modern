@@ -1,0 +1,10 @@
+import { findOrCreateTab, connect } from './cdp.mjs';
+const tab = await findOrCreateTab('http://gdemos.ddns.net/cypdemo/');
+const cdp = await connect(tab.webSocketDebuggerUrl);
+await cdp.send('Runtime.enable');
+await cdp.send('Page.enable');
+await cdp.send('Page.reload', {});
+await new Promise(r=>setTimeout(r,6000));
+const ev = await cdp.send('Runtime.evaluate', { expression: `(() => ({ url: location.href, texto:(document.body.innerText||'').slice(0,400) }))()`, returnByValue: true });
+console.log('TRAS RELOAD:', JSON.stringify(ev.result?.result?.value, null, 1));
+cdp.close();

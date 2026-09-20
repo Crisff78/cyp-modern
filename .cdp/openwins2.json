@@ -1,0 +1,335 @@
+{
+ "Monitor de Cobradores": {
+  "title": "Monitor de Cobradores",
+  "texto": " \nMonitor de Cobradores\nAuto.\n\tRefrescar\t\nMoneda:\nFaltan: 1 seg(s)\n0.00\n0.00\n0.00\n0.00\n0.00\nCobrador\nLim. de Cob.\nLim. de Pag.\nCobrado\nDepositado\nEntregado\nPagado\nDiferencia\nCobrador\n1,000,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\nAdmin\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\nFranyi\n50,000.00\n25,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\njesus\n16,000.00\n16,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\nMayobanex\n50,000.00\n50,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\nMayo\n100,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\nJuana\n0.00\n0.00\n0.00\n0.00\n0.00\nMaria\n0.00\n0.00\n0.00\n0.00\n0.00\notro cob\n0.00\n0.00\n0.00\n0.00\n0.00\nbrashell\n0.00\n0.00\n0.00\n0.00\n0.00\nPágina\nde 1\nRefrescando datos. Espere un momento...",
+  "grids": [
+   {
+    "cols": [
+     "Cobrador",
+     "Lim. de Cob.",
+     "Lim. de Pag.",
+     "Cobrado",
+     "Depositado",
+     "Entregado",
+     "Pagado",
+     "Diferencia"
+    ],
+    "rows": 10,
+    "rowsTxt": [
+     [
+      "",
+      "Cobrador",
+      "1,000,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Admin",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Franyi",
+      "50,000.00",
+      "25,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "jesus",
+      "16,000.00",
+      "16,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Mayobanex",
+      "50,000.00",
+      "50,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Mayo",
+      "100,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Juana",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Maria",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "otro cob",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "brashell",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ]
+    ]
+   }
+  ],
+  "forms": [
+   {
+    "id": "O259_id",
+    "tipo": "checkbox",
+    "val": "on"
+   },
+   {
+    "id": "O25D_id",
+    "tipo": "text",
+    "val": "60"
+   },
+   {
+    "id": "O2A4_id",
+    "tipo": "text",
+    "val": "Peso Dominicano"
+   },
+   {
+    "id": "ext-comp-1011",
+    "tipo": "text",
+    "val": "1"
+   }
+  ],
+  "labels": [
+   "Auto.",
+   "Moneda:"
+  ],
+  "btns": [
+   "Refrescar",
+   "Refrescar"
+  ],
+  "tabs": [],
+  "toolbars": [
+   "Faltan: 1 seg(s)\n0.00\n0.00\n0.00\n0.00\n0.00",
+   "Página\nde 1"
+  ],
+  "combos": [],
+  "red": []
+ },
+ "Reportes": {
+  "title": "Reportes",
+  "texto": " \nReportes\nCargos\npendientes\nde clientes.\n-- Resumidos --\nCargos\npendientes\nde clientes\npor rutas.\nCargos\npendientes\nde clientes\npor zonas.\nCargos\npendientes\npor rutas.\nCargos\npendientes\npor zonas.\nCargos\nde clientes\npor zona\npor servicio.\nCobros Res.\nCobros Gen.\nResumido\n-- Cargos --\n-- Cobros --\nCobros x\nServicio\n ",
+  "grids": [],
+  "forms": [],
+  "labels": [
+   "Cargos\npendientes\nde clientes.",
+   "-- Resumidos --",
+   "-- Detallados --",
+   "Reporte",
+   "Cargos\npendientes\nde clientes\npor rutas.",
+   "Reporte",
+   "Cargos\npendientes\nde clientes\npor zonas.",
+   "Cargos\npendientes\npor rutas.",
+   "Cargos\npendientes\npor zonas.",
+   "Cargos\nde clientes\npor zona\npor servicio",
+   "Cobros Res.",
+   "Cobros Gen.\nResumido",
+   "Reporte",
+   "Reporte",
+   "Reporte",
+   "Reporte",
+   "Reporte",
+   "Reporte",
+   "-- Cargos --",
+   "-- Cobros --",
+   "-- Descargos --",
+   "-- Pagos --",
+   "Cobros x\nServicio",
+   "Reporte"
+  ],
+  "btns": [],
+  "tabs": [],
+  "toolbars": [],
+  "combos": [],
+  "red": []
+ },
+ "Monitor de Zonas": {
+  "title": "Monitor de Zonas",
+  "texto": " \nMonitor de Zonas\nAuto.\n\tRefrescar\t\nMoneda:\nPágina\nde 1\nRefrescando datos. Espere un momento...",
+  "grids": [
+   {
+    "cols": [],
+    "rows": 0,
+    "rowsTxt": []
+   }
+  ],
+  "forms": [
+   {
+    "id": "ODAB_id",
+    "tipo": "checkbox",
+    "val": "on"
+   },
+   {
+    "id": "ODAF_id",
+    "tipo": "text",
+    "val": "60"
+   },
+   {
+    "id": "ODF6_id",
+    "tipo": "text",
+    "val": "Peso Dominicano"
+   },
+   {
+    "id": "ext-comp-1191",
+    "tipo": "text",
+    "val": "1"
+   }
+  ],
+  "labels": [
+   "Auto.",
+   "Moneda:"
+  ],
+  "btns": [
+   "Refrescar",
+   "Refrescar"
+  ],
+  "tabs": [],
+  "toolbars": [
+   "",
+   "Página\nde 1"
+  ],
+  "combos": [],
+  "red": []
+ },
+ "Listado de Clientes": {
+  "title": "Listado de Clientes",
+  "texto": " \nListado de Clientes\npnlClient\nTodos\npor Identificación:\npor Nombre:\nEstado:\nPor Zona:\nPor Ruta:\nPanel de Filtro\nCantidad:\n ",
+  "grids": [
+   {
+    "cols": [],
+    "rows": 0,
+    "rowsTxt": []
+   }
+  ],
+  "forms": [
+   {
+    "id": "OEA0_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "OEA4_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "OEA8_id",
+    "tipo": "text",
+    "val": ""
+   },
+   {
+    "id": "OEAC_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "OEB0_id",
+    "tipo": "text",
+    "val": ""
+   },
+   {
+    "id": "OEBC_id",
+    "tipo": "text",
+    "val": "Activo"
+   },
+   {
+    "id": "OEC7_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "OECB_id",
+    "tipo": "text",
+    "val": ""
+   },
+   {
+    "id": "OED6_id",
+    "tipo": "radio",
+    "val": "on"
+   },
+   {
+    "id": "OEDA_id",
+    "tipo": "text",
+    "val": ""
+   }
+  ],
+  "labels": [
+   "Todos",
+   "por Identificación:",
+   "por Nombre:",
+   "Estado:",
+   "Por Zona:",
+   "Por Ruta:",
+   "Panel de Filtro"
+  ],
+  "btns": [],
+  "tabs": [],
+  "toolbars": [
+   "",
+   "Cantidad:"
+  ],
+  "combos": [],
+  "red": []
+ }
+}

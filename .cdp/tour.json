@@ -1,0 +1,938 @@
+{
+ "Clientes": {
+  "title": "Opciones",
+  "z": 9023,
+  "texto": "Opciones\nArchivos\nAdmin.\nClientes\nCobros\nCargos\nCargos Rec.\nCobros\nDepósitos\nCerrar\nPagos\nDescargos\nPagos\nEntregas\nReportes\nMonitor C\nCuadres\nReportes\nMonitor Z\n ",
+  "grids": [],
+  "forms": [],
+  "labels": [
+   {
+    "id": "O164_id",
+    "txt": "Admin."
+   },
+   {
+    "id": "O16C_id",
+    "txt": "Clientes"
+   },
+   {
+    "id": "O174_id",
+    "txt": "Cargos"
+   },
+   {
+    "id": "O17C_id",
+    "txt": "Cargos Rec."
+   },
+   {
+    "id": "O184_id",
+    "txt": "Cobros"
+   },
+   {
+    "id": "O18C_id",
+    "txt": "Depósitos"
+   },
+   {
+    "id": "O14C_id",
+    "txt": "Cerrar"
+   },
+   {
+    "id": "O1C1_id",
+    "txt": "Descargos"
+   },
+   {
+    "id": "O1C9_id",
+    "txt": "Descargos Rec."
+   },
+   {
+    "id": "O1D1_id",
+    "txt": "Pagos"
+   },
+   {
+    "id": "O1D9_id",
+    "txt": "Entregas"
+   },
+   {
+    "id": "O20E_id",
+    "txt": "Monitor C"
+   },
+   {
+    "id": "O216_id",
+    "txt": "Cuadres"
+   },
+   {
+    "id": "O21E_id",
+    "txt": "Reportes"
+   },
+   {
+    "id": "O226_id",
+    "txt": "Monitor Z"
+   }
+  ],
+  "btns": [],
+  "tabs": [],
+  "toolbars": []
+ },
+ "Cargos": {
+  "title": "Opciones",
+  "z": 9023,
+  "texto": "Opciones\nArchivos\nAdmin.\nClientes\nCobros\nCargos\nCargos Rec.\nCobros\nDepósitos\nCerrar\nPagos\nDescargos\nPagos\nEntregas\nReportes\nMonitor C\nCuadres\nReportes\nMonitor Z\n ",
+  "grids": [],
+  "forms": [],
+  "labels": [
+   {
+    "id": "O164_id",
+    "txt": "Admin."
+   },
+   {
+    "id": "O16C_id",
+    "txt": "Clientes"
+   },
+   {
+    "id": "O174_id",
+    "txt": "Cargos"
+   },
+   {
+    "id": "O17C_id",
+    "txt": "Cargos Rec."
+   },
+   {
+    "id": "O184_id",
+    "txt": "Cobros"
+   },
+   {
+    "id": "O18C_id",
+    "txt": "Depósitos"
+   },
+   {
+    "id": "O14C_id",
+    "txt": "Cerrar"
+   },
+   {
+    "id": "O1C1_id",
+    "txt": "Descargos"
+   },
+   {
+    "id": "O1C9_id",
+    "txt": "Descargos Rec."
+   },
+   {
+    "id": "O1D1_id",
+    "txt": "Pagos"
+   },
+   {
+    "id": "O1D9_id",
+    "txt": "Entregas"
+   },
+   {
+    "id": "O20E_id",
+    "txt": "Monitor C"
+   },
+   {
+    "id": "O216_id",
+    "txt": "Cuadres"
+   },
+   {
+    "id": "O21E_id",
+    "txt": "Reportes"
+   },
+   {
+    "id": "O226_id",
+    "txt": "Monitor Z"
+   }
+  ],
+  "btns": [],
+  "tabs": [],
+  "toolbars": []
+ },
+ "Cargos Rec.": {
+  "title": "Opciones",
+  "z": 9023,
+  "texto": "Opciones\nArchivos\nAdmin.\nClientes\nCobros\nCargos\nCargos Rec.\nCobros\nDepósitos\nCerrar\nPagos\nDescargos\nPagos\nEntregas\nReportes\nMonitor C\nCuadres\nReportes\nMonitor Z\n ",
+  "grids": [],
+  "forms": [],
+  "labels": [
+   {
+    "id": "O164_id",
+    "txt": "Admin."
+   },
+   {
+    "id": "O16C_id",
+    "txt": "Clientes"
+   },
+   {
+    "id": "O174_id",
+    "txt": "Cargos"
+   },
+   {
+    "id": "O17C_id",
+    "txt": "Cargos Rec."
+   },
+   {
+    "id": "O184_id",
+    "txt": "Cobros"
+   },
+   {
+    "id": "O18C_id",
+    "txt": "Depósitos"
+   },
+   {
+    "id": "O14C_id",
+    "txt": "Cerrar"
+   },
+   {
+    "id": "O1C1_id",
+    "txt": "Descargos"
+   },
+   {
+    "id": "O1C9_id",
+    "txt": "Descargos Rec."
+   },
+   {
+    "id": "O1D1_id",
+    "txt": "Pagos"
+   },
+   {
+    "id": "O1D9_id",
+    "txt": "Entregas"
+   },
+   {
+    "id": "O20E_id",
+    "txt": "Monitor C"
+   },
+   {
+    "id": "O216_id",
+    "txt": "Cuadres"
+   },
+   {
+    "id": "O21E_id",
+    "txt": "Reportes"
+   },
+   {
+    "id": "O226_id",
+    "txt": "Monitor Z"
+   }
+  ],
+  "btns": [],
+  "tabs": [],
+  "toolbars": []
+ },
+ "Cobros": {
+  "title": "Opciones",
+  "z": 9023,
+  "texto": "Opciones\nArchivos\nAdmin.\nClientes\nCobros\nCargos\nCargos Rec.\nCobros\nDepósitos\nCerrar\nPagos\nDescargos\nPagos\nEntregas\nReportes\nMonitor C\nCuadres\nReportes\nMonitor Z\n ",
+  "grids": [],
+  "forms": [],
+  "labels": [
+   {
+    "id": "O164_id",
+    "txt": "Admin."
+   },
+   {
+    "id": "O16C_id",
+    "txt": "Clientes"
+   },
+   {
+    "id": "O174_id",
+    "txt": "Cargos"
+   },
+   {
+    "id": "O17C_id",
+    "txt": "Cargos Rec."
+   },
+   {
+    "id": "O184_id",
+    "txt": "Cobros"
+   },
+   {
+    "id": "O18C_id",
+    "txt": "Depósitos"
+   },
+   {
+    "id": "O14C_id",
+    "txt": "Cerrar"
+   },
+   {
+    "id": "O1C1_id",
+    "txt": "Descargos"
+   },
+   {
+    "id": "O1C9_id",
+    "txt": "Descargos Rec."
+   },
+   {
+    "id": "O1D1_id",
+    "txt": "Pagos"
+   },
+   {
+    "id": "O1D9_id",
+    "txt": "Entregas"
+   },
+   {
+    "id": "O20E_id",
+    "txt": "Monitor C"
+   },
+   {
+    "id": "O216_id",
+    "txt": "Cuadres"
+   },
+   {
+    "id": "O21E_id",
+    "txt": "Reportes"
+   },
+   {
+    "id": "O226_id",
+    "txt": "Monitor Z"
+   }
+  ],
+  "btns": [],
+  "tabs": [],
+  "toolbars": []
+ },
+ "Depositos": {
+  "title": "Opciones",
+  "z": 9023,
+  "texto": "Opciones\nArchivos\nAdmin.\nClientes\nCobros\nCargos\nCargos Rec.\nCobros\nDepósitos\nCerrar\nPagos\nDescargos\nPagos\nEntregas\nReportes\nMonitor C\nCuadres\nReportes\nMonitor Z\n ",
+  "grids": [],
+  "forms": [],
+  "labels": [
+   {
+    "id": "O164_id",
+    "txt": "Admin."
+   },
+   {
+    "id": "O16C_id",
+    "txt": "Clientes"
+   },
+   {
+    "id": "O174_id",
+    "txt": "Cargos"
+   },
+   {
+    "id": "O17C_id",
+    "txt": "Cargos Rec."
+   },
+   {
+    "id": "O184_id",
+    "txt": "Cobros"
+   },
+   {
+    "id": "O18C_id",
+    "txt": "Depósitos"
+   },
+   {
+    "id": "O14C_id",
+    "txt": "Cerrar"
+   },
+   {
+    "id": "O1C1_id",
+    "txt": "Descargos"
+   },
+   {
+    "id": "O1C9_id",
+    "txt": "Descargos Rec."
+   },
+   {
+    "id": "O1D1_id",
+    "txt": "Pagos"
+   },
+   {
+    "id": "O1D9_id",
+    "txt": "Entregas"
+   },
+   {
+    "id": "O20E_id",
+    "txt": "Monitor C"
+   },
+   {
+    "id": "O216_id",
+    "txt": "Cuadres"
+   },
+   {
+    "id": "O21E_id",
+    "txt": "Reportes"
+   },
+   {
+    "id": "O226_id",
+    "txt": "Monitor Z"
+   }
+  ],
+  "btns": [],
+  "tabs": [],
+  "toolbars": []
+ },
+ "Descargos": {
+  "title": "Opciones",
+  "z": 9023,
+  "texto": "Opciones\nArchivos\nAdmin.\nClientes\nCobros\nCargos\nCargos Rec.\nCobros\nDepósitos\nCerrar\nPagos\nDescargos\nPagos\nEntregas\nReportes\nMonitor C\nCuadres\nReportes\nMonitor Z\n ",
+  "grids": [],
+  "forms": [],
+  "labels": [
+   {
+    "id": "O164_id",
+    "txt": "Admin."
+   },
+   {
+    "id": "O16C_id",
+    "txt": "Clientes"
+   },
+   {
+    "id": "O174_id",
+    "txt": "Cargos"
+   },
+   {
+    "id": "O17C_id",
+    "txt": "Cargos Rec."
+   },
+   {
+    "id": "O184_id",
+    "txt": "Cobros"
+   },
+   {
+    "id": "O18C_id",
+    "txt": "Depósitos"
+   },
+   {
+    "id": "O14C_id",
+    "txt": "Cerrar"
+   },
+   {
+    "id": "O1C1_id",
+    "txt": "Descargos"
+   },
+   {
+    "id": "O1C9_id",
+    "txt": "Descargos Rec."
+   },
+   {
+    "id": "O1D1_id",
+    "txt": "Pagos"
+   },
+   {
+    "id": "O1D9_id",
+    "txt": "Entregas"
+   },
+   {
+    "id": "O20E_id",
+    "txt": "Monitor C"
+   },
+   {
+    "id": "O216_id",
+    "txt": "Cuadres"
+   },
+   {
+    "id": "O21E_id",
+    "txt": "Reportes"
+   },
+   {
+    "id": "O226_id",
+    "txt": "Monitor Z"
+   }
+  ],
+  "btns": [],
+  "tabs": [],
+  "toolbars": []
+ },
+ "Descargos Rec.": {
+  "title": "Opciones",
+  "z": 9023,
+  "texto": "Opciones\nArchivos\nAdmin.\nClientes\nCobros\nCargos\nCargos Rec.\nCobros\nDepósitos\nCerrar\nPagos\nDescargos\nPagos\nEntregas\nReportes\nMonitor C\nCuadres\nReportes\nMonitor Z\n ",
+  "grids": [],
+  "forms": [],
+  "labels": [
+   {
+    "id": "O164_id",
+    "txt": "Admin."
+   },
+   {
+    "id": "O16C_id",
+    "txt": "Clientes"
+   },
+   {
+    "id": "O174_id",
+    "txt": "Cargos"
+   },
+   {
+    "id": "O17C_id",
+    "txt": "Cargos Rec."
+   },
+   {
+    "id": "O184_id",
+    "txt": "Cobros"
+   },
+   {
+    "id": "O18C_id",
+    "txt": "Depósitos"
+   },
+   {
+    "id": "O14C_id",
+    "txt": "Cerrar"
+   },
+   {
+    "id": "O1C1_id",
+    "txt": "Descargos"
+   },
+   {
+    "id": "O1C9_id",
+    "txt": "Descargos Rec."
+   },
+   {
+    "id": "O1D1_id",
+    "txt": "Pagos"
+   },
+   {
+    "id": "O1D9_id",
+    "txt": "Entregas"
+   },
+   {
+    "id": "O20E_id",
+    "txt": "Monitor C"
+   },
+   {
+    "id": "O216_id",
+    "txt": "Cuadres"
+   },
+   {
+    "id": "O21E_id",
+    "txt": "Reportes"
+   },
+   {
+    "id": "O226_id",
+    "txt": "Monitor Z"
+   }
+  ],
+  "btns": [],
+  "tabs": [],
+  "toolbars": []
+ },
+ "Pagos": {
+  "title": "Opciones",
+  "z": 9023,
+  "texto": "Opciones\nArchivos\nAdmin.\nClientes\nCobros\nCargos\nCargos Rec.\nCobros\nDepósitos\nCerrar\nPagos\nDescargos\nPagos\nEntregas\nReportes\nMonitor C\nCuadres\nReportes\nMonitor Z\n ",
+  "grids": [],
+  "forms": [],
+  "labels": [
+   {
+    "id": "O164_id",
+    "txt": "Admin."
+   },
+   {
+    "id": "O16C_id",
+    "txt": "Clientes"
+   },
+   {
+    "id": "O174_id",
+    "txt": "Cargos"
+   },
+   {
+    "id": "O17C_id",
+    "txt": "Cargos Rec."
+   },
+   {
+    "id": "O184_id",
+    "txt": "Cobros"
+   },
+   {
+    "id": "O18C_id",
+    "txt": "Depósitos"
+   },
+   {
+    "id": "O14C_id",
+    "txt": "Cerrar"
+   },
+   {
+    "id": "O1C1_id",
+    "txt": "Descargos"
+   },
+   {
+    "id": "O1C9_id",
+    "txt": "Descargos Rec."
+   },
+   {
+    "id": "O1D1_id",
+    "txt": "Pagos"
+   },
+   {
+    "id": "O1D9_id",
+    "txt": "Entregas"
+   },
+   {
+    "id": "O20E_id",
+    "txt": "Monitor C"
+   },
+   {
+    "id": "O216_id",
+    "txt": "Cuadres"
+   },
+   {
+    "id": "O21E_id",
+    "txt": "Reportes"
+   },
+   {
+    "id": "O226_id",
+    "txt": "Monitor Z"
+   }
+  ],
+  "btns": [],
+  "tabs": [],
+  "toolbars": []
+ },
+ "Entregas": {
+  "title": "Opciones",
+  "z": 9023,
+  "texto": "Opciones\nArchivos\nAdmin.\nClientes\nCobros\nCargos\nCargos Rec.\nCobros\nDepósitos\nCerrar\nPagos\nDescargos\nPagos\nEntregas\nReportes\nMonitor C\nCuadres\nReportes\nMonitor Z\n ",
+  "grids": [],
+  "forms": [],
+  "labels": [
+   {
+    "id": "O164_id",
+    "txt": "Admin."
+   },
+   {
+    "id": "O16C_id",
+    "txt": "Clientes"
+   },
+   {
+    "id": "O174_id",
+    "txt": "Cargos"
+   },
+   {
+    "id": "O17C_id",
+    "txt": "Cargos Rec."
+   },
+   {
+    "id": "O184_id",
+    "txt": "Cobros"
+   },
+   {
+    "id": "O18C_id",
+    "txt": "Depósitos"
+   },
+   {
+    "id": "O14C_id",
+    "txt": "Cerrar"
+   },
+   {
+    "id": "O1C1_id",
+    "txt": "Descargos"
+   },
+   {
+    "id": "O1C9_id",
+    "txt": "Descargos Rec."
+   },
+   {
+    "id": "O1D1_id",
+    "txt": "Pagos"
+   },
+   {
+    "id": "O1D9_id",
+    "txt": "Entregas"
+   },
+   {
+    "id": "O20E_id",
+    "txt": "Monitor C"
+   },
+   {
+    "id": "O216_id",
+    "txt": "Cuadres"
+   },
+   {
+    "id": "O21E_id",
+    "txt": "Reportes"
+   },
+   {
+    "id": "O226_id",
+    "txt": "Monitor Z"
+   }
+  ],
+  "btns": [],
+  "tabs": [],
+  "toolbars": []
+ },
+ "Monitor C": {
+  "title": "Opciones",
+  "z": 9023,
+  "texto": "Opciones\nArchivos\nAdmin.\nClientes\nCobros\nCargos\nCargos Rec.\nCobros\nDepósitos\nCerrar\nPagos\nDescargos\nPagos\nEntregas\nReportes\nMonitor C\nCuadres\nReportes\nMonitor Z\n ",
+  "grids": [],
+  "forms": [],
+  "labels": [
+   {
+    "id": "O164_id",
+    "txt": "Admin."
+   },
+   {
+    "id": "O16C_id",
+    "txt": "Clientes"
+   },
+   {
+    "id": "O174_id",
+    "txt": "Cargos"
+   },
+   {
+    "id": "O17C_id",
+    "txt": "Cargos Rec."
+   },
+   {
+    "id": "O184_id",
+    "txt": "Cobros"
+   },
+   {
+    "id": "O18C_id",
+    "txt": "Depósitos"
+   },
+   {
+    "id": "O14C_id",
+    "txt": "Cerrar"
+   },
+   {
+    "id": "O1C1_id",
+    "txt": "Descargos"
+   },
+   {
+    "id": "O1C9_id",
+    "txt": "Descargos Rec."
+   },
+   {
+    "id": "O1D1_id",
+    "txt": "Pagos"
+   },
+   {
+    "id": "O1D9_id",
+    "txt": "Entregas"
+   },
+   {
+    "id": "O20E_id",
+    "txt": "Monitor C"
+   },
+   {
+    "id": "O216_id",
+    "txt": "Cuadres"
+   },
+   {
+    "id": "O21E_id",
+    "txt": "Reportes"
+   },
+   {
+    "id": "O226_id",
+    "txt": "Monitor Z"
+   }
+  ],
+  "btns": [],
+  "tabs": [],
+  "toolbars": []
+ },
+ "Cuadres": {
+  "title": "Opciones",
+  "z": 9023,
+  "texto": "Opciones\nArchivos\nAdmin.\nClientes\nCobros\nCargos\nCargos Rec.\nCobros\nDepósitos\nCerrar\nPagos\nDescargos\nPagos\nEntregas\nReportes\nMonitor C\nCuadres\nReportes\nMonitor Z\n ",
+  "grids": [],
+  "forms": [],
+  "labels": [
+   {
+    "id": "O164_id",
+    "txt": "Admin."
+   },
+   {
+    "id": "O16C_id",
+    "txt": "Clientes"
+   },
+   {
+    "id": "O174_id",
+    "txt": "Cargos"
+   },
+   {
+    "id": "O17C_id",
+    "txt": "Cargos Rec."
+   },
+   {
+    "id": "O184_id",
+    "txt": "Cobros"
+   },
+   {
+    "id": "O18C_id",
+    "txt": "Depósitos"
+   },
+   {
+    "id": "O14C_id",
+    "txt": "Cerrar"
+   },
+   {
+    "id": "O1C1_id",
+    "txt": "Descargos"
+   },
+   {
+    "id": "O1C9_id",
+    "txt": "Descargos Rec."
+   },
+   {
+    "id": "O1D1_id",
+    "txt": "Pagos"
+   },
+   {
+    "id": "O1D9_id",
+    "txt": "Entregas"
+   },
+   {
+    "id": "O20E_id",
+    "txt": "Monitor C"
+   },
+   {
+    "id": "O216_id",
+    "txt": "Cuadres"
+   },
+   {
+    "id": "O21E_id",
+    "txt": "Reportes"
+   },
+   {
+    "id": "O226_id",
+    "txt": "Monitor Z"
+   }
+  ],
+  "btns": [],
+  "tabs": [],
+  "toolbars": []
+ },
+ "Reportes": {
+  "title": "Opciones",
+  "z": 9023,
+  "texto": "Opciones\nArchivos\nAdmin.\nClientes\nCobros\nCargos\nCargos Rec.\nCobros\nDepósitos\nCerrar\nPagos\nDescargos\nPagos\nEntregas\nReportes\nMonitor C\nCuadres\nReportes\nMonitor Z\n ",
+  "grids": [],
+  "forms": [],
+  "labels": [
+   {
+    "id": "O164_id",
+    "txt": "Admin."
+   },
+   {
+    "id": "O16C_id",
+    "txt": "Clientes"
+   },
+   {
+    "id": "O174_id",
+    "txt": "Cargos"
+   },
+   {
+    "id": "O17C_id",
+    "txt": "Cargos Rec."
+   },
+   {
+    "id": "O184_id",
+    "txt": "Cobros"
+   },
+   {
+    "id": "O18C_id",
+    "txt": "Depósitos"
+   },
+   {
+    "id": "O14C_id",
+    "txt": "Cerrar"
+   },
+   {
+    "id": "O1C1_id",
+    "txt": "Descargos"
+   },
+   {
+    "id": "O1C9_id",
+    "txt": "Descargos Rec."
+   },
+   {
+    "id": "O1D1_id",
+    "txt": "Pagos"
+   },
+   {
+    "id": "O1D9_id",
+    "txt": "Entregas"
+   },
+   {
+    "id": "O20E_id",
+    "txt": "Monitor C"
+   },
+   {
+    "id": "O216_id",
+    "txt": "Cuadres"
+   },
+   {
+    "id": "O21E_id",
+    "txt": "Reportes"
+   },
+   {
+    "id": "O226_id",
+    "txt": "Monitor Z"
+   }
+  ],
+  "btns": [],
+  "tabs": [],
+  "toolbars": []
+ },
+ "Monitor Z": {
+  "title": "Opciones",
+  "z": 9023,
+  "texto": "Opciones\nArchivos\nAdmin.\nClientes\nCobros\nCargos\nCargos Rec.\nCobros\nDepósitos\nCerrar\nPagos\nDescargos\nPagos\nEntregas\nReportes\nMonitor C\nCuadres\nReportes\nMonitor Z\n ",
+  "grids": [],
+  "forms": [],
+  "labels": [
+   {
+    "id": "O164_id",
+    "txt": "Admin."
+   },
+   {
+    "id": "O16C_id",
+    "txt": "Clientes"
+   },
+   {
+    "id": "O174_id",
+    "txt": "Cargos"
+   },
+   {
+    "id": "O17C_id",
+    "txt": "Cargos Rec."
+   },
+   {
+    "id": "O184_id",
+    "txt": "Cobros"
+   },
+   {
+    "id": "O18C_id",
+    "txt": "Depósitos"
+   },
+   {
+    "id": "O14C_id",
+    "txt": "Cerrar"
+   },
+   {
+    "id": "O1C1_id",
+    "txt": "Descargos"
+   },
+   {
+    "id": "O1C9_id",
+    "txt": "Descargos Rec."
+   },
+   {
+    "id": "O1D1_id",
+    "txt": "Pagos"
+   },
+   {
+    "id": "O1D9_id",
+    "txt": "Entregas"
+   },
+   {
+    "id": "O20E_id",
+    "txt": "Monitor C"
+   },
+   {
+    "id": "O216_id",
+    "txt": "Cuadres"
+   },
+   {
+    "id": "O21E_id",
+    "txt": "Reportes"
+   },
+   {
+    "id": "O226_id",
+    "txt": "Monitor Z"
+   }
+  ],
+  "btns": [],
+  "tabs": [],
+  "toolbars": []
+ }
+}

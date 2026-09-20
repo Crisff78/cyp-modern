@@ -1,0 +1,2433 @@
+{
+ "Clientes": {
+  "title": "Monitor de Cobradores",
+  "z": 9003,
+  "texto": " \nMonitor de Cobradores\nAuto.\n\tRefrescar\t\nMoneda:\nFaltan: 1 seg(s)\n0.00\n0.00\n0.00\n0.00\n0.00\nCobrador\nLim. de Cob.\nLim. de Pag.\nCobrado\nDepositado\nEntregado\nPagado\nDiferencia\nCobrador\n1,000,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\nAdmin\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\nFranyi\n50,000.00\n25,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\njesus\n16,000.00\n16,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\nMayobanex\n50,000.00\n50,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\nMayo\n100,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\nJuana\n0.00\n0.00\n0.00\n0.00\n0.00\nMaria\n0.00\n0.00\n0.00\n0.00\n0.00\notro cob\n0.00\n0.00\n0.00\n0.00\n0.00\nbrashell\n0.00\n0.00\n0.00\n0.00\n0.00\nPágina\nde 1\n ",
+  "grids": [
+   {
+    "cols": [
+     "Cobrador",
+     "Lim. de Cob.",
+     "Lim. de Pag.",
+     "Cobrado",
+     "Depositado",
+     "Entregado",
+     "Pagado",
+     "Diferencia"
+    ],
+    "rows": 10,
+    "rowsTxt": [
+     [
+      "",
+      "Cobrador",
+      "1,000,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Admin",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Franyi",
+      "50,000.00",
+      "25,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "jesus",
+      "16,000.00",
+      "16,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Mayobanex",
+      "50,000.00",
+      "50,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Mayo",
+      "100,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Juana",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Maria",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "otro cob",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "brashell",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ]
+    ]
+   }
+  ],
+  "forms": [
+   {
+    "id": "O259_id",
+    "name": "O259",
+    "tipo": "checkbox",
+    "val": "on"
+   },
+   {
+    "id": "O25D_id",
+    "name": "O25D",
+    "tipo": "text",
+    "val": "60"
+   },
+   {
+    "id": "O2A4_id",
+    "name": "O2A4",
+    "tipo": "text",
+    "val": "Peso Dominicano"
+   },
+   {
+    "id": "ext-comp-1004",
+    "name": "",
+    "tipo": "text",
+    "val": "1"
+   }
+  ],
+  "labels": [
+   {
+    "id": "ext-gen147",
+    "txt": "Auto."
+   },
+   {
+    "id": "O2A0_id",
+    "txt": "Moneda:"
+   }
+  ],
+  "btns": [
+   {
+    "txt": "Refrescar",
+    "id": "O261_id"
+   },
+   {
+    "txt": "Refrescar",
+    "id": "ext-gen152"
+   }
+  ],
+  "tabs": [],
+  "toolbars": [
+   {
+    "txt": "Faltan: 1 seg(s)\n0.00\n0.00\n0.00\n0.00\n0.00"
+   },
+   {
+    "txt": "Página\nde 1"
+   }
+  ]
+ },
+ "Cargos": {
+  "title": "Monitor de Cobradores",
+  "z": 9003,
+  "texto": " \nMonitor de Cobradores\nAuto.\n\tRefrescar\t\nMoneda:\nFaltan: 1 seg(s)\n0.00\n0.00\n0.00\n0.00\n0.00\nCobrador\nLim. de Cob.\nLim. de Pag.\nCobrado\nDepositado\nEntregado\nPagado\nDiferencia\nCobrador\n1,000,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\nAdmin\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\nFranyi\n50,000.00\n25,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\njesus\n16,000.00\n16,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\nMayobanex\n50,000.00\n50,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\nMayo\n100,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\nJuana\n0.00\n0.00\n0.00\n0.00\n0.00\nMaria\n0.00\n0.00\n0.00\n0.00\n0.00\notro cob\n0.00\n0.00\n0.00\n0.00\n0.00\nbrashell\n0.00\n0.00\n0.00\n0.00\n0.00\nPágina\nde 1\n ",
+  "grids": [
+   {
+    "cols": [
+     "Cobrador",
+     "Lim. de Cob.",
+     "Lim. de Pag.",
+     "Cobrado",
+     "Depositado",
+     "Entregado",
+     "Pagado",
+     "Diferencia"
+    ],
+    "rows": 10,
+    "rowsTxt": [
+     [
+      "",
+      "Cobrador",
+      "1,000,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Admin",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Franyi",
+      "50,000.00",
+      "25,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "jesus",
+      "16,000.00",
+      "16,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Mayobanex",
+      "50,000.00",
+      "50,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Mayo",
+      "100,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Juana",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Maria",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "otro cob",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "brashell",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ]
+    ]
+   }
+  ],
+  "forms": [
+   {
+    "id": "O259_id",
+    "name": "O259",
+    "tipo": "checkbox",
+    "val": "on"
+   },
+   {
+    "id": "O25D_id",
+    "name": "O25D",
+    "tipo": "text",
+    "val": "60"
+   },
+   {
+    "id": "O2A4_id",
+    "name": "O2A4",
+    "tipo": "text",
+    "val": "Peso Dominicano"
+   },
+   {
+    "id": "ext-comp-1004",
+    "name": "",
+    "tipo": "text",
+    "val": "1"
+   }
+  ],
+  "labels": [
+   {
+    "id": "ext-gen147",
+    "txt": "Auto."
+   },
+   {
+    "id": "O2A0_id",
+    "txt": "Moneda:"
+   }
+  ],
+  "btns": [
+   {
+    "txt": "Refrescar",
+    "id": "O261_id"
+   },
+   {
+    "txt": "Refrescar",
+    "id": "ext-gen152"
+   }
+  ],
+  "tabs": [],
+  "toolbars": [
+   {
+    "txt": "Faltan: 1 seg(s)\n0.00\n0.00\n0.00\n0.00\n0.00"
+   },
+   {
+    "txt": "Página\nde 1"
+   }
+  ]
+ },
+ "Cargos Rec.": {
+  "title": "Monitor de Cobradores",
+  "z": 9003,
+  "texto": " \nMonitor de Cobradores\nAuto.\n\tRefrescar\t\nMoneda:\nFaltan: 1 seg(s)\n0.00\n0.00\n0.00\n0.00\n0.00\nCobrador\nLim. de Cob.\nLim. de Pag.\nCobrado\nDepositado\nEntregado\nPagado\nDiferencia\nCobrador\n1,000,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\nAdmin\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\nFranyi\n50,000.00\n25,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\njesus\n16,000.00\n16,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\nMayobanex\n50,000.00\n50,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\nMayo\n100,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\nJuana\n0.00\n0.00\n0.00\n0.00\n0.00\nMaria\n0.00\n0.00\n0.00\n0.00\n0.00\notro cob\n0.00\n0.00\n0.00\n0.00\n0.00\nbrashell\n0.00\n0.00\n0.00\n0.00\n0.00\nPágina\nde 1\n ",
+  "grids": [
+   {
+    "cols": [
+     "Cobrador",
+     "Lim. de Cob.",
+     "Lim. de Pag.",
+     "Cobrado",
+     "Depositado",
+     "Entregado",
+     "Pagado",
+     "Diferencia"
+    ],
+    "rows": 10,
+    "rowsTxt": [
+     [
+      "",
+      "Cobrador",
+      "1,000,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Admin",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Franyi",
+      "50,000.00",
+      "25,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "jesus",
+      "16,000.00",
+      "16,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Mayobanex",
+      "50,000.00",
+      "50,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Mayo",
+      "100,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Juana",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Maria",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "otro cob",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "brashell",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ]
+    ]
+   }
+  ],
+  "forms": [
+   {
+    "id": "O259_id",
+    "name": "O259",
+    "tipo": "checkbox",
+    "val": "on"
+   },
+   {
+    "id": "O25D_id",
+    "name": "O25D",
+    "tipo": "text",
+    "val": "60"
+   },
+   {
+    "id": "O2A4_id",
+    "name": "O2A4",
+    "tipo": "text",
+    "val": "Peso Dominicano"
+   },
+   {
+    "id": "ext-comp-1004",
+    "name": "",
+    "tipo": "text",
+    "val": "1"
+   }
+  ],
+  "labels": [
+   {
+    "id": "ext-gen147",
+    "txt": "Auto."
+   },
+   {
+    "id": "O2A0_id",
+    "txt": "Moneda:"
+   }
+  ],
+  "btns": [
+   {
+    "txt": "Refrescar",
+    "id": "O261_id"
+   },
+   {
+    "txt": "Refrescar",
+    "id": "ext-gen152"
+   }
+  ],
+  "tabs": [],
+  "toolbars": [
+   {
+    "txt": "Faltan: 1 seg(s)\n0.00\n0.00\n0.00\n0.00\n0.00"
+   },
+   {
+    "txt": "Página\nde 1"
+   }
+  ]
+ },
+ "Cobros": {
+  "title": "Monitor de Cobradores",
+  "z": 9003,
+  "texto": " \nMonitor de Cobradores\nAuto.\n\tRefrescar\t\nMoneda:\nFaltan: 1 seg(s)\n0.00\n0.00\n0.00\n0.00\n0.00\nCobrador\nLim. de Cob.\nLim. de Pag.\nCobrado\nDepositado\nEntregado\nPagado\nDiferencia\nCobrador\n1,000,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\nAdmin\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\nFranyi\n50,000.00\n25,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\njesus\n16,000.00\n16,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\nMayobanex\n50,000.00\n50,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\nMayo\n100,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\nJuana\n0.00\n0.00\n0.00\n0.00\n0.00\nMaria\n0.00\n0.00\n0.00\n0.00\n0.00\notro cob\n0.00\n0.00\n0.00\n0.00\n0.00\nbrashell\n0.00\n0.00\n0.00\n0.00\n0.00\nPágina\nde 1\n ",
+  "grids": [
+   {
+    "cols": [
+     "Cobrador",
+     "Lim. de Cob.",
+     "Lim. de Pag.",
+     "Cobrado",
+     "Depositado",
+     "Entregado",
+     "Pagado",
+     "Diferencia"
+    ],
+    "rows": 10,
+    "rowsTxt": [
+     [
+      "",
+      "Cobrador",
+      "1,000,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Admin",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Franyi",
+      "50,000.00",
+      "25,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "jesus",
+      "16,000.00",
+      "16,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Mayobanex",
+      "50,000.00",
+      "50,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Mayo",
+      "100,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Juana",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Maria",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "otro cob",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "brashell",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ]
+    ]
+   }
+  ],
+  "forms": [
+   {
+    "id": "O259_id",
+    "name": "O259",
+    "tipo": "checkbox",
+    "val": "on"
+   },
+   {
+    "id": "O25D_id",
+    "name": "O25D",
+    "tipo": "text",
+    "val": "60"
+   },
+   {
+    "id": "O2A4_id",
+    "name": "O2A4",
+    "tipo": "text",
+    "val": "Peso Dominicano"
+   },
+   {
+    "id": "ext-comp-1004",
+    "name": "",
+    "tipo": "text",
+    "val": "1"
+   }
+  ],
+  "labels": [
+   {
+    "id": "ext-gen147",
+    "txt": "Auto."
+   },
+   {
+    "id": "O2A0_id",
+    "txt": "Moneda:"
+   }
+  ],
+  "btns": [
+   {
+    "txt": "Refrescar",
+    "id": "O261_id"
+   },
+   {
+    "txt": "Refrescar",
+    "id": "ext-gen152"
+   }
+  ],
+  "tabs": [],
+  "toolbars": [
+   {
+    "txt": "Faltan: 1 seg(s)\n0.00\n0.00\n0.00\n0.00\n0.00"
+   },
+   {
+    "txt": "Página\nde 1"
+   }
+  ]
+ },
+ "Depositos": {
+  "title": "Monitor de Cobradores",
+  "z": 9003,
+  "texto": " \nMonitor de Cobradores\nAuto.\n\tRefrescar\t\nMoneda:\nFaltan: 1 seg(s)\n0.00\n0.00\n0.00\n0.00\n0.00\nCobrador\nLim. de Cob.\nLim. de Pag.\nCobrado\nDepositado\nEntregado\nPagado\nDiferencia\nCobrador\n1,000,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\nAdmin\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\nFranyi\n50,000.00\n25,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\njesus\n16,000.00\n16,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\nMayobanex\n50,000.00\n50,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\nMayo\n100,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\nJuana\n0.00\n0.00\n0.00\n0.00\n0.00\nMaria\n0.00\n0.00\n0.00\n0.00\n0.00\notro cob\n0.00\n0.00\n0.00\n0.00\n0.00\nbrashell\n0.00\n0.00\n0.00\n0.00\n0.00\nPágina\nde 1\n ",
+  "grids": [
+   {
+    "cols": [
+     "Cobrador",
+     "Lim. de Cob.",
+     "Lim. de Pag.",
+     "Cobrado",
+     "Depositado",
+     "Entregado",
+     "Pagado",
+     "Diferencia"
+    ],
+    "rows": 10,
+    "rowsTxt": [
+     [
+      "",
+      "Cobrador",
+      "1,000,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Admin",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Franyi",
+      "50,000.00",
+      "25,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "jesus",
+      "16,000.00",
+      "16,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Mayobanex",
+      "50,000.00",
+      "50,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Mayo",
+      "100,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Juana",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Maria",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "otro cob",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "brashell",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ]
+    ]
+   }
+  ],
+  "forms": [
+   {
+    "id": "O259_id",
+    "name": "O259",
+    "tipo": "checkbox",
+    "val": "on"
+   },
+   {
+    "id": "O25D_id",
+    "name": "O25D",
+    "tipo": "text",
+    "val": "60"
+   },
+   {
+    "id": "O2A4_id",
+    "name": "O2A4",
+    "tipo": "text",
+    "val": "Peso Dominicano"
+   },
+   {
+    "id": "ext-comp-1004",
+    "name": "",
+    "tipo": "text",
+    "val": "1"
+   }
+  ],
+  "labels": [
+   {
+    "id": "ext-gen147",
+    "txt": "Auto."
+   },
+   {
+    "id": "O2A0_id",
+    "txt": "Moneda:"
+   }
+  ],
+  "btns": [
+   {
+    "txt": "Refrescar",
+    "id": "O261_id"
+   },
+   {
+    "txt": "Refrescar",
+    "id": "ext-gen152"
+   }
+  ],
+  "tabs": [],
+  "toolbars": [
+   {
+    "txt": "Faltan: 1 seg(s)\n0.00\n0.00\n0.00\n0.00\n0.00"
+   },
+   {
+    "txt": "Página\nde 1"
+   }
+  ]
+ },
+ "Descargos": {
+  "title": "Monitor de Cobradores",
+  "z": 9003,
+  "texto": " \nMonitor de Cobradores\nAuto.\n\tRefrescar\t\nMoneda:\nFaltan: 1 seg(s)\n0.00\n0.00\n0.00\n0.00\n0.00\nCobrador\nLim. de Cob.\nLim. de Pag.\nCobrado\nDepositado\nEntregado\nPagado\nDiferencia\nCobrador\n1,000,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\nAdmin\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\nFranyi\n50,000.00\n25,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\njesus\n16,000.00\n16,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\nMayobanex\n50,000.00\n50,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\nMayo\n100,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\nJuana\n0.00\n0.00\n0.00\n0.00\n0.00\nMaria\n0.00\n0.00\n0.00\n0.00\n0.00\notro cob\n0.00\n0.00\n0.00\n0.00\n0.00\nbrashell\n0.00\n0.00\n0.00\n0.00\n0.00\nPágina\nde 1\n ",
+  "grids": [
+   {
+    "cols": [
+     "Cobrador",
+     "Lim. de Cob.",
+     "Lim. de Pag.",
+     "Cobrado",
+     "Depositado",
+     "Entregado",
+     "Pagado",
+     "Diferencia"
+    ],
+    "rows": 10,
+    "rowsTxt": [
+     [
+      "",
+      "Cobrador",
+      "1,000,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Admin",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Franyi",
+      "50,000.00",
+      "25,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "jesus",
+      "16,000.00",
+      "16,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Mayobanex",
+      "50,000.00",
+      "50,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Mayo",
+      "100,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Juana",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Maria",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "otro cob",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "brashell",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ]
+    ]
+   }
+  ],
+  "forms": [
+   {
+    "id": "O259_id",
+    "name": "O259",
+    "tipo": "checkbox",
+    "val": "on"
+   },
+   {
+    "id": "O25D_id",
+    "name": "O25D",
+    "tipo": "text",
+    "val": "60"
+   },
+   {
+    "id": "O2A4_id",
+    "name": "O2A4",
+    "tipo": "text",
+    "val": "Peso Dominicano"
+   },
+   {
+    "id": "ext-comp-1004",
+    "name": "",
+    "tipo": "text",
+    "val": "1"
+   }
+  ],
+  "labels": [
+   {
+    "id": "ext-gen147",
+    "txt": "Auto."
+   },
+   {
+    "id": "O2A0_id",
+    "txt": "Moneda:"
+   }
+  ],
+  "btns": [
+   {
+    "txt": "Refrescar",
+    "id": "O261_id"
+   },
+   {
+    "txt": "Refrescar",
+    "id": "ext-gen152"
+   }
+  ],
+  "tabs": [],
+  "toolbars": [
+   {
+    "txt": "Faltan: 1 seg(s)\n0.00\n0.00\n0.00\n0.00\n0.00"
+   },
+   {
+    "txt": "Página\nde 1"
+   }
+  ]
+ },
+ "Descargos Rec.": {
+  "title": "Monitor de Cobradores",
+  "z": 9003,
+  "texto": " \nMonitor de Cobradores\nAuto.\n\tRefrescar\t\nMoneda:\nFaltan: 1 seg(s)\n0.00\n0.00\n0.00\n0.00\n0.00\nCobrador\nLim. de Cob.\nLim. de Pag.\nCobrado\nDepositado\nEntregado\nPagado\nDiferencia\nCobrador\n1,000,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\nAdmin\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\nFranyi\n50,000.00\n25,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\njesus\n16,000.00\n16,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\nMayobanex\n50,000.00\n50,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\nMayo\n100,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\nJuana\n0.00\n0.00\n0.00\n0.00\n0.00\nMaria\n0.00\n0.00\n0.00\n0.00\n0.00\notro cob\n0.00\n0.00\n0.00\n0.00\n0.00\nbrashell\n0.00\n0.00\n0.00\n0.00\n0.00\nPágina\nde 1\n ",
+  "grids": [
+   {
+    "cols": [
+     "Cobrador",
+     "Lim. de Cob.",
+     "Lim. de Pag.",
+     "Cobrado",
+     "Depositado",
+     "Entregado",
+     "Pagado",
+     "Diferencia"
+    ],
+    "rows": 10,
+    "rowsTxt": [
+     [
+      "",
+      "Cobrador",
+      "1,000,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Admin",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Franyi",
+      "50,000.00",
+      "25,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "jesus",
+      "16,000.00",
+      "16,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Mayobanex",
+      "50,000.00",
+      "50,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Mayo",
+      "100,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Juana",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Maria",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "otro cob",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "brashell",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ]
+    ]
+   }
+  ],
+  "forms": [
+   {
+    "id": "O259_id",
+    "name": "O259",
+    "tipo": "checkbox",
+    "val": "on"
+   },
+   {
+    "id": "O25D_id",
+    "name": "O25D",
+    "tipo": "text",
+    "val": "60"
+   },
+   {
+    "id": "O2A4_id",
+    "name": "O2A4",
+    "tipo": "text",
+    "val": "Peso Dominicano"
+   },
+   {
+    "id": "ext-comp-1004",
+    "name": "",
+    "tipo": "text",
+    "val": "1"
+   }
+  ],
+  "labels": [
+   {
+    "id": "ext-gen147",
+    "txt": "Auto."
+   },
+   {
+    "id": "O2A0_id",
+    "txt": "Moneda:"
+   }
+  ],
+  "btns": [
+   {
+    "txt": "Refrescar",
+    "id": "O261_id"
+   },
+   {
+    "txt": "Refrescar",
+    "id": "ext-gen152"
+   }
+  ],
+  "tabs": [],
+  "toolbars": [
+   {
+    "txt": "Faltan: 1 seg(s)\n0.00\n0.00\n0.00\n0.00\n0.00"
+   },
+   {
+    "txt": "Página\nde 1"
+   }
+  ]
+ },
+ "Pagos": {
+  "title": "Monitor de Cobradores",
+  "z": 9003,
+  "texto": " \nMonitor de Cobradores\nAuto.\n\tRefrescar\t\nMoneda:\nFaltan: 1 seg(s)\n0.00\n0.00\n0.00\n0.00\n0.00\nCobrador\nLim. de Cob.\nLim. de Pag.\nCobrado\nDepositado\nEntregado\nPagado\nDiferencia\nCobrador\n1,000,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\nAdmin\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\nFranyi\n50,000.00\n25,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\njesus\n16,000.00\n16,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\nMayobanex\n50,000.00\n50,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\nMayo\n100,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\nJuana\n0.00\n0.00\n0.00\n0.00\n0.00\nMaria\n0.00\n0.00\n0.00\n0.00\n0.00\notro cob\n0.00\n0.00\n0.00\n0.00\n0.00\nbrashell\n0.00\n0.00\n0.00\n0.00\n0.00\nPágina\nde 1\n ",
+  "grids": [
+   {
+    "cols": [
+     "Cobrador",
+     "Lim. de Cob.",
+     "Lim. de Pag.",
+     "Cobrado",
+     "Depositado",
+     "Entregado",
+     "Pagado",
+     "Diferencia"
+    ],
+    "rows": 10,
+    "rowsTxt": [
+     [
+      "",
+      "Cobrador",
+      "1,000,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Admin",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Franyi",
+      "50,000.00",
+      "25,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "jesus",
+      "16,000.00",
+      "16,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Mayobanex",
+      "50,000.00",
+      "50,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Mayo",
+      "100,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Juana",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Maria",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "otro cob",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "brashell",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ]
+    ]
+   }
+  ],
+  "forms": [
+   {
+    "id": "O259_id",
+    "name": "O259",
+    "tipo": "checkbox",
+    "val": "on"
+   },
+   {
+    "id": "O25D_id",
+    "name": "O25D",
+    "tipo": "text",
+    "val": "60"
+   },
+   {
+    "id": "O2A4_id",
+    "name": "O2A4",
+    "tipo": "text",
+    "val": "Peso Dominicano"
+   },
+   {
+    "id": "ext-comp-1004",
+    "name": "",
+    "tipo": "text",
+    "val": "1"
+   }
+  ],
+  "labels": [
+   {
+    "id": "ext-gen147",
+    "txt": "Auto."
+   },
+   {
+    "id": "O2A0_id",
+    "txt": "Moneda:"
+   }
+  ],
+  "btns": [
+   {
+    "txt": "Refrescar",
+    "id": "O261_id"
+   },
+   {
+    "txt": "Refrescar",
+    "id": "ext-gen152"
+   }
+  ],
+  "tabs": [],
+  "toolbars": [
+   {
+    "txt": "Faltan: 1 seg(s)\n0.00\n0.00\n0.00\n0.00\n0.00"
+   },
+   {
+    "txt": "Página\nde 1"
+   }
+  ]
+ },
+ "Entregas": {
+  "title": "Monitor de Cobradores",
+  "z": 9003,
+  "texto": " \nMonitor de Cobradores\nAuto.\n\tRefrescar\t\nMoneda:\nFaltan: 1 seg(s)\n0.00\n0.00\n0.00\n0.00\n0.00\nCobrador\nLim. de Cob.\nLim. de Pag.\nCobrado\nDepositado\nEntregado\nPagado\nDiferencia\nCobrador\n1,000,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\nAdmin\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\nFranyi\n50,000.00\n25,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\njesus\n16,000.00\n16,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\nMayobanex\n50,000.00\n50,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\nMayo\n100,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\nJuana\n0.00\n0.00\n0.00\n0.00\n0.00\nMaria\n0.00\n0.00\n0.00\n0.00\n0.00\notro cob\n0.00\n0.00\n0.00\n0.00\n0.00\nbrashell\n0.00\n0.00\n0.00\n0.00\n0.00\nPágina\nde 1\n ",
+  "grids": [
+   {
+    "cols": [
+     "Cobrador",
+     "Lim. de Cob.",
+     "Lim. de Pag.",
+     "Cobrado",
+     "Depositado",
+     "Entregado",
+     "Pagado",
+     "Diferencia"
+    ],
+    "rows": 10,
+    "rowsTxt": [
+     [
+      "",
+      "Cobrador",
+      "1,000,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Admin",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Franyi",
+      "50,000.00",
+      "25,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "jesus",
+      "16,000.00",
+      "16,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Mayobanex",
+      "50,000.00",
+      "50,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Mayo",
+      "100,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Juana",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Maria",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "otro cob",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "brashell",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ]
+    ]
+   }
+  ],
+  "forms": [
+   {
+    "id": "O259_id",
+    "name": "O259",
+    "tipo": "checkbox",
+    "val": "on"
+   },
+   {
+    "id": "O25D_id",
+    "name": "O25D",
+    "tipo": "text",
+    "val": "60"
+   },
+   {
+    "id": "O2A4_id",
+    "name": "O2A4",
+    "tipo": "text",
+    "val": "Peso Dominicano"
+   },
+   {
+    "id": "ext-comp-1004",
+    "name": "",
+    "tipo": "text",
+    "val": "1"
+   }
+  ],
+  "labels": [
+   {
+    "id": "ext-gen147",
+    "txt": "Auto."
+   },
+   {
+    "id": "O2A0_id",
+    "txt": "Moneda:"
+   }
+  ],
+  "btns": [
+   {
+    "txt": "Refrescar",
+    "id": "O261_id"
+   },
+   {
+    "txt": "Refrescar",
+    "id": "ext-gen152"
+   }
+  ],
+  "tabs": [],
+  "toolbars": [
+   {
+    "txt": "Faltan: 1 seg(s)\n0.00\n0.00\n0.00\n0.00\n0.00"
+   },
+   {
+    "txt": "Página\nde 1"
+   }
+  ]
+ },
+ "Monitor C": {
+  "title": "Monitor de Cobradores",
+  "z": 9003,
+  "texto": " \nMonitor de Cobradores\nAuto.\n\tRefrescar\t\nMoneda:\nFaltan: 1 seg(s)\n0.00\n0.00\n0.00\n0.00\n0.00\nCobrador\nLim. de Cob.\nLim. de Pag.\nCobrado\nDepositado\nEntregado\nPagado\nDiferencia\nCobrador\n1,000,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\nAdmin\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\nFranyi\n50,000.00\n25,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\njesus\n16,000.00\n16,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\nMayobanex\n50,000.00\n50,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\nMayo\n100,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\nJuana\n0.00\n0.00\n0.00\n0.00\n0.00\nMaria\n0.00\n0.00\n0.00\n0.00\n0.00\notro cob\n0.00\n0.00\n0.00\n0.00\n0.00\nbrashell\n0.00\n0.00\n0.00\n0.00\n0.00\nPágina\nde 1\n ",
+  "grids": [
+   {
+    "cols": [
+     "Cobrador",
+     "Lim. de Cob.",
+     "Lim. de Pag.",
+     "Cobrado",
+     "Depositado",
+     "Entregado",
+     "Pagado",
+     "Diferencia"
+    ],
+    "rows": 10,
+    "rowsTxt": [
+     [
+      "",
+      "Cobrador",
+      "1,000,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Admin",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Franyi",
+      "50,000.00",
+      "25,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "jesus",
+      "16,000.00",
+      "16,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Mayobanex",
+      "50,000.00",
+      "50,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Mayo",
+      "100,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Juana",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Maria",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "otro cob",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "brashell",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ]
+    ]
+   }
+  ],
+  "forms": [
+   {
+    "id": "O259_id",
+    "name": "O259",
+    "tipo": "checkbox",
+    "val": "on"
+   },
+   {
+    "id": "O25D_id",
+    "name": "O25D",
+    "tipo": "text",
+    "val": "60"
+   },
+   {
+    "id": "O2A4_id",
+    "name": "O2A4",
+    "tipo": "text",
+    "val": "Peso Dominicano"
+   },
+   {
+    "id": "ext-comp-1004",
+    "name": "",
+    "tipo": "text",
+    "val": "1"
+   }
+  ],
+  "labels": [
+   {
+    "id": "ext-gen147",
+    "txt": "Auto."
+   },
+   {
+    "id": "O2A0_id",
+    "txt": "Moneda:"
+   }
+  ],
+  "btns": [
+   {
+    "txt": "Refrescar",
+    "id": "O261_id"
+   },
+   {
+    "txt": "Refrescar",
+    "id": "ext-gen152"
+   }
+  ],
+  "tabs": [],
+  "toolbars": [
+   {
+    "txt": "Faltan: 1 seg(s)\n0.00\n0.00\n0.00\n0.00\n0.00"
+   },
+   {
+    "txt": "Página\nde 1"
+   }
+  ]
+ },
+ "Cuadres": {
+  "title": "Monitor de Cobradores",
+  "z": 9003,
+  "texto": " \nMonitor de Cobradores\nAuto.\n\tRefrescar\t\nMoneda:\nFaltan: 1 seg(s)\n0.00\n0.00\n0.00\n0.00\n0.00\nCobrador\nLim. de Cob.\nLim. de Pag.\nCobrado\nDepositado\nEntregado\nPagado\nDiferencia\nCobrador\n1,000,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\nAdmin\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\nFranyi\n50,000.00\n25,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\njesus\n16,000.00\n16,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\nMayobanex\n50,000.00\n50,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\nMayo\n100,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\nJuana\n0.00\n0.00\n0.00\n0.00\n0.00\nMaria\n0.00\n0.00\n0.00\n0.00\n0.00\notro cob\n0.00\n0.00\n0.00\n0.00\n0.00\nbrashell\n0.00\n0.00\n0.00\n0.00\n0.00\nPágina\nde 1\n ",
+  "grids": [
+   {
+    "cols": [
+     "Cobrador",
+     "Lim. de Cob.",
+     "Lim. de Pag.",
+     "Cobrado",
+     "Depositado",
+     "Entregado",
+     "Pagado",
+     "Diferencia"
+    ],
+    "rows": 10,
+    "rowsTxt": [
+     [
+      "",
+      "Cobrador",
+      "1,000,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Admin",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Franyi",
+      "50,000.00",
+      "25,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "jesus",
+      "16,000.00",
+      "16,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Mayobanex",
+      "50,000.00",
+      "50,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Mayo",
+      "100,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Juana",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Maria",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "otro cob",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "brashell",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ]
+    ]
+   }
+  ],
+  "forms": [
+   {
+    "id": "O259_id",
+    "name": "O259",
+    "tipo": "checkbox",
+    "val": "on"
+   },
+   {
+    "id": "O25D_id",
+    "name": "O25D",
+    "tipo": "text",
+    "val": "60"
+   },
+   {
+    "id": "O2A4_id",
+    "name": "O2A4",
+    "tipo": "text",
+    "val": "Peso Dominicano"
+   },
+   {
+    "id": "ext-comp-1004",
+    "name": "",
+    "tipo": "text",
+    "val": "1"
+   }
+  ],
+  "labels": [
+   {
+    "id": "ext-gen147",
+    "txt": "Auto."
+   },
+   {
+    "id": "O2A0_id",
+    "txt": "Moneda:"
+   }
+  ],
+  "btns": [
+   {
+    "txt": "Refrescar",
+    "id": "O261_id"
+   },
+   {
+    "txt": "Refrescar",
+    "id": "ext-gen152"
+   }
+  ],
+  "tabs": [],
+  "toolbars": [
+   {
+    "txt": "Faltan: 1 seg(s)\n0.00\n0.00\n0.00\n0.00\n0.00"
+   },
+   {
+    "txt": "Página\nde 1"
+   }
+  ]
+ },
+ "Reportes": {
+  "title": "Monitor de Cobradores",
+  "z": 9003,
+  "texto": " \nMonitor de Cobradores\nAuto.\n\tRefrescar\t\nMoneda:\nFaltan: 1 seg(s)\n0.00\n0.00\n0.00\n0.00\n0.00\nCobrador\nLim. de Cob.\nLim. de Pag.\nCobrado\nDepositado\nEntregado\nPagado\nDiferencia\nCobrador\n1,000,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\nAdmin\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\nFranyi\n50,000.00\n25,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\njesus\n16,000.00\n16,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\nMayobanex\n50,000.00\n50,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\nMayo\n100,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\nJuana\n0.00\n0.00\n0.00\n0.00\n0.00\nMaria\n0.00\n0.00\n0.00\n0.00\n0.00\notro cob\n0.00\n0.00\n0.00\n0.00\n0.00\nbrashell\n0.00\n0.00\n0.00\n0.00\n0.00\nPágina\nde 1\n ",
+  "grids": [
+   {
+    "cols": [
+     "Cobrador",
+     "Lim. de Cob.",
+     "Lim. de Pag.",
+     "Cobrado",
+     "Depositado",
+     "Entregado",
+     "Pagado",
+     "Diferencia"
+    ],
+    "rows": 10,
+    "rowsTxt": [
+     [
+      "",
+      "Cobrador",
+      "1,000,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Admin",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Franyi",
+      "50,000.00",
+      "25,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "jesus",
+      "16,000.00",
+      "16,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Mayobanex",
+      "50,000.00",
+      "50,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Mayo",
+      "100,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Juana",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Maria",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "otro cob",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "brashell",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ]
+    ]
+   }
+  ],
+  "forms": [
+   {
+    "id": "O259_id",
+    "name": "O259",
+    "tipo": "checkbox",
+    "val": "on"
+   },
+   {
+    "id": "O25D_id",
+    "name": "O25D",
+    "tipo": "text",
+    "val": "60"
+   },
+   {
+    "id": "O2A4_id",
+    "name": "O2A4",
+    "tipo": "text",
+    "val": "Peso Dominicano"
+   },
+   {
+    "id": "ext-comp-1004",
+    "name": "",
+    "tipo": "text",
+    "val": "1"
+   }
+  ],
+  "labels": [
+   {
+    "id": "ext-gen147",
+    "txt": "Auto."
+   },
+   {
+    "id": "O2A0_id",
+    "txt": "Moneda:"
+   }
+  ],
+  "btns": [
+   {
+    "txt": "Refrescar",
+    "id": "O261_id"
+   },
+   {
+    "txt": "Refrescar",
+    "id": "ext-gen152"
+   }
+  ],
+  "tabs": [],
+  "toolbars": [
+   {
+    "txt": "Faltan: 1 seg(s)\n0.00\n0.00\n0.00\n0.00\n0.00"
+   },
+   {
+    "txt": "Página\nde 1"
+   }
+  ]
+ },
+ "Monitor Z": {
+  "title": "Monitor de Cobradores",
+  "z": 9003,
+  "texto": " \nMonitor de Cobradores\nAuto.\n\tRefrescar\t\nMoneda:\nFaltan: 1 seg(s)\n0.00\n0.00\n0.00\n0.00\n0.00\nCobrador\nLim. de Cob.\nLim. de Pag.\nCobrado\nDepositado\nEntregado\nPagado\nDiferencia\nCobrador\n1,000,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\nAdmin\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\nFranyi\n50,000.00\n25,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\njesus\n16,000.00\n16,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\nMayobanex\n50,000.00\n50,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\nMayo\n100,000.00\n0.00\n0.00\n0.00\n0.00\n0.00\n0.00\nJuana\n0.00\n0.00\n0.00\n0.00\n0.00\nMaria\n0.00\n0.00\n0.00\n0.00\n0.00\notro cob\n0.00\n0.00\n0.00\n0.00\n0.00\nbrashell\n0.00\n0.00\n0.00\n0.00\n0.00\nPágina\nde 1\n ",
+  "grids": [
+   {
+    "cols": [
+     "Cobrador",
+     "Lim. de Cob.",
+     "Lim. de Pag.",
+     "Cobrado",
+     "Depositado",
+     "Entregado",
+     "Pagado",
+     "Diferencia"
+    ],
+    "rows": 10,
+    "rowsTxt": [
+     [
+      "",
+      "Cobrador",
+      "1,000,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Admin",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Franyi",
+      "50,000.00",
+      "25,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "jesus",
+      "16,000.00",
+      "16,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Mayobanex",
+      "50,000.00",
+      "50,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Mayo",
+      "100,000.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Juana",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "Maria",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "otro cob",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ],
+     [
+      "",
+      "brashell",
+      "",
+      "",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+     ]
+    ]
+   }
+  ],
+  "forms": [
+   {
+    "id": "O259_id",
+    "name": "O259",
+    "tipo": "checkbox",
+    "val": "on"
+   },
+   {
+    "id": "O25D_id",
+    "name": "O25D",
+    "tipo": "text",
+    "val": "60"
+   },
+   {
+    "id": "O2A4_id",
+    "name": "O2A4",
+    "tipo": "text",
+    "val": "Peso Dominicano"
+   },
+   {
+    "id": "ext-comp-1004",
+    "name": "",
+    "tipo": "text",
+    "val": "1"
+   }
+  ],
+  "labels": [
+   {
+    "id": "ext-gen147",
+    "txt": "Auto."
+   },
+   {
+    "id": "O2A0_id",
+    "txt": "Moneda:"
+   }
+  ],
+  "btns": [
+   {
+    "txt": "Refrescar",
+    "id": "O261_id"
+   },
+   {
+    "txt": "Refrescar",
+    "id": "ext-gen152"
+   }
+  ],
+  "tabs": [],
+  "toolbars": [
+   {
+    "txt": "Faltan: 1 seg(s)\n0.00\n0.00\n0.00\n0.00\n0.00"
+   },
+   {
+    "txt": "Página\nde 1"
+   }
+  ]
+ }
+}

@@ -2014,7 +2014,8 @@ function LegacyOperationView({
     [fromDate, setFromDate] = useState("2026-09-01"),
     [toDate, setToDate] = useState("2026-09-16"),
     [quickRecord, setQuickRecord] = useState<TableRow | "new" | null>(null),
-    [flash, setFlash] = useState(false);
+    [flash, setFlash] = useState(false),
+    [selectedRow, setSelectedRow] = useState<TableRow | null>(null);
   const permissions = permissionsFor(currentUser);
   const rows = spec.rows.filter((row) => {
     const haystack =
@@ -2066,6 +2067,7 @@ function LegacyOperationView({
     setQuery("");
     setFromDate("2026-09-01");
     setToDate("2026-09-16");
+    setSelectedRow(null);
     setFlash(true);
     setTimeout(() => setFlash(false), 280);
     onRefresh();
@@ -2082,6 +2084,27 @@ function LegacyOperationView({
     });
     toast.success("Registro eliminado");
     onRefresh();
+  };
+  const depositAction = async (
+    row: TableRow,
+    action: "aceptar" | "cancelar",
+  ) => {
+    if (!row.__id) return;
+    try {
+      await api(
+        `/depositos/${encodeURIComponent(String(row.__id))}/${action}`,
+        { method: "POST", body: JSON.stringify({}) },
+      );
+      toast.success(
+        action === "aceptar" ? "Depósito aceptado" : "Depósito cancelado",
+      );
+      setSelectedRow(null);
+      onRefresh();
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "No se pudo completar.",
+      );
+    }
   };
   return (
     <>
@@ -2179,6 +2202,28 @@ function LegacyOperationView({
             <button title="Exportar">
               <Download size={16} />
             </button>
+            {spec.entity === "deposits" && (
+              <>
+                <button
+                  title="Aceptar depósito"
+                  disabled={!selectedRow}
+                  onClick={() =>
+                    selectedRow && depositAction(selectedRow, "aceptar")
+                  }
+                >
+                  <ClipboardCheck size={16} />
+                </button>
+                <button
+                  title="Cancelar depósito"
+                  disabled={!selectedRow}
+                  onClick={() =>
+                    selectedRow && depositAction(selectedRow, "cancelar")
+                  }
+                >
+                  <X size={16} />
+                </button>
+              </>
+            )}
             <label className="legacy-toolbar-search">
               <Search size={15} />
               <input
@@ -2193,6 +2238,14 @@ function LegacyOperationView({
             rows={rows}
             dense
             permissions={permissions}
+            selectedRowId={
+              spec.entity === "deposits"
+                ? ((selectedRow?.__id as string | undefined) ?? undefined)
+                : undefined
+            }
+            onSelect={(row) =>
+              spec.entity === "deposits" ? setSelectedRow(row) : undefined
+            }
             onEdit={(row) => setQuickRecord(row)}
             onDelete={deleteRow}
           />
@@ -3123,6 +3176,12 @@ function operationSpec(page: Page, snapshot: Snapshot): OperationSpec {
     const rows = snapshot.movements.filter(
       (movement) => movement.type === "deposit",
     );
+    const acepOf = (movement: Snapshot["movements"][number]) =>
+      movement.cancelledAt
+        ? "Cancelado"
+        : movement.acceptedAt
+          ? "Aceptado"
+          : "Pendiente";
     return {
       title: "Depósitos por Cobradores",
       subtitle: "Depósitos recibidos desde ruta, con panel de detalle lateral.",
@@ -3135,11 +3194,12 @@ function operationSpec(page: Page, snapshot: Snapshot): OperationSpec {
         { key: "collector", label: "Cobrador" },
         { key: "currency", label: "Moneda" },
         { key: "amount", label: "Importe", align: "right" },
+        { key: "acep", label: "Acep." },
       ],
       rows: rows.map((movement, index) => ({
         __id: movement.id,
         __date: movement.createdAt.slice(0, 10),
-        __status: "Activo",
+        __status: acepOf(movement),
         __amount: movement.amount,
         __raw: movement as unknown as Record<string, unknown>,
         n: index + 1,
@@ -3147,6 +3207,7 @@ function operationSpec(page: Page, snapshot: Snapshot): OperationSpec {
         collector: collector(movement.collectorId)?.name,
         currency: "DOP",
         amount: money(movement.amount),
+        acep: acepOf(movement),
       })),
       footer: [
         { label: "Cantidad", value: rows.length },
