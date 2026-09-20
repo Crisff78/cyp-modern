@@ -1454,25 +1454,8 @@ export default function App() {
           </aside>
           <div className="main-shell">
             <header className="topbar">
-              <div className="operational-context">
-                <button
-                  className="icon-button mobile-menu-button"
-                  aria-label="Abrir navegación"
-                  onClick={() => setMobileMenu(true)}
-                >
-                  <Menu size={21} />
-                </button>
-                <span className="station-badge">
-                  <strong>{station.code}</strong>
-                  <span>{station.name}</span>
-                </span>
-                <div className="module-context">
-                  <span>Módulo activo</span>
-                  <strong>{activeNav?.label ?? "Escritorio"}</strong>
-                </div>
-              </div>
-              <div className="legacy-telemetry" aria-label="Telemetría del sistema legacy">
-                <span>Versión: 8.5.9600.16384 (winblue_rtm.130821-1623)</span>
+              <div className="topbar-system" aria-label="Telemetría del sistema legacy">
+                <span>Versión: CyP Web v0.1.0</span>
                 <span>
                   Fecha/Hora del Servidor: {clock.toLocaleDateString("es-DO", {
                     day: "2-digit",
@@ -1485,7 +1468,24 @@ export default function App() {
                   })}
                 </span>
               </div>
-              <div className="topbar-actions">
+              <div className="topbar-main">
+                <div className="operational-context">
+                  <button
+                    className="icon-button mobile-menu-button"
+                    aria-label="Abrir navegación"
+                    onClick={() => setMobileMenu(true)}
+                  >
+                    <Menu size={21} />
+                  </button>
+                  <span className="station-badge compact-station" title={station.name}>
+                    <strong>{station.code}</strong>
+                  </span>
+                  <div className="module-context">
+                    <span>Módulo activo</span>
+                    <strong>{activeNav?.label ?? "Escritorio"}</strong>
+                  </div>
+                </div>
+                <div className="topbar-actions">
                 <span className="status-badge">
                   {snapshot?.totals.activeCollectors ?? 0} cobradores en calle
                 </span>
@@ -1638,6 +1638,7 @@ export default function App() {
                   </span>
                   <ChevronDown size={13} />
                 </button>
+                </div>
               </div>
             </header>
             <main id="main-content" className="main-content desktop-canvas" tabIndex={-1}>

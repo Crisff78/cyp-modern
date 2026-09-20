@@ -6546,3 +6546,114 @@ table {
     display: none;
   }
 }
+
+/* Two-tier header: legacy telemetry above, modern tools below. */
+.topbar {
+  height: 88px;
+  flex: 0 0 88px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 0;
+  padding: 0;
+  overflow: visible;
+}
+
+.topbar-system {
+  height: 24px;
+  flex: 0 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 24px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #64748b;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.topbar-system span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topbar-main {
+  height: 64px;
+  flex: 0 0 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 32px;
+  min-width: 0;
+}
+
+.legacy-telemetry {
+  display: none;
+}
+
+@media (max-width: 1180px) {
+  .topbar-system {
+    padding: 0 16px;
+    font-size: 9px;
+  }
+  .topbar-main {
+    padding: 0 16px;
+  }
+}
+
+@media (max-width: 760px) {
+  .topbar {
+    height: 82px;
+    flex-basis: 82px;
+  }
+  .topbar-system {
+    height: 22px;
+    flex-basis: 22px;
+    gap: 8px;
+  }
+  .topbar-system span:first-child {
+    display: none;
+  }
+  .topbar-main {
+    height: 60px;
+    flex-basis: 60px;
+    gap: 8px;
+  }
+}
+
+/* Topbar proportion refinements. */
+.operational-context {
+  flex: 0 0 auto;
+  min-width: max-content;
+}
+
+.station-badge.compact-station {
+  flex: 0 0 auto;
+  gap: 0;
+  min-width: max-content;
+  white-space: nowrap;
+}
+
+.module-context {
+  flex: 0 0 auto;
+  min-width: max-content;
+  max-width: none;
+}
+
+.module-context strong {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+.topbar-actions {
+  min-width: 0;
+}
