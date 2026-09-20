@@ -66,7 +66,7 @@ decisiones y su alcance no se aplican aqui. No mezclar los dos proyectos.
 
 ## Current state - ACTUALIZAR ANTES DE CERRAR
 
-**Last updated:** 2026-09-19 por ZCode (G1 aceptar/cancelar depósito implementado; parity doc en docs/legacy-parity.md)
+**Last updated:** 2026-09-19 por ZCode (G1+G2+G3 de legacy-parity.md implementados y empujados)
 
 ### Done so far
 
@@ -201,6 +201,20 @@ decisiones y su alcance no se aplican aqui. No mezclar los dos proyectos.
   vistas Cargos y Descargos, con toasts de resumen y errores por fila; mock
   demo soporta ambas rutas. Test de integración nuevo. `npm run check` PASS
   (17 pass + 1 skip).
+
+- **G3 implementado: Descargos Recurrentes (2026-09-19, ZCode).** Migración
+  `004_recurring_payouts.sql` (plantillas con cliente, concepto, importe en
+  centavos, frecuencia semanal/mensual/trimestral, próxima fecha y estado
+  active/paused/archived). `createRecurringPayout`/`updateRecurringPayout` en
+  domain.ts (solo admin; el cobrador debe corresponder a la ruta del cliente);
+  snapshot expone `payoutRecurring` solo para administración; store carga y
+  persiste con diff. Rutas `POST /api/descargos-recurrentes` y
+  `POST /api/descargos-recurrentes/:id` (Idempotency-Key). Admin: página
+  "Descargos Recurrentes" en el grupo PAGOS (columnas Nro./Fecha/Frecuencia/
+  Identif./Cliente/Concepto/Estado), selección de fila y botón Archivar; mock
+  demo con una plantilla de ejemplo. Test de integración nuevo.
+  `npm run check` PASS (18 pass + 1 skip). Pendiente menor: formulario de
+  alta/edición de plantilla en el admin (operable hoy por API).
 
 ### Aprovisionamiento (como usarlo)
 

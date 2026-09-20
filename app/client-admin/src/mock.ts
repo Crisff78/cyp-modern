@@ -354,6 +354,18 @@ const initialSnapshot = (): Snapshot => ({
       receiptToken: "mock-rec-3",
     },
   ],
+  payoutRecurring: [
+    {
+      id: "rpo-1",
+      clientId: "cli-1",
+      concept: "Reembolso mensual",
+      amount: 150000,
+      frequency: "monthly",
+      nextRunDate: "2026-10-01",
+      status: "active",
+      createdAt: now(),
+    },
+  ],
   settlements: [],
   totals: {
     collected: 0,

@@ -146,6 +146,13 @@ const navigation: {
     group: "PAGOS",
   },
   {
+    key: "recurring-payouts",
+    page: "recurringPayouts",
+    label: "Descargos Rec.",
+    icon: RefreshCw,
+    group: "PAGOS",
+  },
+  {
     key: "payments",
     page: "payments",
     label: "Pagos",
@@ -195,6 +202,7 @@ const pageTitles: Record<Page, string> = {
   authorizationRequests: "Solicitudes de Autorización",
   charges: "Cargos",
   recurringCharges: "Cargos Recurrentes",
+  recurringPayouts: "Descargos Recurrentes",
   collections: "Cobros",
   deposits: "Depósitos por Cobradores",
   payouts: "Descargos",
@@ -299,6 +307,7 @@ const isReportPage = (page: MdiPage): page is ReportPageId =>
 const mdiOperationPages: Page[] = [
   "charges",
   "recurringCharges",
+  "recurringPayouts",
   "collections",
   "deposits",
   "payouts",
@@ -1775,6 +1784,7 @@ function ModuleRouter({
     [
       "charges",
       "recurringCharges",
+      "recurringPayouts",
       "collections",
       "deposits",
       "payouts",
@@ -2296,6 +2306,33 @@ function LegacyOperationView({
                 </button>
               </>
             )}
+            {spec.entity === "recurringPayouts" && (
+              <button
+                title="Archivar descargo recurrente"
+                disabled={!selectedRow}
+                onClick={() => {
+                  if (!selectedRow?.__id) return;
+                  void api(
+                    `/descargos-recurrentes/${encodeURIComponent(String(selectedRow.__id))}`,
+                    { method: "POST", body: JSON.stringify({ status: "archived" }) },
+                  )
+                    .then(() => {
+                      toast.success("Descargo recurrente archivado");
+                      setSelectedRow(null);
+                      onRefresh();
+                    })
+                    .catch((error: unknown) =>
+                      toast.error(
+                        error instanceof Error
+                          ? error.message
+                          : "No se pudo archivar.",
+                      ),
+                    );
+                }}
+              >
+                <Trash2 size={16} />
+              </button>
+            )}
             <label className="legacy-toolbar-search">
               <Search size={15} />
               <input
@@ -2311,12 +2348,14 @@ function LegacyOperationView({
             dense
             permissions={permissions}
             selectedRowId={
-              spec.entity === "deposits"
+              spec.entity === "deposits" || spec.entity === "recurringPayouts"
                 ? ((selectedRow?.__id as string | undefined) ?? undefined)
                 : undefined
             }
             onSelect={(row) =>
-              spec.entity === "deposits" ? setSelectedRow(row) : undefined
+              spec.entity === "deposits" || spec.entity === "recurringPayouts"
+                ? setSelectedRow(row)
+                : undefined
             }
             onEdit={(row) => setQuickRecord(row)}
             onDelete={deleteRow}
@@ -3196,6 +3235,51 @@ function operationSpec(page: Page, snapshot: Snapshot): OperationSpec {
         },
       ],
     };
+  if (page === "recurringPayouts") {
+    const rows = snapshot.payoutRecurring ?? [];
+    return {
+      title: "Descargos Recurrentes",
+      subtitle: "Órdenes de descargo periódicas por cliente, con frecuencia.",
+      filterTitle: "Filtro de Descargos Recurrentes",
+      entity: "recurringPayouts",
+      modes: ["Todos", "Por Cliente"],
+      columns: [
+        { key: "n", label: "Nro." },
+        { key: "date", label: "Fecha" },
+        { key: "frequency", label: "Frecuencia" },
+        { key: "ident", label: "Identif." },
+        { key: "client", label: "Cliente" },
+        { key: "concept", label: "Concepto" },
+        { key: "status", label: "Estado" },
+      ],
+      rows: rows.map((template, index) => ({
+        __id: template.id,
+        __date: template.nextRunDate,
+        __status: template.status,
+        __amount: template.amount,
+        __raw: template as unknown as Record<string, unknown>,
+        n: index + 1,
+        date: safeDateLabel(template.nextRunDate),
+        frequency:
+          template.frequency === "weekly"
+            ? "Semanal"
+            : template.frequency === "quarterly"
+              ? "Trimestral"
+              : "Mensual",
+        ident: template.id.slice(0, 8),
+        client: client(template.clientId)?.name,
+        concept: template.concept,
+        status: template.status,
+      })),
+      footer: [
+        { label: "Cantidad", value: rows.length },
+        {
+          label: "Total",
+          value: money(rows.reduce((sum, item) => sum + item.amount, 0)),
+        },
+      ],
+    };
+  }
   if (page === "collections") {
     const rows = snapshot.movements.filter(
       (movement) => movement.type === "collection",

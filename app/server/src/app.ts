@@ -18,6 +18,7 @@ import {
   businessDate,
   cancelDeposit,
   closeDay,
+  createRecurringPayout,
   collectorForClient,
   DomainError,
   findAccount,
@@ -28,6 +29,7 @@ import {
   preview,
   publicAccount,
   snapshot,
+  updateRecurringPayout,
   verifyPassword,
   type Account,
   type State,
@@ -785,6 +787,34 @@ export async function buildApp(config: Config) {
     "Importación masiva de descargos",
     z.object({ filas: z.array(importPayoutRow).min(1).max(1000) }).strict(),
     (s, u, b) => importPayouts(s, u, b.filas),
+  );
+  mutate(
+    "/api/descargos-recurrentes",
+    "Crear descargo recurrente",
+    z
+      .object({
+        clientId: id,
+        concept: text,
+        amount: money,
+        frequency: z.enum(["weekly", "monthly", "quarterly"]),
+        nextRunDate: date,
+      })
+      .strict(),
+    (s, u, b) => createRecurringPayout(s, u, b),
+  );
+  mutate(
+    "/api/descargos-recurrentes/:id",
+    "Modificar o archivar descargo recurrente",
+    z
+      .object({
+        concept: text.optional(),
+        amount: money.optional(),
+        frequency: z.enum(["weekly", "monthly", "quarterly"]).optional(),
+        nextRunDate: date.optional(),
+        status: z.enum(["active", "paused", "archived"]).optional(),
+      })
+      .strict(),
+    (s, u, b, params) => updateRecurringPayout(s, u, params.id, b),
   );
   app.get("/api/cuadres/preview", async (req) => {
     const q = z.object({ collectorId: id, date }).parse(req.query);

@@ -145,6 +145,16 @@ export type PublicAccount = {
   createdAt: string;
   updatedAt: string;
 };
+export type RecurringPayout = {
+  id: string;
+  clientId: string;
+  concept: string;
+  amount: number;
+  frequency: "weekly" | "monthly" | "quarterly";
+  nextRunDate: string;
+  status: "active" | "paused" | "archived";
+  createdAt: string;
+};
 export type Snapshot = {
   businessDate: string;
   clients: Client[];
@@ -152,6 +162,7 @@ export type Snapshot = {
   accounts: PublicAccount[];
   charges: Charge[];
   payouts: Payout[];
+  payoutRecurring: RecurringPayout[];
   movements: Movement[];
   routes: { id: string; name: string; sector: string; collectorId: string }[];
   settlements: (Balance & {
@@ -190,6 +201,7 @@ export type Page =
   | "authorizationRequests"
   | "charges"
   | "recurringCharges"
+  | "recurringPayouts"
   | "collections"
   | "deposits"
   | "payouts"

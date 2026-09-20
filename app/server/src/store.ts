@@ -149,6 +149,13 @@ async function readState(client: pg.PoolClient): Promise<State> {
        FROM daily_settlements ORDER BY date,id`,
     )
   ).rows.map(clean);
+  state.payoutRecurring = (
+    await client.query(
+      `SELECT id,client_id AS "clientId",concept,amount,frequency,
+       next_run_date AS "nextRunDate",status,created_at AS "createdAt"
+       FROM recurring_payouts ORDER BY created_at, id`,
+    )
+  ).rows.map(clean);
   state.idempotency = (
     await client.query(
       `SELECT id,fingerprint,response,created_at AS "createdAt" FROM idempotency ORDER BY created_at,id`,
@@ -354,6 +361,26 @@ async function saveState(client: pg.PoolClient, state: State, before: State) {
         settlement.actorId,
       ],
     );
+  for (const template of state.payoutRecurring) {
+    const prev = before.payoutRecurring.find((r) => r.id === template.id);
+    if (prev && JSON.stringify(prev) === JSON.stringify(template)) continue;
+    await client.query(
+      `INSERT INTO recurring_payouts(id,client_id,concept,amount,frequency,next_run_date,status,created_at)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+       ON CONFLICT(id) DO UPDATE SET concept=EXCLUDED.concept,amount=EXCLUDED.amount,
+         frequency=EXCLUDED.frequency,next_run_date=EXCLUDED.next_run_date,status=EXCLUDED.status`,
+      [
+        template.id,
+        template.clientId,
+        template.concept,
+        template.amount,
+        template.frequency,
+        template.nextRunDate,
+        template.status,
+        template.createdAt,
+      ],
+    );
+  }
   for (const row of state.idempotency) {
     const prev = before.idempotency.find((r) => r.id === row.id);
     if (prev && JSON.stringify(prev) === JSON.stringify(row)) continue;

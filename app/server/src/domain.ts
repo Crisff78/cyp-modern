@@ -107,12 +107,23 @@ export type Idempotency = {
   response: unknown;
   createdAt: string;
 };
+export type RecurringPayout = {
+  id: string;
+  clientId: string;
+  concept: string;
+  amount: number;
+  frequency: "weekly" | "monthly" | "quarterly";
+  nextRunDate: string;
+  status: "active" | "paused" | "archived";
+  createdAt: string;
+};
 export type State = {
   clients: Client[];
   routes: Route[];
   collectors: Collector[];
   charges: Charge[];
   payouts: Payout[];
+  payoutRecurring: RecurringPayout[];
   movements: Movement[];
   settlements: Settlement[];
   idempotency: Idempotency[];
@@ -140,6 +151,7 @@ export const emptyState = (): State => ({
   collectors: [],
   charges: [],
   payouts: [],
+  payoutRecurring: [],
   movements: [],
   settlements: [],
   idempotency: [],
@@ -236,6 +248,76 @@ export function cancelDeposit(state: State, user: User, movementId: string) {
     movement.cancelledBy = user.id;
   }
   return movement;
+}
+
+export function createRecurringPayout(
+  state: State,
+  user: User,
+  input: {
+    clientId: string;
+    concept: string;
+    amount: number;
+    frequency: RecurringPayout["frequency"];
+    nextRunDate: string;
+  },
+) {
+  assertAdmin(user);
+  collectorForClient(state, input.clientId);
+  if (!Number.isInteger(input.amount) || input.amount <= 0)
+    throw new DomainError(
+      "IMPORT_INVALID_AMOUNT",
+      "El importe debe ser un entero positivo en centavos.",
+      422,
+    );
+  const template: RecurringPayout = {
+    id: randomUUID(),
+    clientId: input.clientId,
+    concept: input.concept.trim(),
+    amount: input.amount,
+    frequency: input.frequency,
+    nextRunDate: input.nextRunDate,
+    status: "active",
+    createdAt: new Date().toISOString(),
+  };
+  state.payoutRecurring.push(template);
+  return template;
+}
+
+export function updateRecurringPayout(
+  state: State,
+  user: User,
+  id: string,
+  cambio: {
+    concept?: string;
+    amount?: number;
+    frequency?: RecurringPayout["frequency"];
+    nextRunDate?: string;
+    status?: RecurringPayout["status"];
+  },
+) {
+  assertAdmin(user);
+  const template = state.payoutRecurring.find((t) => t.id === id);
+  if (!template)
+    throw new DomainError(
+      "NOT_FOUND",
+      "El descargo recurrente no existe.",
+      404,
+    );
+  if (cambio.amount !== undefined) {
+    if (!Number.isInteger(cambio.amount) || cambio.amount <= 0)
+      throw new DomainError(
+        "IMPORT_INVALID_AMOUNT",
+        "El importe debe ser un entero positivo en centavos.",
+        422,
+      );
+    template.amount = cambio.amount;
+  }
+  if (cambio.concept !== undefined) template.concept = cambio.concept.trim();
+  if (cambio.frequency !== undefined) template.frequency = cambio.frequency;
+  if (cambio.nextRunDate !== undefined)
+    template.nextRunDate = cambio.nextRunDate;
+  if (cambio.status !== undefined) template.status = cambio.status;
+  return template;
 }
 
 export type ImportRowError = { fila: number; mensaje: string };
@@ -624,6 +706,8 @@ export function snapshot(state: State, user: User) {
       clients.some((cl) => cl.id === c.clientId),
     ),
     payouts: state.payouts.filter((p) => allowed(p.collectorId)),
+    payoutRecurring:
+      user.role === "admin" ? state.payoutRecurring : [],
     movements,
     settlements: state.settlements.filter((s) => allowed(s.collectorId)),
     totals: {

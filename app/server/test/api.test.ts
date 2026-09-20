@@ -929,3 +929,68 @@ test("bulk import: cargos y descargos con reporte por fila", async () => {
     await app.close();
   }
 });
+
+test("recurring payouts: crear, modificar, archivar y alcance por rol", async () => {
+  const { app, post, adminToken, collectorToken, store } = await setup();
+  const auth = { authorization: `Bearer ${adminToken}` };
+  try {
+    let clientId = "";
+    await store.transaction((s) => {
+      const target = s.clients.find(
+        (c) => s.routes.find((r) => r.id === c.routeId)?.collectorId,
+      );
+      if (!target) throw new Error("seed sin cliente con cobrador");
+      target.code = "REC-0001";
+      clientId = target.id;
+    });
+    const create = await post("/api/descargos-recurrentes", {
+      clientId,
+      concept: "Reembolso mensual",
+      amount: 150000,
+      frequency: "monthly",
+      nextRunDate: "2026-10-01",
+    });
+    assert.equal(create.statusCode, 200);
+    const id = create.json().id as string;
+    const snap = (await app.inject({ url: "/api/snapshot", headers: auth })).json();
+    assert.equal(snap.payoutRecurring.length, 1);
+    assert.equal(snap.payoutRecurring[0].status, "active");
+    const snapCollector = (
+      await app.inject({
+        url: "/api/snapshot",
+        headers: { authorization: `Bearer ${collectorToken}` },
+      })
+    ).json();
+    assert.equal(snapCollector.payoutRecurring.length, 0);
+    const upd = await post(`/api/descargos-recurrentes/${id}`, {
+      amount: 200000,
+      status: "paused",
+    });
+    assert.equal(upd.statusCode, 200);
+    assert.equal(upd.json().status, "paused");
+    assert.equal(upd.json().amount, 200000);
+    assert.equal(
+      (await post("/api/descargos-recurrentes/nope", { status: "archived" }))
+        .statusCode,
+      404,
+    );
+    assert.equal(
+      (
+        await post(
+          "/api/descargos-recurrentes",
+          {
+            clientId,
+            concept: "X",
+            amount: 100,
+            frequency: "monthly",
+            nextRunDate: "2026-10-01",
+          },
+          collectorToken,
+        )
+      ).statusCode,
+      403,
+    );
+  } finally {
+    await app.close();
+  }
+});
