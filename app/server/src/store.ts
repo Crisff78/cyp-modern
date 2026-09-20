@@ -99,7 +99,8 @@ async function readState(client: pg.PoolClient): Promise<State> {
   ).rows.map(clean);
   state.clients = (
     await client.query(
-      `SELECT c.id,c.name,c.code,c.phone,cp.address,c.route_id AS "routeId"
+      `SELECT c.id,c.name,c.code,c.phone,cp.address,c.route_id AS "routeId",
+       c.alias,c.sector,c.cellular,c.email,c.note
        FROM clients c JOIN collection_points cp ON cp.id=c.collection_point_id ORDER BY c.id`,
     )
   ).rows.map(clean);
@@ -237,9 +238,12 @@ async function saveState(client: pg.PoolClient, state: State, before: State) {
       [collectionPointId(clientRow.id), clientRow.routeId, clientRow.address],
     );
     await client.query(
-      `INSERT INTO clients(id,name,code,phone,route_id,collection_point_id) VALUES($1,$2,$3,$4,$5,$6)
+      `INSERT INTO clients(id,name,code,phone,route_id,collection_point_id,alias,sector,cellular,email,note)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
        ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,code=EXCLUDED.code,phone=EXCLUDED.phone,
-       route_id=EXCLUDED.route_id,collection_point_id=EXCLUDED.collection_point_id`,
+       route_id=EXCLUDED.route_id,collection_point_id=EXCLUDED.collection_point_id,
+       alias=EXCLUDED.alias,sector=EXCLUDED.sector,cellular=EXCLUDED.cellular,
+       email=EXCLUDED.email,note=EXCLUDED.note`,
       [
         clientRow.id,
         clientRow.name,
@@ -247,6 +251,11 @@ async function saveState(client: pg.PoolClient, state: State, before: State) {
         clientRow.phone,
         clientRow.routeId,
         collectionPointId(clientRow.id),
+        clientRow.alias ?? "",
+        clientRow.sector ?? "",
+        clientRow.cellular ?? "",
+        clientRow.email ?? "",
+        clientRow.note ?? "",
       ],
     );
   }

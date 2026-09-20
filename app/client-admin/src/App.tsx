@@ -3054,6 +3054,16 @@ function QuickRecordModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const isClient = entity === "clients";
+  const [phone, setPhone] = useState(String(raw.phone ?? ""));
+  const [alias, setAlias] = useState(String(raw.alias ?? ""));
+  const [sector, setSector] = useState(String(raw.sector ?? ""));
+  const [cellular, setCellular] = useState(String(raw.cellular ?? ""));
+  const [email, setEmail] = useState(String(raw.email ?? ""));
+  const [note, setNote] = useState(String(raw.note ?? ""));
+  const [address, setAddress] = useState(String(raw.address ?? ""));
+  const [routeId, setRouteId] = useState(
+    String(raw.routeId ?? snapshot.routes[0]?.id ?? ""),
+  );
   const save = async (event: FormEvent) => {
     event.preventDefault();
     setError("");
@@ -3076,13 +3086,14 @@ function QuickRecordModal({
           code: isClient
             ? String(raw.code ?? `C-${snapshot.clients.length + 1}`)
             : undefined,
-          phone: isClient ? String(raw.phone ?? "8095550000") : undefined,
-          address: isClient
-            ? String(raw.address ?? "Dirección pendiente")
-            : undefined,
-          routeId: isClient
-            ? String(raw.routeId ?? snapshot.routes[0]?.id)
-            : undefined,
+          phone: isClient ? phone : String(raw.phone ?? "8095550000"),
+          address: isClient ? address : String(raw.address ?? "Dirección pendiente"),
+          routeId: isClient ? routeId : String(raw.routeId ?? snapshot.routes[0]?.id),
+          alias: isClient ? alias : undefined,
+          sector: isClient ? sector : undefined,
+          cellular: isClient ? cellular : undefined,
+          email: isClient ? email : undefined,
+          note: isClient ? note : undefined,
           clientId,
           collectorId,
           service:
@@ -3118,6 +3129,48 @@ function QuickRecordModal({
             required
           />
         </label>
+        {isClient && (
+          <>
+            <label className="field">
+              Teléfono
+              <input value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="8095550000" />
+            </label>
+            <label className="field">
+              Celular
+              <input value={cellular} onChange={(event) => setCellular(event.target.value)} placeholder="8095550000" />
+            </label>
+            <label className="field">
+              Alias
+              <input value={alias} onChange={(event) => setAlias(event.target.value)} />
+            </label>
+            <label className="field">
+              Sector/Zona
+              <input value={sector} onChange={(event) => setSector(event.target.value)} />
+            </label>
+            <label className="field">
+              Email
+              <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
+            </label>
+            <label className="field">
+              Dirección
+              <input value={address} onChange={(event) => setAddress(event.target.value)} />
+            </label>
+            <label className="field">
+              Ruta
+              <select value={routeId} onChange={(event) => setRouteId(event.target.value)}>
+                {snapshot.routes.map((route) => (
+                  <option value={route.id} key={route.id}>
+                    {route.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              Nota
+              <textarea value={note} onChange={(event) => setNote(event.target.value)} />
+            </label>
+          </>
+        )}
         {!isClient && (
           <>
             <label className="field">

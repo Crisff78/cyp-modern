@@ -543,6 +543,11 @@ function upsertAdminRecord(entity: string, body: Record<string, unknown>) {
       phone: String(body.phone ?? "8095550000"),
       address: String(body.address ?? "Dirección pendiente"),
       routeId: String(body.routeId ?? state.routes[0]?.id ?? "rt-1"),
+      alias: String(body.alias ?? ""),
+      sector: String(body.sector ?? ""),
+      cellular: String(body.cellular ?? ""),
+      email: String(body.email ?? ""),
+      note: String(body.note ?? ""),
     };
     const index = state.clients.findIndex((item) => item.id === id);
     if (index >= 0) state.clients[index] = record;

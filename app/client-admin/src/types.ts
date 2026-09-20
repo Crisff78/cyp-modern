@@ -68,6 +68,11 @@ export type Client = {
   phone: string;
   address: string;
   routeId: string;
+  alias?: string;
+  sector?: string;
+  cellular?: string;
+  email?: string;
+  note?: string;
 };
 export type Collector = {
   id: string;

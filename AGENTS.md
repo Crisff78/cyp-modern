@@ -239,6 +239,17 @@ decisiones y su alcance no se aplican aqui. No mezclar los dos proyectos.
   (desglose de denominaciones, formulario de plantilla recurrente) y captura
   en vivo §7 (formularios de alta y ventanas N/F/Q/P del demo).
 
+- **G9 implementado + captura en vivo bloqueada por infraestructura
+  (2026-09-19, ZCode).** El demo original esta caido ("Login failed for user"
+  en su BD; reinicio intentado sin exito) — la captura en vivo de formularios
+  de alta y ventanas N/F/Q/P sigue pendiente hasta que el demo vuelva. En su
+  lugar, validacion estatica contra el layout verificado del .bak: los
+  clientes del legacy llevan 9 campos de datos y el modelo nuevo solo tenia
+  4 → **G9**: migracion `006_client_contact.sql` (alias, sector, celular,
+  email, note en clients), Client type + carga/persistencia en store,
+  formulario de cliente en QuickRecordModal con los campos nuevos y ruta
+  seleccionable, mock actualizado. `npm run check` PASS (19 pass + 1 skip).
+
 ### Aprovisionamiento (como usarlo)
 
 1. Entrar al admin (modo real: `ADMIN_EMAIL`/`ADMIN_PASSWORD` del `.env`; `Demo-CyP-2026!` solo vale con `DEMO_MODE=true`) > Archivos >
