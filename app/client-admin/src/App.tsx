@@ -914,6 +914,21 @@ function Login({
     [busy, setBusy] = useState(false),
     [blockedCollector, setBlockedCollector] = useState(false),
     [error, setError] = useState("");
+  useEffect(() => {
+    let active = true;
+    fetch("/api/health")
+      .then((r) => r.json())
+      .then((h) => {
+        if (active && h?.mode && h.mode !== "demo") {
+          setEmail("");
+          setPassword("");
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
   async function login() {
     setBusy(true);
     setError("");

@@ -123,6 +123,14 @@ export type RecurringPayout = {
   status: "active" | "paused" | "archived";
   createdAt: string;
 };
+export type DepositEvent = {
+  id: string;
+  movementId: string;
+  action: "accepted" | "cancelled";
+  actorId: string;
+  denominations?: Array<{ denominacion: number; cantidad: number }>;
+  createdAt: string;
+};
 export type State = {
   clients: Client[];
   routes: Route[];
@@ -131,6 +139,7 @@ export type State = {
   payouts: Payout[];
   payoutRecurring: RecurringPayout[];
   movements: Movement[];
+  depositEvents: DepositEvent[];
   settlements: Settlement[];
   idempotency: Idempotency[];
   accounts: Account[];
@@ -160,6 +169,7 @@ export const emptyState = (): State => ({
   payouts: [],
   payoutRecurring: [],
   movements: [],
+  depositEvents: [],
   settlements: [],
   idempotency: [],
   accounts: [],
@@ -229,7 +239,10 @@ export function acceptDeposit(
   );
   if (!movement)
     throw new DomainError("DEPOSIT_NOT_FOUND", "El depósito no existe.", 404);
-  if (movement.cancelledAt)
+  const yaCancelado = state.depositEvents.some(
+    (e) => e.movementId === movementId && e.action === "cancelled",
+  );
+  if (yaCancelado)
     throw new DomainError(
       "DEPOSIT_CANCELLED",
       "No se puede aceptar un depósito cancelado.",
@@ -257,11 +270,23 @@ export function acceptDeposit(
         `El desglose suma ${total} centavos y el depósito es ${movement.amount}.`,
         422,
       );
-    movement.denominations = desglose;
   }
-  if (!movement.acceptedAt) {
-    movement.acceptedAt = new Date().toISOString();
+  const yaAceptado = state.depositEvents.some(
+    (e) => e.movementId === movementId && e.action === "accepted",
+  );
+  if (!yaAceptado) {
+    const createdAt = new Date().toISOString();
+    state.depositEvents.push({
+      id: randomUUID(),
+      movementId,
+      action: "accepted",
+      actorId: user.id,
+      createdAt,
+      ...(desglose?.length ? { denominations: desglose } : {}),
+    });
+    movement.acceptedAt = createdAt;
     movement.acceptedBy = user.id;
+    if (desglose?.length) movement.denominations = desglose;
   }
   return movement;
 }
@@ -273,14 +298,28 @@ export function cancelDeposit(state: State, user: User, movementId: string) {
   );
   if (!movement)
     throw new DomainError("DEPOSIT_NOT_FOUND", "El depósito no existe.", 404);
-  if (movement.acceptedAt)
+  const yaAceptado = state.depositEvents.some(
+    (e) => e.movementId === movementId && e.action === "accepted",
+  );
+  if (yaAceptado)
     throw new DomainError(
       "DEPOSIT_ALREADY_ACCEPTED",
       "No se puede cancelar un depósito ya aceptado.",
       422,
     );
-  if (!movement.cancelledAt) {
-    movement.cancelledAt = new Date().toISOString();
+  const yaCancelado = state.depositEvents.some(
+    (e) => e.movementId === movementId && e.action === "cancelled",
+  );
+  if (!yaCancelado) {
+    const createdAt = new Date().toISOString();
+    state.depositEvents.push({
+      id: randomUUID(),
+      movementId,
+      action: "cancelled",
+      actorId: user.id,
+      createdAt,
+    });
+    movement.cancelledAt = createdAt;
     movement.cancelledBy = user.id;
   }
   return movement;

@@ -66,7 +66,7 @@ decisiones y su alcance no se aplican aqui. No mezclar los dos proyectos.
 
 ## Current state - ACTUALIZAR ANTES DE CERRAR
 
-**Last updated:** 2026-09-19 por ZCode (matriz de paridad CERRADA: G1-G7+G9+menores implementados, G8 fuera de alcance por decisión de Rardiel)
+**Last updated:** 2026-09-20 por ZCode (datos PRUEBA insertados, E2E 39 checks en verde sobre PostgreSQL; fallo de persistencia G1 resuelto con eventos append-only)
 
 ### Done so far
 
@@ -295,6 +295,30 @@ decisiones y su alcance no se aplican aqui. No mezclar los dos proyectos.
   'MostrarQueHayDeNuevo'"). Conclusion: sin brechas nuevas accionables;
   las ventanas F/P son facturacion del vendedor legacy (slot ya cubierto en
   el admin). Documentado en docs/legacy-parity.md §7.
+
+- **Sync del avance del companero completado (2026-09-20, ZCode).** El
+  companero publico 2 commits sobre el ultimo push (fast-forward, sin
+  conflictos): 88d6f5e limpieza del fondo y renderizado exclusivo en ventanas
+  MDI, y ca4b067 telemetria legacy en el topbar del admin (version + fecha/
+  hora del servidor en es-DO, conservando herramientas modernas). Verificado
+  tras la fusion: los marcadores de G1-G10+G9+menores siguen presentes y
+  `npm run check` completo en verde (20 pass + 1 skip); el dev server
+  recargo sin problemas. Matriz de paridad: CERRADA.
+
+- **Datos de prueba + E2E en modo real completados (2026-09-20, ZCode).**
+  Migraciones 001-008 aplicadas a la BD real. Datos PRUEBA insertados via API
+  (cargos, cobros, depositos, entregas, descargos, plantilla recurrente).
+  Bateria `e2e-pruebas.mjs` (39 checks) en verde contra PostgreSQL tras
+  correcciones: (1) G1 redisenado con eventos append-only en
+  `deposit_lifecycle` (migracion 008) — el trigger de inmutabilidad de
+  cash_handovers bloqueaba el UPDATE del ciclo de vida (500); (2) login del
+  admin ya no precarga credenciales demo cuando /api/health reporta modo real;
+  (3) flujo completo verificado INCLUYENDO cierre de dia con cuadre en cero
+  (settlement creado). Rechazos del negocio verificados como correctos:
+  cobro duplicado 422, deposito sin efectivo 409, pago sin fondos de oficina
+  409, cierre descuadrado 409 UNBALANCED. `npm run check` verde
+  (20 pass + 1 skip). Decision de Rardiel (2026-09-20): los datos
+  PRUEBA SE QUEDAN en la BD real como dataset demo (no borrar).
 
 ### Aprovisionamiento (como usarlo)
 
