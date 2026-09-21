@@ -89,6 +89,8 @@ import {
   enrichUserRole,
   isSuspendedUser,
   normalizeRole,
+  type Charge,
+  type Client,
   type Collector,
   type ClientStatement,
   type Page,
@@ -2141,9 +2143,10 @@ function ModuleRouter({
         onAccount={onAccount}
       />
     );
+  if (page === "charges")
+    return <ChargesOperationalView snapshot={snapshot} currentUser={currentUser} />;
   if (
     [
-      "charges",
       "recurringCharges",
       "recurringPayouts",
       "collections",
@@ -2459,6 +2462,231 @@ function MasterDataView({
 }
 
 const DENOMS = [2000, 1000, 500, 200, 100, 50, 20, 10, 5, 1];
+
+type LocalCharge = Charge & {
+  currency: string;
+  concept: string;
+  note: string;
+};
+
+type CargoDialogDraft = {
+  clientId: string;
+  clientCode: string;
+  currency: string;
+  service: string;
+  concept: string;
+  price: string;
+  quantity: string;
+  note: string;
+};
+
+const chargeClientForCode = (clients: Client[], code: string) =>
+  clients.find((client) => client.code.toLowerCase() === code.trim().toLowerCase()) ?? clients[0];
+
+function CargoDialog({
+  charge,
+  clients,
+  businessDate,
+  onClose,
+  onSave,
+}: Readonly<{
+  charge?: LocalCharge;
+  clients: Client[];
+  businessDate: string;
+  onClose: () => void;
+  onSave: (charge: LocalCharge) => void;
+}>) {
+  const initialClient = clients.find((client) => client.id === charge?.clientId) ?? clients[0];
+  const [draft, setDraft] = useState<CargoDialogDraft>({
+    clientId: initialClient?.id ?? "",
+    clientCode: initialClient?.code ?? "",
+    currency: charge?.currency ?? "Peso Dominicano",
+    service: charge?.service ?? "Cuota de Préstamo",
+    concept: charge?.concept ?? "Servicio mensual",
+    price: charge ? String((charge.amount / 100).toFixed(2)) : "0.00",
+    quantity: "1.00",
+    note: charge?.note ?? "",
+  });
+  const selectedClient = clients.find((client) => client.id === draft.clientId) ?? chargeClientForCode(clients, draft.clientCode);
+  const price = Number(draft.price || 0);
+  const quantity = Number(draft.quantity || 0);
+  const total = Number.isFinite(price * quantity) ? price * quantity : 0;
+  const update = (field: keyof CargoDialogDraft, value: string) =>
+    setDraft((current) => ({ ...current, [field]: value }));
+  const updateClientCode = (value: string) => {
+    const nextClient = chargeClientForCode(clients, value);
+    setDraft((current) => ({ ...current, clientCode: value, clientId: nextClient?.id ?? current.clientId }));
+  };
+  const pickNextClient = () => {
+    if (!clients.length) return;
+    const currentIndex = Math.max(0, clients.findIndex((client) => client.id === selectedClient?.id));
+    const nextClient = clients[(currentIndex + 1) % clients.length];
+    setDraft((current) => ({ ...current, clientId: nextClient.id, clientCode: nextClient.code }));
+  };
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (!selectedClient) return toast.error("Seleccione un cliente válido.");
+    if (!Number.isFinite(total) || total <= 0) return toast.error("El total del cargo debe ser mayor a cero.");
+    onSave({
+      id: charge?.id ?? `local-charge-${Date.now()}`,
+      clientId: selectedClient.id,
+      service: draft.service,
+      amount: Math.round(total * 100),
+      collected: charge?.collected ?? 0,
+      dueDate: charge?.dueDate ?? businessDate,
+      required: draft.service === "Cuota de Préstamo",
+      status: charge?.status ?? "pending",
+      currency: draft.currency,
+      concept: draft.concept,
+      note: draft.note,
+    });
+  };
+  return (
+    <LegacyDialog title="Datos del Cargo..." onClose={onClose} className="charge-data-dialog">
+      <form className="legacy-data-form" onSubmit={submit}>
+        <fieldset className="legacy-fieldset">
+          <legend>Cliente</legend>
+          <div className="legacy-client-picker">
+            <label className="field compact-field">
+              Código
+              <input autoFocus value={draft.clientCode} onChange={(event) => updateClientCode(event.target.value)} />
+            </label>
+            <label className="field compact-field grow-field">
+              Nombre
+              <input value={selectedClient?.name ?? ""} disabled readOnly />
+            </label>
+            <button type="button" className="btn" onClick={pickNextClient}>[...]</button>
+          </div>
+        </fieldset>
+        <div className="form-grid three-cols">
+          <label className="field">Moneda<select value={draft.currency} onChange={(event) => update("currency", event.target.value)}><option>Peso Dominicano</option><option>Dólar Americano</option><option>Euro</option></select></label>
+          <label className="field">Servicio<select value={draft.service} onChange={(event) => update("service", event.target.value)}><option>Cuota de Préstamo</option><option>Servicio Mensual</option><option>Mantenimiento</option><option>Recarga</option></select></label>
+          <label className="field">Concepto<select value={draft.concept} onChange={(event) => update("concept", event.target.value)}><option>Servicio mensual</option><option>Tarifa eléctrica</option><option>Recarga prepago</option><option>Orden puntual</option></select></label>
+        </div>
+        <div className="form-grid three-cols">
+          <label className="field">Precio<input type="number" min="0" step="0.01" value={draft.price} onChange={(event) => update("price", event.target.value)} /></label>
+          <label className="field">Cantidad<input type="number" min="0" step="0.01" value={draft.quantity} onChange={(event) => update("quantity", event.target.value)} /></label>
+          <label className="field">Total<input value={total.toFixed(2)} disabled readOnly /></label>
+        </div>
+        <label className="field">Nota<input value={draft.note} onChange={(event) => update("note", event.target.value)} placeholder="Nota libre del cargo" /></label>
+        <div className="dialog-actions"><button type="button" className="btn" onClick={onClose}>Cancelar</button><button className="btn primary">oK</button></div>
+      </form>
+    </LegacyDialog>
+  );
+}
+
+function ChargesOperationalView({ snapshot, currentUser }: Readonly<{ snapshot: Snapshot; currentUser: User }>) {
+  const [charges, setCharges] = useState<LocalCharge[]>(() =>
+    snapshot.charges.map((charge) => ({
+      ...charge,
+      currency: "Peso Dominicano",
+      concept: charge.service,
+      note: "",
+    })),
+  );
+  const [mode, setMode] = useState("Todos"),
+    [clientQuery, setClientQuery] = useState(""),
+    [zone, setZone] = useState("Todas"),
+    [routeId, setRouteId] = useState("Todas"),
+    [fromDate, setFromDate] = useState("2026-09-01"),
+    [toDate, setToDate] = useState(snapshot.businessDate),
+    [status, setStatus] = useState("Activo"),
+    [relation, setRelation] = useState("Todas"),
+    [selectedId, setSelectedId] = useState(charges[0]?.id ?? ""),
+    [dialogMode, setDialogMode] = useState<"new" | "edit" | null>(null);
+  const permissions = permissionsFor(currentUser);
+  const zones = Array.from(new Set(snapshot.routes.map((route) => route.sector)));
+  const clientById = (id: string) => snapshot.clients.find((client) => client.id === id);
+  const visibleCharges = charges.filter((charge) => {
+    const client = clientById(charge.clientId);
+    const route = snapshot.routes.find((item) => item.id === client?.routeId);
+    const matchesMode =
+      mode === "Todos" ||
+      (mode === "por Cliente" && `${client?.code ?? ""} ${client?.name ?? ""}`.toLowerCase().includes(clientQuery.toLowerCase())) ||
+      (mode === "Por Zona" && (zone === "Todas" || route?.sector === zone)) ||
+      (mode === "Por Ruta" && (routeId === "Todas" || client?.routeId === routeId));
+    const dateOk = (!fromDate || charge.dueDate >= fromDate) && (!toDate || charge.dueDate <= toDate);
+    const statusOk = status === "Todos" || status === "Activo" ? charge.status !== "cancelled" : charge.status === status.toLowerCase();
+    const relationOk = relation === "Todas" || (relation === "Con recibo" ? charge.collected > 0 : charge.collected === 0);
+    return matchesMode && dateOk && statusOk && relationOk;
+  });
+  const selectedCharge = charges.find((charge) => charge.id === selectedId);
+  const saveCharge = (next: LocalCharge) => {
+    setCharges((current) => {
+      const exists = current.some((charge) => charge.id === next.id);
+      if (exists) return current.map((charge) => (charge.id === next.id ? next : charge));
+      return [...current, next];
+    });
+    setSelectedId(next.id);
+    setDialogMode(null);
+    toast.success(selectedCharge?.id === next.id ? "Cargo actualizado" : "Cargo registrado");
+  };
+  const totals = visibleCharges.reduce(
+    (acc, charge) => ({
+      total: acc.total + charge.amount,
+      received: acc.received + charge.collected,
+    }),
+    { total: 0, received: 0 },
+  );
+  return (
+    <>
+      <div className="legacy-workspace charge-master-workspace">
+        <aside className="legacy-filter-panel" aria-label="Panel de filtro de cargos">
+          <h2>Filtro de Cargos</h2>
+          <fieldset>
+            <legend>Filtrar por</legend>
+            {["Todos", "por Cliente", "Por Zona", "Por Ruta"].map((item) => (
+              <label key={item}>
+                <input type="radio" name="charge-filter-mode" checked={mode === item} onChange={() => setMode(item)} />
+                {item}
+              </label>
+            ))}
+          </fieldset>
+          <label className="field compact-field">Cliente<span className="legacy-lookup-field"><input value={clientQuery} disabled={mode !== "por Cliente"} onChange={(event) => setClientQuery(event.target.value)} placeholder="Código o nombre" /><button type="button" disabled={mode !== "por Cliente"} onClick={() => setClientQuery(snapshot.clients[0]?.code ?? "")}>...</button></span></label>
+          <label className="field compact-field">Zona<select value={zone} disabled={mode !== "Por Zona"} onChange={(event) => setZone(event.target.value)}><option>Todas</option>{zones.map((item) => <option key={item}>{item}</option>)}</select></label>
+          <label className="field compact-field">Ruta<select value={routeId} disabled={mode !== "Por Ruta"} onChange={(event) => setRouteId(event.target.value)}><option>Todas</option>{snapshot.routes.map((route) => <option key={route.id} value={route.id}>{route.name}</option>)}</select></label>
+          <label className="field compact-field">Fecha Inicial<input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} /></label>
+          <label className="field compact-field">Fecha final<input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} /></label>
+          <label className="field compact-field">Estado<select value={status} onChange={(event) => setStatus(event.target.value)}><option>Activo</option><option>Todos</option><option>pending</option><option>partial</option><option>paid</option><option>cancelled</option></select></label>
+          <label className="field compact-field">Relación de Pago<select value={relation} onChange={(event) => setRelation(event.target.value)}><option>Todas</option><option>Con recibo</option><option>Sin recibo</option></select></label>
+        </aside>
+        <div className="legacy-grid-panel">
+          <div className="legacy-icon-toolbar" aria-label="Acciones de cargos">
+            <button title={permissions.canCreate ? "Nuevo" : permissions.readOnlyReason} disabled={!permissions.canCreate} onClick={() => setDialogMode("new")}><Plus size={16} /></button>
+            <button title={permissions.canEdit ? "Editar" : permissions.readOnlyReason} disabled={!permissions.canEdit || !selectedCharge} onClick={() => setDialogMode("edit")}><Pencil size={16} /></button>
+            <button title="Refrescar" onClick={() => toast.success("Cargos refrescados en memoria")}><RefreshCw size={16} /></button>
+          </div>
+          <div className="legacy-mdi-table-wrap">
+            <table className="legacy-mdi-table">
+              <thead><tr><th>Nro.</th><th>Fecha</th><th>Cód.</th><th>Identif.</th><th>Cliente</th><th>Abrev</th><th>Servicio</th></tr></thead>
+              <tbody>
+                {visibleCharges.map((charge, index) => {
+                  const client = clientById(charge.clientId);
+                  return (
+                    <tr key={charge.id} className={selectedId === charge.id ? "selected-row" : undefined} role="button" tabIndex={0} onClick={() => setSelectedId(charge.id)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedId(charge.id))}>
+                      <td>{index + 1}</td><td>{safeDateLabel(charge.dueDate)}</td><td>{client?.code ?? ""}</td><td>{charge.id.slice(0, 8)}</td><td>{client?.name ?? "Cliente sin nombre"}</td><td>{abbreviation(charge.service)}</td><td>{charge.service}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {!visibleCharges.length && <Empty title="Sin cargos" text="Ajusta los filtros o crea un nuevo cargo." />}
+          <div className="legacy-footerbar"><span>Cantidad: <strong>{visibleCharges.length}</strong></span><span>Total: <strong>{money(totals.total)}</strong></span><span>Recib.: <strong>{money(totals.received)}</strong></span><span>Pend.: <strong>{money(totals.total - totals.received)}</strong></span></div>
+        </div>
+      </div>
+      {dialogMode && (
+        <CargoDialog
+          charge={dialogMode === "edit" ? selectedCharge : undefined}
+          clients={snapshot.clients}
+          businessDate={snapshot.businessDate}
+          onClose={() => setDialogMode(null)}
+          onSave={saveCharge}
+        />
+      )}
+    </>
+  );
+}
 
 function LegacyOperationView({
   spec,
@@ -5169,5 +5397,6 @@ function Movements({ snapshot }: Readonly<{ snapshot: Snapshot }>) {
     </>
   );
 }
+
 
 
