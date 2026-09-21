@@ -6657,3 +6657,269 @@ table {
 .topbar-actions {
   min-width: 0;
 }
+
+/* MDI layering and dense legacy form collision fixes */
+.desktop-canvas {
+  isolation: isolate;
+}
+
+.mdi-window {
+  isolation: isolate;
+}
+
+.mdi-window-content > * {
+  min-width: 0;
+}
+
+.legacy-dialog-overlay {
+  z-index: 2147483000;
+}
+
+.nested-modal-scrim,
+.modal-backdrop,
+.dialog-backdrop {
+  z-index: 2147482500;
+}
+
+.legacy-workspace.charge-master-workspace {
+  height: 100%;
+  grid-template-columns: 256px minmax(0, 1fr);
+  gap: 12px;
+  overflow: hidden;
+}
+
+.charge-master-workspace .legacy-filter-panel {
+  position: static;
+  height: 100%;
+  overflow: auto;
+  padding: 12px;
+}
+
+.legacy-filter-panel .field,
+.legacy-dialog-form .field,
+.legacy-data-form .field {
+  min-width: 0;
+}
+
+.legacy-filter-panel label,
+.legacy-dialog-form label,
+.legacy-data-form label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.legacy-filter-panel input,
+.legacy-filter-panel select,
+.legacy-dialog-form input,
+.legacy-dialog-form select,
+.legacy-data-form input,
+.legacy-data-form select,
+.legacy-data-form textarea {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.legacy-filter-panel fieldset label {
+  line-height: 1.2;
+}
+
+.legacy-grid-panel {
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.legacy-icon-toolbar {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.legacy-icon-toolbar .legacy-toolbar-search {
+  min-width: 180px;
+  flex: 1 1 220px;
+}
+
+.legacy-mdi-table td,
+.legacy-mdi-table th {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.legacy-footerbar {
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
+.legacy-client-picker {
+  display: grid;
+  grid-template-columns: minmax(92px, 0.45fr) minmax(160px, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.legacy-client-picker .btn,
+.legacy-client-picker button {
+  min-width: 38px;
+  height: 36px;
+  white-space: nowrap;
+}
+
+.form-grid.three-cols,
+.legacy-data-form .form-grid.three-cols {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.charge-data-dialog {
+  width: min(720px, calc(100vw - 48px));
+}
+
+.charge-data-dialog .legacy-dialog-body {
+  padding: 16px;
+}
+
+.charge-data-dialog .legacy-data-form {
+  display: grid;
+  gap: 12px;
+}
+
+.charge-data-dialog .legacy-fieldset {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.charge-data-dialog .legacy-fieldset legend {
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 800;
+  color: #334155;
+}
+
+.charge-data-dialog .dialog-actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 860px) {
+  .legacy-workspace.charge-master-workspace {
+    grid-template-columns: 1fr;
+    overflow: auto;
+  }
+
+  .form-grid.three-cols,
+  .legacy-data-form .form-grid.three-cols,
+  .legacy-client-picker {
+    grid-template-columns: 1fr;
+  }
+}
+
+.legacy-relation-footer {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: auto;
+  padding: 6px 8px;
+  border: 1px solid #cbd5e1;
+  background: #eef2f7;
+}
+
+.legacy-relation-footer button,
+.collector-balance-filters button {
+  min-width: 76px;
+  min-height: 27px;
+  border: 1px solid #64748b;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #ffffff 0%, #dbe4ea 100%);
+  color: #111827;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.legacy-relation-footer button:hover,
+.legacy-relation-footer button:focus-visible,
+.collector-balance-filters button:hover,
+.collector-balance-filters button:focus-visible {
+  border-color: #047857;
+  background: #d1fae5;
+  outline: none;
+}
+
+.collectors-grid tbody tr {
+  cursor: pointer;
+}
+
+.collectors-grid tbody tr:hover td,
+.collectors-grid tbody tr:focus-visible td,
+.collectors-grid tbody tr.selected-row td {
+  background: #ecfdf5;
+}
+
+.collectors-grid tbody tr:focus-visible {
+  outline: 2px solid #059669;
+  outline-offset: -2px;
+}
+
+.collector-balance-dialog {
+  width: min(780px, calc(100vw - 48px));
+  height: min(460px, calc(100vh - 64px));
+}
+
+.collector-balance-dialog .legacy-dialog-body,
+.collector-balance-layout {
+  min-height: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.collector-balance-filters {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.2fr) repeat(2, minmax(130px, 1fr)) auto;
+  align-items: end;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid #cbd5e1;
+  background: #f1f5f9;
+}
+
+.collector-balance-filters label {
+  display: grid;
+  gap: 3px;
+  color: #334155;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.collector-balance-filters input,
+.collector-balance-filters select {
+  height: 27px;
+  min-width: 0;
+  border: 1px solid #94a3b8;
+  border-radius: 3px;
+  background: #ffffff;
+  color: #111827;
+  font-size: 12px;
+}
+
+.collector-balance-filters button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.collector-balance-dialog .legacy-mdi-table-wrap {
+  flex: 1;
+  min-height: 0;
+}

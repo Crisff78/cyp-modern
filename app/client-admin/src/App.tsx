@@ -50,6 +50,7 @@ import {
   Wallet,
   X,
 } from "lucide-react";
+import { createPortal } from "react-dom";
 import { Toaster, toast } from "sonner";
 import {
   api,
@@ -566,8 +567,8 @@ function MdiWindow({ windowState, onClose, onFocus, onMove, children }: Readonly
   );
 }
 
-function LegacyToolbar({ onNew, onEdit, onDelete, onRefresh, extra }: Readonly<{ onNew?: () => void; onEdit?: () => void; onDelete?: () => void; onRefresh?: () => void; extra?: ReactNode }>) {
-  return <div className="legacy-mdi-toolbar" aria-label="Barra de herramientas legacy"><button type="button" className="nav-tool" title="Ir al inicio">|&lt;</button><button type="button" className="nav-tool" title="Anterior">&lt;</button><button type="button" className="nav-tool" title="Siguiente">&gt;</button><button type="button" className="nav-tool" title="Ir al final">&gt;|</button><span className="mdi-toolbar-separator" /><button type="button" title="Nuevo" onClick={onNew}><Plus size={15} /></button><button type="button" title="Editar" onClick={onEdit}><Pencil size={15} /></button><button type="button" className="danger-tool" title="Eliminar" onClick={onDelete}><Trash2 size={15} /></button><button type="button" title="Refrescar" onClick={onRefresh}><RefreshCw size={15} /></button>{extra && <span className="mdi-toolbar-extra">{extra}</span>}</div>;
+function LegacyToolbar({ onFirst, onPrevious, onNext, onLast, onNew, onEdit, onDelete, onRefresh, extra }: Readonly<{ onFirst?: () => void; onPrevious?: () => void; onNext?: () => void; onLast?: () => void; onNew?: () => void; onEdit?: () => void; onDelete?: () => void; onRefresh?: () => void; extra?: ReactNode }>) {
+  return <div className="legacy-mdi-toolbar" aria-label="Barra de herramientas legacy"><button type="button" className="nav-tool" title="Mover al inicio" onClick={onFirst}>|&lt;</button><button type="button" className="nav-tool" title="Subir" onClick={onPrevious}>&lt;</button><button type="button" className="nav-tool" title="Bajar" onClick={onNext}>&gt;</button><button type="button" className="nav-tool" title="Mover al final" onClick={onLast}>&gt;|</button><span className="mdi-toolbar-separator" /><button type="button" title="Nuevo" onClick={onNew}><Plus size={15} /></button><button type="button" title="Editar" onClick={onEdit}><Pencil size={15} /></button><button type="button" className="danger-tool" title="Eliminar" onClick={onDelete}><Trash2 size={15} /></button><button type="button" title="Refrescar" onClick={onRefresh}><RefreshCw size={15} /></button>{extra && <span className="mdi-toolbar-extra">{extra}</span>}</div>;
 }
 function LegacyCheck({ checked = true }: Readonly<{ checked?: boolean }>) { return <input type="checkbox" checked={checked} readOnly aria-label={checked ? "Activo" : "Inactivo"} />; }
 function LegacyDenseTable({ columns, rows }: Readonly<{ columns: readonly string[]; rows: readonly ReactNode[][] }>) {
@@ -603,7 +604,7 @@ function LegacyDialog({ title, onClose, children, className = "" }: Readonly<{ t
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
   }, [onClose]);
-  return (
+  return createPortal(
     <div className="legacy-dialog-overlay" role="presentation">
       <section className={`legacy-dialog ${className}`} role="dialog" aria-modal="true" aria-label={title}>
         <div className="legacy-dialog-titlebar">
@@ -612,7 +613,8 @@ function LegacyDialog({ title, onClose, children, className = "" }: Readonly<{ t
         </div>
         <div className="legacy-dialog-body">{children}</div>
       </section>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -660,11 +662,52 @@ function LegacyConfirmDialog({ title = "Confirm", message, onYes, onNo }: Readon
   );
 }
 
+type CollectorZoneAssignment = NonNullable<Collector["zones"]>[number];
+type CollectorLimitAssignment = NonNullable<Collector["limits"]>[number];
+
+type CollectorCashBalanceRow = {
+  date: string;
+  initial: number;
+  collected: number;
+  deposited: number;
+  delivered: number;
+  paid: number;
+  final: number;
+};
+
+function defaultCollectorZones(collector: Collector): CollectorZoneAssignment[] {
+  return collector.zones?.length ? collector.zones : [{ id: "zone-default", name: "Zona Centro", from: "001", to: "999" }];
+}
+
+function defaultCollectorLimits(collector: Collector): CollectorLimitAssignment[] {
+  return collector.limits?.length ? collector.limits : [{ currency: "Peso Dominicano", abbr: "DOP", collectionLimit: collector.collectionLimit, payoutLimit: collector.payoutLimit }];
+}
+
+function buildCollectorBalanceRows(collector: Collector, fromDate: string, toDate: string): CollectorCashBalanceRow[] {
+  const initial = Math.max(0, Math.round((collector.cashInHand || 0) * 0.35));
+  const collected = Math.max(0, Math.round((collector.collectionLimit || 0) * 0.42));
+  const deposited = Math.max(0, Math.round(collected * 0.68));
+  const delivered = Math.max(0, Math.round((collector.payoutLimit || 0) * 0.55));
+  const paid = Math.max(0, Math.round(delivered * 0.74));
+  const final = initial + collected - deposited + delivered - paid;
+  return [
+    { date: fromDate, initial, collected, deposited, delivered, paid, final },
+    { date: toDate, initial: final, collected: Math.round(collected * 0.45), deposited: Math.round(deposited * 0.5), delivered: Math.round(delivered * 0.35), paid: Math.round(paid * 0.4), final: final + Math.round(collected * 0.45) - Math.round(deposited * 0.5) + Math.round(delivered * 0.35) - Math.round(paid * 0.4) },
+  ];
+}
+
 function CollectorZonesLegacyDialog({ collector, onClose }: Readonly<{ collector: Collector; onClose: () => void }>) {
-  const [zones, setZones] = useState(() => collector.zones?.length ? collector.zones : [{ id: "zone-default", name: "Zona Centro", from: "001", to: "999" }]);
+  const initialZones = defaultCollectorZones(collector);
+  const [zones, setZones] = useState<CollectorZoneAssignment[]>(() => initialZones);
   const [selectedZoneId, setSelectedZoneId] = useState(zones[0]?.id ?? "");
   const [adding, setAdding] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const refreshZones = () => {
+    const reloaded = defaultCollectorZones(collector);
+    setZones(reloaded);
+    setSelectedZoneId(reloaded[0]?.id ?? "");
+    toast.success("Zonas recargadas");
+  };
   const removeSelected = () => {
     setZones((current) => current.filter((zone) => zone.id !== selectedZoneId));
     setSelectedZoneId("");
@@ -674,9 +717,10 @@ function CollectorZonesLegacyDialog({ collector, onClose }: Readonly<{ collector
   return (
     <LegacyDialog title="Zonas del Cobrador..." onClose={onClose} className="collector-relation-dialog">
       <div className="legacy-relation-manager">
-        <div className="legacy-relation-toolbar"><button type="button" onClick={() => setAdding(true)}>Agregar</button><button type="button" onClick={() => setConfirmDelete(true)} disabled={!selectedZoneId}>Eliminar</button></div>
+        <div className="legacy-relation-toolbar"><button type="button" onClick={() => setAdding(true)}>Agregar</button><button type="button" onClick={() => setConfirmDelete(true)} disabled={!selectedZoneId}>Eliminar</button><button type="button" onClick={refreshZones}>Refrescar</button></div>
         <LegacyDenseTable columns={["Nro", "Zona", "Desde", "Hasta"]} rows={zones.map((zone, index) => [<button type="button" className={`mdi-row-select ${selectedZoneId === zone.id ? "selected" : ""}`} onClick={() => setSelectedZoneId(zone.id)}>{index + 1}</button>, zone.name, zone.from, zone.to])} />
         <div className="legacy-mdi-pager"><button type="button">|&lt;</button><button type="button">&lt;</button><span>Página 1 de 1</span><button type="button">&gt;</button><button type="button">&gt;|</button></div>
+        <div className="legacy-relation-footer"><button type="button" onClick={() => toast.success("Zonas guardadas")}>Guardar</button><button type="button" onClick={onClose}>Cancelar</button></div>
       </div>
       {adding && <ZoneSelectDialog onClose={() => setAdding(false)} onSelect={(name) => { const next = { id: `zone-${Date.now()}`, name, from: "001", to: "999" }; setZones((current) => [...current, next]); setSelectedZoneId(next.id); setAdding(false); toast.success("Zona agregada al cobrador"); }} />}
       {confirmDelete && <LegacyConfirmDialog message="¿Está seguro que desea eliminar la Zona actual del Cobrador?" onYes={removeSelected} onNo={() => setConfirmDelete(false)} />}
@@ -696,47 +740,125 @@ function ZoneSelectDialog({ onClose, onSelect }: Readonly<{ onClose: () => void;
   );
 }
 
-function CollectorLimitsLegacyDialog({ collector, onClose }: Readonly<{ collector: Collector; onClose: () => void }>) {
-  const [limits, setLimits] = useState(() => collector.limits?.length ? collector.limits : [{ currency: "Peso Dominicano", abbr: "DOP", collectionLimit: collector.collectionLimit, payoutLimit: collector.payoutLimit }]);
-  const [selectedAbbr, setSelectedAbbr] = useState(limits[0]?.abbr ?? "");
-  const addLimit = () => {
-    const next = { currency: "Dólar Americano", abbr: `USD${limits.length + 1}`, collectionLimit: 25000, payoutLimit: 10000 };
-    setLimits((current) => [...current, next]);
-    setSelectedAbbr(next.abbr);
-  };
-  const removeLimit = () => {
-    setLimits((current) => current.filter((limit) => limit.abbr !== selectedAbbr));
-    setSelectedAbbr("");
-  };
+function LineSelectDialog({ onClose, onSelect }: Readonly<{ onClose: () => void; onSelect: (limit: CollectorLimitAssignment) => void }>) {
+  const options: CollectorLimitAssignment[] = [
+    { currency: "Peso Dominicano", abbr: "DOP", collectionLimit: 2500000, payoutLimit: 1000000 },
+    { currency: "Dólar Americano", abbr: "USD", collectionLimit: 500000, payoutLimit: 200000 },
+    { currency: "Euro", abbr: "EUR", collectionLimit: 450000, payoutLimit: 175000 },
+  ];
+  const [selectedAbbr, setSelectedAbbr] = useState(options[0].abbr);
+  const selected = options.find((option) => option.abbr === selectedAbbr) ?? options[0];
   return (
-    <LegacyDialog title="Limites del Cobrador" onClose={onClose} className="collector-relation-dialog limits-dialog">
-      <div className="legacy-relation-manager">
-        <div className="legacy-relation-toolbar"><button type="button" onClick={addLimit}>Agregar</button><button type="button" onClick={removeLimit} disabled={!selectedAbbr}>Eliminar</button><button type="button" onClick={() => toast.success("Límites guardados")}>Guardar</button></div>
-        <LegacyDenseTable columns={["Moneda", "Abrev", "Lim. de Cobro", "Lim. de Pago"]} rows={limits.map((limit) => [<button type="button" className={`mdi-row-select ${selectedAbbr === limit.abbr ? "selected" : ""}`} onClick={() => setSelectedAbbr(limit.abbr)}>{limit.currency}</button>, limit.abbr, money(limit.collectionLimit), money(limit.payoutLimit)])} />
+    <LegacyDialog title="Seleccionar..." onClose={onClose} className="legacy-select-dialog">
+      <div className="legacy-dialog-form">
+        <label>Seleccione:<select autoFocus value={selectedAbbr} onChange={(event) => setSelectedAbbr(event.target.value)}>{options.map((option) => <option key={option.abbr} value={option.abbr}>{option.currency}</option>)}</select></label>
+        <div className="legacy-dialog-actions centered"><button type="button" onClick={() => onSelect(selected)}>oK</button><button type="button" onClick={onClose}>Cancelar</button></div>
       </div>
     </LegacyDialog>
   );
 }
 
+function RouteSelectDialog({ routes, assignedRouteIds, onClose, onSelect }: Readonly<{ routes: readonly Snapshot["routes"][number][]; assignedRouteIds: readonly string[]; onClose: () => void; onSelect: (routeId: string) => void }>) {
+  const availableRoutes = routes.filter((route) => !assignedRouteIds.includes(route.id));
+  const [selectedRouteId, setSelectedRouteId] = useState(availableRoutes[0]?.id ?? "");
+  return (
+    <LegacyDialog title="Seleccionar..." onClose={onClose} className="legacy-select-dialog">
+      <div className="legacy-dialog-form">
+        <label>Seleccione:<select autoFocus value={selectedRouteId} onChange={(event) => setSelectedRouteId(event.target.value)}>{availableRoutes.map((route) => <option key={route.id} value={route.id}>{route.name}</option>)}</select></label>
+        <div className="legacy-dialog-actions centered"><button type="button" disabled={!selectedRouteId} onClick={() => onSelect(selectedRouteId)}>oK</button><button type="button" onClick={onClose}>Cancelar</button></div>
+      </div>
+    </LegacyDialog>
+  );
+}
+
+function CollectorLimitsLegacyDialog({ collector, onClose }: Readonly<{ collector: Collector; onClose: () => void }>) {
+  const initialLimits = defaultCollectorLimits(collector);
+  const [limits, setLimits] = useState<CollectorLimitAssignment[]>(() => initialLimits);
+  const [selectedAbbr, setSelectedAbbr] = useState(limits[0]?.abbr ?? "");
+  const [adding, setAdding] = useState(false);
+  const addLimit = (limit: CollectorLimitAssignment) => {
+    const next = limits.some((current) => current.abbr === limit.abbr) ? { ...limit, abbr: `${limit.abbr}${limits.length + 1}` } : limit;
+    setLimits((current) => [...current, next]);
+    setSelectedAbbr(next.abbr);
+    setAdding(false);
+    toast.success("Línea agregada al cobrador");
+  };
+  const removeLimit = () => {
+    setLimits((current) => current.filter((limit) => limit.abbr !== selectedAbbr));
+    setSelectedAbbr("");
+  };
+  const refreshLimits = () => {
+    const reloaded = defaultCollectorLimits(collector);
+    setLimits(reloaded);
+    setSelectedAbbr(reloaded[0]?.abbr ?? "");
+    toast.success("Límites recargados");
+  };
+  return (
+    <LegacyDialog title="Líneas / Límites del Cobrador" onClose={onClose} className="collector-relation-dialog limits-dialog">
+      <div className="legacy-relation-manager">
+        <div className="legacy-relation-toolbar"><button type="button" onClick={() => setAdding(true)}>Agregar</button><button type="button" onClick={removeLimit} disabled={!selectedAbbr}>Eliminar</button><button type="button" onClick={refreshLimits}>Refrescar</button></div>
+        <LegacyDenseTable columns={["Moneda", "Abrev", "Lim. de Cobro", "Lim. de Pago"]} rows={limits.map((limit) => [<button type="button" className={`mdi-row-select ${selectedAbbr === limit.abbr ? "selected" : ""}`} onClick={() => setSelectedAbbr(limit.abbr)}>{limit.currency}</button>, limit.abbr, money(limit.collectionLimit), money(limit.payoutLimit)])} />
+        <div className="legacy-relation-footer"><button type="button" onClick={() => toast.success("Límites guardados")}>Guardar</button><button type="button" onClick={onClose}>Cancelar</button></div>
+      </div>
+      {adding && <LineSelectDialog onClose={() => setAdding(false)} onSelect={addLimit} />}
+    </LegacyDialog>
+  );
+}
+
 function CollectorRoutesLegacyDialog({ collector, snapshot, onClose }: Readonly<{ collector: Collector; snapshot: Snapshot; onClose: () => void }>) {
-  const [routes, setRoutes] = useState(() => collector.assignedRoutes?.length ? collector.assignedRoutes : [collector.routeId]);
+  const initialRoutes = collector.assignedRoutes?.length ? collector.assignedRoutes : [collector.routeId];
+  const [routes, setRoutes] = useState<string[]>(() => initialRoutes);
   const [selectedRouteId, setSelectedRouteId] = useState(routes[0] ?? "");
-  const addRoute = () => {
-    const available = snapshot.routes.find((route) => !routes.includes(route.id));
-    if (!available) return toast.info("No hay rutas disponibles para agregar.");
-    setRoutes((current) => [...current, available.id]);
-    setSelectedRouteId(available.id);
+  const [adding, setAdding] = useState(false);
+  const addRoute = (routeId: string) => {
+    setRoutes((current) => [...current, routeId]);
+    setSelectedRouteId(routeId);
+    setAdding(false);
+    toast.success("Ruta agregada al cobrador");
   };
   const removeRoute = () => {
     setRoutes((current) => current.filter((routeId) => routeId !== selectedRouteId));
     setSelectedRouteId("");
   };
+  const refreshRoutes = () => {
+    setRoutes(initialRoutes);
+    setSelectedRouteId(initialRoutes[0] ?? "");
+    toast.success("Rutas recargadas");
+  };
   return (
     <LegacyDialog title="Rutas del Cobrador..." onClose={onClose} className="collector-relation-dialog routes-dialog">
       <div className="legacy-relation-manager">
-        <div className="legacy-relation-toolbar"><button type="button" onClick={addRoute}>Agregar</button><button type="button" onClick={removeRoute} disabled={!selectedRouteId}>Eliminar</button></div>
+        <div className="legacy-relation-toolbar"><button type="button" onClick={() => snapshot.routes.some((route) => !routes.includes(route.id)) ? setAdding(true) : toast.info("No hay rutas disponibles para agregar.")}>Agregar</button><button type="button" onClick={removeRoute} disabled={!selectedRouteId}>Eliminar</button><button type="button" onClick={refreshRoutes}>Refrescar</button></div>
         <LegacyDenseTable columns={["Nro_Ruta", "Ruta"]} rows={routes.map((routeId, index) => [<button type="button" className={`mdi-row-select ${selectedRouteId === routeId ? "selected" : ""}`} onClick={() => setSelectedRouteId(routeId)}>{index + 1}</button>, snapshot.routes.find((route) => route.id === routeId)?.name ?? routeId])} />
         <div className="legacy-mdi-pager"><button type="button">|&lt;</button><button type="button">&lt;</button><span>Página 1 de 1</span><button type="button">&gt;</button><button type="button">&gt;|</button></div>
+        <div className="legacy-relation-footer"><button type="button" onClick={() => toast.success("Rutas guardadas")}>Guardar</button><button type="button" onClick={onClose}>Cancelar</button></div>
+      </div>
+      {adding && <RouteSelectDialog routes={snapshot.routes} assignedRouteIds={routes} onClose={() => setAdding(false)} onSelect={addRoute} />}
+    </LegacyDialog>
+  );
+}
+
+function CollectorCashBalancesDialog({ collector, onClose }: Readonly<{ collector: Collector; onClose: () => void }>) {
+  const today = new Date().toISOString().slice(0, 10);
+  const [currency, setCurrency] = useState("Peso Dominicano");
+  const [fromDate, setFromDate] = useState(today);
+  const [toDate, setToDate] = useState(today);
+  const [rows, setRows] = useState<CollectorCashBalanceRow[]>(() => buildCollectorBalanceRows(collector, today, today));
+  const refreshBalances = () => {
+    setRows(buildCollectorBalanceRows(collector, fromDate, toDate));
+    toast.success("Balances de efectivo actualizados");
+  };
+  return (
+    <LegacyDialog title="Balances de Efectivo del Cobrador" onClose={onClose} className="collector-balance-dialog">
+      <div className="collector-balance-layout">
+        <div className="collector-balance-filters">
+          <label>Moneda<select value={currency} onChange={(event) => setCurrency(event.target.value)}><option>Peso Dominicano</option><option>Dólar Americano</option><option>Euro</option></select></label>
+          <label>Fecha Inicial<input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} /></label>
+          <label>Fecha Final<input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} /></label>
+          <button type="button" onClick={refreshBalances}><RefreshCw size={14} />Refrescar</button>
+        </div>
+        <LegacyDenseTable columns={["Fecha", "Inicial", "Cobrado", "Depositado", "Entregado", "Pagado", "Final"]} rows={rows.map((row) => [row.date, money(row.initial), money(row.collected), money(row.deposited), money(row.delivered), money(row.paid), money(row.final)])} />
+        <div className="legacy-relation-footer"><button type="button" onClick={onClose}>OK</button><button type="button" onClick={onClose}>Cancelar</button></div>
       </div>
     </LegacyDialog>
   );
@@ -747,8 +869,33 @@ function CollectorsLegacyView({ snapshot, onRefresh }: Readonly<{ snapshot: Snap
   const [selectedCollectorId, setSelectedCollectorId] = useState(snapshot.collectors[0]?.id ?? "");
   const [formMode, setFormMode] = useState<"new" | "edit" | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [relationDialog, setRelationDialog] = useState<"zones" | "limits" | "routes" | null>(null);
+  const [relationDialog, setRelationDialog] = useState<"zones" | "limits" | "routes" | "balances" | null>(null);
   const selectedCollector = collectors.find((collector) => collector.id === selectedCollectorId) ?? collectors[0];
+  const selectCollector = (collectorId: string) => setSelectedCollectorId(collectorId);
+  const moveSelectedCollector = (direction: "first" | "up" | "down" | "last") => {
+    const currentIndex = collectors.findIndex((collector) => collector.id === selectedCollectorId);
+    if (currentIndex < 0) return toast.info("Seleccione un cobrador.");
+    const targetIndexByDirection = {
+      first: 0,
+      up: Math.max(0, currentIndex - 1),
+      down: Math.min(collectors.length - 1, currentIndex + 1),
+      last: collectors.length - 1,
+    } satisfies Record<typeof direction, number>;
+    const targetIndex = targetIndexByDirection[direction];
+    if (targetIndex === currentIndex) return toast.info("El cobrador ya está en esa posición.");
+    setCollectors((current) => {
+      const reordered = [...current];
+      const [selected] = reordered.splice(currentIndex, 1);
+      reordered.splice(targetIndex, 0, selected);
+      return reordered;
+    });
+  };
+  const refreshCollectors = () => {
+    setCollectors(snapshot.collectors);
+    setSelectedCollectorId(snapshot.collectors[0]?.id ?? "");
+    onRefresh();
+    toast.success("Cobradores recargados");
+  };
   const saveCollector = (draft: CollectorFormDraft) => {
     if (formMode === "edit" && selectedCollector) {
       setCollectors((current) => current.map((collector) => collector.id === selectedCollector.id ? { ...collector, name: draft.name, ident: draft.ident, cellular: draft.cellular, accountId: draft.accountId } : collector));
@@ -769,13 +916,32 @@ function CollectorsLegacyView({ snapshot, onRefresh }: Readonly<{ snapshot: Snap
   };
   return (
     <div className="legacy-mdi-view">
-      <LegacyToolbar onNew={() => setFormMode("new")} onEdit={() => selectedCollector ? setFormMode("edit") : toast.info("Seleccione un cobrador.")} onDelete={() => selectedCollector ? setConfirmDelete(true) : toast.info("Seleccione un cobrador.")} onRefresh={onRefresh} extra={<><button type="button" disabled={!selectedCollector} onClick={() => setRelationDialog("zones")}>Z</button><button type="button" disabled={!selectedCollector} onClick={() => setRelationDialog("limits")}>L</button><button type="button" disabled={!selectedCollector} onClick={() => setRelationDialog("routes")}>R</button></>} />
-      <LegacyDenseTable columns={["Cod.", "Cobrador", "Celular", "Cuenta", "Act."]} rows={collectors.map((collector, index) => [<button type="button" className={`mdi-row-select ${selectedCollectorId === collector.id ? "selected" : ""}`} onClick={() => setSelectedCollectorId(collector.id)}>{String(index + 1).padStart(3, "0")}</button>, collector.name, collector.cellular ?? "809-000-0000", collector.accountId ?? "cob", <LegacyCheck checked={collector.status !== "offline"} />])} />
+      <LegacyToolbar onFirst={() => moveSelectedCollector("first")} onPrevious={() => moveSelectedCollector("up")} onNext={() => moveSelectedCollector("down")} onLast={() => moveSelectedCollector("last")} onNew={() => setFormMode("new")} onEdit={() => selectedCollector ? setFormMode("edit") : toast.info("Seleccione un cobrador.")} onDelete={() => selectedCollector ? setConfirmDelete(true) : toast.info("Seleccione un cobrador.")} onRefresh={refreshCollectors} extra={<><button type="button" disabled={!selectedCollector} onClick={() => setRelationDialog("zones")}>Z</button><button type="button" disabled={!selectedCollector} onClick={() => setRelationDialog("limits")}>L</button><button type="button" disabled={!selectedCollector} onClick={() => setRelationDialog("routes")}>R</button><button type="button" disabled={!selectedCollector} title="Balances de Efectivo" onClick={() => setRelationDialog("balances")}><Wallet size={15} /></button></>} />
+      <div className="legacy-mdi-table-wrap">
+        <table className="legacy-mdi-table collectors-grid">
+          <thead><tr><th>Cod.</th><th>Cobrador</th><th>Celular</th><th>Cuenta</th><th>Act.</th></tr></thead>
+          <tbody>
+            {collectors.map((collector, index) => {
+              const isSelected = selectedCollectorId === collector.id;
+              return (
+                <tr key={collector.id} className={isSelected ? "selected-row" : ""} role="button" tabIndex={0} onClick={() => selectCollector(collector.id)} onKeyDown={(event) => handleKeyboardActivation(event, () => selectCollector(collector.id))}>
+                  <td><span className={`mdi-row-select ${isSelected ? "selected" : ""}`}>{String(index + 1).padStart(3, "0")}</span></td>
+                  <td>{collector.name}</td>
+                  <td>{collector.cellular ?? "809-000-0000"}</td>
+                  <td>{collector.accountId ?? "cob"}</td>
+                  <td><LegacyCheck checked={collector.status !== "offline"} /></td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
       {formMode && <CollectorFormLegacyDialog collector={formMode === "edit" ? selectedCollector : undefined} onClose={() => setFormMode(null)} onSave={saveCollector} />}
       {confirmDelete && <LegacyConfirmDialog message="¿Inactivar datos?" onYes={inactivateCollector} onNo={() => setConfirmDelete(false)} />}
       {relationDialog === "zones" && selectedCollector && <CollectorZonesLegacyDialog collector={selectedCollector} onClose={() => setRelationDialog(null)} />}
       {relationDialog === "limits" && selectedCollector && <CollectorLimitsLegacyDialog collector={selectedCollector} onClose={() => setRelationDialog(null)} />}
       {relationDialog === "routes" && selectedCollector && <CollectorRoutesLegacyDialog collector={selectedCollector} snapshot={snapshot} onClose={() => setRelationDialog(null)} />}
+      {relationDialog === "balances" && selectedCollector && <CollectorCashBalancesDialog collector={selectedCollector} onClose={() => setRelationDialog(null)} />}
     </div>
   );
 }
@@ -1202,6 +1368,11 @@ export default function App() {
     [settlementCollector, setSettlementCollector] = useState("");
   const [clock, setClock] = useState(() => new Date());
   const [mdiWindows, setMdiWindows] = useState<MdiWindowState[]>([]);
+  const highestZIndex = useRef(140);
+  const nextZIndex = useCallback(() => {
+    highestZIndex.current += 1;
+    return highestZIndex.current;
+  }, []);
   const logout = useCallback(() => {
     clearToken();
     setAuthenticated(false);
@@ -1209,6 +1380,7 @@ export default function App() {
     setUser(null);
     setAccountOpen(false);
     setMdiWindows([]);
+    highestZIndex.current = 140;
   }, []);
   const refresh = useCallback(async () => {
     setRefreshing(true);
@@ -1296,8 +1468,8 @@ export default function App() {
     setActiveNavKey(navKey);
     setMdiWindows((windows) => {
       const existing = windows.find((item) => item.page === next);
-      const maxZ = Math.max(140, ...windows.map((item) => item.zIndex));
-      if (existing) return focusWindowCollection(windows, existing.id, maxZ + 1);
+      const zIndex = nextZIndex();
+      if (existing) return focusWindowCollection(windows, existing.id, zIndex);
 
       const offset = windows.length * 26;
       const compact = next === "controlPanel";
@@ -1312,18 +1484,15 @@ export default function App() {
           y: compact ? 78 : 78 + offset,
           width,
           height,
-          zIndex: maxZ + 1,
+          zIndex,
           isFocused: true,
         },
       ];
     });
-  }, []);
+  }, [nextZIndex]);
   const focusMdiWindow = useCallback((id: string) => {
-    setMdiWindows((windows) => {
-      const maxZ = Math.max(140, ...windows.map((item) => item.zIndex));
-      return focusWindowCollection(windows, id, maxZ + 1);
-    });
-  }, []);
+    setMdiWindows((windows) => focusWindowCollection(windows, id, nextZIndex()));
+  }, [nextZIndex]);
   const moveMdiWindow = useCallback((id: string, x: number, y: number) => {
     setMdiWindows((windows) => windows.map((item) => item.id === id ? { ...item, x, y } : item));
   }, []);
@@ -2606,7 +2775,9 @@ function ChargesOperationalView({ snapshot, currentUser }: Readonly<{ snapshot: 
       (mode === "Por Zona" && (zone === "Todas" || route?.sector === zone)) ||
       (mode === "Por Ruta" && (routeId === "Todas" || client?.routeId === routeId));
     const dateOk = (!fromDate || charge.dueDate >= fromDate) && (!toDate || charge.dueDate <= toDate);
-    const statusOk = status === "Todos" || status === "Activo" ? charge.status !== "cancelled" : charge.status === status.toLowerCase();
+    const statusOk =
+      status === "Todos" ||
+      (status === "Activo" ? charge.status !== "cancelled" : charge.status === status.toLowerCase());
     const relationOk = relation === "Todas" || (relation === "Con recibo" ? charge.collected > 0 : charge.collected === 0);
     return matchesMode && dateOk && statusOk && relationOk;
   });
@@ -5397,6 +5568,8 @@ function Movements({ snapshot }: Readonly<{ snapshot: Snapshot }>) {
     </>
   );
 }
+
+
 
 
 
