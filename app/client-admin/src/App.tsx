@@ -1,5 +1,7 @@
 import {
+  isValidElement,
   type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
   useCallback,
@@ -342,8 +344,11 @@ const isMdiOperationPage = (page: MdiPage): page is Page =>
   page !== "controlPanel" && !isReportPage(page) && mdiOperationPages.includes(page);
 const isMdiMonitoringPage = (page: MdiPage): page is Page =>
   page !== "controlPanel" && !isReportPage(page) && mdiMonitoringPages.includes(page);
-const mdiTitle = (page: MdiPage) =>
-  page === "controlPanel" ? "Panel de Control" : isReportPage(page) ? reportTitle(page) : pageTitles[page];
+const mdiTitle = (page: MdiPage) => {
+  if (page === "controlPanel") return "Panel de Control";
+  if (isReportPage(page)) return reportTitle(page);
+  return pageTitles[page];
+};
 
 type MdiWindowState = {
   id: string;
@@ -356,6 +361,62 @@ type MdiWindowState = {
   zIndex: number;
   isFocused: boolean;
 };
+
+type MdiWindowSize = Pick<MdiWindowState, "width" | "height">;
+
+const focusWindowCollection = (windows: MdiWindowState[], focusedId: string, zIndex: number) =>
+  windows.map((item) => {
+    if (item.id === focusedId) return { ...item, zIndex, isFocused: true };
+    return { ...item, isFocused: false };
+  });
+
+const mdiWindowSize = (page: MdiPage): MdiWindowSize => {
+  if (page === "controlPanel") return { width: 600, height: 390 };
+  if (page === "reports") return { width: 720, height: 430 };
+  if (page === "traces" || page === "pcps" || page === "sessions" || page === "clients") return { width: 860, height: 520 };
+  if (isMdiOperationPage(page) || isMdiMonitoringPage(page) || isReportPage(page)) return { width: 860, height: 520 };
+  return { width: 720, height: 440 };
+};
+
+const reactNodeKey = (value: ReactNode): string => {
+  if (typeof value === "string" || typeof value === "number") return String(value);
+  if (typeof value === "boolean" || value == null) return "empty";
+  if (Array.isArray(value)) return value.map(reactNodeKey).join("-");
+  if (isValidElement(value)) {
+    if (value.key !== null) return String(value.key);
+    const props = value.props as { children?: ReactNode; id?: unknown; value?: unknown; className?: unknown };
+    if (typeof props.id === "string" || typeof props.id === "number") return String(props.id);
+    if (typeof props.value === "string" || typeof props.value === "number") return String(props.value);
+    if (props.children !== undefined) return reactNodeKey(props.children);
+    if (typeof value.type === "string") return value.type;
+  }
+  return "node";
+};
+
+const handleKeyboardActivation = (event: ReactKeyboardEvent<HTMLElement>, action: () => void) => {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  event.preventDefault();
+  action();
+};
+
+const operationTypeForPage = (targetPage: Page): Operation["type"] => {
+  if (targetPage === "payouts" || targetPage === "payments") return "payout";
+  if (targetPage === "recurringCharges") return "recurring";
+  return "charge";
+};
+
+const monitorTitleForPage = (page: Page) => {
+  if (page === "monitorCollectors") return "Monitor de Cobradores";
+  if (page === "monitorZones") return "Monitor de Zonas";
+  return "Monitor de Rutas";
+};
+
+const adaptedMapForEntity = (entityType: MonitorEntity, title: string, data: MapData): AdaptedMap => {
+  if (entityType === "zone") return transformZoneToMap(title, data.stops);
+  if (entityType === "route") return transformRouteToMap(title, data.stops);
+  return transformCollectorToMap(data.collector, data.stops);
+};
+
 
 const codifierTiles: ControlPanelTile[] = [
   { label: "Cobradores", page: "collectors", navKey: "control-collectors", icon: Users },
@@ -377,7 +438,7 @@ const toolTiles: ControlPanelTile[] = [
   { label: "Solicitudes de Autoriz.", page: "authorizationRequests", navKey: "control-authorizations", icon: FileCheck2 },
 ];
 
-function ControlPanelContent({ onLaunch }: { onLaunch: (page: Page, navKey: string) => void }) {
+function ControlPanelContent({ onLaunch }: Readonly<{ onLaunch: (page: Page, navKey: string) => void }>) {
   const renderTile = (tile: ControlPanelTile) => (
     <button type="button" className="control-panel-tile" key={tile.navKey} onClick={() => onLaunch(tile.page, tile.navKey)}>
       <span className="control-panel-icon"><tile.icon size={22} /></span>
@@ -392,7 +453,7 @@ function ControlPanelContent({ onLaunch }: { onLaunch: (page: Page, navKey: stri
   );
 }
 
-function ReportesLauncher({ onLaunch }: { onLaunch: (page: ReportPageId, navKey: string) => void }) {
+function ReportesLauncher({ onLaunch }: Readonly<{ onLaunch: (page: ReportPageId, navKey: string) => void }>) {
   const renderGroup = (category: ReportDefinition["category"]) => (
     <section className="reports-launcher-section" key={category}>
       <div className="control-panel-section-heading"><span>{category}</span><small>Seleccione un reporte</small></div>
@@ -421,7 +482,7 @@ function ReportesLauncher({ onLaunch }: { onLaunch: (page: ReportPageId, navKey:
   );
 }
 
-function ReportLayout({ title, snapshot, children }: { title: string; snapshot: Snapshot; children?: ReactNode }) {
+function ReportLayout({ title, snapshot, children }: Readonly<{ title: string; snapshot: Snapshot; children?: ReactNode }>) {
   return (
     <div className="report-layout">
       <aside className="report-filter-panel">
@@ -456,7 +517,7 @@ function ReportLayout({ title, snapshot, children }: { title: string; snapshot: 
   );
 }
 
-function ReportView({ page, snapshot }: { page: ReportPageId; snapshot: Snapshot }) {
+function ReportView({ page, snapshot }: Readonly<{ page: ReportPageId; snapshot: Snapshot }>) {
   const definition = reportDefinitions.find((report) => report.id === page);
   const title = definition ? definition.label.replace(/\.$/, "") : "Reporte";
   const zones = Array.from(new Set(snapshot.routes.map((route) => route.sector)));
@@ -479,7 +540,7 @@ function ReportView({ page, snapshot }: { page: ReportPageId; snapshot: Snapshot
   );
 }
 
-function MdiWindow({ windowState, onClose, onFocus, onMove, children }: { windowState: MdiWindowState; onClose: (id: string) => void; onFocus: (id: string) => void; onMove: (id: string, x: number, y: number) => void; children: ReactNode }) {
+function MdiWindow({ windowState, onClose, onFocus, onMove, children }: Readonly<{ windowState: MdiWindowState; onClose: (id: string) => void; onFocus: (id: string) => void; onMove: (id: string, x: number, y: number) => void; children: ReactNode }>) {
   const [drag, setDrag] = useState<null | { startX: number; startY: number; x: number; y: number }>(null);
   useEffect(() => {
     if (!drag) return;
@@ -503,14 +564,36 @@ function MdiWindow({ windowState, onClose, onFocus, onMove, children }: { window
   );
 }
 
-function LegacyToolbar({ onNew, onEdit, onDelete, onRefresh, extra }: { onNew?: () => void; onEdit?: () => void; onDelete?: () => void; onRefresh?: () => void; extra?: ReactNode }) {
+function LegacyToolbar({ onNew, onEdit, onDelete, onRefresh, extra }: Readonly<{ onNew?: () => void; onEdit?: () => void; onDelete?: () => void; onRefresh?: () => void; extra?: ReactNode }>) {
   return <div className="legacy-mdi-toolbar" aria-label="Barra de herramientas legacy"><button type="button" className="nav-tool" title="Ir al inicio">|&lt;</button><button type="button" className="nav-tool" title="Anterior">&lt;</button><button type="button" className="nav-tool" title="Siguiente">&gt;</button><button type="button" className="nav-tool" title="Ir al final">&gt;|</button><span className="mdi-toolbar-separator" /><button type="button" title="Nuevo" onClick={onNew}><Plus size={15} /></button><button type="button" title="Editar" onClick={onEdit}><Pencil size={15} /></button><button type="button" className="danger-tool" title="Eliminar" onClick={onDelete}><Trash2 size={15} /></button><button type="button" title="Refrescar" onClick={onRefresh}><RefreshCw size={15} /></button>{extra && <span className="mdi-toolbar-extra">{extra}</span>}</div>;
 }
-function LegacyCheck({ checked = true }: { checked?: boolean }) { return <input type="checkbox" checked={checked} readOnly aria-label={checked ? "Activo" : "Inactivo"} />; }
-function LegacyDenseTable({ columns, rows }: { columns: string[]; rows: ReactNode[][] }) { return <div className="legacy-mdi-table-wrap"><table className="legacy-mdi-table"><thead><tr>{columns.map((column) => <th key={column}>{column}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={index}>{row.map((cell, cellIndex) => <td key={cellIndex}>{cell}</td>)}</tr>)}</tbody></table></div>; }
-function LegacySidePanel({ children }: { children: ReactNode }) { return <aside className="legacy-mdi-side-panel">{children}</aside>; }
+function LegacyCheck({ checked = true }: Readonly<{ checked?: boolean }>) { return <input type="checkbox" checked={checked} readOnly aria-label={checked ? "Activo" : "Inactivo"} />; }
+function LegacyDenseTable({ columns, rows }: Readonly<{ columns: readonly string[]; rows: readonly ReactNode[][] }>) {
+  return (
+    <div className="legacy-mdi-table-wrap">
+      <table className="legacy-mdi-table">
+        <thead>
+          <tr>{columns.map((column) => <th key={column}>{column}</th>)}</tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => {
+            const rowKey = row.map(reactNodeKey).join("|");
+            return (
+              <tr key={rowKey}>
+                {row.map((cell, cellIndex) => (
+                  <td key={`${columns[cellIndex] ?? "cell"}-${reactNodeKey(cell)}`}>{cell}</td>
+                ))}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+function LegacySidePanel({ children }: Readonly<{ children: ReactNode }>) { return <aside className="legacy-mdi-side-panel">{children}</aside>; }
 
-function LegacyDialog({ title, onClose, children, className = "" }: { title: string; onClose: () => void; children: ReactNode; className?: string }) {
+function LegacyDialog({ title, onClose, children, className = "" }: Readonly<{ title: string; onClose: () => void; children: ReactNode; className?: string }>) {
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
@@ -520,7 +603,7 @@ function LegacyDialog({ title, onClose, children, className = "" }: { title: str
   }, [onClose]);
   return (
     <div className="legacy-dialog-overlay" role="presentation">
-      <section className={`legacy-dialog ${className}`} role="dialog" aria-modal="true" aria-label={title} onClick={(event) => event.stopPropagation()}>
+      <section className={`legacy-dialog ${className}`} role="dialog" aria-modal="true" aria-label={title}>
         <div className="legacy-dialog-titlebar">
           <span>{title}</span>
           <button type="button" aria-label={`Cerrar ${title}`} onClick={onClose}>X</button>
@@ -538,7 +621,7 @@ type CollectorFormDraft = {
   accountId: string;
 };
 
-function CollectorFormLegacyDialog({ collector, onClose, onSave }: { collector?: Collector; onClose: () => void; onSave: (draft: CollectorFormDraft) => void }) {
+function CollectorFormLegacyDialog({ collector, onClose, onSave }: Readonly<{ collector?: Collector; onClose: () => void; onSave: (draft: CollectorFormDraft) => void }>) {
   const [draft, setDraft] = useState<CollectorFormDraft>({
     name: collector?.name ?? "",
     ident: collector?.ident ?? "",
@@ -566,7 +649,7 @@ function CollectorFormLegacyDialog({ collector, onClose, onSave }: { collector?:
   );
 }
 
-function LegacyConfirmDialog({ title = "Confirm", message, onYes, onNo }: { title?: string; message: string; onYes: () => void; onNo: () => void }) {
+function LegacyConfirmDialog({ title = "Confirm", message, onYes, onNo }: Readonly<{ title?: string; message: string; onYes: () => void; onNo: () => void }>) {
   return (
     <LegacyDialog title={title} onClose={onNo} className="legacy-confirm-dialog">
       <div className="legacy-confirm-content"><span className="legacy-question-icon">?</span><p>{message}</p></div>
@@ -575,7 +658,7 @@ function LegacyConfirmDialog({ title = "Confirm", message, onYes, onNo }: { titl
   );
 }
 
-function CollectorZonesLegacyDialog({ collector, onClose }: { collector: Collector; onClose: () => void }) {
+function CollectorZonesLegacyDialog({ collector, onClose }: Readonly<{ collector: Collector; onClose: () => void }>) {
   const [zones, setZones] = useState(() => collector.zones?.length ? collector.zones : [{ id: "zone-default", name: "Zona Centro", from: "001", to: "999" }]);
   const [selectedZoneId, setSelectedZoneId] = useState(zones[0]?.id ?? "");
   const [adding, setAdding] = useState(false);
@@ -599,7 +682,7 @@ function CollectorZonesLegacyDialog({ collector, onClose }: { collector: Collect
   );
 }
 
-function ZoneSelectDialog({ onClose, onSelect }: { onClose: () => void; onSelect: (name: string) => void }) {
+function ZoneSelectDialog({ onClose, onSelect }: Readonly<{ onClose: () => void; onSelect: (name: string) => void }>) {
   const [selected, setSelected] = useState("Zona Centro");
   return (
     <LegacyDialog title="Seleccionar..." onClose={onClose} className="legacy-select-dialog">
@@ -611,7 +694,7 @@ function ZoneSelectDialog({ onClose, onSelect }: { onClose: () => void; onSelect
   );
 }
 
-function CollectorLimitsLegacyDialog({ collector, onClose }: { collector: Collector; onClose: () => void }) {
+function CollectorLimitsLegacyDialog({ collector, onClose }: Readonly<{ collector: Collector; onClose: () => void }>) {
   const [limits, setLimits] = useState(() => collector.limits?.length ? collector.limits : [{ currency: "Peso Dominicano", abbr: "DOP", collectionLimit: collector.collectionLimit, payoutLimit: collector.payoutLimit }]);
   const [selectedAbbr, setSelectedAbbr] = useState(limits[0]?.abbr ?? "");
   const addLimit = () => {
@@ -633,7 +716,7 @@ function CollectorLimitsLegacyDialog({ collector, onClose }: { collector: Collec
   );
 }
 
-function CollectorRoutesLegacyDialog({ collector, snapshot, onClose }: { collector: Collector; snapshot: Snapshot; onClose: () => void }) {
+function CollectorRoutesLegacyDialog({ collector, snapshot, onClose }: Readonly<{ collector: Collector; snapshot: Snapshot; onClose: () => void }>) {
   const [routes, setRoutes] = useState(() => collector.assignedRoutes?.length ? collector.assignedRoutes : [collector.routeId]);
   const [selectedRouteId, setSelectedRouteId] = useState(routes[0] ?? "");
   const addRoute = () => {
@@ -657,7 +740,7 @@ function CollectorRoutesLegacyDialog({ collector, snapshot, onClose }: { collect
   );
 }
 
-function CollectorsLegacyView({ snapshot, onRefresh }: { snapshot: Snapshot; onRefresh: () => void }) {
+function CollectorsLegacyView({ snapshot, onRefresh }: Readonly<{ snapshot: Snapshot; onRefresh: () => void }>) {
   const [collectors, setCollectors] = useState<Collector[]>(() => snapshot.collectors);
   const [selectedCollectorId, setSelectedCollectorId] = useState(snapshot.collectors[0]?.id ?? "");
   const [formMode, setFormMode] = useState<"new" | "edit" | null>(null);
@@ -733,7 +816,7 @@ const SYSTEM_CONFIG_DEFAULTS: Record<string, string | number | boolean> = {
   "gps.longitud": "-70.68701171875",
 };
 
-function LegacyCodifierView({ page, snapshot, onRefresh, onAccount }: { page: Page; snapshot: Snapshot; onRefresh: () => void; onAccount: (operation: AccountOperation) => void }) {
+function LegacyCodifierView({ page, snapshot, onRefresh, onAccount }: Readonly<{ page: Page; snapshot: Snapshot; onRefresh: () => void; onAccount: (operation: AccountOperation) => void }>) {
   const [configTab, setConfigTab] = useState("General");
   const [systemCfg, setSystemCfg] = useState<Record<string, string | number | boolean>>(SYSTEM_CONFIG_DEFAULTS);
   const [savedCfg, setSavedCfg] = useState<Record<string, string | number | boolean>>(SYSTEM_CONFIG_DEFAULTS);
@@ -788,7 +871,7 @@ function LegacyCodifierView({ page, snapshot, onRefresh, onAccount }: { page: Pa
   if (page === "authorizationRequests") return <div className="legacy-mdi-split-view authorizations-layout"><LegacySidePanel><LegacyToolbar onRefresh={onRefresh} /><label>Fecha Inicial<input type="date" defaultValue="2026-09-18" /></label><label>Fecha Final<input type="date" defaultValue="2026-09-18" /></label><label>Estado<select defaultValue="Todas"><option>Todas</option><option>Pendiente</option><option>Aprobada</option><option>Rechazada</option></select></label><label>Cliente<span className="legacy-lookup-field"><input placeholder="Cliente..." /><button type="button">...</button></span></label></LegacySidePanel><LegacyDenseTable columns={["Nro.", "Fecha", "Cobrador", "Código", "Cliente", "Telefono", "Celular"]} rows={snapshot.clients.slice(0, 8).map((client, index) => { const collector = snapshot.collectors[index % Math.max(1, snapshot.collectors.length)]; return [index + 1, "18/09/2026", collector?.name ?? "Cobrador", client.code, client.name, client.phone, collector?.cellular ?? "809-000-0000"]; })} /></div>;
   if (page === "generalConfig") {
     const tabs = ["General", "Clientes", "Cargos y Descargos", "Cobros y Pagos", "Interfaz", "GPS"];
-    const CheckLine = ({ label, checked, disabled = false, onChange }: { label: string; checked: boolean; disabled?: boolean; onChange: (value: boolean) => void }) => <label className={`legacy-check-line ${disabled ? "disabled" : ""}`}><input type="checkbox" checked={checked} disabled={disabled} onChange={(event) => onChange(event.target.checked)} /><span>{label}</span></label>;
+    const CheckLine = ({ label, checked, disabled = false, onChange }: Readonly<{ label: string; checked: boolean; disabled?: boolean; onChange: (value: boolean) => void }>) => <label className={`legacy-check-line ${disabled ? "disabled" : ""}`}><input type="checkbox" checked={checked} disabled={disabled} onChange={(event) => onChange(event.target.checked)} /><span>{label}</span></label>;
     const fld = (key: string) => ({
       value: String(systemCfg[key] ?? ""),
       onChange: (event: { target: { value: string } }) =>
@@ -906,9 +989,9 @@ function LegacyCodifierView({ page, snapshot, onRefresh, onAccount }: { page: Pa
 
 function Login({
   onLogin,
-}: {
+}: Readonly<{
   onLogin: (user: User, station: Station) => void;
-}) {
+}>) {
   const [email, setEmail] = useState("admin@cyp.local"),
     [password, setPassword] = useState("Demo-CyP-2026!"),
     [busy, setBusy] = useState(false),
@@ -1212,13 +1295,11 @@ export default function App() {
     setMdiWindows((windows) => {
       const existing = windows.find((item) => item.page === next);
       const maxZ = Math.max(140, ...windows.map((item) => item.zIndex));
-      if (existing)
-        return windows.map((item) => item.id === existing.id ? { ...item, zIndex: maxZ + 1, isFocused: true } : { ...item, isFocused: false });
+      if (existing) return focusWindowCollection(windows, existing.id, maxZ + 1);
+
       const offset = windows.length * 26;
-      const reportLauncher = next === "reports";
-      const reportWindow = isReportPage(next);
-      const wide = next === "traces" || next === "pcps" || next === "sessions" || next === "clients" || isMdiOperationPage(next) || isMdiMonitoringPage(next) || reportLauncher || reportWindow;
       const compact = next === "controlPanel";
+      const { width, height } = mdiWindowSize(next);
       return [
         ...windows.map((item) => ({ ...item, isFocused: false })),
         {
@@ -1227,8 +1308,8 @@ export default function App() {
           title: mdiTitle(next),
           x: compact ? 180 : 118 + offset,
           y: compact ? 78 : 78 + offset,
-          width: compact ? 600 : reportLauncher ? 720 : wide ? 860 : 720,
-          height: compact ? 390 : reportLauncher ? 430 : wide ? 520 : 440,
+          width,
+          height,
           zIndex: maxZ + 1,
           isFocused: true,
         },
@@ -1238,7 +1319,7 @@ export default function App() {
   const focusMdiWindow = useCallback((id: string) => {
     setMdiWindows((windows) => {
       const maxZ = Math.max(140, ...windows.map((item) => item.zIndex));
-      return windows.map((item) => item.id === id ? { ...item, zIndex: maxZ + 1, isFocused: true } : { ...item, isFocused: false });
+      return focusWindowCollection(windows, id, maxZ + 1);
     });
   }, []);
   const moveMdiWindow = useCallback((id: string, x: number, y: number) => {
@@ -1248,12 +1329,7 @@ export default function App() {
     setMdiWindows((windows) => windows.filter((item) => item.id !== id));
   }, []);
   const createOperationForPage = useCallback((targetPage: Page): Operation => ({
-    type:
-      targetPage === "payouts" || targetPage === "payments"
-        ? "payout"
-        : targetPage === "recurringCharges"
-          ? "recurring"
-          : "charge",
+    type: operationTypeForPage(targetPage),
   }), []);
   const activeNav = activeNavKey
     ? navigation.find((n) => n.key === activeNavKey)
@@ -2034,7 +2110,7 @@ function ModuleRouter({
   onCollector,
   onOperation,
   onAccount,
-}: {
+}: Readonly<{
   page: Page;
   snapshot: Snapshot;
   refreshing: boolean;
@@ -2043,7 +2119,7 @@ function ModuleRouter({
   onCollector: (collector: Collector) => void;
   onOperation: (operation: Operation) => void;
   onAccount: (operation: AccountOperation) => void;
-}) {
+}>) {
   if (
     [
       "collectors",
@@ -2084,12 +2160,7 @@ function ModuleRouter({
         snapshot={snapshot}
         onCreate={() =>
           onOperation({
-            type:
-              page === "payouts" || page === "payments"
-                ? "payout"
-                : page === "recurringCharges"
-                  ? "recurring"
-                  : "charge",
+            type: operationTypeForPage(page),
           })
         }
         onRefresh={onRefresh}
@@ -2117,14 +2188,14 @@ function MasterDataView({
   onCollector,
   onRefresh,
   onAccount,
-}: {
+}: Readonly<{
   page: Page;
   snapshot: Snapshot;
   currentUser: User;
   onCollector: (collector: Collector) => void;
   onRefresh: () => void;
   onAccount: (operation: AccountOperation) => void;
-}) {
+}>) {
   const [search, setSearch] = useState("");
   const [quickRecord, setQuickRecord] = useState<TableRow | "new" | null>(null);
   const [collectorEditor, setCollectorEditor] = useState<TableRow | "new" | null>(null);
@@ -2395,13 +2466,13 @@ function LegacyOperationView({
   currentUser,
   onCreate,
   onRefresh,
-}: {
+}: Readonly<{
   spec: OperationSpec;
   snapshot: Snapshot;
   currentUser: User;
   onCreate: () => void;
   onRefresh: () => void;
-}) {
+}>) {
   const [mode, setMode] = useState(spec.modes[0] ?? "Todos"),
     [status, setStatus] = useState("Todos"),
     [query, setQuery] = useState(""),
@@ -2886,17 +2957,44 @@ function LegacyOperationView({
   );
 }
 
+type CollectorSubflow = "zones" | "limits" | "routes";
+
+const collectorSubflowTitle = (flow: CollectorSubflow) => {
+  if (flow === "zones") return "Zonas del Cobrador";
+  if (flow === "limits") return "Límites del Cobrador";
+  return "Rutas del Cobrador";
+};
+
+const collectorSubflowAddLabel = (flow: CollectorSubflow) => {
+  if (flow === "limits") return "Agregar Límite";
+  if (flow === "zones") return "Agregar Zona";
+  return "Agregar Ruta";
+};
+
+const collectorSubflowDeleteLabel = (flow: CollectorSubflow) => {
+  if (flow === "limits") return "Eliminar Límite";
+  if (flow === "zones") return "Eliminar Zona";
+  return "Eliminar Ruta";
+};
+
+const collectorCurrencyName = (abbr: string) => {
+  if (abbr === "USD") return "Dólar Americano";
+  if (abbr === "EUR") return "Euro";
+  if (abbr === "NONE") return "No definida";
+  return "Peso Dominicano";
+};
+
 function RecurringPayoutModal({
   row,
   snapshot,
   onClose,
   onSaved,
-}: {
+}: Readonly<{
   row: TableRow | null;
   snapshot: Snapshot;
   onClose: () => void;
   onSaved: () => Promise<void>;
-}) {
+}>) {
   const raw = row?.__raw ?? {};
   const [clientId, setClientId] = useState(
     String(raw.clientId ?? snapshot.clients[0]?.id ?? ""),
@@ -3030,12 +3128,12 @@ function CollectorDataModal({
   snapshot,
   onClose,
   onSaved,
-}: {
+}: Readonly<{
   row: TableRow | null;
   snapshot: Snapshot;
   onClose: () => void;
   onSaved: () => Promise<void>;
-}) {
+}>) {
   const raw = row?.__raw ?? {};
   const [name, setName] = useState(String(raw.name ?? ""));
   const [ident, setIdent] = useState(String(raw.ident ?? ""));
@@ -3085,13 +3183,13 @@ function CollectorSubflowModal({
   snapshot,
   onClose,
   onSaved,
-}: {
-  flow: "zones" | "limits" | "routes";
+}: Readonly<{
+  flow: CollectorSubflow;
   collector: Collector;
   snapshot: Snapshot;
   onClose: () => void;
   onSaved: () => Promise<void>;
-}) {
+}>) {
   const [selectedRow, setSelectedRow] = useState("");
   const [selectedZone, setSelectedZone] = useState("Distrito Nacional");
   const [selectedRoute, setSelectedRoute] = useState(snapshot.routes[0]?.id ?? "");
@@ -3099,7 +3197,7 @@ function CollectorSubflowModal({
   const [abbr, setAbbr] = useState("DOP");
   const [collectionLimit, setCollectionLimit] = useState(String((collector.collectionLimit || 0) / 100));
   const [payoutLimit, setPayoutLimit] = useState(String((collector.payoutLimit || 0) / 100));
-  const title = flow === "zones" ? "Zonas del Cobrador" : flow === "limits" ? "Límites del Cobrador" : "Rutas del Cobrador";
+  const title = collectorSubflowTitle(flow);
   const saveSubflow = async (body: Record<string, unknown>) => {
     await api(`/mock/admin/collector-${flow}/${encodeURIComponent(collector.id)}`, { method: "POST", body: JSON.stringify(body) });
     await onSaved();
@@ -3122,17 +3220,17 @@ function CollectorSubflowModal({
     <Modal open onClose={onClose} title={`${title} — ${collector.name}`} description="Subflujo legacy de gestión asignada del cobrador.">
       <div className="collector-subflow">
         <div className="legacy-icon-toolbar">
-          <button onClick={() => void add()}><Plus size={16} /> {flow === "limits" ? "Agregar Límite" : flow === "zones" ? "Agregar Zona" : "Agregar Ruta"}</button>
-          <button onClick={() => void remove()}><Trash2 size={16} /> {flow === "limits" ? "Eliminar Límite" : flow === "zones" ? "Eliminar Zona" : "Eliminar Ruta"}</button>
+          <button onClick={() => void add()}><Plus size={16} /> {collectorSubflowAddLabel(flow)}</button>
+          <button onClick={() => void remove()}><Trash2 size={16} /> {collectorSubflowDeleteLabel(flow)}</button>
           {flow === "limits" && <button className="btn primary" onClick={() => void add()}>Guardar</button>}
         </div>
         {flow === "zones" && <label className="field compact-field">Zona disponible<select value={selectedZone} onChange={(event) => setSelectedZone(event.target.value)}><option>Distrito Nacional</option><option>Mercado</option><option>Santiago Norte</option><option>Zona Este</option></select></label>}
         {flow === "routes" && <label className="field compact-field">Ruta disponible<select value={selectedRoute} onChange={(event) => setSelectedRoute(event.target.value)}>{snapshot.routes.map((route) => <option value={route.id} key={route.id}>{route.name}</option>)}</select></label>}
-        {flow === "limits" && <div className="form-grid three-cols"><label className="field">Moneda<select value={abbr} onChange={(event) => { const next = event.target.value; setAbbr(next); setCurrency(next === "USD" ? "Dólar Americano" : next === "EUR" ? "Euro" : next === "NONE" ? "No definida" : "Peso Dominicano"); }}><option value="NONE">No definida</option><option value="DOP">Peso Dominicano (DOP)</option><option value="USD">Dólar Americano (USD)</option><option value="EUR">Euro (EUR)</option></select></label><label className="field">Límite de Cobro<input type="number" min="0" step="0.01" value={collectionLimit} onChange={(event) => setCollectionLimit(event.target.value)} /></label><label className="field">Límite de Pago<input type="number" min="0" step="0.01" value={payoutLimit} onChange={(event) => setPayoutLimit(event.target.value)} /></label></div>}
+        {flow === "limits" && <div className="form-grid three-cols"><label className="field">Moneda<select value={abbr} onChange={(event) => { const next = event.target.value; setAbbr(next); setCurrency(collectorCurrencyName(next)); }}><option value="NONE">No definida</option><option value="DOP">Peso Dominicano (DOP)</option><option value="USD">Dólar Americano (USD)</option><option value="EUR">Euro (EUR)</option></select></label><label className="field">Límite de Cobro<input type="number" min="0" step="0.01" value={collectionLimit} onChange={(event) => setCollectionLimit(event.target.value)} /></label><label className="field">Límite de Pago<input type="number" min="0" step="0.01" value={payoutLimit} onChange={(event) => setPayoutLimit(event.target.value)} /></label></div>}
         <div className="table-scroll legacy-table-scroll">
-          {flow === "zones" && <table className="data-table legacy-data-table dense"><thead><tr><th>Nro</th><th>Zona</th><th>Desde</th><th>Hasta</th></tr></thead><tbody>{(collector.zones ?? []).map((zone, index) => <tr key={zone.id} className={selectedRow === zone.id ? "selected-row" : undefined} onClick={() => setSelectedRow(zone.id)}><td>{index + 1}</td><td>{zone.name}</td><td>{zone.from}</td><td>{zone.to}</td></tr>)}</tbody></table>}
-          {flow === "limits" && <table className="data-table legacy-data-table dense"><thead><tr><th>Moneda</th><th>Abrev</th><th>Lím. de Cobro</th><th>Lím. de Pago</th></tr></thead><tbody>{(collector.limits ?? []).map((limit) => <tr key={limit.abbr} className={selectedRow === limit.abbr ? "selected-row" : undefined} onClick={() => setSelectedRow(limit.abbr)}><td>{limit.currency}</td><td>{limit.abbr}</td><td>{money(limit.collectionLimit)}</td><td>{money(limit.payoutLimit)}</td></tr>)}</tbody></table>}
-          {flow === "routes" && <table className="data-table legacy-data-table dense"><thead><tr><th>Nro_Ruta</th><th>Ruta</th></tr></thead><tbody>{(collector.assignedRoutes ?? []).map((routeId, index) => <tr key={routeId} className={selectedRow === routeId ? "selected-row" : undefined} onClick={() => setSelectedRow(routeId)}><td>{index + 1}</td><td>{snapshot.routes.find((route) => route.id === routeId)?.name ?? routeId}</td></tr>)}</tbody></table>}
+          {flow === "zones" && <table className="data-table legacy-data-table dense"><thead><tr><th>Nro</th><th>Zona</th><th>Desde</th><th>Hasta</th></tr></thead><tbody>{(collector.zones ?? []).map((zone, index) => <tr key={zone.id} className={selectedRow === zone.id ? "selected-row" : undefined} role="button" tabIndex={0} onClick={() => setSelectedRow(zone.id)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedRow(zone.id))}><td>{index + 1}</td><td>{zone.name}</td><td>{zone.from}</td><td>{zone.to}</td></tr>)}</tbody></table>}
+          {flow === "limits" && <table className="data-table legacy-data-table dense"><thead><tr><th>Moneda</th><th>Abrev</th><th>Lím. de Cobro</th><th>Lím. de Pago</th></tr></thead><tbody>{(collector.limits ?? []).map((limit) => <tr key={limit.abbr} className={selectedRow === limit.abbr ? "selected-row" : undefined} role="button" tabIndex={0} onClick={() => setSelectedRow(limit.abbr)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedRow(limit.abbr))}><td>{limit.currency}</td><td>{limit.abbr}</td><td>{money(limit.collectionLimit)}</td><td>{money(limit.payoutLimit)}</td></tr>)}</tbody></table>}
+          {flow === "routes" && <table className="data-table legacy-data-table dense"><thead><tr><th>Nro_Ruta</th><th>Ruta</th></tr></thead><tbody>{(collector.assignedRoutes ?? []).map((routeId, index) => <tr key={routeId} className={selectedRow === routeId ? "selected-row" : undefined} role="button" tabIndex={0} onClick={() => setSelectedRow(routeId)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedRow(routeId))}><td>{index + 1}</td><td>{snapshot.routes.find((route) => route.id === routeId)?.name ?? routeId}</td></tr>)}</tbody></table>}
         </div>
         <div className="dialog-actions"><button className="btn" onClick={onClose}>Cancelar</button><button className="btn primary" onClick={onClose}>oK</button></div>
       </div>
@@ -3144,11 +3242,11 @@ function ChargeDataModal({
   snapshot,
   onClose,
   onSaved,
-}: {
+}: Readonly<{
   snapshot: Snapshot;
   onClose: () => void;
   onSaved: () => Promise<void>;
-}) {
+}>) {
   const [client, setClient] = useState(snapshot.clients[0]);
   const [clientSearchOpen, setClientSearchOpen] = useState(false);
   const [currency, setCurrency] = useState("Peso Dominicano (DOP)");
@@ -3234,7 +3332,7 @@ function ChargeDataModal({
   );
 }
 
-function ClientSearchSubmodal({ clients, onSelect, onClose }: { clients: Snapshot["clients"]; onSelect: (client: Snapshot["clients"][number]) => void; onClose: () => void; }) {
+function ClientSearchSubmodal({ clients, onSelect, onClose }: Readonly<{ clients: Snapshot["clients"]; onSelect: (client: Snapshot["clients"][number]) => void; onClose: () => void; }>) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(clients[0]?.id ?? "");
   const rows = clients.filter((client) => `${client.code} ${client.id} ${client.name}`.toLowerCase().includes(query.toLowerCase()));
@@ -3245,7 +3343,7 @@ function ClientSearchSubmodal({ clients, onSelect, onClose }: { clients: Snapsho
         <header><strong>Seleccionar cliente...</strong><button className="icon-button" onClick={onClose}><X size={16} /></button></header>
         <label className="legacy-toolbar-search wide">Digite:<input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} /></label>
         <div className="table-scroll legacy-table-scroll">
-          <table className="data-table legacy-data-table dense"><thead><tr><th>Cód.</th><th>Identif.</th><th>Cliente</th></tr></thead><tbody>{rows.map((client) => <tr key={client.id} className={selected === client.id ? "selected-row" : undefined} onClick={() => setSelected(client.id)} onDoubleClick={() => onSelect(client)}><td>{client.code}</td><td>{client.id}</td><td>{client.name}</td></tr>)}</tbody></table>
+          <table className="data-table legacy-data-table dense"><thead><tr><th>Cód.</th><th>Identif.</th><th>Cliente</th></tr></thead><tbody>{rows.map((client) => <tr key={client.id} className={selected === client.id ? "selected-row" : undefined} role="button" tabIndex={0} onClick={() => setSelected(client.id)} onDoubleClick={() => onSelect(client)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelected(client.id))}><td>{client.code}</td><td>{client.id}</td><td>{client.name}</td></tr>)}</tbody></table>
         </div>
         <div className="dialog-actions"><button className="btn" onClick={onClose}>Cancelar</button><button className="btn primary" onClick={() => selectedClient && onSelect(selectedClient)}>oK</button></div>
       </div>
@@ -3259,13 +3357,13 @@ function QuickRecordModal({
   snapshot,
   onClose,
   onSaved,
-}: {
+}: Readonly<{
   entity: string;
   row: TableRow | null;
   snapshot: Snapshot;
   onClose: () => void;
   onSaved: () => Promise<void>;
-}) {
+}>) {
   const raw = row?.__raw ?? {};
   const [name, setName] = useState(
     String(raw.name ?? raw.service ?? raw.concept ?? ""),
@@ -3473,7 +3571,7 @@ function LegacyTable({
   onEdit,
   onDelete,
   sortable = true,
-}: {
+}: Readonly<{
   columns: LegacyColumn[];
   rows: TableRow[];
   dense?: boolean;
@@ -3483,7 +3581,7 @@ function LegacyTable({
   onEdit?: (row: TableRow) => void;
   onDelete?: (row: TableRow) => void;
   sortable?: boolean;
-}) {
+}>) {
   const actionTitle = permissions?.readOnlyReason ?? "Acciones de registro";
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -4257,13 +4355,13 @@ function MonitorView({
   snapshot,
   refreshing,
   onRefresh,
-}: {
+}: Readonly<{
   page: Page;
   snapshot: Snapshot;
   refreshing: boolean;
   currentUser: User;
   onRefresh: () => void;
-}) {
+}>) {
   const [auto, setAuto] = useState(true),
     [seconds, setSeconds] = useState("30"),
     [currency, setCurrency] = useState("DOP"),
@@ -4277,12 +4375,7 @@ function MonitorView({
       .toLowerCase()
       .includes(query.toLowerCase()),
   );
-  const title =
-    page === "monitorCollectors"
-      ? "Monitor de Cobradores"
-      : page === "monitorZones"
-        ? "Monitor de Zonas"
-        : "Monitor de Rutas";
+  const title = monitorTitleForPage(page);
   useEffect(() => {
     if (!selected) {
       setMapData(null);
@@ -4427,11 +4520,11 @@ function MonitorLedgerTable({
   page,
   rows,
   onSelect,
-}: {
+}: Readonly<{
   page: Page;
   rows: MonitorRow[];
   onSelect: (row: MonitorRow) => void;
-}) {
+}>) {
   const entityLabel =
     page === "monitorCollectors"
       ? "Cobrador"
@@ -4488,18 +4581,13 @@ function CobranzaMapasModal({
   data,
   entityType,
   title,
-}: {
+}: Readonly<{
   data: MapData;
   entityType: MonitorEntity;
   title: string;
-}) {
+}>) {
   const [focusedMarker, setFocusedMarker] = useState<MapMarker | null>(null);
-  const adapted: AdaptedMap =
-    entityType === "zone"
-      ? transformZoneToMap(title, data.stops)
-      : entityType === "route"
-        ? transformRouteToMap(title, data.stops)
-        : transformCollectorToMap(data.collector, data.stops);
+  const adapted = adaptedMapForEntity(entityType, title, data);
   const pending = data.stops.filter((stop) => stop.status !== "paid"),
     obligated = data.stops.filter((stop) => stop.obligated),
     totalDue = data.stops.reduce((sum, stop) => sum + stop.amount_due, 0);
@@ -4625,10 +4713,10 @@ function CobranzaMapasModal({
 function DailySettlementsView({
   snapshot,
   onRefresh,
-}: {
+}: Readonly<{
   snapshot: Snapshot;
   onRefresh: () => void;
-}) {
+}>) {
   const rows = snapshot.settlements.length
     ? snapshot.settlements.map((settlement) => ({
         date: dateLabel(settlement.date),
@@ -4819,9 +4907,8 @@ function safeDateLabel(value: string) {
   const dateOnly = value.includes("T") ? value.slice(0, 10) : value;
   if (/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) return dateLabel(dateOnly);
   const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime())
-    ? value
-    : parsed.toLocaleDateString("es-DO", { day: "numeric", month: "short" });
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleDateString("es-DO", { day: "numeric", month: "short" });
 }
 
 function abbreviation(value: string) {
@@ -4837,10 +4924,10 @@ function abbreviation(value: string) {
 function Routes({
   snapshot,
   onCollector,
-}: {
+}: Readonly<{
   snapshot: Snapshot;
   onCollector: (collector: Collector) => void;
-}) {
+}>) {
   const [filter, setFilter] = useState("all");
   const collectors = snapshot.collectors.filter(
     (c) => filter === "all" || c.status === filter,
@@ -4921,7 +5008,7 @@ function Routes({
   );
 }
 
-function Movements({ snapshot }: { snapshot: Snapshot }) {
+function Movements({ snapshot }: Readonly<{ snapshot: Snapshot }>) {
   const [type, setType] = useState("all"),
     [search, setSearch] = useState(""),
     [limit, setLimit] = useState(15);
@@ -5082,4 +5169,5 @@ function Movements({ snapshot }: { snapshot: Snapshot }) {
     </>
   );
 }
+
 
