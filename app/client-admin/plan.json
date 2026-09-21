@@ -1,0 +1,134 @@
+{
+  "$schema": "https://raw.githubusercontent.com/TestSprite/testsprite-cli/v0.12.0/schemas/plan.schema.json",
+  "projectId": "cb6c466d-34f5-4707-9d1c-ab81be27e165",
+  "type": "frontend",
+  "name": "CyP Admin full-site MDI regression coverage",
+  "description": "Full-site E2E coverage for the current CyP Admin frontend: login, topbar, every sidebar module, action buttons, MDI open/close behavior, and concurrent overlapping windows with z-index focus.",
+  "priority": "p0",
+  "planSteps": [
+    {
+      "type": "action",
+      "description": "Open the CyP Admin app at the local root path. If a login card is shown, log in using admin@cyp.local and Demo-CyP-2026! unless the form already contains valid demo credentials. Wait until the admin desktop shell is visible."
+    },
+    {
+      "type": "assertion",
+      "description": "Verify the two-tier TopBar loads: confirm either EST-01, EST-01 Principal, Versión: CyP Web v0.1.0, or Fecha/Hora del Servidor is visible. Also verify the modern toolbar/search/avatar area remains visible."
+    },
+    {
+      "type": "assertion",
+      "description": "Verify the left Sidebar is visible and contains the accordion groups ARCHIVOS, COBROS, PAGOS, and REPORTES & MONITOREO. Wait for the DOM to settle before continuing."
+    },
+    {
+      "type": "action",
+      "description": "Open the ARCHIVOS accordion if it is collapsed. Click Admin. and wait for an MDI floating window titled Panel de Control to render on the empty desktop canvas."
+    },
+    {
+      "type": "assertion",
+      "description": "Verify the Panel de Control MDI window has a titlebar, close [X], resize affordance or resizable frame, and quick-launch tiles such as Cobradores, Usuarios, Zonas, Configuracion General, and Solicitudes de Autoriz."
+    },
+    {
+      "type": "action",
+      "description": "Inside Panel de Control, click the Cobradores tile. Wait until a second MDI window for Cobradores appears above the Panel de Control. Click its Nuevo/+ button if visible, verify the Datos de Cobrador dialog opens, then close/cancel the dialog."
+    },
+    {
+      "type": "action",
+      "description": "Inside Panel de Control, click each codifier tile one by one: Estaciones, Grupos, Motivos Atraso, PCPs, Rutas, Servicios y Prods., Sesiones, Tasas de cambio, Trazas, Usuarios, and Zonas. After each click, wait for a corresponding MDI window title or dense grid/table to appear. If the window already exists, verify it is brought to the front."
+    },
+    {
+      "type": "action",
+      "description": "Inside Panel de Control, click Configuracion General. Verify a Configuración General MDI/form window opens. Click through the tabs General, Clientes, Cargos y Descargos, Cobros y Pagos, Interfaz, and GPS, confirming each tab shows compact legacy form content."
+    },
+    {
+      "type": "action",
+      "description": "Inside Panel de Control, click Solicitudes de Autoriz. Verify an MDI window opens with a left filter panel and a right grid containing authorization request columns."
+    },
+    {
+      "type": "action",
+      "description": "Close the codifier/configuration MDI windows opened from Panel de Control using their [X] buttons, leaving the desktop stable. If multiple windows remain, close the foremost extra windows until only the main desktop or Panel de Control remains. Verify closed windows disappear from the active desktop area."
+    },
+    {
+      "type": "action",
+      "description": "Open ARCHIVOS again if needed and click Clientes directly from the Sidebar. Wait until a Clientes/Listado de Clientes MDI window renders."
+    },
+    {
+      "type": "assertion",
+      "description": "Verify the Clientes MDI window contains a dense enterprise table/list of clients and an action toolbar. Click Nuevo/+ if visible, verify a creation/edit modal opens, then cancel/close it without saving. Close the Clientes MDI window with [X] and verify it disappears."
+    },
+    {
+      "type": "action",
+      "description": "Open the COBROS accordion. Click Cargos and wait for its MDI window. Verify it includes a top toolbar, left filter panel, main grid columns, and bottom totals. Click Refrescar if visible and verify the grid remains stable. Click Nuevo/+ if visible, verify a modal opens, then cancel it. Close the Cargos MDI window."
+    },
+    {
+      "type": "action",
+      "description": "Under COBROS, click Cargos Recurrentes. Wait for the MDI window. Verify toolbar, filters/table content, and close the window with [X]."
+    },
+    {
+      "type": "action",
+      "description": "Under COBROS, click Cobros. Wait for the MDI window. Verify toolbar, filter panel, grid, and footer totals. Click Nuevo/+ if available, verify the modal opens, cancel it, then close the MDI window."
+    },
+    {
+      "type": "action",
+      "description": "Under COBROS, click Depósitos por Cobradores. Wait for the MDI window. Verify it shows central grid columns and a right-side details panel or refresh action. Close the MDI window."
+    },
+    {
+      "type": "action",
+      "description": "Open the PAGOS accordion. Click Descargos and wait for the MDI window. Verify left filter panel, grid, toolbar, and footer behavior. Click Nuevo/+ if available, verify the modal opens, cancel it, then close the MDI window."
+    },
+    {
+      "type": "action",
+      "description": "Under PAGOS, click Descargos Rec. Wait for the MDI window. Verify the recurring descargos grid or placeholder view appears. Click Nuevo/+ if visible, verify a recurring template modal opens, cancel it, then close the MDI window."
+    },
+    {
+      "type": "action",
+      "description": "Under PAGOS, click Pagos. Wait for the MDI window. Verify toolbar, filter panel and grid are visible. Click Nuevo/+ if available, verify the modal opens, cancel it, then close the MDI window."
+    },
+    {
+      "type": "action",
+      "description": "Under PAGOS, click Entregas de Dinero. Wait for the MDI window. Verify toolbar, filters, grid columns and totals are visible, then close the MDI window."
+    },
+    {
+      "type": "action",
+      "description": "Open REPORTES & MONITOREO. Click Monitor C and wait for the monitor MDI window. Verify controls Auto., refresh seconds, Moneda, Refrescar and a ledger grid with Cobrador, Límites, Cobrado, Depositado, Entregado, Pagado and Diferencia. If a row can be selected, click it and verify a map/modal or details surface opens, then close that modal and close the Monitor C window."
+    },
+    {
+      "type": "action",
+      "description": "Under REPORTES & MONITOREO, click Monitor Z. Verify an MDI monitor window opens with the same operational balance structure adapted to zones, then close it."
+    },
+    {
+      "type": "action",
+      "description": "Under REPORTES & MONITOREO, click Monitor R. Verify an MDI monitor window opens with the same operational balance structure adapted to routes, then close it."
+    },
+    {
+      "type": "action",
+      "description": "Under REPORTES & MONITOREO, click Cuadres Diarios. Verify an MDI window opens with left filters Fecha Inicial, Fecha Final, Moneda and a main grid with Fecha, Total, Efectivo, Cheque and Balance. Close it."
+    },
+    {
+      "type": "action",
+      "description": "Under REPORTES & MONITOREO, click Reportes. Wait for the Reportes launcher MDI window. Verify categories -- Cargos --, -- Cobros --, -- Pagos --, and -- Servicios -- appear. Click at least three report tiles from different categories and verify each opens as an independent report MDI window with left filters and right results panel. Close the report windows and then close the Reportes launcher."
+    },
+    {
+      "type": "action",
+      "description": "Interact with the TopBar utility buttons if visible: global search, notifications, recibo/facturas, ayuda/centro de ayuda, cartera/pagos, database/backup. For each available icon, click it, verify a popover/window/download/auxiliary panel opens or responds, then close/dismiss it before continuing."
+    },
+    {
+      "type": "action",
+      "description": "Concurrency test: without closing between clicks, open Clientes, Cargos, Cobros, Descargos, Monitor C, Cuadres Diarios, and Reportes from the Sidebar. Wait after each click until its MDI window appears."
+    },
+    {
+      "type": "assertion",
+      "description": "Verify multiple MDI windows are visible simultaneously on the desktop canvas and overlap without breaking layout. Click different titlebars/windows and verify the clicked window visually comes to the front, indicating z-index/focus changes."
+    },
+    {
+      "type": "action",
+      "description": "Drag at least one visible MDI titlebar a short distance if TestSprite can perform drag actions. If native drag is unavailable, click the titlebar and verify focus styling changes. Attempt to resize or observe the resize cue on one window."
+    },
+    {
+      "type": "action",
+      "description": "Close every open MDI window using each window's [X] button. Wait briefly after each close. Continue until the desktop canvas is empty or only the base shell remains."
+    },
+    {
+      "type": "assertion",
+      "description": "Final assertion: verify the app shell remains responsive after the full navigation pass: TopBar remains visible, Sidebar remains visible, the desktop canvas is stable, and no error overlay, uncaught exception, blank white page, or broken modal is visible."
+    }
+  ]
+}
