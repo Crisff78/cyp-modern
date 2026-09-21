@@ -653,6 +653,15 @@ function CollectorFormLegacyDialog({ collector, onClose, onSave }: Readonly<{ co
   );
 }
 
+function LegacyAlertDialog({ message, onClose }: Readonly<{ message: string; onClose: () => void }>) {
+  return (
+    <LegacyDialog title="Mensaje" onClose={onClose} className="legacy-confirm-dialog">
+      <div className="legacy-confirm-content"><span className="legacy-question-icon">!</span><p>{message}</p></div>
+      <div className="legacy-dialog-actions centered"><button type="button" autoFocus onClick={onClose}>Aceptar</button></div>
+    </LegacyDialog>
+  );
+}
+
 function LegacyConfirmDialog({ title = "Confirm", message, onYes, onNo }: Readonly<{ title?: string; message: string; onYes: () => void; onNo: () => void }>) {
   return (
     <LegacyDialog title={title} onClose={onNo} className="legacy-confirm-dialog">
@@ -1007,15 +1016,26 @@ function stationToDraft(station: PcpStationRecord): PcpStationDraft {
 
 function PcpStationDialog({ station, onClose, onSave }: Readonly<{ station?: PcpStationRecord; onClose: () => void; onSave: (draft: PcpStationDraft) => void }>) {
   const [draft, setDraft] = useState<PcpStationDraft>(() => station ? stationToDraft(station) : emptyPcpStationDraft());
+  const [validationMessage, setValidationMessage] = useState("");
   const update = (field: keyof PcpStationDraft, value: string | number | boolean) => setDraft((current) => ({ ...current, [field]: value }));
+  const validateStationName = () => {
+    const stationCode = draft.station.trim();
+    if (!stationCode) {
+      setValidationMessage("El campo Nombre no puede estar vacío");
+      return "";
+    }
+    return stationCode;
+  };
   const obtainData = () => {
-    const stationCode = draft.station.trim() || `ECP${String(Math.max(1, draft.number || 1)).padStart(3, "0")}`;
-    setDraft((current) => ({ ...current, station: stationCode, deviceId: current.deviceId || `TERM-${stationCode}`, description: current.description || `Terminal operativa ${stationCode}` }));
+    const stationCode = validateStationName();
+    if (!stationCode) return;
+    setDraft((current) => ({ ...current, deviceId: `TERM-${stationCode}-${String(Date.now()).slice(-3)}`, description: current.description || `Terminal operativa ${stationCode}` }));
     toast.success("Datos de estación obtenidos");
   };
   const obtainLicense = () => {
-    const stationCode = draft.station.trim() || "ECP000";
-    setDraft((current) => ({ ...current, license: current.license || `CYP-${stationCode}-${String(Date.now()).slice(-4)}` }));
+    const stationCode = validateStationName();
+    if (!stationCode) return;
+    setDraft((current) => ({ ...current, license: `CYP-${stationCode}-${String(Date.now()).slice(-4)}` }));
     toast.success("Licencia generada");
   };
   const submit = (event: FormEvent) => {
@@ -1049,7 +1069,110 @@ function PcpStationDialog({ station, onClose, onSave }: Readonly<{ station?: Pcp
         </fieldset>
         <div className="legacy-dialog-actions centered"><button type="submit">oK</button><button type="button" onClick={onClose}>Cancelar</button></div>
       </form>
+      {validationMessage && <LegacyAlertDialog message={validationMessage} onClose={() => setValidationMessage("")} />}
     </LegacyDialog>
+  );
+}
+
+type PcpGroupRecord = {
+  id: string;
+  name: string;
+};
+
+const defaultPcpGroups = (): PcpGroupRecord[] => [
+  { id: "pcp-group-main", name: "Grupo Principal" },
+  { id: "pcp-group-df", name: "df" },
+  { id: "pcp-group-mayito", name: "GRUPO MAYITO" },
+];
+
+function PcpGroupDialog({ group, onClose, onSave }: Readonly<{ group?: PcpGroupRecord; onClose: () => void; onSave: (name: string) => void }>) {
+  const [name, setName] = useState(group?.name ?? "");
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (!name.trim()) return toast.error("El nombre del grupo es requerido.");
+    onSave(name.trim());
+  };
+  return (
+    <LegacyDialog title="Nombre del Grupo..." onClose={onClose} className="legacy-select-dialog">
+      <form className="legacy-dialog-form" onSubmit={submit}>
+        <label>Nombre:<input autoFocus value={name} onChange={(event) => setName(event.target.value)} /></label>
+        <div className="legacy-dialog-actions centered"><button type="submit">oK</button><button type="button" onClick={onClose}>Cancelar</button></div>
+      </form>
+    </LegacyDialog>
+  );
+}
+
+function PcpGroupsLegacyView(): ReactNode {
+  const [groupsData, setGroupsData] = useState<PcpGroupRecord[]>(() => defaultPcpGroups());
+  const [selectedGroupId, setSelectedGroupId] = useState(groupsData[0]?.id ?? "");
+  const [formMode, setFormMode] = useState<"new" | "edit" | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const selectedGroup = groupsData.find((group) => group.id === selectedGroupId) ?? groupsData[0];
+  const moveSelectedGroup = (direction: "first" | "up" | "down" | "last") => {
+    const currentIndex = groupsData.findIndex((group) => group.id === selectedGroupId);
+    if (currentIndex < 0) return toast.info("Seleccione un grupo.");
+    const targetIndexByDirection = {
+      first: 0,
+      up: Math.max(0, currentIndex - 1),
+      down: Math.min(groupsData.length - 1, currentIndex + 1),
+      last: groupsData.length - 1,
+    } satisfies Record<typeof direction, number>;
+    const targetIndex = targetIndexByDirection[direction];
+    if (targetIndex === currentIndex) return toast.info("El grupo ya está en esa posición.");
+    setGroupsData((current) => {
+      const reordered = [...current];
+      const [selected] = reordered.splice(currentIndex, 1);
+      reordered.splice(targetIndex, 0, selected);
+      return reordered;
+    });
+  };
+  const refreshGroups = () => {
+    const reloaded = defaultPcpGroups();
+    setGroupsData(reloaded);
+    setSelectedGroupId(reloaded[0]?.id ?? "");
+    toast.success("Grupos recargados");
+  };
+  const saveGroup = (name: string) => {
+    if (formMode === "edit" && selectedGroup) {
+      setGroupsData((current) => current.map((group) => group.id === selectedGroup.id ? { ...group, name } : group));
+      toast.success("Grupo actualizado");
+    } else {
+      const next = { id: `pcp-group-local-${Date.now()}`, name };
+      setGroupsData((current) => [...current, next]);
+      setSelectedGroupId(next.id);
+      toast.success("Grupo creado");
+    }
+    setFormMode(null);
+  };
+  const deleteGroup = () => {
+    if (!selectedGroup) return;
+    setGroupsData((current) => current.filter((group) => group.id !== selectedGroup.id));
+    setSelectedGroupId("");
+    setConfirmDelete(false);
+    toast.success("Grupo eliminado");
+  };
+  return (
+    <div className="legacy-mdi-view">
+      <LegacyToolbar onFirst={() => moveSelectedGroup("first")} onPrevious={() => moveSelectedGroup("up")} onNext={() => moveSelectedGroup("down")} onLast={() => moveSelectedGroup("last")} onNew={() => setFormMode("new")} onEdit={() => selectedGroup ? setFormMode("edit") : toast.info("Seleccione un grupo.")} onDelete={() => selectedGroup ? setConfirmDelete(true) : toast.info("Seleccione un grupo.")} onRefresh={refreshGroups} />
+      <div className="legacy-mdi-table-wrap">
+        <table className="legacy-mdi-table groups-grid">
+          <thead><tr><th>Nro.</th><th>Grupo</th></tr></thead>
+          <tbody>
+            {groupsData.map((group, index) => {
+              const isSelected = selectedGroupId === group.id;
+              return (
+                <tr key={group.id} className={isSelected ? "selected-row" : ""} role="button" tabIndex={0} onClick={() => setSelectedGroupId(group.id)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedGroupId(group.id))}>
+                  <td><span className={`mdi-row-select ${isSelected ? "selected" : ""}`}>{index + 1}</span></td>
+                  <td>{group.name}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {formMode && <PcpGroupDialog group={formMode === "edit" ? selectedGroup : undefined} onClose={() => setFormMode(null)} onSave={saveGroup} />}
+      {confirmDelete && <LegacyConfirmDialog message="¿Realmente desea borrar los datos?" onYes={deleteGroup} onNo={() => setConfirmDelete(false)} />}
+    </div>
   );
 }
 
@@ -1212,7 +1335,7 @@ function LegacyCodifierView({ page, snapshot, onRefresh, onAccount }: Readonly<{
   const baseToolbar = (extra?: ReactNode) => <LegacyToolbar onRefresh={onRefresh} extra={extra} />;
   if (page === "collectors") return <CollectorsLegacyView snapshot={snapshot} onRefresh={onRefresh} />;
   if (page === "stations") return <StationsLegacyView />;
-  if (page === "groups") return <div className="legacy-mdi-view">{baseToolbar()}<LegacyDenseTable columns={["Nro.", "Grupo"]} rows={[["1", "Grupo Principal"], ["2", "df"], ["3", "GRUPO MAYITO"]]} /></div>;
+  if (page === "groups") return <PcpGroupsLegacyView />;
   if (page === "delayReasons") return <div className="legacy-mdi-view">{baseToolbar()}<LegacyDenseTable columns={["Nro.", "Motivo", "Activo"]} rows={[["1", "Local cerrado", <LegacyCheck />], ["2", "Cliente ausente", <LegacyCheck />], ["3", "Promesa de pago", <LegacyCheck />], ["4", "Sin efectivo disponible", <LegacyCheck />]]} /></div>;
   if (page === "routes") return <div className="legacy-mdi-view">{baseToolbar()}<LegacyDenseTable columns={["Nro.", "Ruta", "Desde", "Hasta", "Activo"]} rows={snapshot.routes.map((route, index) => [index + 1, route.name, "001", "999", <LegacyCheck />])} /></div>;
   if (page === "servicesProducts") return <div className="legacy-mdi-view">{baseToolbar()}<LegacyDenseTable columns={["Nro.", "Servicio", "Abrev", "Caption", "Ob. Cob.", "Activo"]} rows={services.map((service, index) => [index + 1, service, abbreviation(service), service, <LegacyCheck checked={index === 0} />, <LegacyCheck />])} /></div>;
@@ -5754,6 +5877,9 @@ function Movements({ snapshot }: Readonly<{ snapshot: Snapshot }>) {
     </>
   );
 }
+
+
+
 
 
 

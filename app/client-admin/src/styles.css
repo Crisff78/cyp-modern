@@ -7005,3 +7005,18 @@ table {
   background: #d1fae5;
   outline: none;
 }
+
+.groups-grid tbody tr {
+  cursor: pointer;
+}
+
+.groups-grid tbody tr:hover td,
+.groups-grid tbody tr:focus-visible td,
+.groups-grid tbody tr.selected-row td {
+  background: #ecfdf5;
+}
+
+.groups-grid tbody tr:focus-visible {
+  outline: 2px solid #059669;
+  outline-offset: -2px;
+}
