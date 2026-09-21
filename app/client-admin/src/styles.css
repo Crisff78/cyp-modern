@@ -6923,3 +6923,85 @@ table {
   flex: 1;
   min-height: 0;
 }
+
+.stations-grid tbody tr {
+  cursor: pointer;
+}
+
+.stations-grid tbody tr:hover td,
+.stations-grid tbody tr:focus-visible td,
+.stations-grid tbody tr.selected-row td {
+  background: #ecfdf5;
+}
+
+.stations-grid tbody tr:focus-visible {
+  outline: 2px solid #059669;
+  outline-offset: -2px;
+}
+
+.pcp-station-dialog {
+  width: min(560px, calc(100vw - 48px));
+}
+
+.pcp-station-form {
+  gap: 8px;
+}
+
+.legacy-tabs.compact {
+  min-height: 28px;
+  padding: 0 4px;
+}
+
+.legacy-tabs.compact button {
+  min-height: 27px;
+  padding: 3px 14px;
+  font-size: 12px;
+}
+
+.station-general-fieldset {
+  position: relative;
+  display: grid;
+  gap: 8px;
+  padding-top: 22px;
+}
+
+.station-internal-id {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  min-width: 42px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 1px inset #cbd5e1;
+  background: #f8fafc;
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.pcp-station-form .license-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: end;
+  gap: 8px;
+}
+
+.pcp-station-form .license-row button {
+  min-height: 27px;
+  border: 1px solid #64748b;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #ffffff 0%, #dbe4ea 100%);
+  color: #111827;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.pcp-station-form .license-row button:hover,
+.pcp-station-form .license-row button:focus-visible {
+  border-color: #047857;
+  background: #d1fae5;
+  outline: none;
+}

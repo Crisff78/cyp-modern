@@ -946,6 +946,192 @@ function CollectorsLegacyView({ snapshot, onRefresh }: Readonly<{ snapshot: Snap
   );
 }
 
+type PcpStationRecord = {
+  id: string;
+  internalId: string;
+  number: number;
+  station: string;
+  deviceId: string;
+  license: string;
+  version: string;
+  receivedVersion: string;
+  description: string;
+  group: string;
+  type: string;
+  active: boolean;
+};
+
+type PcpStationDraft = Omit<PcpStationRecord, "id" | "active" | "version" | "receivedVersion"> & {
+  active: boolean;
+  version?: string;
+  receivedVersion?: string;
+};
+
+const defaultPcpStations = (): PcpStationRecord[] => [
+  { id: "station-adm001", internalId: "1", number: 1, station: "ADM001", deviceId: "PC-ADM001", license: "CYP-ADM-001", version: "1.0.0", receivedVersion: "1.0.0", description: "Oficina principal administrativa", group: "Cobros", type: "Administración", active: true },
+  { id: "station-ecp001", internalId: "2", number: 2, station: "ECP001", deviceId: "TERM-ECP001", license: "CYP-ECP-001", version: "1.0.0", receivedVersion: "1.0.0", description: "Terminal Centro", group: "Cobros", type: "Cobros y Pagos", active: true },
+  { id: "station-ecp002", internalId: "3", number: 3, station: "ECP002", deviceId: "TERM-ECP002", license: "CYP-ECP-002", version: "1.0.0", receivedVersion: "1.0.0", description: "Terminal Norte", group: "Cobros", type: "Cobros y Pagos", active: false },
+];
+
+function emptyPcpStationDraft(): PcpStationDraft {
+  return {
+    internalId: "-1",
+    number: 0,
+    station: "",
+    deviceId: "",
+    license: "",
+    description: "",
+    group: "Cobros",
+    type: "Cobros y Pagos",
+    active: true,
+    version: "1.0.0",
+    receivedVersion: "1.0.0",
+  };
+}
+
+function stationToDraft(station: PcpStationRecord): PcpStationDraft {
+  return {
+    internalId: station.internalId,
+    number: station.number,
+    station: station.station,
+    deviceId: station.deviceId,
+    license: station.license,
+    description: station.description,
+    group: station.group,
+    type: station.type,
+    active: station.active,
+    version: station.version,
+    receivedVersion: station.receivedVersion,
+  };
+}
+
+function PcpStationDialog({ station, onClose, onSave }: Readonly<{ station?: PcpStationRecord; onClose: () => void; onSave: (draft: PcpStationDraft) => void }>) {
+  const [draft, setDraft] = useState<PcpStationDraft>(() => station ? stationToDraft(station) : emptyPcpStationDraft());
+  const update = (field: keyof PcpStationDraft, value: string | number | boolean) => setDraft((current) => ({ ...current, [field]: value }));
+  const obtainData = () => {
+    const stationCode = draft.station.trim() || `ECP${String(Math.max(1, draft.number || 1)).padStart(3, "0")}`;
+    setDraft((current) => ({ ...current, station: stationCode, deviceId: current.deviceId || `TERM-${stationCode}`, description: current.description || `Terminal operativa ${stationCode}` }));
+    toast.success("Datos de estación obtenidos");
+  };
+  const obtainLicense = () => {
+    const stationCode = draft.station.trim() || "ECP000";
+    setDraft((current) => ({ ...current, license: current.license || `CYP-${stationCode}-${String(Date.now()).slice(-4)}` }));
+    toast.success("Licencia generada");
+  };
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (!draft.station.trim()) return toast.error("La estación es requerida.");
+    if (draft.number < 0) return toast.error("El número de estación no puede ser negativo.");
+    onSave(draft);
+  };
+  return (
+    <LegacyDialog title="Datos de la Estación de PCP" onClose={onClose} className="pcp-station-dialog">
+      <form className="legacy-dialog-form pcp-station-form" onSubmit={submit}>
+        <div className="legacy-tabs compact" role="tablist" aria-label="Datos de la Estación de PCP"><button type="button" className="active">General</button></div>
+        <fieldset className="legacy-config-fieldset station-general-fieldset">
+          <legend>General</legend>
+          <div className="station-internal-id">{draft.internalId}</div>
+          <label>Estación:<input autoFocus value={draft.station} onChange={(event) => update("station", event.target.value)} /></label>
+          <div className="legacy-dialog-row two-cols">
+            <label>Nro.:<input type="number" value={draft.number} onChange={(event) => update("number", Number(event.target.value))} /></label>
+            <label>ID:<input value={draft.deviceId} onChange={(event) => update("deviceId", event.target.value)} /></label>
+          </div>
+          <div className="legacy-dialog-row license-row">
+            <label>Lic.:<input value={draft.license} onChange={(event) => update("license", event.target.value)} /></label>
+            <button type="button" onClick={obtainData}>Obtener Datos</button>
+            <button type="button" onClick={obtainLicense}>Obtener Licencia</button>
+          </div>
+          <label>Descrip.:<input value={draft.description} onChange={(event) => update("description", event.target.value)} /></label>
+          <div className="legacy-dialog-row two-cols">
+            <label>Grupo:<select value={draft.group} onChange={(event) => update("group", event.target.value)}><option>Cobros</option><option>Grupo Principal</option><option>df</option><option>GRUPO MAYITO</option></select></label>
+            <label>Tipo:<select value={draft.type} onChange={(event) => update("type", event.target.value)}><option>Cobros y Pagos</option><option>Cobros</option><option>Pagos</option><option>Administración</option></select></label>
+          </div>
+        </fieldset>
+        <div className="legacy-dialog-actions centered"><button type="submit">oK</button><button type="button" onClick={onClose}>Cancelar</button></div>
+      </form>
+    </LegacyDialog>
+  );
+}
+
+function StationsLegacyView(): ReactNode {
+  const [stationsData, setStationsData] = useState<PcpStationRecord[]>(() => defaultPcpStations());
+  const [selectedStationId, setSelectedStationId] = useState(stationsData[0]?.id ?? "");
+  const [formMode, setFormMode] = useState<"new" | "edit" | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const selectedStation = stationsData.find((station) => station.id === selectedStationId) ?? stationsData[0];
+  const moveSelectedStation = (direction: "first" | "up" | "down" | "last") => {
+    const currentIndex = stationsData.findIndex((station) => station.id === selectedStationId);
+    if (currentIndex < 0) return toast.info("Seleccione una estación.");
+    const targetIndexByDirection = {
+      first: 0,
+      up: Math.max(0, currentIndex - 1),
+      down: Math.min(stationsData.length - 1, currentIndex + 1),
+      last: stationsData.length - 1,
+    } satisfies Record<typeof direction, number>;
+    const targetIndex = targetIndexByDirection[direction];
+    if (targetIndex === currentIndex) return toast.info("La estación ya está en esa posición.");
+    setStationsData((current) => {
+      const reordered = [...current];
+      const [selected] = reordered.splice(currentIndex, 1);
+      reordered.splice(targetIndex, 0, selected);
+      return reordered;
+    });
+  };
+  const refreshStations = () => {
+    const reloaded = defaultPcpStations();
+    setStationsData(reloaded);
+    setSelectedStationId(reloaded[0]?.id ?? "");
+    toast.success("Estaciones recargadas");
+  };
+  const saveStation = (draft: PcpStationDraft) => {
+    if (formMode === "edit" && selectedStation) {
+      setStationsData((current) => current.map((station) => station.id === selectedStation.id ? { ...station, ...draft, version: draft.version ?? station.version, receivedVersion: draft.receivedVersion ?? station.receivedVersion } : station));
+      toast.success("Estación actualizada");
+    } else {
+      const next: PcpStationRecord = { id: `station-local-${Date.now()}`, version: draft.version ?? "1.0.0", receivedVersion: draft.receivedVersion ?? "1.0.0", ...draft };
+      setStationsData((current) => [...current, next]);
+      setSelectedStationId(next.id);
+      toast.success("Estación creada");
+    }
+    setFormMode(null);
+  };
+  const deleteStation = () => {
+    if (!selectedStation) return;
+    setStationsData((current) => current.filter((station) => station.id !== selectedStation.id));
+    setSelectedStationId("");
+    setConfirmDelete(false);
+    toast.success("Estación eliminada");
+  };
+  return (
+    <div className="legacy-mdi-view">
+      <LegacyToolbar onFirst={() => moveSelectedStation("first")} onPrevious={() => moveSelectedStation("up")} onNext={() => moveSelectedStation("down")} onLast={() => moveSelectedStation("last")} onNew={() => setFormMode("new")} onEdit={() => selectedStation ? setFormMode("edit") : toast.info("Seleccione una estación.")} onDelete={() => selectedStation ? setConfirmDelete(true) : toast.info("Seleccione una estación.")} onRefresh={refreshStations} />
+      <div className="legacy-mdi-table-wrap">
+        <table className="legacy-mdi-table stations-grid">
+          <thead><tr><th>Nro</th><th>Estacion</th><th>idDispositivo</th><th>Licencia</th><th>Version</th><th>VersionRec</th><th>Activa</th></tr></thead>
+          <tbody>
+            {stationsData.map((station) => {
+              const isSelected = selectedStationId === station.id;
+              return (
+                <tr key={station.id} className={isSelected ? "selected-row" : ""} role="button" tabIndex={0} onClick={() => setSelectedStationId(station.id)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedStationId(station.id))}>
+                  <td><span className={`mdi-row-select ${isSelected ? "selected" : ""}`}>{station.number}</span></td>
+                  <td>{station.station}</td>
+                  <td>{station.deviceId}</td>
+                  <td>{station.license}</td>
+                  <td>{station.version}</td>
+                  <td>{station.receivedVersion}</td>
+                  <td><LegacyCheck checked={station.active} /></td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {formMode && <PcpStationDialog station={formMode === "edit" ? selectedStation : undefined} onClose={() => setFormMode(null)} onSave={saveStation} />}
+      {confirmDelete && <LegacyConfirmDialog message="¿Eliminar la estación seleccionada?" onYes={deleteStation} onNo={() => setConfirmDelete(false)} />}
+    </div>
+  );
+}
+
 const SYSTEM_CONFIG_DEFAULTS: Record<string, string | number | boolean> = {
   "general.empresa": "Gamera Software - Cobros y Pagos",
   "general.direccion": "Santiago de los Caballeros, República Dominicana",
@@ -1025,7 +1211,7 @@ function LegacyCodifierView({ page, snapshot, onRefresh, onAccount }: Readonly<{
   const routeName = (routeId: string) => snapshot.routes.find((route) => route.id === routeId)?.name ?? "Sin ruta";
   const baseToolbar = (extra?: ReactNode) => <LegacyToolbar onRefresh={onRefresh} extra={extra} />;
   if (page === "collectors") return <CollectorsLegacyView snapshot={snapshot} onRefresh={onRefresh} />;
-  if (page === "stations") return <div className="legacy-mdi-view">{baseToolbar()}<LegacyDenseTable columns={["Nro", "Estacion", "idDispositivo", "Licencia", "Version", "VersionRec", "Activa"]} rows={[["1", "ADM001", "PC-ADM001", "CYP-ADM-001", "1.0.0", "1.0.0", <LegacyCheck />], ["2", "ECP001", "TERM-ECP001", "CYP-ECP-001", "1.0.0", "1.0.0", <LegacyCheck />], ["3", "ECP002", "TERM-ECP002", "CYP-ECP-002", "1.0.0", "1.0.0", <LegacyCheck checked={false} />]]} /></div>;
+  if (page === "stations") return <StationsLegacyView />;
   if (page === "groups") return <div className="legacy-mdi-view">{baseToolbar()}<LegacyDenseTable columns={["Nro.", "Grupo"]} rows={[["1", "Grupo Principal"], ["2", "df"], ["3", "GRUPO MAYITO"]]} /></div>;
   if (page === "delayReasons") return <div className="legacy-mdi-view">{baseToolbar()}<LegacyDenseTable columns={["Nro.", "Motivo", "Activo"]} rows={[["1", "Local cerrado", <LegacyCheck />], ["2", "Cliente ausente", <LegacyCheck />], ["3", "Promesa de pago", <LegacyCheck />], ["4", "Sin efectivo disponible", <LegacyCheck />]]} /></div>;
   if (page === "routes") return <div className="legacy-mdi-view">{baseToolbar()}<LegacyDenseTable columns={["Nro.", "Ruta", "Desde", "Hasta", "Activo"]} rows={snapshot.routes.map((route, index) => [index + 1, route.name, "001", "999", <LegacyCheck />])} /></div>;
@@ -5568,6 +5754,7 @@ function Movements({ snapshot }: Readonly<{ snapshot: Snapshot }>) {
     </>
   );
 }
+
 
 
 
