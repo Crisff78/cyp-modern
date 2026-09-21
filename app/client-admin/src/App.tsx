@@ -553,23 +553,40 @@ function MdiWindow({ windowState, onClose, onFocus, onMove, children }: Readonly
     document.addEventListener("mouseup", onMouseUp, { once: true });
     return () => { document.removeEventListener("mousemove", onMouseMove); document.removeEventListener("mouseup", onMouseUp); };
   }, [drag, onMove, windowState.id]);
+  const focusIfNeeded = () => {
+    if (!windowState.isFocused) onFocus(windowState.id);
+  };
   const startDrag = (event: ReactMouseEvent<HTMLDivElement>) => {
-    if ((event.target as HTMLElement).closest("button")) return;
+    if (event.button !== 0) return;
+    if ((event.target as HTMLElement).closest("button,input,select,textarea,a")) return;
     event.preventDefault();
+    event.stopPropagation();
     onFocus(windowState.id);
     setDrag({ startX: event.clientX, startY: event.clientY, x: windowState.x, y: windowState.y });
   };
   return (
-    <section className={`mdi-window ${windowState.isFocused ? "focused" : ""}`} style={{ left: windowState.x, top: windowState.y, width: windowState.width, height: windowState.height, zIndex: windowState.zIndex }} onMouseDown={() => onFocus(windowState.id)} role="dialog" aria-label={windowState.title}>
-      <div className="mdi-window-titlebar" onMouseDown={startDrag}><span>{windowState.title}</span><button type="button" aria-label={`Cerrar ${windowState.title}`} onClick={() => onClose(windowState.id)}><X size={15} /></button></div>
+    <section className={`mdi-window ${windowState.isFocused ? "focused" : ""}`} style={{ left: windowState.x, top: windowState.y, width: windowState.width, height: windowState.height, zIndex: windowState.zIndex }} onPointerDownCapture={focusIfNeeded} role="dialog" aria-label={windowState.title}>
+      <div className="mdi-window-titlebar" onMouseDown={startDrag}><span>{windowState.title}</span><button type="button" aria-label={`Cerrar ${windowState.title}`} onMouseDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onClose(windowState.id); }}><X size={15} /></button></div>
       <div className="mdi-window-content">{children}</div><span className="mdi-resize-cue" aria-hidden="true" />
     </section>
   );
 }
 
+type LegacyToolbarAction = () => void;
+
+const stopToolbarEvent = (event: ReactMouseEvent<HTMLElement>) => {
+  event.stopPropagation();
+};
+
+const runToolbarAction = (action?: LegacyToolbarAction) => (event: ReactMouseEvent<HTMLButtonElement>) => {
+  event.stopPropagation();
+  action?.();
+};
+
 function LegacyToolbar({ onFirst, onPrevious, onNext, onLast, onNew, onEdit, onDelete, onRefresh, extra }: Readonly<{ onFirst?: () => void; onPrevious?: () => void; onNext?: () => void; onLast?: () => void; onNew?: () => void; onEdit?: () => void; onDelete?: () => void; onRefresh?: () => void; extra?: ReactNode }>) {
-  return <div className="legacy-mdi-toolbar" aria-label="Barra de herramientas legacy"><button type="button" className="nav-tool" title="Mover al inicio" onClick={onFirst}>|&lt;</button><button type="button" className="nav-tool" title="Subir" onClick={onPrevious}>&lt;</button><button type="button" className="nav-tool" title="Bajar" onClick={onNext}>&gt;</button><button type="button" className="nav-tool" title="Mover al final" onClick={onLast}>&gt;|</button><span className="mdi-toolbar-separator" /><button type="button" title="Nuevo" onClick={onNew}><Plus size={15} /></button><button type="button" title="Editar" onClick={onEdit}><Pencil size={15} /></button><button type="button" className="danger-tool" title="Eliminar" onClick={onDelete}><Trash2 size={15} /></button><button type="button" title="Refrescar" onClick={onRefresh}><RefreshCw size={15} /></button>{extra && <span className="mdi-toolbar-extra">{extra}</span>}</div>;
+  return <div className="legacy-mdi-toolbar" aria-label="Barra de herramientas legacy" onMouseDown={stopToolbarEvent} onClick={stopToolbarEvent}><button type="button" className="nav-tool" title="Mover al inicio" onClick={runToolbarAction(onFirst)}>|&lt;</button><button type="button" className="nav-tool" title="Subir" onClick={runToolbarAction(onPrevious)}>&lt;</button><button type="button" className="nav-tool" title="Bajar" onClick={runToolbarAction(onNext)}>&gt;</button><button type="button" className="nav-tool" title="Mover al final" onClick={runToolbarAction(onLast)}>&gt;|</button><span className="mdi-toolbar-separator" /><button type="button" title="Nuevo" onClick={runToolbarAction(onNew)}><Plus size={15} /></button><button type="button" title="Editar" onClick={runToolbarAction(onEdit)}><Pencil size={15} /></button><button type="button" className="danger-tool" title="Eliminar" onClick={runToolbarAction(onDelete)}><Trash2 size={15} /></button><button type="button" title="Refrescar" onClick={runToolbarAction(onRefresh)}><RefreshCw size={15} /></button>{extra && <span className="mdi-toolbar-extra">{extra}</span>}</div>;
 }
+
 function LegacyCheck({ checked = true }: Readonly<{ checked?: boolean }>) { return <input type="checkbox" checked={checked} readOnly aria-label={checked ? "Activo" : "Inactivo"} />; }
 function LegacyDenseTable({ columns, rows }: Readonly<{ columns: readonly string[]; rows: readonly ReactNode[][] }>) {
   return (
@@ -597,6 +614,8 @@ function LegacyDenseTable({ columns, rows }: Readonly<{ columns: readonly string
 function LegacySidePanel({ children }: Readonly<{ children: ReactNode }>) { return <aside className="legacy-mdi-side-panel">{children}</aside>; }
 
 function LegacyDialog({ title, onClose, children, className = "" }: Readonly<{ title: string; onClose: () => void; children: ReactNode; className?: string }>) {
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [drag, setDrag] = useState<null | { startX: number; startY: number; x: number; y: number }>(null);
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
@@ -604,12 +623,27 @@ function LegacyDialog({ title, onClose, children, className = "" }: Readonly<{ t
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
   }, [onClose]);
+  useEffect(() => {
+    if (!drag) return;
+    const onMouseMove = (event: MouseEvent) => setOffset({ x: drag.x + event.clientX - drag.startX, y: drag.y + event.clientY - drag.startY });
+    const onMouseUp = () => setDrag(null);
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp, { once: true });
+    return () => { document.removeEventListener("mousemove", onMouseMove); document.removeEventListener("mouseup", onMouseUp); };
+  }, [drag]);
+  const startDialogDrag = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    if ((event.target as HTMLElement).closest("button,input,select,textarea,a")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setDrag({ startX: event.clientX, startY: event.clientY, x: offset.x, y: offset.y });
+  };
   return createPortal(
     <div className="legacy-dialog-overlay" role="presentation">
-      <section className={`legacy-dialog ${className}`} role="dialog" aria-modal="true" aria-label={title}>
-        <div className="legacy-dialog-titlebar">
+      <section className={`legacy-dialog ${className}`} style={{ transform: `translate(${offset.x}px, ${offset.y}px)` }} role="dialog" aria-modal="true" aria-label={title}>
+        <div className="legacy-dialog-titlebar" onMouseDown={startDialogDrag}>
           <span>{title}</span>
-          <button type="button" aria-label={`Cerrar ${title}`} onClick={onClose}>X</button>
+          <button type="button" aria-label={`Cerrar ${title}`} onMouseDown={(event) => event.stopPropagation()} onClick={onClose}>X</button>
         </div>
         <div className="legacy-dialog-body">{children}</div>
       </section>
@@ -1074,6 +1108,333 @@ function PcpStationDialog({ station, onClose, onSave }: Readonly<{ station?: Pcp
   );
 }
 
+type DelayReasonRecord = {
+  id: string;
+  reason: string;
+  active: boolean;
+};
+
+const defaultDelayReasons = (): DelayReasonRecord[] => [
+  { id: "delay-local-closed", reason: "Local cerrado", active: true },
+  { id: "delay-client-absent", reason: "Cliente ausente", active: true },
+  { id: "delay-promise", reason: "Promesa de pago", active: true },
+  { id: "delay-no-cash", reason: "Sin efectivo disponible", active: true },
+];
+
+function DelayReasonValueDialog({ reason, onClose, onSave }: Readonly<{ reason?: DelayReasonRecord; onClose: () => void; onSave: (value: string) => void }>) {
+  const [value, setValue] = useState(reason?.reason ?? "");
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (!value.trim()) return toast.error("El valor es requerido.");
+    onSave(value.trim());
+  };
+  return (
+    <LegacyDialog title="Entre un valor..." onClose={onClose} className="legacy-select-dialog">
+      <form className="legacy-dialog-form" onSubmit={submit}>
+        <label>Valor:<input type="text" autoFocus value={value} onChange={(event) => setValue(event.target.value)} /></label>
+        <div className="legacy-dialog-actions centered"><button type="submit">oK</button><button type="button" onClick={onClose}>Cancelar</button></div>
+      </form>
+    </LegacyDialog>
+  );
+}
+
+function DelayReasonsLegacyView(): ReactNode {
+  const [reasons, setReasons] = useState<DelayReasonRecord[]>(() => defaultDelayReasons());
+  const [selectedReasonId, setSelectedReasonId] = useState(reasons[0]?.id ?? "");
+  const [formMode, setFormMode] = useState<"new" | "edit" | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const selectedReason = reasons.find((reason) => reason.id === selectedReasonId) ?? reasons[0];
+  const moveSelectedReason = (direction: "first" | "up" | "down" | "last") => {
+    const currentIndex = reasons.findIndex((reason) => reason.id === selectedReasonId);
+    if (currentIndex < 0) return toast.info("Seleccione un motivo.");
+    const targetIndexByDirection = {
+      first: 0,
+      up: Math.max(0, currentIndex - 1),
+      down: Math.min(reasons.length - 1, currentIndex + 1),
+      last: reasons.length - 1,
+    } satisfies Record<typeof direction, number>;
+    const targetIndex = targetIndexByDirection[direction];
+    if (targetIndex === currentIndex) return toast.info("El motivo ya está en esa posición.");
+    setReasons((current) => {
+      const reordered = [...current];
+      const [selected] = reordered.splice(currentIndex, 1);
+      reordered.splice(targetIndex, 0, selected);
+      return reordered;
+    });
+  };
+  const refreshReasons = () => {
+    const reloaded = defaultDelayReasons();
+    setReasons(reloaded);
+    setSelectedReasonId(reloaded[0]?.id ?? "");
+    toast.success("Motivos recargados");
+  };
+  const saveReason = (value: string) => {
+    if (formMode === "edit" && selectedReason) {
+      setReasons((current) => current.map((reason) => reason.id === selectedReason.id ? { ...reason, reason: value } : reason));
+      toast.success("Motivo actualizado");
+    } else {
+      const next = { id: `delay-local-${Date.now()}`, reason: value, active: true };
+      setReasons((current) => [...current, next]);
+      setSelectedReasonId(next.id);
+      toast.success("Motivo creado");
+    }
+    setFormMode(null);
+  };
+  const deleteReason = () => {
+    if (!selectedReason) return;
+    setReasons((current) => current.filter((reason) => reason.id !== selectedReason.id));
+    setSelectedReasonId("");
+    setConfirmDelete(false);
+    toast.success("Motivo eliminado");
+  };
+  return (
+    <div className="legacy-mdi-view">
+      <LegacyToolbar onFirst={() => moveSelectedReason("first")} onPrevious={() => moveSelectedReason("up")} onNext={() => moveSelectedReason("down")} onLast={() => moveSelectedReason("last")} onNew={() => setFormMode("new")} onEdit={() => selectedReason ? setFormMode("edit") : toast.info("Seleccione un motivo.")} onDelete={() => selectedReason ? setConfirmDelete(true) : toast.info("Seleccione un motivo.")} onRefresh={refreshReasons} />
+      <div className="legacy-mdi-table-wrap">
+        <table className="legacy-mdi-table delay-reasons-grid">
+          <thead><tr><th>Nro.</th><th>Motivo</th><th>Activo</th></tr></thead>
+          <tbody>
+            {reasons.map((reason, index) => {
+              const isSelected = selectedReasonId === reason.id;
+              return (
+                <tr key={reason.id} className={isSelected ? "selected-row" : ""} role="button" tabIndex={0} onClick={() => setSelectedReasonId(reason.id)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedReasonId(reason.id))}>
+                  <td><span className={`mdi-row-select ${isSelected ? "selected" : ""}`}>{index + 1}</span></td>
+                  <td>{reason.reason}</td>
+                  <td><LegacyCheck checked={reason.active} /></td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {formMode && <DelayReasonValueDialog reason={formMode === "edit" ? selectedReason : undefined} onClose={() => setFormMode(null)} onSave={saveReason} />}
+      {confirmDelete && <LegacyConfirmDialog message="¿Realmente desea borrar los datos?" onYes={deleteReason} onNo={() => setConfirmDelete(false)} />}
+    </div>
+  );
+}
+
+type PcpRecord = {
+  id: string;
+  number: string;
+  pcp: string;
+  clientName: string;
+  group: string;
+  route: string;
+  address: string;
+  phone: string;
+  active: boolean;
+};
+
+type PcpDraft = Omit<PcpRecord, "id" | "active"> & { active: boolean };
+
+function buildDefaultPcps(snapshot: Snapshot, routeName: (routeId: string) => string): PcpRecord[] {
+  return snapshot.clients.map((client, index) => ({
+    id: `pcp-${client.id}`,
+    number: String(index + 1),
+    pcp: `PCP-${client.code}`,
+    clientName: client.name,
+    group: index % 2 ? "df" : "Grupo Principal",
+    route: routeName(client.routeId),
+    address: client.address ?? "",
+    phone: client.phone ?? "",
+    active: true,
+  }));
+}
+
+function emptyPcpDraft(): PcpDraft {
+  return { number: "", pcp: "", clientName: "", group: "Grupo Principal", route: "Ruta Centro", address: "", phone: "", active: true };
+}
+
+function pcpToDraft(pcp: PcpRecord): PcpDraft {
+  return { number: pcp.number, pcp: pcp.pcp, clientName: pcp.clientName, group: pcp.group, route: pcp.route, address: pcp.address, phone: pcp.phone, active: pcp.active };
+}
+
+function PcpDataDialog({ pcp, onClose, onSave }: Readonly<{ pcp?: PcpRecord; routes: readonly string[]; onClose: () => void; onSave: (draft: PcpDraft) => void }>) {
+  const [draft, setDraft] = useState<PcpDraft>(() => pcp ? pcpToDraft(pcp) : emptyPcpDraft());
+  const [validationMessage, setValidationMessage] = useState("");
+  const update = (field: keyof PcpDraft, value: string | boolean) => setDraft((current) => ({ ...current, [field]: value }));
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (!draft.number.trim()) {
+      setValidationMessage("El campo 'Número' no puede estar vacío");
+      return;
+    }
+    onSave({ ...draft, clientName: draft.clientName || draft.pcp });
+  };
+  return (
+    <LegacyDialog title="Datos del Punto de Cobro y Pago..." onClose={onClose} className="pcp-data-dialog">
+      <form className="legacy-dialog-form pcp-data-form legacy-pcp-form" onSubmit={submit}>
+        <div className="pcp-form-row pcp-code-row">
+          <span className="pcp-form-label">PCP:</span>
+          <input className="pcp-code-input" autoFocus value={draft.number} onChange={(event) => update("number", event.target.value)} />
+          <input className="pcp-name-input" value={draft.pcp} onChange={(event) => { update("pcp", event.target.value); update("clientName", event.target.value); }} />
+        </div>
+        <label className="pcp-form-row">
+          <span className="pcp-form-label">Grupo:</span>
+          <select value={draft.group} onChange={(event) => update("group", event.target.value)}><option>Grupo Principal</option><option>df</option><option>GRUPO MAYITO</option></select>
+        </label>
+        <label className="pcp-form-row">
+          <span className="pcp-form-label">Dir.:</span>
+          <input type="text" value={draft.address} onChange={(event) => update("address", event.target.value)} />
+        </label>
+        <label className="pcp-form-row pcp-phone-row">
+          <span className="pcp-form-label">Telef.:</span>
+          <input type="text" value={draft.phone} onChange={(event) => update("phone", event.target.value)} />
+        </label>
+        <div className="legacy-dialog-actions centered pcp-form-actions"><button type="submit">oK</button><button type="button" onClick={onClose}>Cancelar</button></div>
+      </form>
+      {validationMessage && <LegacyAlertDialog message={validationMessage} onClose={() => setValidationMessage("")} />}
+    </LegacyDialog>
+  );
+}
+
+function PcpStationSelectDialog({ assignedStationIds, onClose, onSelect }: Readonly<{ assignedStationIds: readonly string[]; onClose: () => void; onSelect: (station: PcpStationRecord) => void }>) {
+  const availableStations = defaultPcpStations().filter((station) => !assignedStationIds.includes(station.id));
+  const [selectedStationId, setSelectedStationId] = useState(availableStations[0]?.id ?? "");
+  const selectedStation = availableStations.find((station) => station.id === selectedStationId);
+  return (
+    <LegacyDialog title="Seleccionar..." onClose={onClose} className="legacy-select-dialog">
+      <div className="legacy-dialog-form">
+        <label>Seleccione:<select autoFocus value={selectedStationId} onChange={(event) => setSelectedStationId(event.target.value)}>{availableStations.map((station) => <option key={station.id} value={station.id}>{station.station}</option>)}</select></label>
+        <div className="legacy-dialog-actions centered"><button type="button" disabled={!selectedStation} onClick={() => selectedStation && onSelect(selectedStation)}>oK</button><button type="button" onClick={onClose}>Cancelar</button></div>
+      </div>
+    </LegacyDialog>
+  );
+}
+
+function PcpStationsDialog({ pcp, onClose }: Readonly<{ pcp?: PcpRecord; onClose: () => void }>) {
+  const [stations, setStations] = useState<PcpStationRecord[]>(() => defaultPcpStations().slice(0, 1));
+  const [selectedStationId, setSelectedStationId] = useState(stations[0]?.id ?? "");
+  const [adding, setAdding] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const addStation = (station: PcpStationRecord) => {
+    setStations((current) => [...current, station]);
+    setSelectedStationId(station.id);
+    setAdding(false);
+    toast.success("Estación agregada al PCP");
+  };
+  const deleteStation = () => {
+    setStations((current) => current.filter((station) => station.id !== selectedStationId));
+    setSelectedStationId("");
+    setConfirmDelete(false);
+    toast.success("Estación eliminada del PCP");
+  };
+  return (
+    <LegacyDialog title="Estaciones del PCP..." onClose={onClose} className="pcp-stations-dialog">
+      <div className="legacy-relation-manager">
+        <div className="legacy-relation-toolbar"><button type="button" onClick={() => defaultPcpStations().some((station) => !stations.some((current) => current.id === station.id)) ? setAdding(true) : toast.info("No hay estaciones disponibles.")}>Agregar</button><button type="button" disabled={!selectedStationId} onClick={() => setConfirmDelete(true)}>Eliminar</button></div>
+        <LegacyDenseTable columns={["Nro", "Estación", "idDispositivo", "Activa"]} rows={stations.map((station, index) => [<button type="button" className={`mdi-row-select ${selectedStationId === station.id ? "selected" : ""}`} onClick={() => setSelectedStationId(station.id)}>{index + 1}</button>, station.station, station.deviceId, <LegacyCheck checked={station.active} />])} />
+        <div className="legacy-relation-footer"><span className="pcp-stations-owner">{pcp?.pcp ?? "PCP"}</span><button type="button" onClick={onClose}>Cerrar</button></div>
+      </div>
+      {adding && <PcpStationSelectDialog assignedStationIds={stations.map((station) => station.id)} onClose={() => setAdding(false)} onSelect={addStation} />}
+      {confirmDelete && <LegacyConfirmDialog message="¿Realmente desea borrar los datos?" onYes={deleteStation} onNo={() => setConfirmDelete(false)} />}
+    </LegacyDialog>
+  );
+}
+
+function PcpToolbar({ filtersVisible, selectedPcp, onToggleFilters, onFirst, onPrevious, onNext, onLast, onNew, onEdit, onDelete, onRefresh, onStations }: Readonly<{ filtersVisible: boolean; selectedPcp?: PcpRecord; onToggleFilters: () => void; onFirst: () => void; onPrevious: () => void; onNext: () => void; onLast: () => void; onNew: () => void; onEdit: () => void; onDelete: () => void; onRefresh: () => void; onStations: () => void }>) {
+  const action = (handler: () => void) => (event: ReactMouseEvent<HTMLButtonElement>) => { event.stopPropagation(); handler(); };
+  return (
+    <div className="legacy-mdi-toolbar pcp-toolbar" aria-label="Barra de herramientas de PCP" onMouseDown={stopToolbarEvent} onClick={stopToolbarEvent}>
+      <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" onClick={action(onToggleFilters)}><KeyRound size={15} /></button>
+      <button type="button" className="nav-tool" title="Mover al inicio" onClick={action(onFirst)}>|&lt;</button>
+      <button type="button" className="nav-tool" title="Subir" onClick={action(onPrevious)}>&lt;</button>
+      <button type="button" className="nav-tool" title="Bajar" onClick={action(onNext)}>&gt;</button>
+      <button type="button" className="nav-tool" title="Mover al final" onClick={action(onLast)}>&gt;|</button>
+      <span className="mdi-toolbar-separator" />
+      <button type="button" title="Nuevo" onClick={action(onNew)}><Plus size={15} /></button>
+      <button type="button" title="Editar" onClick={action(onEdit)}><Pencil size={15} /></button>
+      <button type="button" className="danger-tool" title="Eliminar" onClick={action(onDelete)}><Trash2 size={15} /></button>
+      <button type="button" title="Refrescar" onClick={action(onRefresh)}><RefreshCw size={15} /></button>
+      <button type="button" className="pcp-stations-button" title="Estaciones del PCP" disabled={!selectedPcp} onClick={action(onStations)}><Building2 size={15} /><span>Estaciones</span></button>
+    </div>
+  );
+}
+
+function PcpsLegacyView({ snapshot, routeName, onRefresh }: Readonly<{ snapshot: Snapshot; routeName: (routeId: string) => string; onRefresh: () => void }>): ReactNode {
+  const routeOptions = Array.from(new Set(snapshot.routes.map((route) => routeName(route.id))));
+  const defaultRows = () => buildDefaultPcps(snapshot, routeName);
+  const [pcps, setPcps] = useState<PcpRecord[]>(defaultRows);
+  const [selectedPcpId, setSelectedPcpId] = useState(pcps[0]?.id ?? "");
+  const [filterMode, setFilterMode] = useState<"all" | "group">("all");
+  const [group, setGroup] = useState("Grupo Principal");
+  const [filtersVisible, setFiltersVisible] = useState(true);
+  const [formMode, setFormMode] = useState<"new" | "edit" | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [stationsOpen, setStationsOpen] = useState(false);
+  const selectedPcp = pcps.find((pcp) => pcp.id === selectedPcpId) ?? pcps[0];
+  const rows = pcps.filter((row) => filterMode === "all" || row.group === group);
+  const moveSelectedPcp = (direction: "first" | "up" | "down" | "last") => {
+    const currentIndex = pcps.findIndex((pcp) => pcp.id === selectedPcpId);
+    if (currentIndex < 0) return toast.info("Seleccione un PCP.");
+    const targetIndexByDirection = { first: 0, up: Math.max(0, currentIndex - 1), down: Math.min(pcps.length - 1, currentIndex + 1), last: pcps.length - 1 } satisfies Record<typeof direction, number>;
+    const targetIndex = targetIndexByDirection[direction];
+    if (targetIndex === currentIndex) return toast.info("El PCP ya está en esa posición.");
+    setPcps((current) => {
+      const reordered = [...current];
+      const [selected] = reordered.splice(currentIndex, 1);
+      reordered.splice(targetIndex, 0, selected);
+      return reordered;
+    });
+  };
+  const refreshPcps = () => {
+    const reloaded = defaultRows();
+    setPcps(reloaded);
+    setSelectedPcpId(reloaded[0]?.id ?? "");
+    setFilterMode("all");
+    setGroup("Grupo Principal");
+    onRefresh();
+    toast.success("PCPs recargados");
+  };
+  const savePcp = (draft: PcpDraft) => {
+    if (formMode === "edit" && selectedPcp) {
+      setPcps((current) => current.map((pcp) => pcp.id === selectedPcp.id ? { ...pcp, ...draft } : pcp));
+      toast.success("PCP actualizado");
+    } else {
+      const next = { id: `pcp-local-${Date.now()}`, ...draft };
+      setPcps((current) => [...current, next]);
+      setSelectedPcpId(next.id);
+      toast.success("PCP creado");
+    }
+    setFormMode(null);
+  };
+  const deletePcp = () => {
+    if (!selectedPcp) return;
+    setPcps((current) => current.filter((pcp) => pcp.id !== selectedPcp.id));
+    setSelectedPcpId("");
+    setConfirmDelete(false);
+    toast.success("PCP eliminado");
+  };
+  return (
+    <div className="pcp-mdi-view">
+      <PcpToolbar filtersVisible={filtersVisible} selectedPcp={selectedPcp} onToggleFilters={() => setFiltersVisible((visible) => !visible)} onFirst={() => moveSelectedPcp("first")} onPrevious={() => moveSelectedPcp("up")} onNext={() => moveSelectedPcp("down")} onLast={() => moveSelectedPcp("last")} onNew={() => setFormMode("new")} onEdit={() => selectedPcp ? setFormMode("edit") : toast.info("Seleccione un PCP.")} onDelete={() => selectedPcp ? setConfirmDelete(true) : toast.info("Seleccione un PCP.")} onRefresh={refreshPcps} onStations={() => selectedPcp ? setStationsOpen(true) : toast.info("Seleccione un PCP.")} />
+      <div className="pcp-workspace">
+        {filtersVisible && (
+          <aside className="pcp-filter-panel" aria-label="Filtros de PCP">
+            <label className="pcp-radio-line"><input type="radio" name="pcp-filter" checked={filterMode === "all"} onChange={() => setFilterMode("all")} /> <span>Todos</span></label>
+            <label className="pcp-radio-line"><input type="radio" name="pcp-filter" checked={filterMode === "group"} onChange={() => setFilterMode("group")} /> <span>del Grupo:</span></label>
+            <select value={group} onChange={(event) => { setGroup(event.target.value); setFilterMode("group"); }}><option>Grupo Principal</option><option>df</option><option>GRUPO MAYITO</option></select>
+          </aside>
+        )}
+        <div className="pcp-grid-panel">
+          <div className="legacy-mdi-table-wrap">
+            <table className="legacy-mdi-table pcp-grid">
+              <thead><tr><th>Nro.</th><th>PCP</th><th>Cliente</th><th>Grupo</th><th>Ruta</th><th>Activo</th></tr></thead>
+              <tbody>{rows.map((row) => {
+                const isSelected = selectedPcpId === row.id;
+                return <tr key={row.id} className={isSelected ? "selected-row" : ""} role="button" tabIndex={0} onClick={() => setSelectedPcpId(row.id)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedPcpId(row.id))}><td><span className={`mdi-row-select ${isSelected ? "selected" : ""}`}>{row.number}</span></td><td>{row.pcp}</td><td>{row.clientName}</td><td>{row.group}</td><td>{row.route}</td><td><LegacyCheck checked={row.active} /></td></tr>;
+              })}</tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      {formMode && <PcpDataDialog pcp={formMode === "edit" ? selectedPcp : undefined} routes={routeOptions.length ? routeOptions : ["Ruta Centro"]} onClose={() => setFormMode(null)} onSave={savePcp} />}
+      {confirmDelete && <LegacyConfirmDialog message="¿Realmente desea borrar los datos?" onYes={deletePcp} onNo={() => setConfirmDelete(false)} />}
+      {stationsOpen && <PcpStationsDialog pcp={selectedPcp} onClose={() => setStationsOpen(false)} />}
+    </div>
+  );
+}
+
 type PcpGroupRecord = {
   id: string;
   name: string;
@@ -1336,11 +1697,11 @@ function LegacyCodifierView({ page, snapshot, onRefresh, onAccount }: Readonly<{
   if (page === "collectors") return <CollectorsLegacyView snapshot={snapshot} onRefresh={onRefresh} />;
   if (page === "stations") return <StationsLegacyView />;
   if (page === "groups") return <PcpGroupsLegacyView />;
-  if (page === "delayReasons") return <div className="legacy-mdi-view">{baseToolbar()}<LegacyDenseTable columns={["Nro.", "Motivo", "Activo"]} rows={[["1", "Local cerrado", <LegacyCheck />], ["2", "Cliente ausente", <LegacyCheck />], ["3", "Promesa de pago", <LegacyCheck />], ["4", "Sin efectivo disponible", <LegacyCheck />]]} /></div>;
+  if (page === "delayReasons") return <DelayReasonsLegacyView />;
   if (page === "routes") return <div className="legacy-mdi-view">{baseToolbar()}<LegacyDenseTable columns={["Nro.", "Ruta", "Desde", "Hasta", "Activo"]} rows={snapshot.routes.map((route, index) => [index + 1, route.name, "001", "999", <LegacyCheck />])} /></div>;
   if (page === "servicesProducts") return <div className="legacy-mdi-view">{baseToolbar()}<LegacyDenseTable columns={["Nro.", "Servicio", "Abrev", "Caption", "Ob. Cob.", "Activo"]} rows={services.map((service, index) => [index + 1, service, abbreviation(service), service, <LegacyCheck checked={index === 0} />, <LegacyCheck />])} /></div>;
   if (page === "exchangeRates") return <div className="legacy-mdi-view">{baseToolbar()}<LegacyDenseTable columns={["Fecha", "Moneda", "Abrev", "Compra", "Venta"]} rows={[["18/09/2026", "Peso Dominicano", "DOP", "1.00", "1.00"], ["18/09/2026", "Dolar Estadounidense", "USD", "59.20", "60.15"], ["18/09/2026", "Euro", "EUR", "64.30", "65.80"]]} /></div>;
-  if (page === "pcps") return <div className="legacy-mdi-split-view"><LegacySidePanel><LegacyToolbar onRefresh={onRefresh} /><label><input type="radio" name="pcp-filter" defaultChecked /> Todos</label><label><input type="radio" name="pcp-filter" /> del Grupo</label><label>Grupo<select defaultValue="Grupo Principal"><option>Grupo Principal</option><option>df</option><option>GRUPO MAYITO</option></select></label></LegacySidePanel><LegacyDenseTable columns={["Nro.", "PCP", "Cliente", "Grupo", "Ruta", "Activo"]} rows={snapshot.clients.map((client, index) => [index + 1, `PCP-${client.code}`, client.name, index % 2 ? "df" : "Grupo Principal", routeName(client.routeId), <LegacyCheck />])} /></div>;
+  if (page === "pcps") return <PcpsLegacyView snapshot={snapshot} routeName={routeName} onRefresh={onRefresh} />;
   if (page === "sessions") return <div className="legacy-mdi-split-view"><LegacySidePanel><div className="legacy-vertical-toolbar"><button>Filtro</button><button>|&lt;</button><button>&lt;</button><button>&gt;</button><button>X</button><button>Ref.</button></div><label><input type="radio" name="session-filter" defaultChecked /> Todas</label><label><input type="radio" name="session-filter" /> del Usuario</label><label>Usuario<select><option>admin@cyp.local</option><option>collector@cyp.local</option></select></label><label>Fecha inicial<input type="date" defaultValue="2026-09-18" /></label><label>Fecha final<input type="date" defaultValue="2026-09-18" /></label><label><input type="checkbox" defaultChecked /> Activa</label></LegacySidePanel><LegacyDenseTable columns={["Nro.", "Usuario", "Estacion", "Inicio", "Estado"]} rows={snapshot.accounts.map((account, index) => [index + 1, account.email, account.role === "admin" ? "ADM001" : "ECP001", "18/09/2026 08:00", account.status === "active" ? "Activa" : "Cerrada"])} /></div>;
   if (page === "traces") return <div className="legacy-mdi-split-view traces-layout"><LegacySidePanel><div className="legacy-vertical-toolbar"><button>Filtro</button><button>|&lt;</button><button>&lt;</button><button>&gt;</button><button>X</button><button>Ref.</button></div><label>Fecha Inicial<input type="datetime-local" defaultValue="2026-09-18T00:00" /></label><label>Fecha final<input type="datetime-local" defaultValue="2026-09-18T23:59" /></label><label>Buscar<input placeholder="Digite texto..." /></label></LegacySidePanel><div className="legacy-mdi-table-with-footer"><LegacyDenseTable columns={["Nro.", "Fecha", "Traza"]} rows={[[1, "18/09/2026 08:00", "Inicio de sesion administrativa"], [2, "18/09/2026 08:04", "Consulta de cobradores"], [3, "18/09/2026 08:15", "Apertura de Panel de Control"]]} /><div className="legacy-mdi-pager"><button>|&lt;</button><button>&lt;</button><span>Pagina 1 de 1</span><button>&gt;</button><button>&gt;|</button></div></div></div>;
   if (page === "users") return <div className="legacy-mdi-view">{baseToolbar(<button type="button" onClick={() => onAccount({ type: "create" })}>Nueva cuenta</button>)}<LegacyDenseTable columns={["Usuario", "Cuenta", "Rol", "Act."]} rows={snapshot.accounts.map((account) => [account.name, account.email, account.role === "admin" ? "Administracion" : "Cobrador", <LegacyCheck checked={account.status === "active"} />])} /></div>;
@@ -5877,6 +6238,7 @@ function Movements({ snapshot }: Readonly<{ snapshot: Snapshot }>) {
     </>
   );
 }
+
 
 
 

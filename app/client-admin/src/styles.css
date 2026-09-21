@@ -7020,3 +7020,236 @@ table {
   outline: 2px solid #059669;
   outline-offset: -2px;
 }
+
+.delay-reasons-grid tbody tr {
+  cursor: pointer;
+}
+
+.delay-reasons-grid tbody tr:hover td,
+.delay-reasons-grid tbody tr:focus-visible td,
+.delay-reasons-grid tbody tr.selected-row td {
+  background: #ecfdf5;
+}
+
+.delay-reasons-grid tbody tr:focus-visible {
+  outline: 2px solid #059669;
+  outline-offset: -2px;
+}
+
+.pcp-mdi-view {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pcp-workspace {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+  border: 1px solid #c8c2ad;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.pcp-filter-panel {
+  width: 250px;
+  flex: 0 0 250px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 12px 10px;
+  border-right: 1px solid #b9b29d;
+  background: #eee9dc;
+  color: #1f2937;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pcp-filter-panel .pcp-radio-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 20px;
+  margin: 0;
+  color: #1f2937;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.pcp-filter-panel input[type="radio"] {
+  width: auto;
+  height: auto;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: initial;
+  border-radius: 50%;
+  accent-color: #047857;
+  transform: none;
+}
+
+.pcp-filter-panel select {
+  width: 100%;
+  height: 26px;
+  border: 1px solid #9ca3af;
+  border-radius: 3px;
+  padding: 0 6px;
+  background: #ffffff;
+  color: #111827;
+  font-size: 12px;
+}
+
+.pcp-grid-panel {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.pcp-grid-panel .legacy-mdi-table-wrap {
+  flex: 1;
+  min-height: 0;
+  border: 0;
+}
+
+.legacy-dialog-titlebar {
+  cursor: move;
+}
+
+.legacy-dialog-overlay {
+  pointer-events: auto;
+}
+
+.pcp-mdi-view .pcp-toolbar {
+  flex: 0 0 auto;
+  width: 100%;
+}
+
+.pcp-toolbar .pcp-stations-button {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 96px;
+  white-space: nowrap;
+}
+
+.pcp-toolbar .nav-tool.active {
+  border-color: #047857;
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.pcp-workspace {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+.pcp-filter-panel {
+  border-right-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+.pcp-grid tbody tr {
+  cursor: pointer;
+}
+
+.pcp-grid tbody tr:hover td,
+.pcp-grid tbody tr:focus-visible td,
+.pcp-grid tbody tr.selected-row td {
+  background: #ecfdf5;
+}
+
+.pcp-grid tbody tr:focus-visible {
+  outline: 2px solid #059669;
+  outline-offset: -2px;
+}
+
+.pcp-data-dialog {
+  width: min(520px, calc(100vw - 48px));
+}
+
+.pcp-data-form {
+  gap: 8px;
+}
+
+.pcp-stations-dialog {
+  width: min(680px, calc(100vw - 48px));
+  height: min(430px, calc(100vh - 64px));
+}
+
+.pcp-stations-dialog .legacy-dialog-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.pcp-stations-owner {
+  margin-right: auto;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.legacy-pcp-form {
+  gap: 9px;
+}
+
+.pcp-form-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  color: #111827;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.pcp-form-label {
+  width: 48px;
+  flex: 0 0 48px;
+  text-align: right;
+  color: #111827;
+}
+
+.pcp-form-row input,
+.pcp-form-row select {
+  height: 27px;
+  min-width: 0;
+  border: 1px solid #9ca3af;
+  border-radius: 3px;
+  padding: 0 7px;
+  background: #ffffff;
+  color: #111827;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.pcp-form-row select,
+.pcp-form-row > input:not(.pcp-code-input) {
+  flex: 1;
+}
+
+.pcp-code-input {
+  width: 80px;
+  flex: 0 0 80px;
+}
+
+.pcp-name-input {
+  flex: 1;
+}
+
+.pcp-phone-row input {
+  max-width: 180px;
+  flex: 0 0 180px;
+}
+
+.pcp-form-actions {
+  margin-top: 6px;
+  justify-content: center;
+}
