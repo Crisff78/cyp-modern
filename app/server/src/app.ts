@@ -56,18 +56,49 @@ const chargeBody = z
   .object({
     clientId: id,
     service: text,
+    concept: z.string().trim().max(160).default(""),
+    currency: z.string().trim().min(1).max(40).default("Peso Dominicano"),
+    note: z.string().trim().max(2000).default(""),
     amount: money,
     dueDate: date,
     required: z.boolean().default(false),
   })
   .strict();
-const batchBody = chargeBody
-  .omit({ clientId: true })
-  .extend({ clientIds: z.array(id).min(1).max(100) });
+const batchBody = z.object({
+  service: text,
+  amount: money,
+  dueDate: date,
+  required: z.boolean().default(false),
+  clientIds: z.array(id).min(1).max(100),
+}).strict();
 const payoutBody = z
   .object({ clientId: id, collectorId: id, concept: text, amount: money })
   .strict();
 const transferBody = z.object({ collectorId: id, amount: money }).strict();
+const clientBody = z.object({
+  name: text,
+  code: z.string().trim().min(1).max(80),
+  phone: z.string().trim().max(40).default(""),
+  address: z.string().trim().max(240).default(""),
+  routeId: id,
+  alias: z.string().trim().max(160).default(""),
+  sector: z.string().trim().max(160).default(""),
+  cellular: z.string().trim().max(40).default(""),
+  email: z.string().trim().max(200).default(""),
+  note: z.string().trim().max(2000).default(""),
+  identification: z.string().trim().max(80).default(""),
+  lat: z.number().min(-90).max(90).optional(),
+  lng: z.number().min(-180).max(180).optional(),
+}).strict().refine((body) => (body.lat === undefined) === (body.lng === undefined), {
+  message: "Latitud y longitud deben enviarse juntas.",
+});
+const clientMachineBody = z.object({
+  number: z.number().int().positive(),
+  entry: z.string().trim().max(100).default(""),
+  exit: z.string().trim().max(100).default(""),
+  value: z.number().min(0).max(1_000_000_000),
+  percentage: z.number().min(0).max(100),
+}).strict();
 const loginBody = z
   .object({
     email: z.string().trim().min(1).max(200),
@@ -650,6 +681,93 @@ export async function buildApp(config: Config) {
     );
     describe("get", path, `Consultar ${type}`);
   }
+  mutate("/api/clientes", "Crear cliente", clientBody, (s, u, b) => {
+    assertAdmin(u);
+    if (!s.routes.some((route) => route.id === b.routeId))
+      throw new DomainError("ROUTE_NOT_FOUND", "Selecciona una ruta válida.", 404);
+    if (s.clients.some((client) => client.code === b.code))
+      throw new DomainError("CLIENT_CODE_EXISTS", "El código de cliente ya existe.", 409);
+    const client = { id: randomUUID(), ...b };
+    s.clients.push(client);
+    return client;
+  });
+  mutate<{ name: string; code: string; phone: string; address: string; routeId: string; alias: string; sector: string; cellular: string; email: string; note: string; identification: string; lat?: number; lng?: number }, { id: string }>(
+    "/api/clientes/:id",
+    "Actualizar cliente",
+    clientBody,
+    (s, u, b, params) => {
+      assertAdmin(u);
+      const current = s.clients.find((client) => client.id === params.id);
+      if (!current) throw new DomainError("CLIENT_NOT_FOUND", "Cliente no encontrado.", 404);
+      if (!s.routes.some((route) => route.id === b.routeId))
+        throw new DomainError("ROUTE_NOT_FOUND", "Selecciona una ruta válida.", 404);
+      if (s.clients.some((client) => client.id !== params.id && client.code === b.code))
+        throw new DomainError("CLIENT_CODE_EXISTS", "El código de cliente ya existe.", 409);
+      Object.assign(current, b);
+      return current;
+    },
+  );
+  app.get<{ Params: { id: string } }>("/api/clientes/:id/tragamonedas", async (req) => {
+    assertAdmin(user(req));
+    const state = await config.store.read();
+    if (!state.clients.some((client) => client.id === req.params.id))
+      throw new DomainError("CLIENT_NOT_FOUND", "Cliente no encontrado.", 404);
+    return state.clientMachines.filter((machine) => machine.clientId === req.params.id);
+  });
+  describe("get", "/api/clientes/{id}/tragamonedas", "Máquinas tragamonedas del cliente");
+  mutate<{ number: number; entry: string; exit: string; value: number; percentage: number }, { id: string }>(
+    "/api/clientes/:id/tragamonedas",
+    "Crear máquina tragamonedas del cliente",
+    clientMachineBody,
+    (s, u, b, params) => {
+      assertAdmin(u);
+      if (!s.clients.some((client) => client.id === params.id))
+        throw new DomainError("CLIENT_NOT_FOUND", "Cliente no encontrado.", 404);
+      if (s.clientMachines.some((machine) => machine.clientId === params.id && machine.number === b.number))
+        throw new DomainError("MACHINE_NUMBER_EXISTS", "El número de máquina ya existe.", 409);
+      const registeredAt = new Date().toISOString();
+      const machine = { id: randomUUID(), clientId: params.id, ...b, registeredAt, updatedAt: registeredAt };
+      s.clientMachines.push(machine);
+      s.clientMachineLogs.push({
+        id: randomUUID(), clientId: params.id, machineId: machine.id, registeredAt,
+        previousEntry: "", entry: b.entry, entryDifference: b.entry,
+        previousExit: "", exit: b.exit, exitDifference: b.exit, difference: "",
+        currency: "DOP", amount: b.value, percentage: b.percentage, charge: 0,
+      });
+      return machine;
+    },
+  );
+  mutate<{ number: number; entry: string; exit: string; value: number; percentage: number }, { id: string; machineId: string }>(
+    "/api/clientes/:id/tragamonedas/:machineId",
+    "Actualizar máquina tragamonedas del cliente",
+    clientMachineBody,
+    (s, u, b, params) => {
+      assertAdmin(u);
+      const machine = s.clientMachines.find((item) => item.id === params.machineId && item.clientId === params.id);
+      if (!machine) throw new DomainError("MACHINE_NOT_FOUND", "Máquina tragamonedas no encontrada.", 404);
+      if (s.clientMachines.some((item) => item.id !== machine.id && item.clientId === params.id && item.number === b.number))
+        throw new DomainError("MACHINE_NUMBER_EXISTS", "El número de máquina ya existe.", 409);
+      const registeredAt = new Date().toISOString();
+      s.clientMachineLogs.push({
+        id: randomUUID(), clientId: params.id, machineId: machine.id, registeredAt,
+        previousEntry: machine.entry, entry: b.entry, entryDifference: String(Number(b.entry) - Number(machine.entry)),
+        previousExit: machine.exit, exit: b.exit, exitDifference: String(Number(b.exit) - Number(machine.exit)),
+        difference: String((Number(b.entry) - Number(machine.entry)) - (Number(b.exit) - Number(machine.exit))),
+        currency: "DOP", amount: b.value, percentage: b.percentage, charge: b.value * b.percentage / 100,
+        modifiedAt: registeredAt,
+      });
+      Object.assign(machine, b, { updatedAt: registeredAt });
+      return machine;
+    },
+  );
+  app.get<{ Params: { id: string } }>("/api/clientes/:id/tragamonedas/registros", async (req) => {
+    assertAdmin(user(req));
+    const state = await config.store.read();
+    if (!state.clients.some((client) => client.id === req.params.id))
+      throw new DomainError("CLIENT_NOT_FOUND", "Cliente no encontrado.", 404);
+    return state.clientMachineLogs.filter((log) => log.clientId === req.params.id);
+  });
+  describe("get", "/api/clientes/{id}/tragamonedas/registros", "Historial de máquinas tragamonedas del cliente");
   mutate("/api/cargos", "Crear cargo", chargeBody, (s, u, b) => {
     assertAdmin(u);
     collectorForClient(s, b.clientId);
@@ -660,6 +778,19 @@ export async function buildApp(config: Config) {
       status: "pending" as const,
     };
     s.charges.push(charge);
+    return charge;
+  });
+  mutate("/api/cargos/:id", "Modificar cargo sin cobros asociados", chargeBody, (s, u, b, params: { id: string }) => {
+    assertAdmin(u);
+    const charge = s.charges.find((item) => item.id === params.id);
+    if (!charge)
+      throw new DomainError("NOT_FOUND", "Cargo no encontrado.", 404);
+    if (charge.status === "cancelled")
+      throw new DomainError("CARGO_CANCELLED", "No se puede modificar un cargo cancelado.", 409);
+    if (charge.collected > 0 || s.movements.some((movement) => movement.type === "collection" && movement.chargeId === charge.id && !movement.cancelledAt))
+      throw new DomainError("CARGO_HAS_COLLECTIONS", "No se puede modificar un cargo que ya tiene cobros.", 409);
+    collectorForClient(s, b.clientId);
+    Object.assign(charge, b);
     return charge;
   });
   mutate(
@@ -1007,7 +1138,7 @@ export async function buildApp(config: Config) {
   ).parameters = [
     { in: "path", name: "token", required: true, schema: { type: "string" } },
   ];
-  const cancelBody = z.object({ id }).strict();
+  const cancelBody = z.object({ id, reason: z.string().trim().max(500).default("") }).strict();
   for (const [path, key] of [
     ["/api/cargos/cancelar", "charges"],
     ["/api/descargos/cancelar", "payouts"],
@@ -1028,6 +1159,7 @@ export async function buildApp(config: Config) {
             409,
           );
         item.status = "cancelled";
+        if ("collected" in item) item.cancelReason = b.reason;
         return item;
       },
     );

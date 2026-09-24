@@ -1,5 +1,7 @@
 import {
   enrichUserRole,
+  type ClientMachine,
+  type ClientMachineLog,
   type Balance,
   type Snapshot,
   type User,
@@ -380,6 +382,8 @@ const initialSnapshot = (): Snapshot => ({
 
 let mockSystemConfig: Record<string, string | number | boolean> = {};
 let state = derive(initialSnapshot());
+let clientMachines: ClientMachine[] = [];
+let clientMachineLogs: ClientMachineLog[] = [];
 
 function derive(snapshot: Snapshot): Snapshot {
   const collected = sum(snapshot.movements, "collection"),
@@ -548,6 +552,8 @@ function upsertAdminRecord(entity: string, body: Record<string, unknown>) {
       cellular: String(body.cellular ?? ""),
       email: String(body.email ?? ""),
       note: String(body.note ?? ""),
+      identification: String(body.identification ?? ""),
+      ...(Number.isFinite(Number(body.lat)) ? { lat: Number(body.lat), lng: Number(body.lng) } : {}),
     };
     const index = state.clients.findIndex((item) => item.id === id);
     if (index >= 0) state.clients[index] = record;
@@ -714,6 +720,68 @@ export async function mockApi<T>(
   }
   if (path === "/auth/me") return currentUser() as T;
   if (path === "/snapshot") return structuredClone(derive(state)) as T;
+  if (path === "/clientes" && method === "GET") {
+    currentUser();
+    return structuredClone(state.clients) as T;
+  }
+  if (path === "/clientes" && method === "POST") {
+    currentUser();
+    const body = jsonBody(options);
+    const id = String(body.id ?? uid("client"));
+    upsertAdminRecord("clients", { ...body, id });
+    return state.clients.find((client) => client.id === id) as T;
+  }
+  const clientUpdateMatch = path.match(/^\/clientes\/([^/]+)$/);
+  if (clientUpdateMatch && method === "POST") {
+    currentUser();
+    const clientId = decodeURIComponent(clientUpdateMatch[1]);
+    upsertAdminRecord("clients", { ...jsonBody(options), id: clientId });
+    const client = state.clients.find((item) => item.id === clientId);
+    if (!client) throw new MockApiError("Cliente no encontrado.", 404);
+    return client as T;
+  }
+  const clientMachinesMatch = path.match(/^\/clientes\/([^/]+)\/tragamonedas(?:\/([^/]+))?$/);
+  if (clientMachinesMatch && clientMachinesMatch[2] !== "registros") {
+    currentUser();
+    const clientId = decodeURIComponent(clientMachinesMatch[1]);
+    const machineId = clientMachinesMatch[2] ? decodeURIComponent(clientMachinesMatch[2]) : "";
+    if (!state.clients.some((client) => client.id === clientId)) throw new MockApiError("Cliente no encontrado.", 404);
+    if (method === "GET") return clientMachines.filter((machine) => machine.clientId === clientId) as T;
+    if (method === "POST") {
+      const body = jsonBody(options);
+      const existing = machineId ? clientMachines.find((machine) => machine.id === machineId && machine.clientId === clientId) : undefined;
+      if (machineId && !existing) throw new MockApiError("Máquina tragamonedas no encontrada.", 404);
+      if (clientMachines.some((machine) => machine.clientId === clientId && machine.number === Number(body.number) && machine.id !== existing?.id))
+        throw new MockApiError("El número de máquina ya existe.", 409);
+      const timestamp = now();
+      const record: ClientMachine = {
+        id: existing?.id ?? uid("machine"), clientId, number: Number(body.number),
+        entry: String(body.entry ?? ""), exit: String(body.exit ?? ""),
+        value: Number(body.value ?? 0), percentage: Number(body.percentage ?? 0),
+        registeredAt: existing?.registeredAt ?? timestamp, updatedAt: timestamp,
+      };
+      clientMachines = existing ? clientMachines.map((item) => item.id === existing.id ? record : item) : [...clientMachines, record];
+      clientMachineLogs.unshift({
+        id: uid("machine-log"), clientId, machineId: record.id, registeredAt: timestamp,
+        previousEntry: existing?.entry ?? "", entry: record.entry,
+        entryDifference: String(Number(record.entry) - Number(existing?.entry ?? 0)),
+        previousExit: existing?.exit ?? "", exit: record.exit,
+        exitDifference: String(Number(record.exit) - Number(existing?.exit ?? 0)),
+        difference: String((Number(record.entry) - Number(existing?.entry ?? 0)) - (Number(record.exit) - Number(existing?.exit ?? 0))),
+        currency: "DOP", amount: record.value, percentage: record.percentage,
+        charge: record.value * record.percentage / 100,
+        ...(existing ? { modifiedAt: timestamp } : {}),
+      });
+      return record as T;
+    }
+  }
+  const machineLogMatch = path.match(/^\/clientes\/([^/]+)\/tragamonedas\/registros$/);
+  if (machineLogMatch && method === "GET") {
+    currentUser();
+    const clientId = decodeURIComponent(machineLogMatch[1]);
+    if (!state.clients.some((client) => client.id === clientId)) throw new MockApiError("Cliente no encontrado.", 404);
+    return clientMachineLogs.filter((log) => log.clientId === clientId) as T;
+  }
   if (path.startsWith("/mock/admin/")) {
     currentUser();
     const [, , , entity, id] = path.split("/");
@@ -763,17 +831,23 @@ export async function mockApi<T>(
     method === "POST"
   ) {
     const body = jsonBody(options);
-    if (path === "/cargos")
-      state.charges.push({
+    let createdCharge: Snapshot["charges"][number] | undefined;
+    if (path === "/cargos") {
+      createdCharge = {
         id: uid("chg"),
         clientId: body.clientId,
         service: body.service,
+        concept: String(body.concept ?? ""),
+        currency: String(body.currency ?? "Peso Dominicano"),
+        note: String(body.note ?? ""),
         amount: body.amount,
         collected: 0,
         dueDate: body.dueDate,
         required: Boolean(body.required),
         status: "pending",
-      });
+      };
+      state.charges.push(createdCharge);
+    }
     if (path === "/cargos/recurrentes")
       for (const clientId of body.clientIds ?? [])
         state.charges.push({
@@ -813,7 +887,7 @@ export async function mockApi<T>(
         createdAt: now(),
       });
     state = derive(state);
-    return { ok: true } as T;
+    return (path === "/cargos" ? structuredClone(createdCharge) : { ok: true }) as T;
   }
   if (path === "/descargos-recurrentes" && method === "POST") {
     const body = jsonBody(options);
@@ -932,6 +1006,36 @@ export async function mockApi<T>(
     );
     state = derive(state);
     return { creados, errores } as T;
+  }
+  const chargeUpdateMatch = path.match(/^\/cargos\/([^/]+)$/);
+  if (chargeUpdateMatch && method === "POST" && chargeUpdateMatch[1] !== "cancelar") {
+    const chargeId = decodeURIComponent(chargeUpdateMatch[1]);
+    const charge = state.charges.find((item) => item.id === chargeId);
+    if (!charge) throw new MockApiError("Cargo no encontrado.", 404);
+    if (charge.status === "cancelled") throw new MockApiError("No se puede modificar un cargo cancelado.", 409);
+    if (charge.collected > 0) throw new MockApiError("No se puede modificar un cargo que ya tiene cobros.", 409);
+    const body = jsonBody(options);
+    Object.assign(charge, {
+      clientId: String(body.clientId ?? charge.clientId),
+      service: String(body.service ?? charge.service),
+      concept: String(body.concept ?? ""),
+      currency: String(body.currency ?? "Peso Dominicano"),
+      note: String(body.note ?? ""),
+      amount: Number(body.amount ?? charge.amount),
+      dueDate: String(body.dueDate ?? charge.dueDate),
+      required: Boolean(body.required ?? charge.required),
+    });
+    state = derive(state);
+    return structuredClone(charge) as T;
+  }
+  if (path === "/cargos/cancelar" && method === "POST") {
+    const body = jsonBody(options);
+    const charge = state.charges.find((item) => item.id === String(body.id ?? ""));
+    if (!charge) throw new MockApiError("Registro no encontrado.", 404);
+    if (charge.collected > 0) throw new MockApiError("Un registro con movimientos no puede cancelarse.", 409);
+    charge.status = "cancelled";
+    state = derive(state);
+    return structuredClone(charge) as T;
   }
   if (path === "/descargos/importar" && method === "POST") {
     const body = jsonBody(options);

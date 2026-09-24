@@ -66,7 +66,7 @@ decisiones y su alcance no se aplican aqui. No mezclar los dos proyectos.
 
 ## Current state - ACTUALIZAR ANTES DE CERRAR
 
-**Last updated:** 2026-09-20 por ZCode (datos PRUEBA insertados, E2E 39 checks en verde sobre PostgreSQL; fallo de persistencia G1 resuelto con eventos append-only)
+**Last updated:** 2026-09-23 por Codex — Cargos MDI: selección habilita Editar/Eliminar; cancelación bloquea si `collected > 0` o `pending === 0` y conserva motivo antes de API. Cargos Recurrentes ahora tiene filtro lateral, grilla seleccionable, CRUD/inactivación y formulario validado; los registros se guardan en `localStorage` porque el backend no ofrece CRUD de plantillas de cargos recurrentes. RBAC de Supervisores se conserva. `npm run check`: 21 tests pass, 1 skip esperado y builds correctos. Migraciones 009–011 aplicadas.
 
 ### Done so far
 

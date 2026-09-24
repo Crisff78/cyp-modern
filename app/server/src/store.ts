@@ -100,13 +100,30 @@ async function readState(client: pg.PoolClient): Promise<State> {
   state.clients = (
     await client.query(
       `SELECT c.id,c.name,c.code,c.phone,cp.address,c.route_id AS "routeId",
-       c.alias,c.sector,c.cellular,c.email,c.note
+       c.alias,c.sector,c.cellular,c.email,c.note,c.identification,c.lat,c.lng
        FROM clients c JOIN collection_points cp ON cp.id=c.collection_point_id ORDER BY c.id`,
     )
   ).rows.map(clean);
+  state.clientMachines = (
+    await client.query(
+      `SELECT id,client_id AS "clientId",number,entry,exit,
+       currency_value AS value,percentage,registered_at AS "registeredAt",updated_at AS "updatedAt"
+       FROM client_machines ORDER BY client_id,number`,
+    )
+  ).rows.map((row) => ({ ...clean(row), value: Number(row.value), percentage: Number(row.percentage) }));
+  state.clientMachineLogs = (
+    await client.query(
+      `SELECT id,client_id AS "clientId",machine_id AS "machineId",
+       registered_at AS "registeredAt",previous_entry AS "previousEntry",entry,
+       entry_difference AS "entryDifference",previous_exit AS "previousExit",exit,
+       exit_difference AS "exitDifference",difference,currency,amount,percentage,charge,
+       modified_at AS "modifiedAt",cancelled_at AS "cancelledAt"
+       FROM client_machine_logs ORDER BY registered_at DESC,id`,
+    )
+  ).rows.map((row) => ({ ...clean(row), amount: Number(row.amount), percentage: Number(row.percentage), charge: Number(row.charge) }));
   state.charges = (
     await client.query(
-      `SELECT ch.id,ch.client_id AS "clientId",s.name AS service,ch.amount,ch.collected,
+      `SELECT ch.id,ch.client_id AS "clientId",s.name AS service,ch.concept,ch.currency,ch.note,ch.amount,ch.collected,ch.cancel_reason AS "cancelReason",
        ch.due_date AS "dueDate",ch.required,ch.status
        FROM charges ch JOIN services s ON s.id=ch.service_id ORDER BY ch.id`,
     )
@@ -260,12 +277,13 @@ async function saveState(client: pg.PoolClient, state: State, before: State) {
       [collectionPointId(clientRow.id), clientRow.routeId, clientRow.address],
     );
     await client.query(
-      `INSERT INTO clients(id,name,code,phone,route_id,collection_point_id,alias,sector,cellular,email,note)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      `INSERT INTO clients(id,name,code,phone,route_id,collection_point_id,alias,sector,cellular,email,note,identification,lat,lng)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
        ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,code=EXCLUDED.code,phone=EXCLUDED.phone,
        route_id=EXCLUDED.route_id,collection_point_id=EXCLUDED.collection_point_id,
        alias=EXCLUDED.alias,sector=EXCLUDED.sector,cellular=EXCLUDED.cellular,
-       email=EXCLUDED.email,note=EXCLUDED.note`,
+       email=EXCLUDED.email,note=EXCLUDED.note,identification=EXCLUDED.identification,
+       lat=EXCLUDED.lat,lng=EXCLUDED.lng`,
       [
         clientRow.id,
         clientRow.name,
@@ -278,7 +296,34 @@ async function saveState(client: pg.PoolClient, state: State, before: State) {
         clientRow.cellular ?? "",
         clientRow.email ?? "",
         clientRow.note ?? "",
+        clientRow.identification ?? "",
+        clientRow.lat ?? null,
+        clientRow.lng ?? null,
       ],
+    );
+  }
+  for (const machine of state.clientMachines) {
+    const previous = before.clientMachines.find((item) => item.id === machine.id);
+    if (previous && JSON.stringify(previous) === JSON.stringify(machine)) continue;
+    await client.query(
+      `INSERT INTO client_machines(id,client_id,number,entry,exit,currency_value,percentage,registered_at,updated_at)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       ON CONFLICT(id) DO UPDATE SET number=EXCLUDED.number,entry=EXCLUDED.entry,exit=EXCLUDED.exit,
+       currency_value=EXCLUDED.currency_value,percentage=EXCLUDED.percentage,updated_at=EXCLUDED.updated_at`,
+      [machine.id,machine.clientId,machine.number,machine.entry,machine.exit,machine.value,machine.percentage,machine.registeredAt,machine.updatedAt],
+    );
+  }
+  for (const log of state.clientMachineLogs) {
+    const previous = before.clientMachineLogs.find((item) => item.id === log.id);
+    if (previous && JSON.stringify(previous) === JSON.stringify(log)) continue;
+    await client.query(
+      `INSERT INTO client_machine_logs(id,client_id,machine_id,registered_at,previous_entry,entry,entry_difference,
+       previous_exit,exit,exit_difference,difference,currency,amount,percentage,charge,modified_at,cancelled_at)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+       ON CONFLICT(id) DO NOTHING`,
+      [log.id,log.clientId,log.machineId,log.registeredAt,log.previousEntry,log.entry,log.entryDifference,
+       log.previousExit,log.exit,log.exitDifference,log.difference,log.currency,log.amount,log.percentage,
+       log.charge,log.modifiedAt ?? null,log.cancelledAt ?? null],
     );
   }
   for (const charge of state.charges) {
@@ -289,20 +334,25 @@ async function saveState(client: pg.PoolClient, state: State, before: State) {
       [sid, charge.service],
     );
     await client.query(
-      `INSERT INTO charges(id,client_id,service_id,amount,collected,due_date,required,status)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+      `INSERT INTO charges(id,client_id,service_id,concept,currency,note,amount,collected,due_date,required,status,cancel_reason)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
        ON CONFLICT(id) DO UPDATE SET client_id=EXCLUDED.client_id,service_id=EXCLUDED.service_id,
+       concept=EXCLUDED.concept,currency=EXCLUDED.currency,note=EXCLUDED.note,
        amount=EXCLUDED.amount,collected=EXCLUDED.collected,due_date=EXCLUDED.due_date,
-       required=EXCLUDED.required,status=EXCLUDED.status`,
+       required=EXCLUDED.required,status=EXCLUDED.status,cancel_reason=EXCLUDED.cancel_reason`,
       [
         charge.id,
         charge.clientId,
         sid,
+        charge.concept ?? "",
+        charge.currency ?? "Peso Dominicano",
+        charge.note ?? "",
         charge.amount,
         charge.collected,
         charge.dueDate,
         charge.required,
         charge.status,
+        charge.cancelReason ?? "",
       ],
     );
   }

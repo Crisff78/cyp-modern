@@ -15,7 +15,7 @@ The current executable PostgreSQL reference migration is [001_initial.sql](../ap
 | `collection_points`  | `id` PK; `route_id` FK                     | Address and optional coordinates for visit location                                                                                    |
 | `clients`            | `id` PK; unique code; route/point FKs      | Display name, phone and assigned collection point; sensitive fields restricted to authorized users                                     |
 | `services`           | `id` PK; unique name                       | Normalized service catalog referenced by charges                                                                                       |
-| `charges`            | `id` PK; client/service FKs                | Positive amount, collected amount between zero and amount, due date, required flag, lifecycle status                                   |
+| `charges`            | `id` PK; client/service FKs                | Positive amount, collected amount between zero and amount, due date, required flag, lifecycle status, legacy concept/currency/note and cancellation reason metadata |
 | `payouts`            | `id` PK; client/collector FKs              | Cash-out obligation, concept, positive amount, paid amount between zero and amount, lifecycle status                                   |
 | `collections`        | `id` PK; collector/client/charge/actor FKs | Immutable collected cash ledger row with receipt token and revocation flag                                                             |
 | `payments`           | `id` PK; collector/client/payout/actor FKs | Immutable client payout ledger row with receipt token and revocation flag                                                              |

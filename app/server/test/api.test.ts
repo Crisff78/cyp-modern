@@ -191,6 +191,48 @@ test("idempotency response remains unchanged after the created charge is collect
     await app.close();
   }
 });
+test("charges persist legacy fields, support safe edits, and keep cancel rules", async () => {
+  const { app, post, adminToken, collectorToken, store } = await setup();
+  const dueDate = businessDate();
+  const createBody = {
+    clientId: "cli-1",
+    service: "Serv",
+    concept: "Cargo de prueba",
+    currency: "Euro",
+    note: "Referencia local",
+    amount: 10000,
+    dueDate,
+    required: false,
+  };
+  try {
+    const created = await post("/api/cargos", createBody, adminToken);
+    assert.equal(created.statusCode, 200);
+    const id = created.json().id as string;
+    const updated = await post(
+      `/api/cargos/${id}`,
+      { ...createBody, amount: 15000, concept: "Concepto actualizado", note: "Nota actualizada" },
+      adminToken,
+    );
+    assert.equal(updated.statusCode, 200);
+    assert.equal(updated.json().amount, 15000);
+    assert.equal(updated.json().currency, "Euro");
+    assert.equal(updated.json().concept, "Concepto actualizado");
+    assert.equal(updated.json().note, "Nota actualizada");
+
+    const cancelled = await post("/api/cargos/cancelar", { id, reason: "Digitado por error" }, adminToken);
+    assert.equal(cancelled.statusCode, 200);
+    assert.equal((await store.read()).charges.find((charge) => charge.id === id)?.status, "cancelled");
+    assert.equal((await store.read()).charges.find((charge) => charge.id === id)?.cancelReason, "Digitado por error");
+
+    const collectedCharge = await post("/api/cargos", createBody, adminToken);
+    const collectedId = collectedCharge.json().id as string;
+    assert.equal((await post("/api/cobros", { chargeId: collectedId, amount: 1000 }, collectorToken)).statusCode, 200);
+    assert.equal((await post(`/api/cargos/${collectedId}`, createBody, adminToken)).statusCode, 409);
+    assert.equal((await post("/api/cargos/cancelar", { id: collectedId }, adminToken)).statusCode, 409);
+  } finally {
+    await app.close();
+  }
+});
 test("limits, negative/decimal money, unauthorized route and insufficient office funds are rejected", async () => {
   const { app, post, collectorToken, store } = await setup();
   try {

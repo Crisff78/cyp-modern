@@ -1,0 +1,2 @@
+ALTER TABLE charges
+  ADD COLUMN IF NOT EXISTS cancel_reason text NOT NULL DEFAULT '';

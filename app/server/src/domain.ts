@@ -38,6 +38,39 @@ export type Client = {
   cellular?: string;
   email?: string;
   note?: string;
+  identification?: string;
+  lat?: number;
+  lng?: number;
+};
+export type ClientMachine = {
+  id: string;
+  clientId: string;
+  number: number;
+  entry: string;
+  exit: string;
+  value: number;
+  percentage: number;
+  registeredAt: string;
+  updatedAt: string;
+};
+export type ClientMachineLog = {
+  id: string;
+  clientId: string;
+  machineId: string;
+  registeredAt: string;
+  previousEntry: string;
+  entry: string;
+  entryDifference: string;
+  previousExit: string;
+  exit: string;
+  exitDifference: string;
+  difference: string;
+  currency: string;
+  amount: number;
+  percentage: number;
+  charge: number;
+  modifiedAt?: string;
+  cancelledAt?: string;
 };
 export type Route = {
   id: string;
@@ -61,11 +94,15 @@ export type Charge = {
   id: string;
   clientId: string;
   service: string;
+  concept?: string;
+  currency?: string;
+  note?: string;
   amount: number;
   collected: number;
   dueDate: string;
   required: boolean;
   status: "pending" | "partial" | "paid" | "cancelled";
+  cancelReason?: string;
 };
 export type Payout = {
   id: string;
@@ -133,6 +170,8 @@ export type DepositEvent = {
 };
 export type State = {
   clients: Client[];
+  clientMachines: ClientMachine[];
+  clientMachineLogs: ClientMachineLog[];
   routes: Route[];
   collectors: Collector[];
   charges: Charge[];
@@ -163,6 +202,8 @@ export const businessDate = (date = new Date()) =>
   }).format(date);
 export const emptyState = (): State => ({
   clients: [],
+  clientMachines: [],
+  clientMachineLogs: [],
   routes: [],
   collectors: [],
   charges: [],
