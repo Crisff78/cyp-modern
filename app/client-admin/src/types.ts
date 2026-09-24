@@ -167,6 +167,8 @@ export type Movement = {
   acceptedBy?: string;
   cancelledAt?: string;
   cancelledBy?: string;
+  cancellationNote?: string;
+  denominations?: { denominacion: number; cantidad: number }[];
 };
 export type Balance = {
   collected: number;

@@ -415,7 +415,7 @@ function sum(
   type: Snapshot["movements"][number]["type"],
 ) {
   return movements
-    .filter((movement) => movement.type === type)
+    .filter((movement) => movement.type === type && !movement.cancelledAt)
     .reduce((total, movement) => total + movement.amount, 0);
 }
 
@@ -620,7 +620,7 @@ function upsertAdminRecord(entity: string, body: Record<string, unknown>) {
   return { ok: true, id };
 }
 
-function deleteAdminRecord(entity: string, id: string) {
+function deleteAdminRecord(entity: string, id: string, body: Record<string, unknown> = {}) {
   if (entity === "collectors")
     state.collectors = state.collectors.filter((item) => item.id !== id);
   if (entity === "clients")
@@ -629,9 +629,14 @@ function deleteAdminRecord(entity: string, id: string) {
     state.charges = state.charges.filter((item) => item.id !== id);
   if (entity === "payouts")
     state.payouts = state.payouts.filter((item) => item.id !== id);
-  if (
-    ["collections", "deposits", "payments", "cashDeliveries"].includes(entity)
-  )
+  if (entity === "collections") {
+    const movement = state.movements.find((item) => item.id === id && item.type === "collection");
+    if (movement) {
+      movement.cancelledAt ??= now();
+      movement.cancellationNote = String(body.note ?? "").trim();
+    }
+  }
+  if (["deposits", "payments", "cashDeliveries"].includes(entity))
     state.movements = state.movements.filter((item) => item.id !== id);
   state = derive(state);
   return { ok: true };
@@ -788,7 +793,7 @@ export async function mockApi<T>(
     if (["collector-zones", "collector-limits", "collector-routes"].includes(entity) && (method === "POST" || method === "PATCH"))
       return updateCollectorSubflow(entity, decodeURIComponent(id ?? ""), jsonBody(options)) as T;
     if (method === "DELETE")
-      return deleteAdminRecord(entity, decodeURIComponent(id ?? "")) as T;
+      return deleteAdminRecord(entity, decodeURIComponent(id ?? ""), jsonBody(options)) as T;
     if (method === "POST" || method === "PATCH")
       return upsertAdminRecord(entity, jsonBody(options)) as T;
   }
@@ -832,6 +837,8 @@ export async function mockApi<T>(
   ) {
     const body = jsonBody(options);
     let createdCharge: Snapshot["charges"][number] | undefined;
+    let createdPayout: Snapshot["payouts"][number] | undefined;
+    let createdDeposit: Snapshot["movements"][number] | undefined;
     if (path === "/cargos") {
       createdCharge = {
         id: uid("chg"),
@@ -860,8 +867,8 @@ export async function mockApi<T>(
           required: Boolean(body.required),
           status: "pending",
         });
-    if (path === "/descargos")
-      state.payouts.push({
+    if (path === "/descargos") {
+      createdPayout = {
         id: uid("pay"),
         clientId: body.clientId,
         collectorId: body.collectorId,
@@ -869,15 +876,19 @@ export async function mockApi<T>(
         amount: body.amount,
         paid: 0,
         status: "pending",
-      });
-    if (path === "/depositos")
-      state.movements.push({
+      };
+      state.payouts.push(createdPayout);
+    }
+    if (path === "/depositos") {
+      createdDeposit = {
         id: uid("mov"),
         collectorId: body.collectorId,
         type: "deposit",
         amount: body.amount,
         createdAt: now(),
-      });
+      };
+      state.movements.push(createdDeposit);
+    }
     if (path === "/entregas")
       state.movements.push({
         id: uid("mov"),
@@ -887,7 +898,13 @@ export async function mockApi<T>(
         createdAt: now(),
       });
     state = derive(state);
-    return (path === "/cargos" ? structuredClone(createdCharge) : { ok: true }) as T;
+    return (path === "/cargos"
+      ? structuredClone(createdCharge)
+      : path === "/descargos"
+        ? structuredClone(createdPayout)
+      : path === "/depositos"
+        ? { movement: structuredClone(createdDeposit) }
+        : { ok: true }) as T;
   }
   if (path === "/descargos-recurrentes" && method === "POST") {
     const body = jsonBody(options);
@@ -1037,6 +1054,16 @@ export async function mockApi<T>(
     state = derive(state);
     return structuredClone(charge) as T;
   }
+  if (path === "/descargos/cancelar" && method === "POST") {
+    const body = jsonBody(options);
+    const payout = state.payouts.find((item) => item.id === String(body.id ?? ""));
+    if (!payout) throw new MockApiError("Registro no encontrado.", 404);
+    if (payout.paid > 0)
+      throw new MockApiError("Un registro con movimientos no puede cancelarse.", 409);
+    payout.status = "cancelled";
+    state = derive(state);
+    return structuredClone(payout) as T;
+  }
   if (path === "/descargos/importar" && method === "POST") {
     const body = jsonBody(options);
     const errores: { fila: number; mensaje: string }[] = [];
@@ -1075,6 +1102,7 @@ export async function mockApi<T>(
   }
   const depositAction = path.match(/^\/depositos\/([^/]+)\/(aceptar|cancelar)$/);
   if (depositAction && method === "POST") {
+    const body = jsonBody(options);
     const movement = state.movements.find(
       (m) => m.id === depositAction[1] && m.type === "deposit",
     );
@@ -1083,6 +1111,8 @@ export async function mockApi<T>(
       if (movement.cancelledAt)
         throw new MockApiError("El depósito ya fue cancelado.", 422);
       movement.acceptedAt ??= now();
+      if (Array.isArray(body.desglose))
+        movement.denominations = body.desglose as NonNullable<typeof movement.denominations>;
     } else {
       if (movement.acceptedAt)
         throw new MockApiError("El depósito ya fue aceptado.", 422);
