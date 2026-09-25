@@ -9541,16 +9541,16 @@ function operationSpec(page: Page, snapshot: Snapshot): OperationSpec {
 }
 
 function MonitorView(props: Readonly<{ page: Page; snapshot: Snapshot; refreshing: boolean; currentUser: User; onRefresh: () => void }>) {
-  if (props.page === "monitorCollectors" || props.page === "monitorZones") {
+  if (props.page === "monitorCollectors" || props.page === "monitorZones" || props.page === "monitorRoutes") {
     return <FinancialMonitorView key={props.page} page={props.page} snapshot={props.snapshot} refreshing={props.refreshing} onRefresh={props.onRefresh} />;
   }
   return <MapMonitorView {...props} />;
 }
 
-function FinancialMonitorView({ page, snapshot, refreshing, onRefresh }: Readonly<{ page: "monitorCollectors" | "monitorZones"; snapshot: Snapshot; refreshing: boolean; onRefresh: () => void }>) {
-  const isZoneMonitor = page === "monitorZones";
-  const entityLabel = isZoneMonitor ? "Zona" : "Cobrador";
-  const [auto, setAuto] = useState(() => !isZoneMonitor);
+function FinancialMonitorView({ page, snapshot, refreshing, onRefresh }: Readonly<{ page: "monitorCollectors" | "monitorZones" | "monitorRoutes"; snapshot: Snapshot; refreshing: boolean; onRefresh: () => void }>) {
+  const entityLabel = page === "monitorCollectors" ? "Cobrador" : page === "monitorZones" ? "Zona" : "Ruta";
+  const mapEntityLabel = page === "monitorCollectors" ? "" : ` (${entityLabel})`;
+  const [auto, setAuto] = useState(() => page === "monitorCollectors");
   const [seconds, setSeconds] = useState("60");
   const [remaining, setRemaining] = useState(60);
   const [currency, setCurrency] = useState("Peso Dominicano");
@@ -9634,7 +9634,7 @@ function FinancialMonitorView({ page, snapshot, refreshing, onRefresh }: Readonl
       </div>
     </div>
     {mapOpen && selectedRow && <LegacyDialog title={`Mapa de Monitoreo - ${selectedRow.rawName}`} onClose={() => setMapOpen(false)} className="collector-monitor-map-dialog">
-      <div className="collector-monitor-map-placeholder">{isZoneMonitor ? "Contenedor reservado para la integración del módulo de mapas (Zona)" : "Contenedor reservado para la integración del módulo de mapas"}</div>
+      <div className="collector-monitor-map-placeholder">{`Contenedor reservado para la integración del módulo de mapas${mapEntityLabel}`}</div>
     </LegacyDialog>}
   </div>;
 }

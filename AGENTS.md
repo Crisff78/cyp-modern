@@ -76,6 +76,8 @@ decisiones y su alcance no se aplican aqui. No mezclar los dos proyectos.
 
 **Update 2026-09-24 — Monitor de Zonas MDI:** Monitor Z comparte ahora la vista compacta de Monitor C con cabecera de Zona, selección visual, métricas financieras y totales alineados; Auto. inicia desmarcado y el contador queda enlazado al control. Monitoreo abre el diálogo MDI con el texto reservado para el mapa de zona. Monitor R conserva su vista y mapa previos. `npm run check`: typechecks y builds correctos, 21 pruebas aprobadas y 1 omitida por PostgreSQL de integración no configurado; Vite mantiene el aviso de bundle superior a 500 kB.
 
+**Update 2026-09-24 — Monitor de Rutas MDI:** Monitor R usa ahora la misma vista compacta que Monitor Z con cabecera de Ruta, selección visual, límites, métricas financieras, totales alineados y Auto. desmarcado por defecto. Monitoreo abre el diálogo MDI con el texto reservado para el mapa de ruta; se elimina la búsqueda y la vista holgada anterior. `npm run check`: typechecks y builds correctos, 21 pruebas aprobadas y 1 omitida por PostgreSQL de integración no configurado; Vite mantiene el aviso de bundle superior a 500 kB.
+
 ### Done so far
 
 - Repositorio clonado y dependencias instaladas con pnpm.
