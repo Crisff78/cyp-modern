@@ -349,7 +349,6 @@ const isReportPage = (page: MdiPage): page is ReportPageId =>
   reportDefinitions.some((report) => report.id === page);
 const mdiOperationPages: Page[] = [
   "charges",
-  "recurringCharges",
   "recurringPayouts",
   "collections",
   "deposits",
@@ -396,6 +395,7 @@ const focusWindowCollection = (windows: MdiWindowState[], focusedId: string, zIn
 const mdiWindowSize = (page: MdiPage): MdiWindowSize => {
   if (page === "controlPanel") return { width: 600, height: 390 };
   if (page === "reports") return { width: 720, height: 430 };
+  if (page === "recurringCharges") return { width: 860, height: 520 };
   if (page === "traces" || page === "pcps" || page === "sessions" || page === "clients") return { width: 860, height: 520 };
   if (isMdiOperationPage(page) || isMdiMonitoringPage(page) || isReportPage(page)) return { width: 860, height: 520 };
   return { width: 720, height: 440 };
@@ -4817,6 +4817,12 @@ export default function App() {
                   currentUser={effectiveUser}
                   onRefresh={async () => { await refresh(); }}
                 />
+              ) : windowState.page === "recurringCharges" ? (
+                <RecurringChargesOperationalView
+                  snapshot={snapshot}
+                  currentUser={effectiveUser}
+                  onRefresh={() => void refresh()}
+                />
               ) : isMdiOperationPage(windowState.page) ? (
                 (() => {
                   const operationPage = windowState.page;
@@ -5975,6 +5981,7 @@ function ChargesOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{
 type RecurringChargeRecord = {
   id: string;
   clientId: string;
+  registeredAt: string;
   startDate: string;
   endDate: string;
   frequency: string;
@@ -5999,7 +6006,7 @@ const RECURRING_FREQUENCIES = [
   "Mensual",
   "Trimestral",
   "Cuatrimestral",
-  "Semestral",
+  "Semestal",
   "Anual",
 ];
 const CURRENCIES = ["No definida", "Peso Dominicano", "Dólar Americano", "Euro"];
@@ -6010,6 +6017,7 @@ function seedRecurringCharges(snapshot: Snapshot): RecurringChargeRecord[] {
     .map((charge) => ({
       id: charge.id,
       clientId: charge.clientId,
+      registeredAt: charge.dueDate,
       startDate: charge.dueDate,
       endDate: "",
       frequency: "Mensual",
@@ -6034,7 +6042,11 @@ function loadRecurringCharges(snapshot: Snapshot): RecurringChargeRecord[] {
         if (Array.isArray(parsed)) {
           return parsed.filter((item): item is RecurringChargeRecord =>
             Boolean(item && typeof item.id === "string" && typeof item.clientId === "string" && typeof item.startDate === "string"),
-          );
+          ).map((item) => ({
+            ...item,
+            registeredAt: typeof item.registeredAt === "string" ? item.registeredAt : item.startDate,
+            frequency: item.frequency === "Semestral" ? "Semestal" : item.frequency,
+          }));
         }
       }
     } catch {
@@ -6087,7 +6099,7 @@ function RecurringChargeDialog({
     event.preventDefault();
     const client = clients.find((item) => item.id === clientId) ?? clients.find((item) => item.code.toLowerCase() === clientCode.trim().toLowerCase());
     if (!client) {
-      setValidationMessage('El campo "Cliente" no puede estar vacío.');
+      setValidationMessage("El campo 'Cliente' no puede estar vacío");
       return;
     }
     const today = localSystemDate();
@@ -6102,6 +6114,7 @@ function RecurringChargeDialog({
     onSave({
       id: row?.id ?? crypto.randomUUID(),
       clientId: client.id,
+      registeredAt: row?.registeredAt ?? new Date().toISOString(),
       startDate,
       endDate,
       frequency,
@@ -6151,8 +6164,10 @@ function RecurringChargeDialog({
         </label>
         <label className="recurring-charge-row recurring-charge-labeled-row" htmlFor="recurring-charge-concept">
           <span>Concepto:</span>
-          <input id="recurring-charge-concept" list="recurring-charge-concepts" value={concept} onChange={(event) => setConcept(event.target.value)} />
-          <datalist id="recurring-charge-concepts">{CARGO_SERVICES.map((item) => <option key={item} value={item} />)}</datalist>
+          <select id="recurring-charge-concept" value={concept} onChange={(event) => setConcept(event.target.value)}>
+            <option value="">No definido</option>
+            {[...new Set([...CARGO_SERVICES, ...(concept ? [concept] : [])])].map((item) => <option key={item} value={item}>{item}</option>)}
+          </select>
         </label>
         <label className="recurring-charge-checkbox"><input type="checkbox" checked={useConceptAmount} onChange={(event) => setUseConceptAmount(event.target.checked)} />Usar Importe de Concepto</label>
         <label className="recurring-charge-row recurring-charge-labeled-row" htmlFor="recurring-charge-amount">
@@ -6198,6 +6213,12 @@ function RecurringChargesOperationalView({ snapshot, currentUser, onRefresh }: R
     const matchesStatus = status === "Todos" || (status === "Activo" ? record.active : !record.active);
     return matchesClient && matchesStart && matchesStatus;
   });
+  const sourceCharges = snapshot.charges.filter((charge) => visibleRecords.some((record) => record.id === charge.id) && charge.status !== "cancelled");
+  const recurringTotals = {
+    amount: visibleRecords.reduce((sum, record) => sum + record.amount, 0),
+    received: sourceCharges.reduce((sum, charge) => sum + charge.collected, 0),
+    pending: sourceCharges.reduce((sum, charge) => sum + Math.max(0, charge.amount - charge.collected), 0),
+  };
   const persist = (next: RecurringChargeRecord[]) => {
     setRecords(next);
     try {
@@ -6244,7 +6265,7 @@ function RecurringChargesOperationalView({ snapshot, currentUser, onRefresh }: R
     toast.success("Cargo recurrente inactivado");
   };
   return (
-    <div className="charges-view recurring-charges-view flex h-full flex-col bg-[#f0f0f0]">
+    <div className="charges-view recurring-charges-view flex h-full flex-col bg-[#e8e8e0]">
       <LegacyToolbar
         filtersVisible={filtersVisible}
         onToggleFilters={() => setFiltersVisible((visible) => !visible)}
@@ -6256,12 +6277,15 @@ function RecurringChargesOperationalView({ snapshot, currentUser, onRefresh }: R
         onEdit={() => selectedRow ? setDialogMode("edit") : toast.error("Seleccione un cargo recurrente.")}
         onDelete={() => selectedRow ? setConfirmInactivate(true) : toast.error("Seleccione un cargo recurrente.")}
         onRefresh={refresh}
+        deleteIcon="x"
+        deleteTitle="Inactivar"
         disableNew={!permissions.canCreate}
         disableEdit={!selectedRow || !permissions.canEdit}
         disableDelete={!selectedRow || !permissions.canDelete}
       />
       <div className="charges-layout recurring-charges-legacy-layout flex flex-1 overflow-hidden border-t border-gray-300">
         {filtersVisible && <aside className="legacy-filter-panel charges-filter-panel recurring-charge-filter-panel w-[220px] flex-shrink-0 bg-[#e8e8e0] border-r border-gray-400 p-2 flex flex-col gap-3 overflow-y-auto text-sm" aria-label="Panel de filtro de cargos recurrentes">
+          <div className="pending-charges-filter-heading">Panel de Filtro</div>
           <label className="recurring-legacy-radio flex items-center gap-1 whitespace-nowrap">
             <input type="radio" name="recurring-charge-filter-mode" value="todos" checked={filterMode === "Todos"} onChange={() => setFilterMode("Todos")} /> Todos
           </label>
@@ -6296,27 +6320,33 @@ function RecurringChargesOperationalView({ snapshot, currentUser, onRefresh }: R
           </div>
         </aside>}
 
-        <div className="flex-1 overflow-auto bg-white" aria-label="Grilla de cargos recurrentes">
-          <table className="w-full text-sm border-collapse recurring-charges-table">
-            <thead className="bg-gray-100 border-b border-gray-300">
-              <tr>
-                <th className="border-r border-gray-300 p-1 font-normal text-left">Nro.</th>
-                <th className="border-r border-gray-300 p-1 font-normal text-left">Fecha</th>
-                <th className="border-r border-gray-300 p-1 font-normal text-left">Frecuencia</th>
-                <th className="border-r border-gray-300 p-1 font-normal text-left">Identif.</th>
-                <th className="border-r border-gray-300 p-1 font-normal text-left">Cliente</th>
-                <th className="border-r border-gray-300 p-1 font-normal text-left">Servicio</th>
-              </tr>
-            </thead>
-            <tbody>{visibleRecords.length ? visibleRecords.map((record, index) => {
-              const client = clientById(record.clientId);
-              const isSelected = selectedRow?.id === record.id;
-              return <tr key={record.id} className={isSelected ? "selected-row" : undefined} aria-selected={isSelected} role="button" tabIndex={0} onClick={() => setSelectedRow(record)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedRow(record))}>
-                <td>{index + 1}</td><td>{safeDateLabel(record.startDate)}</td><td>{record.frequency}</td><td>{client?.identification || client?.code || ""}</td><td>{client?.name ?? "Cliente sin nombre"}</td><td>{record.service}</td>
-              </tr>;
-            }) : <tr><td className="recurring-charges-empty-cell" colSpan={6}>Sin cargos recurrentes.</td></tr>}</tbody>
-          </table>
-        </div>
+        <section className="charges-grid-panel flex min-w-0 flex-1 flex-col overflow-hidden" aria-label="Grilla de cargos recurrentes">
+          <div className="flex-1 overflow-auto bg-white">
+            <table className="w-full text-sm border-collapse recurring-charges-table">
+              <thead className="bg-gray-100 border-b border-gray-300">
+                <tr>
+                  <th className="border-r border-gray-300 p-1 font-normal text-left">Nro.</th>
+                  <th className="border-r border-gray-300 p-1 font-normal text-left">Fecha</th>
+                  <th className="border-r border-gray-300 p-1 font-normal text-left">Frecuencia</th>
+                  <th className="border-r border-gray-300 p-1 font-normal text-left">Identif.</th>
+                  <th className="border-r border-gray-300 p-1 font-normal text-left">Cliente</th>
+                  <th className="border-r border-gray-300 p-1 font-normal text-left">Servicio</th>
+                  <th className="border-r border-gray-300 p-1 font-normal text-left">Importe</th>
+                  <th className="border-r border-gray-300 p-1 font-normal text-left">Activo</th>
+                  <th className="border-r border-gray-300 p-1 font-normal text-left">Fecha de Registro</th>
+                </tr>
+              </thead>
+              <tbody>{visibleRecords.length ? visibleRecords.map((record, index) => {
+                const client = clientById(record.clientId);
+                const isSelected = selectedRow?.id === record.id;
+                return <tr key={record.id} className={isSelected ? "selected-row" : undefined} aria-selected={isSelected} role="button" tabIndex={0} onClick={() => setSelectedRow(record)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedRow(record))}>
+                  <td>{index + 1}</td><td>{safeDateLabel(record.startDate)}</td><td>{record.frequency}</td><td>{client?.identification || client?.code || ""}</td><td>{client?.name ?? "Cliente sin nombre"}</td><td>{record.service}</td><td className="text-right">{money(record.amount)}</td><td><LegacyCheck checked={record.active} /></td><td>{safeDateLabel(record.registeredAt)}</td>
+                </tr>;
+              }) : <tr><td className="recurring-charges-empty-cell" colSpan={9}>Sin cargos recurrentes.</td></tr>}</tbody>
+            </table>
+          </div>
+          <div className="legacy-footerbar"><span>Cantidad: <strong>{visibleRecords.length}</strong></span><span>Total: <strong>{money(recurringTotals.amount)}</strong></span><span>Recib.: <strong>{money(recurringTotals.received)}</strong></span><span>Pend.: <strong>{money(recurringTotals.pending)}</strong></span></div>
+        </section>
       </div>
       {clientSearchOpen && <ClientSearchSubmodal clients={snapshot.clients} onClose={() => setClientSearchOpen(false)} onSelect={(client) => { setClientQuery(client.code); setClientSearchOpen(false); }} />}
       {dialogMode && <RecurringChargeDialog row={dialogMode === "edit" ? selectedRow : null} clients={snapshot.clients} onClose={() => setDialogMode(null)} onSave={saveRecord} />}
@@ -9824,44 +9854,6 @@ function operationSpec(page: Page, snapshot: Snapshot): OperationSpec {
       ],
     };
   }
-  if (page === "recurringCharges")
-    return {
-      title: "Cargos Recurrentes",
-      subtitle: "Generación de cargos fijos mensuales y servicios periódicos.",
-      filterTitle: "Filtro de Cargos Recurrentes",
-      entity: "recurringCharges",
-      modes: ["Todos", "Por Cliente"],
-      columns: [
-        { key: "n", label: "Nro." },
-        { key: "date", label: "Fecha" },
-        { key: "frequency", label: "Frecuencia" },
-        { key: "ident", label: "Identif." },
-        { key: "client", label: "Cliente" },
-        { key: "service", label: "Servicio" },
-      ],
-      rows: snapshot.charges
-        .filter((charge) => charge.required)
-        .map((charge, index) => ({
-          __id: charge.id,
-          __entity: "recurringCharges",
-          __date: charge.dueDate,
-          __status: charge.status,
-          __amount: charge.amount,
-          __raw: charge as unknown as Record<string, unknown>,
-          n: index + 1,
-          date: safeDateLabel(charge.dueDate),
-          frequency: "Mensual",
-          ident: charge.id.slice(0, 8),
-          client: client(charge.clientId)?.name,
-          service: charge.service,
-        })),
-      footer: [
-        {
-          label: "Cantidad",
-          value: snapshot.charges.filter((charge) => charge.required).length,
-        },
-      ],
-    };
   if (page === "recurringPayouts") {
     const rows = snapshot.payoutRecurring ?? [];
     return {

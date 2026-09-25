@@ -9199,7 +9199,7 @@ table {
 
 /* Cargos Recurrentes MDI catalog and compact legacy form */
 .recurring-charges-view { width: 100%; align-items: stretch; overflow: hidden; gap: 0; }
-.recurring-charges-view > .legacy-mdi-toolbar { width: 100%; box-sizing: border-box; flex: 0 0 auto; border-radius: 0; border-width: 0 0 1px; background: #e8e8e8; }
+.recurring-charges-view > .legacy-mdi-toolbar { width: 100%; box-sizing: border-box; flex: 0 0 auto; border-radius: 0; border-width: 0 0 1px; background: #eef2f7; }
 .recurring-charges-view > .charges-layout {
   display: flex;
   flex: 1 1 auto;
@@ -9240,6 +9240,7 @@ table {
   color: #111827;
   font-size: 13px;
 }
+.recurring-charges-view .pending-charges-filter-heading { border-color: #1d4ed8; background: #1d4ed8; }
 .recurring-charge-filter-panel input[type="radio"] { width: 14px; height: 14px; min-width: 14px; flex: 0 0 14px; margin: 0; transform: none; }
 .recurring-charge-filter-panel input[type="text"],
 .recurring-charge-filter-panel input[type="date"],
@@ -9272,9 +9273,10 @@ table {
   min-height: 0;
   overflow: hidden;
 }
-.recurring-charges-view .recurring-charges-legacy-layout > div[aria-label="Grilla de cargos recurrentes"] { min-width: 0; }
+.recurring-charges-view .recurring-charges-legacy-layout > section[aria-label="Grilla de cargos recurrentes"] { min-width: 0; }
+.recurring-charges-view .charges-grid-panel > div:first-child { min-width: 0; min-height: 0; }
 .recurring-charges-view .legacy-footerbar { flex: 0 0 auto; min-height: 38px; }
-.recurring-charges-table { min-width: 700px; color: #111827; }
+.recurring-charges-table { min-width: 980px; color: #111827; }
 .recurring-charges-table th,
 .recurring-charges-table td { white-space: nowrap; }
 .recurring-charges-table th { position: sticky; top: 0; z-index: 1; }
@@ -9285,8 +9287,9 @@ table {
 .recurring-charges-table tbody tr.selected-row td { background: #dbeafe; color: #1e3a8a; }
 .recurring-charges-table tbody tr.selected-row:hover td { background: #bfdbfe; }
 .recurring-charges-table .recurring-charges-empty-cell { padding: 8px; color: #6b7280; text-align: left; }
-.recurring-charge-dialog { width: min(760px, calc(100vw - 40px)); }
-.recurring-charge-dialog .legacy-dialog-body { padding: 14px 16px; }
+.recurring-charge-dialog { width: min(760px, calc(100vw - 40px)); border-color: #1d4ed8; background: #e2e8f0; }
+.recurring-charge-dialog .legacy-dialog-titlebar { background: linear-gradient(180deg, #1d4ed8 0%, #1e40af 100%); color: #fff; border-bottom-color: #1e3a8a; }
+.recurring-charge-dialog .legacy-dialog-body { padding: 14px 16px; background: #e2e8f0; }
 .recurring-charge-form { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .recurring-charge-row { display: grid; align-items: center; gap: 8px; min-width: 0; }
 .recurring-charge-row > label,
