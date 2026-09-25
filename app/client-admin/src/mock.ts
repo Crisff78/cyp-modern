@@ -636,7 +636,19 @@ function deleteAdminRecord(entity: string, id: string, body: Record<string, unkn
       movement.cancellationNote = String(body.note ?? "").trim();
     }
   }
-  if (["deposits", "payments", "cashDeliveries"].includes(entity))
+  if (entity === "payments") {
+    const movement = state.movements.find((item) => item.id === id && item.type === "payout");
+    if (movement && !movement.cancelledAt) {
+      movement.cancelledAt = now();
+      movement.cancellationNote = String(body.note ?? "").trim();
+      const payout = state.payouts.find((item) => item.id === movement.payoutId);
+      if (payout) {
+        payout.paid = Math.max(0, payout.paid - movement.amount);
+        payout.status = payout.paid === 0 ? "pending" : payout.paid >= payout.amount ? "paid" : "partial";
+      }
+    }
+  }
+  if (["deposits", "cashDeliveries"].includes(entity))
     state.movements = state.movements.filter((item) => item.id !== id);
   state = derive(state);
   return { ok: true };
@@ -810,6 +822,27 @@ export async function mockApi<T>(
   if (path.startsWith("/cuadres/preview")) {
     const url = new URL(path, "http://mock.local");
     return balance(url.searchParams.get("collectorId") ?? "col-1") as T;
+  }
+  if (path === "/pagos" && method === "POST") {
+    currentUser();
+    const body = jsonBody(options);
+    const payout = state.payouts.find((item) => item.id === String(body.payoutId ?? ""));
+    const amount = Number(body.amount);
+    if (!payout) throw new MockApiError("Descargo no encontrado.", 404);
+    if (!Number.isSafeInteger(amount) || amount <= 0) throw new MockApiError("El importe del pago debe ser mayor a cero.", 422);
+    if (payout.status === "cancelled" || payout.paid + amount > payout.amount) throw new MockApiError("El pago supera el saldo autorizado.", 422);
+    if (state.settlements.some((item) => item.collectorId === payout.collectorId && item.date >= state.businessDate)) throw new MockApiError("La jornada ya está cerrada.", 409);
+    const available = balance(payout.collectorId).officeDelivered - balance(payout.collectorId).paidToClients;
+    if (amount > available) throw new MockApiError("No hay fondos de oficina suficientes para este pago.", 409);
+    const movement: Snapshot["movements"][number] = {
+      id: uid("mov"), collectorId: payout.collectorId, clientId: payout.clientId, payoutId: payout.id,
+      type: "payout", amount, createdAt: now(), receiptToken: uid("receipt"),
+    };
+    payout.paid += amount;
+    payout.status = payout.paid >= payout.amount ? "paid" : "partial";
+    state.movements.push(movement);
+    state = derive(state);
+    return { movement: structuredClone(movement) } as T;
   }
   if (path === "/cuadres" && method === "POST") {
     const body = jsonBody(options),

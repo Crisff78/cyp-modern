@@ -87,6 +87,7 @@ import {
   type MapMarker,
 } from "./services/mapAdapter";
 import { parseImportCsv } from "./services/importCsv";
+import { isMockToken } from "./mock";
 import OperationModal, { type Operation } from "./Operations";
 import AccountModal, { type AccountOperation } from "./Users";
 import {
@@ -6009,6 +6010,8 @@ function LegacyOperationView({
         <DepositsOperationalView snapshot={snapshot} currentUser={currentUser} onRefresh={onRefresh} />
       ) : spec.entity === "payouts" ? (
         <PayoutsOperationalView snapshot={snapshot} currentUser={currentUser} onRefresh={onRefresh} />
+      ) : spec.entity === "payments" ? (
+        <PaymentsOperationalView snapshot={snapshot} currentUser={currentUser} onRefresh={onRefresh} />
       ) : spec.entity === "collections" ? (
         <div className="charges-view collections-legacy-view">
           <LegacyToolbar
@@ -6947,6 +6950,392 @@ function PayoutsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{
       {confirmInactivate && <LegacyConfirmDialog message="¿Inactivar datos?" onYes={() => void inactivateSelected()} onNo={() => setConfirmInactivate(false)} />}
     </>
   );
+}
+
+type PaymentDetailLine = {
+  id: string;
+  payoutId: string;
+  service: string;
+  concept: string;
+  amount: number;
+};
+
+type PaymentFormDraft = {
+  date: string;
+  currency: string;
+  clientId: string;
+  clientCode: string;
+  collectorId: string;
+  paymentForm: string;
+  bank: string;
+  number: string;
+  note: string;
+  lines: PaymentDetailLine[];
+};
+
+type PaymentSaveOutcome = {
+  savedLineIds: string[];
+  ticket?: CollectionTicketModel;
+  error?: string;
+};
+
+type PaymentDisplayMetadata = Pick<PaymentFormDraft, "currency" | "paymentForm" | "bank" | "number" | "note"> & {
+  online: boolean;
+  central: boolean;
+};
+
+function PaymentsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{ snapshot: Snapshot; currentUser: User; onRefresh: () => void }>) {
+  const permissions = permissionsFor(currentUser);
+  const [mode, setMode] = useState("Todos");
+  const [clientQuery, setClientQuery] = useState("");
+  const [filterClientId, setFilterClientId] = useState("");
+  const [collectorId, setCollectorId] = useState("Todas");
+  const [zone, setZone] = useState("Todas");
+  const [routeId, setRouteId] = useState("Todas");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [status, setStatus] = useState("Activo");
+  const [filtersVisible, setFiltersVisible] = useState(true);
+  const [selectedId, setSelectedId] = useState("");
+  const [orderedIds, setOrderedIds] = useState<string[]>([]);
+  const [clientSearchOpen, setClientSearchOpen] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
+  const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
+  const [cancelReasonOpen, setCancelReasonOpen] = useState(false);
+  const [cancelNote, setCancelNote] = useState("Digitado por error.");
+  const [printTicket, setPrintTicket] = useState<CollectionTicketModel | null>(null);
+  const [metadata, setMetadata] = useState<Record<string, PaymentDisplayMetadata>>({});
+  const [flash, setFlash] = useState(false);
+  const movementIdsKey = snapshot.movements.filter((item) => item.type === "payout").map((item) => item.id).join("|");
+  useEffect(() => {
+    const ids = snapshot.movements.filter((item) => item.type === "payout").map((item) => item.id);
+    setOrderedIds((current) => {
+      const retained = current.filter((id) => ids.includes(id));
+      return [...retained, ...ids.filter((id) => !retained.includes(id))];
+    });
+  }, [movementIdsKey, snapshot.movements]);
+
+  const zones = Array.from(new Set([
+    ...snapshot.routes.map((route) => route.sector),
+    ...snapshot.clients.map((client) => client.sector),
+  ].filter((value): value is string => Boolean(value))));
+  const allPayments = snapshot.movements.filter((movement) => movement.type === "payout");
+  const visiblePayments = allPayments.filter((movement) => {
+    const client = snapshot.clients.find((item) => item.id === movement.clientId);
+    const route = snapshot.routes.find((item) => item.id === client?.routeId);
+    const movementDate = movement.createdAt.slice(0, 10);
+    const clientText = `${client?.code ?? ""} ${client?.identification ?? ""} ${client?.name ?? ""}`.toLowerCase();
+    const matchesMode = mode === "Todos"
+      || (mode === "por Cliente" && (filterClientId ? movement.clientId === filterClientId : clientText.includes(clientQuery.trim().toLowerCase())))
+      || (mode === "por Cobrador" && (collectorId === "Todas" || movement.collectorId === collectorId))
+      || (mode === "Por Zona" && (zone === "Todas" || (client?.sector || route?.sector) === zone))
+      || (mode === "Por Ruta" && (routeId === "Todas" || client?.routeId === routeId));
+    const matchesDate = (!fromDate || movementDate >= fromDate) && (!toDate || movementDate <= toDate);
+    const matchesStatus = status === "Todos"
+      || (status === "Activo" && !movement.cancelledAt)
+      || (status === "Cancelado" && Boolean(movement.cancelledAt));
+    return matchesMode && matchesDate && matchesStatus;
+  });
+  const orderedPayments = [...visiblePayments].sort((left, right) => orderedIds.indexOf(left.id) - orderedIds.indexOf(right.id));
+  const selectedPayment = orderedPayments.find((movement) => movement.id === selectedId) ?? null;
+  const activeTotal = orderedPayments.filter((item) => !item.cancelledAt).reduce((sum, item) => sum + item.amount, 0);
+  const cancelledTotal = orderedPayments.filter((item) => item.cancelledAt).reduce((sum, item) => sum + item.amount, 0);
+  const moveSelected = (target: "first" | "previous" | "next" | "last") => {
+    if (!selectedId) return;
+    setOrderedIds((current) => {
+      const ids = current.length ? [...current] : allPayments.map((item) => item.id);
+      const index = ids.indexOf(selectedId);
+      if (index < 0) return current;
+      const [item] = ids.splice(index, 1);
+      const destination = target === "first" ? 0 : target === "last" ? ids.length : target === "previous" ? Math.max(0, index - 1) : Math.min(ids.length, index + 1);
+      ids.splice(destination, 0, item);
+      return ids;
+    });
+  };
+  const refresh = () => {
+    setMode("Todos");
+    setClientQuery("");
+    setFilterClientId("");
+    setCollectorId("Todas");
+    setZone("Todas");
+    setRouteId("Todas");
+    setFromDate("");
+    setToDate("");
+    setStatus("Activo");
+    setSelectedId("");
+    setFlash(true);
+    window.setTimeout(() => setFlash(false), 280);
+    onRefresh();
+  };
+  const cancelSelected = async () => {
+    if (!selectedPayment) return;
+    const demoStore = isMockToken(getToken()) || localStorage.getItem("cyp-admin-force-mock") === "true";
+    if (!demoStore) {
+      toast.error("La API actual no ofrece cancelación de pagos; el registro no fue modificado.");
+      return;
+    }
+    try {
+      await api(`/mock/admin/payments/${encodeURIComponent(selectedPayment.id)}`, {
+        method: "DELETE",
+        body: JSON.stringify({ note: cancelNote.trim() }),
+      });
+      setCancelReasonOpen(false);
+      setConfirmCancelOpen(false);
+      setSelectedId("");
+      setCancelNote("Digitado por error.");
+      toast.success("Pago inactivado en el modo de demostración.");
+      onRefresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo inactivar el pago.");
+    }
+  };
+  const savePayment = async (draft: PaymentFormDraft, shouldPrint: boolean): Promise<PaymentSaveOutcome> => {
+    const client = snapshot.clients.find((item) => item.id === draft.clientId);
+    if (!client) return { savedLineIds: [], error: "Debe escoger un Cliente válido primero." };
+    const savedMovements: Movement[] = [];
+    const savedLineIds: string[] = [];
+    let failure = "";
+    for (const line of draft.lines) {
+      try {
+        const result = await api<{ movement: Movement }>("/pagos", {
+          method: "POST",
+          headers: { "Idempotency-Key": crypto.randomUUID() },
+          body: JSON.stringify({ payoutId: line.payoutId, amount: line.amount }),
+        });
+        if (!result.movement?.id) throw new Error("La API no devolvió el pago registrado.");
+        savedMovements.push(result.movement);
+        savedLineIds.push(line.id);
+        setMetadata((current) => ({
+          ...current,
+          [result.movement.id]: {
+            currency: draft.currency,
+            paymentForm: draft.paymentForm,
+            bank: draft.bank,
+            number: draft.number,
+            note: draft.note,
+            online: true,
+            central: false,
+          },
+        }));
+      } catch (error) {
+        failure = error instanceof Error ? error.message : "No se pudo registrar el pago.";
+        break;
+      }
+    }
+    if (savedLineIds.length) {
+      toast.success(`${savedLineIds.length} pago(s) registrado(s).`);
+      onRefresh();
+    }
+    if (failure) {
+      toast.error(savedLineIds.length ? `Se guardaron ${savedLineIds.length} línea(s); el resto falló: ${failure}` : failure);
+      return { savedLineIds, error: failure };
+    }
+    if (!savedMovements.length) return { savedLineIds, error: "Agregue al menos un pago autorizado." };
+    if (!shouldPrint) return { savedLineIds };
+    const collector = snapshot.collectors.find((item) => item.id === draft.collectorId);
+    const ticket: CollectionTicketModel = {
+      id: savedMovements.map((item) => item.id).join("-"),
+      receiptNumber: savedMovements.map((item) => item.id).join(", "),
+      date: draft.date,
+      currency: draft.currency,
+      clientName: client.name,
+      clientIdentification: client.identification || client.code,
+      collectorName: collector?.name ?? "Administración",
+      paymentForm: draft.paymentForm,
+      bank: draft.bank,
+      checkNumber: draft.number,
+      note: draft.note,
+      amount: draft.lines.reduce((sum, line) => sum + line.amount, 0),
+      lines: draft.lines.map((line) => ({ service: line.service, concept: line.concept, amount: line.amount })),
+    };
+    return { savedLineIds, ticket };
+  };
+  const findClientForFilter = (client: Client) => {
+    setFilterClientId(client.id);
+    setClientQuery(client.code);
+  };
+
+  return (
+    <>
+      <div className={`charges-view payments-legacy-view ${flash ? "refresh-flash" : ""}`}>
+        <LegacyToolbar
+          filtersVisible={filtersVisible}
+          onToggleFilters={() => setFiltersVisible((visible) => !visible)}
+          onFirst={() => moveSelected("first")}
+          onPrevious={() => moveSelected("previous")}
+          onNext={() => moveSelected("next")}
+          onLast={() => moveSelected("last")}
+          onNew={() => setFormOpen(true)}
+          onDelete={() => selectedPayment && setConfirmCancelOpen(true)}
+          onRefresh={refresh}
+          disableNew={!permissions.canCreate}
+          disableDelete={!selectedPayment || Boolean(selectedPayment.cancelledAt) || !permissions.canDelete}
+          showEdit={false}
+          deleteIcon="x"
+          deleteTitle="Cancelar pago"
+        />
+        <div className={`charges-layout payments-layout ${filtersVisible ? "" : "filters-collapsed"}`}>
+          {filtersVisible && <aside className="legacy-filter-panel charges-filter-panel payments-filter-panel" aria-label="Panel de filtro de pagos">
+            <h2>Panel de Filtro</h2>
+            <div className="charges-filter-options">
+              <label className="charges-radio-row"><input type="radio" name="payment-filter-mode" checked={mode === "Todos"} onChange={() => setMode("Todos")} /><span>Todos</span></label>
+              <div className="charges-filter-group"><label className="charges-radio-row"><input type="radio" name="payment-filter-mode" checked={mode === "por Cliente"} onChange={() => setMode("por Cliente")} /><span>por Cliente:</span></label><div className="legacy-lookup-field charges-filter-control"><input aria-label="Filtrar por cliente" value={clientQuery} disabled={mode !== "por Cliente"} onChange={(event) => { setClientQuery(event.target.value); setFilterClientId(""); }} /><button type="button" aria-label="Seleccionar cliente" disabled={mode !== "por Cliente"} onClick={() => setClientSearchOpen(true)}>[...]</button></div></div>
+              <div className="charges-filter-group"><label className="charges-radio-row"><input type="radio" name="payment-filter-mode" checked={mode === "por Cobrador"} onChange={() => setMode("por Cobrador")} /><span>por Cobrador:</span></label><select className="charges-filter-control" aria-label="Filtrar por cobrador" value={collectorId} disabled={mode !== "por Cobrador"} onChange={(event) => setCollectorId(event.target.value)}><option value="Todas">Todos</option>{snapshot.collectors.map((collector) => <option key={collector.id} value={collector.id}>{collector.name}</option>)}</select></div>
+              <div className="charges-filter-group"><label className="charges-radio-row"><input type="radio" name="payment-filter-mode" checked={mode === "Por Zona"} onChange={() => setMode("Por Zona")} /><span>Por Zona:</span></label><select className="charges-filter-control" aria-label="Filtrar por zona" value={zone} disabled={mode !== "Por Zona"} onChange={(event) => setZone(event.target.value)}><option>Todas</option>{zones.map((item) => <option key={item}>{item}</option>)}</select></div>
+              <div className="charges-filter-group"><label className="charges-radio-row"><input type="radio" name="payment-filter-mode" checked={mode === "Por Ruta"} onChange={() => setMode("Por Ruta")} /><span>Por Ruta:</span></label><select className="charges-filter-control" aria-label="Filtrar por ruta" value={routeId} disabled={mode !== "Por Ruta"} onChange={(event) => setRouteId(event.target.value)}><option value="Todas">Todas</option>{snapshot.routes.map((route) => <option key={route.id} value={route.id}>{route.name}</option>)}</select></div>
+            </div>
+            <label className="field compact-field">Fecha Inicial:<input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} /></label>
+            <label className="field compact-field">Fecha final:<input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} /></label>
+            <label className="field compact-field">Estado:<select value={status} onChange={(event) => setStatus(event.target.value)}><option>Activo</option><option>Todos</option><option>Cancelado</option></select></label>
+          </aside>}
+          <section className="legacy-grid-panel charges-grid-panel payments-grid-panel" aria-label="Grilla de pagos">
+            <div className="legacy-mdi-table-wrap"><table className="legacy-mdi-table payments-table"><thead><tr><th>Nro.</th><th>Identif.</th><th>Cliente</th><th>Fecha</th><th>EnL...</th><th>En...</th><th>Importe</th><th>Nota</th></tr></thead><tbody>
+              {orderedPayments.length ? orderedPayments.map((movement, index) => {
+                const client = snapshot.clients.find((item) => item.id === movement.clientId);
+                const details = metadata[movement.id];
+                const active = selectedId === movement.id;
+                return <tr key={movement.id} className={active ? "selected-row" : undefined} aria-selected={active} role="button" tabIndex={0} onClick={() => setSelectedId(movement.id)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedId(movement.id))}>
+                  <td>{index + 1}</td><td>{client?.identification || client?.code || ""}</td><td>{client?.name ?? "Cliente sin nombre"}</td><td>{safeDateLabel(movement.createdAt.slice(0, 10))}</td><td><LegacyCheck checked={details?.online ?? Boolean(movement.receiptToken)} /></td><td><LegacyCheck checked={details?.central ?? false} /></td><td className="numeric-cell">{money(movement.amount)}</td><td>{movement.cancellationNote || details?.note || ""}</td>
+                </tr>;
+              }) : <tr><td colSpan={8} className="payouts-empty-cell">Sin pagos registrados.</td></tr>}
+            </tbody></table></div>
+            <div className="legacy-footerbar"><span>Cantidad: <strong>{orderedPayments.length}</strong></span><span>Total: <strong>{money(activeTotal)}</strong></span><span>Cancelado: <strong>{money(cancelledTotal)}</strong></span></div>
+          </section>
+        </div>
+      </div>
+      {formOpen && <PaymentDataDialog key="new-payment" snapshot={snapshot} onClose={() => setFormOpen(false)} onSave={savePayment} onPrint={(ticket) => setPrintTicket(ticket)} />}
+      {clientSearchOpen && <ClientSearchSubmodal clients={snapshot.clients} onClose={() => setClientSearchOpen(false)} onSelect={(client) => { findClientForFilter(client); setClientSearchOpen(false); }} />}
+      {confirmCancelOpen && <LegacyConfirmDialog message="¿Realmente desea cancelar el registro actual?" onYes={() => { setConfirmCancelOpen(false); setCancelReasonOpen(true); }} onNo={() => setConfirmCancelOpen(false)} />}
+      {cancelReasonOpen && <PaymentCancelNoteDialog note={cancelNote} onChange={setCancelNote} onClose={() => setCancelReasonOpen(false)} onConfirm={() => void cancelSelected()} />}
+      {printTicket && <CollectionReceiptPrintDialog receipts={[printTicket]} onClose={() => setPrintTicket(null)} />}
+    </>
+  );
+}
+
+function PaymentDataDialog({ snapshot, onClose, onSave, onPrint }: Readonly<{ snapshot: Snapshot; onClose: () => void; onSave: (draft: PaymentFormDraft, shouldPrint: boolean) => Promise<PaymentSaveOutcome>; onPrint: (ticket: CollectionTicketModel) => void }>) {
+  const [draft, setDraft] = useState<PaymentFormDraft>({
+    date: localSystemDate(), currency: CURRENCIES[1] ?? "Peso Dominicano", clientId: "", clientCode: "",
+    collectorId: snapshot.collectors[0]?.id ?? "", paymentForm: "Efectivo", bank: "No Definido", number: "", note: "", lines: [],
+  });
+  const [clientSearchOpen, setClientSearchOpen] = useState(false);
+  const [payoutPickerOpen, setPayoutPickerOpen] = useState(false);
+  const [selectedLineId, setSelectedLineId] = useState("");
+  const [editingLine, setEditingLine] = useState<PaymentDetailLine | null>(null);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [clientRequiredOpen, setClientRequiredOpen] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const client = snapshot.clients.find((item) => item.id === draft.clientId);
+  const selectedLine = draft.lines.find((line) => line.id === selectedLineId) ?? null;
+  const total = draft.lines.reduce((sum, line) => sum + line.amount, 0);
+  const banks = ["No Definido", "BANCO DE RESERVAS", "BANCO POPULAR", "BANCO HIPOTECARIO DOMINICANO", "BANCO LEON", "GERENCIAL FIDUCIARIO", "BANCO NACIONAL", "BANCO METROPOLITANO", "SCOTIA BANK", "CITY BANK", "BANCO DE OSAKE", "BANCO ADEMI", "BANCO", "BANCO DE COMERCIO", "BANCO GLOBAL"];
+  const update = <K extends keyof PaymentFormDraft>(field: K, value: PaymentFormDraft[K]) => setDraft((current) => ({ ...current, [field]: value }));
+  const chooseClient = (next: Client) => {
+    const route = snapshot.routes.find((item) => item.id === next.routeId);
+    setDraft((current) => ({ ...current, clientId: next.id, clientCode: next.code, collectorId: route?.collectorId ?? current.collectorId }));
+    setClientSearchOpen(false);
+    setSaveError("");
+  };
+  const resolveClientCode = (value: string) => {
+    const normalized = value.trim().toLowerCase();
+    const next = snapshot.clients.find((item) => item.code.toLowerCase() === normalized || item.identification?.toLowerCase() === normalized);
+    setDraft((current) => ({ ...current, clientCode: value, clientId: next?.id ?? "" }));
+  };
+  const eligiblePayouts = snapshot.payouts.filter((payout) => {
+    const alreadyAdded = draft.lines.filter((line) => line.payoutId === payout.id).reduce((sum, line) => sum + line.amount, 0);
+    return payout.clientId === draft.clientId && payout.collectorId === draft.collectorId && payout.status !== "cancelled" && payout.amount - payout.paid - alreadyAdded > 0;
+  });
+  const addPayoutLine = (payout: Payout) => {
+    const alreadyAdded = draft.lines.filter((line) => line.payoutId === payout.id).reduce((sum, line) => sum + line.amount, 0);
+    const pending = Math.max(0, payout.amount - payout.paid - alreadyAdded);
+    if (pending <= 0) return;
+    const line: PaymentDetailLine = { id: crypto.randomUUID(), payoutId: payout.id, service: "Pago autorizado", concept: payout.concept, amount: pending };
+    setDraft((current) => ({ ...current, collectorId: payout.collectorId, lines: [...current.lines, line] }));
+    setSelectedLineId(line.id);
+    setPayoutPickerOpen(false);
+    setSaveError("");
+  };
+  const requestAddLine = () => {
+    if (!client) { setClientRequiredOpen(true); return; }
+    if (!eligiblePayouts.length) { toast.info("El cliente no tiene pagos autorizados pendientes."); return; }
+    setPayoutPickerOpen(true);
+  };
+  const submit = async (event: FormEvent | ReactMouseEvent<HTMLButtonElement>, shouldPrint = false) => {
+    event.preventDefault();
+    setSaveError("");
+    if (!client) { setClientRequiredOpen(true); return; }
+    if (!draft.lines.length) { setSaveError("Agregue al menos un pago autorizado."); return; }
+    if (draft.lines.some((line) => !Number.isFinite(line.amount) || line.amount <= 0)) { setSaveError("El importe de cada pago debe ser mayor a cero."); return; }
+    setBusy(true);
+    try {
+      const result = await onSave({ ...draft, lines: draft.lines.map((line) => ({ ...line })) }, shouldPrint);
+      if (result.savedLineIds.length) {
+        const savedSet = new Set(result.savedLineIds);
+        const remaining = draft.lines.filter((line) => !savedSet.has(line.id));
+        setDraft((current) => ({ ...current, lines: current.lines.filter((line) => !savedSet.has(line.id)) }));
+        if (result.ticket) onPrint(result.ticket);
+        if (!remaining.length && !result.error) onClose();
+      }
+      if (result.error) setSaveError(result.error);
+      else if (!result.savedLineIds.length) setSaveError("No se registró ningún pago.");
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "No se pudo registrar el pago.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <LegacyDialog title="Datos del Pago..." onClose={onClose} className="payment-data-dialog">
+      <form className="collection-receipt-content payment-data-content" onSubmit={(event) => void submit(event)}>
+        <div className="collection-receipt-fields">
+          <div className="collection-receipt-row collection-receipt-meta-row">
+            <label>Doc:<input type="number" value="-1" readOnly disabled aria-label="Documento" /></label>
+            <label>Fecha:<input type="date" value={draft.date} onChange={(event) => update("date", event.target.value)} /></label>
+            <label>Moneda:<select value={draft.currency} onChange={(event) => update("currency", event.target.value)}>{CURRENCIES.map((option) => <option key={option}>{option}</option>)}</select></label>
+          </div>
+          <div className="collection-receipt-row collection-receipt-client-row">
+            <label htmlFor="payment-client-code">Cliente:</label>
+            <input id="payment-client-code" value={draft.clientCode} onChange={(event) => resolveClientCode(event.target.value)} aria-label="Código del cliente" />
+            <button type="button" aria-label="Buscar cliente" onClick={() => setClientSearchOpen(true)}>[...]</button>
+            <input value={client?.name ?? ""} readOnly disabled aria-label="Nombre del cliente" />
+          </div>
+          <div className="collection-receipt-row collection-receipt-labeled-row"><label htmlFor="payment-collector">Cobrad.:</label><select id="payment-collector" value={draft.collectorId} onChange={(event) => update("collectorId", event.target.value)}><option value="">No definido</option>{snapshot.collectors.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div>
+          <div className="collection-receipt-row collection-receipt-labeled-row"><label htmlFor="payment-form">Forma:</label><select id="payment-form" value={draft.paymentForm} onChange={(event) => update("paymentForm", event.target.value)}>{["Efectivo", "Cheque", "Depósito", "Mixto", "Tarjeta"].map((item) => <option key={item}>{item}</option>)}</select></div>
+          <div className="collection-receipt-row collection-receipt-labeled-row"><label htmlFor="payment-bank">Banco:</label><select id="payment-bank" value={draft.bank} onChange={(event) => update("bank", event.target.value)}>{banks.map((item) => <option key={item}>{item}</option>)}</select></div>
+          <div className="collection-receipt-row collection-receipt-labeled-row"><label htmlFor="payment-number">Número:</label><input id="payment-number" value={draft.number} onChange={(event) => update("number", event.target.value)} /></div>
+          <div className="collection-receipt-row collection-receipt-labeled-row"><label htmlFor="payment-note">Nota:</label><input id="payment-note" value={draft.note} onChange={(event) => update("note", event.target.value)} /></div>
+        </div>
+        <section className="collection-receipt-detail" aria-label="Detalle del pago">
+          <div className="collection-receipt-detail-toolbar"><button type="button" disabled={busy} onClick={requestAddLine}>Agregar</button><button type="button" disabled={!selectedLine || busy} onClick={() => selectedLine && setEditingLine(selectedLine)}>Modificar</button><button type="button" disabled={!selectedLine || busy} onClick={() => setConfirmDeleteOpen(true)}>Borrar</button><button type="button" disabled={busy} onClick={() => { setSelectedLineId(""); setSaveError(""); toast.info("Detalle actualizado."); }}>Refrescar</button></div>
+          <div className="collection-receipt-table-wrap"><table className="collection-receipt-table"><thead><tr><th>Nro.</th><th>Servicio</th><th>Concepto</th><th>Importe</th></tr></thead><tbody>{draft.lines.length ? draft.lines.map((line, index) => <tr key={line.id} className={selectedLineId === line.id ? "selected-row" : undefined} aria-selected={selectedLineId === line.id} role="button" tabIndex={0} onClick={() => setSelectedLineId(line.id)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedLineId(line.id))}><td>{index + 1}</td><td>{line.service}</td><td>{line.concept}</td><td className="numeric-cell">{money(line.amount)}</td></tr>) : <tr><td colSpan={4} className="collection-receipt-empty">Sin pagos agregados.</td></tr>}</tbody></table></div>
+        </section>
+        {saveError && <div className="collection-receipt-error" role="alert">{saveError}</div>}
+        <div className="collection-receipt-footer"><label className="collection-receipt-total">Total:<input value={money(total)} readOnly disabled aria-label="Total del pago" /></label><div className="collection-receipt-footer-actions"><button type="button" disabled={busy} onClick={(event) => void submit(event)}>Guardar</button><button type="button" disabled={busy} onClick={(event) => void submit(event, true)}>Guardar e Imp.</button><button type="button" disabled={busy} onClick={onClose}>Cancelar</button></div></div>
+      </form>
+      {clientSearchOpen && <ClientSearchSubmodal clients={snapshot.clients} onClose={() => setClientSearchOpen(false)} onSelect={chooseClient} />}
+      {payoutPickerOpen && <PaymentPayoutPickerDialog payouts={eligiblePayouts} onClose={() => setPayoutPickerOpen(false)} onSelect={addPayoutLine} />}
+      {editingLine && <PaymentAmountDialog line={editingLine} maxAmount={Math.max(0, (snapshot.payouts.find((item) => item.id === editingLine.payoutId)?.amount ?? 0) - (snapshot.payouts.find((item) => item.id === editingLine.payoutId)?.paid ?? 0) - draft.lines.filter((line) => line.payoutId === editingLine.payoutId && line.id !== editingLine.id).reduce((sum, line) => sum + line.amount, 0))} onClose={() => setEditingLine(null)} onSave={(amount) => { update("lines", draft.lines.map((line) => line.id === editingLine.id ? { ...line, amount } : line)); setEditingLine(null); }} />}
+      {confirmDeleteOpen && <LegacyConfirmDialog message="¿Está seguro que desea borrar el elemento actual?" onYes={() => { update("lines", draft.lines.filter((line) => line.id !== selectedLineId)); setSelectedLineId(""); setConfirmDeleteOpen(false); }} onNo={() => setConfirmDeleteOpen(false)} />}
+      {clientRequiredOpen && <LegacyAlertDialog message="Debe escoger un Cliente válido primero." onClose={() => setClientRequiredOpen(false)} />}
+    </LegacyDialog>
+  );
+}
+
+function PaymentPayoutPickerDialog({ payouts, onClose, onSelect }: Readonly<{ payouts: Payout[]; onClose: () => void; onSelect: (payout: Payout) => void }>) {
+  const [selectedId, setSelectedId] = useState(payouts[0]?.id ?? "");
+  const selected = payouts.find((payout) => payout.id === selectedId);
+  return <LegacyDialog title="Seleccionar..." onClose={onClose} className="collection-charge-picker-dialog" overlayClassName="collection-receipt-suboverlay"><div className="collection-charge-picker-table-wrap"><table className="collection-receipt-table"><thead><tr><th>Servicio</th><th>Concepto</th><th>Importe</th></tr></thead><tbody>{payouts.length ? payouts.map((payout) => { const pending = Math.max(0, payout.amount - payout.paid); const active = selectedId === payout.id; return <tr key={payout.id} className={active ? "selected-row" : undefined} aria-selected={active} role="button" tabIndex={0} onClick={() => setSelectedId(payout.id)} onDoubleClick={() => onSelect(payout)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedId(payout.id))}><td>Pago autorizado</td><td>{payout.concept}</td><td className="numeric-cell">{money(pending)}</td></tr>; }) : <tr><td colSpan={3} className="collection-receipt-empty">No hay pagos pendientes para seleccionar.</td></tr>}</tbody></table></div><div className="legacy-dialog-actions centered"><button type="button" onClick={onClose}>Cancelar</button><button type="button" disabled={!selected} onClick={() => selected && onSelect(selected)}>oK</button></div></LegacyDialog>;
+}
+
+function PaymentAmountDialog({ line, maxAmount, onClose, onSave }: Readonly<{ line: PaymentDetailLine; maxAmount: number; onClose: () => void; onSave: (amount: number) => void }>) {
+  const [amount, setAmount] = useState((line.amount / 100).toFixed(2));
+  const [error, setError] = useState("");
+  const submit = (event: FormEvent) => { event.preventDefault(); const cents = Math.round(Number(amount) * 100); if (!Number.isSafeInteger(cents) || cents <= 0) { setError("El importe debe ser mayor a cero."); return; } if (cents > maxAmount) { setError("El importe supera el saldo autorizado pendiente."); return; } onSave(cents); };
+  return <LegacyDialog title="Modificar Importe..." onClose={onClose} className="collection-receipt-modify-dialog" overlayClassName="collection-receipt-suboverlay"><form className="collection-receipt-modify-form" onSubmit={submit}><label>Importe:<input autoFocus type="number" min="0.01" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} /></label>{error && <div className="collection-receipt-error" role="alert">{error}</div>}<div className="legacy-dialog-actions centered"><button type="button" onClick={onClose}>Cancelar</button><button type="submit">oK</button></div></form></LegacyDialog>;
+}
+
+function PaymentCancelNoteDialog({ note, onChange, onClose, onConfirm }: Readonly<{ note: string; onChange: (value: string) => void; onClose: () => void; onConfirm: () => void }>) {
+  return <LegacyDialog title="Entre un valor..." onClose={onClose} className="collection-flow-dialog collection-cancel-reason-dialog" overlayClassName="collection-receipt-suboverlay"><label className="collection-flow-field">Nota:<input autoFocus value={note} onChange={(event) => onChange(event.target.value)} /></label><div className="legacy-dialog-actions centered"><button type="button" onClick={onConfirm}>oK</button><button type="button" onClick={onClose}>Cancelar</button></div></LegacyDialog>;
 }
 
 function PayoutDataDialog({ snapshot, payout, concepts, onClose, onSave }: Readonly<{ snapshot: Snapshot; payout?: PayoutViewRecord; concepts: string[]; onClose: () => void; onSave: (draft: PayoutFormDraft) => Promise<boolean> }>) {
