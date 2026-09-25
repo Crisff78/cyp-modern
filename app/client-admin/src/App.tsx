@@ -593,7 +593,7 @@ const runToolbarAction = (action?: LegacyToolbarAction) => (event: ReactMouseEve
   action?.();
 };
 
-function LegacyToolbar({ onToggleFilters, filtersVisible = true, onFirst, onPrevious, onNext, onLast, onNew, onEdit, onAccept, onDelete, onRefresh, onPrint, disableNew = false, disableEdit = false, disableAccept = false, disableDelete = false, showEdit = true, deleteIcon = "trash", deleteTitle = "Eliminar", extra }: Readonly<{ onToggleFilters?: () => void; filtersVisible?: boolean; onFirst?: () => void; onPrevious?: () => void; onNext?: () => void; onLast?: () => void; onNew?: () => void; onEdit?: () => void; onAccept?: () => void; onDelete?: () => void; onRefresh?: () => void; onPrint?: () => void; disableNew?: boolean; disableEdit?: boolean; disableAccept?: boolean; disableDelete?: boolean; showEdit?: boolean; deleteIcon?: "trash" | "x"; deleteTitle?: string; extra?: ReactNode }>) {
+function LegacyToolbar({ onToggleFilters, filtersVisible = true, onFirst, onPrevious, onNext, onLast, onNew, onEdit, onAccept, onDelete, onRefresh, onPrint, disableNew = false, disableEdit = false, disableAccept = false, disableDelete = false, showEdit = true, deleteIcon = "trash", deleteTitle = "Eliminar", newTitle = "Nuevo", newIcon, extra }: Readonly<{ onToggleFilters?: () => void; filtersVisible?: boolean; onFirst?: () => void; onPrevious?: () => void; onNext?: () => void; onLast?: () => void; onNew?: () => void; onEdit?: () => void; onAccept?: () => void; onDelete?: () => void; onRefresh?: () => void; onPrint?: () => void; disableNew?: boolean; disableEdit?: boolean; disableAccept?: boolean; disableDelete?: boolean; showEdit?: boolean; deleteIcon?: "trash" | "x"; deleteTitle?: string; newTitle?: string; newIcon?: ReactNode; extra?: ReactNode }>) {
   return (
     <div className="legacy-mdi-toolbar" aria-label="Barra de herramientas legacy" onMouseDown={stopToolbarEvent} onClick={stopToolbarEvent}>
       {onToggleFilters && <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" onClick={runToolbarAction(onToggleFilters)}><KeyRound size={15} /></button>}
@@ -602,7 +602,7 @@ function LegacyToolbar({ onToggleFilters, filtersVisible = true, onFirst, onPrev
       <button type="button" className="nav-tool" title="Bajar" onClick={runToolbarAction(onNext)}>&gt;</button>
       <button type="button" className="nav-tool" title="Mover al final" onClick={runToolbarAction(onLast)}>&gt;|</button>
       <span className="mdi-toolbar-separator" />
-      <button type="button" title="Nuevo" disabled={disableNew} onClick={runToolbarAction(onNew)}><Plus size={15} /></button>
+      <button type="button" title={newTitle} disabled={disableNew} onClick={runToolbarAction(onNew)}>{newIcon ?? <Plus size={15} />}</button>
       {showEdit && <button type="button" title="Editar" disabled={disableEdit} onClick={runToolbarAction(onEdit)}><Pencil size={15} /></button>}
       {onAccept && <button type="button" title="Aceptar depósito" disabled={disableAccept} onClick={runToolbarAction(onAccept)}><ClipboardCheck size={15} /></button>}
       <button type="button" className="danger-tool" title={deleteTitle} disabled={disableDelete} onClick={runToolbarAction(onDelete)}>{deleteIcon === "x" ? <X size={15} /> : <Trash2 size={15} />}</button>
@@ -9999,90 +9999,401 @@ function CobranzaMapasModal({
   );
 }
 
-function DailySettlementsView({
-  snapshot,
-  onRefresh,
-}: Readonly<{
-  snapshot: Snapshot;
-  onRefresh: () => void;
-}>) {
-  const rows = snapshot.settlements.length
-    ? snapshot.settlements.map((settlement) => ({
-        date: dateLabel(settlement.date),
-        total: money(settlement.collected + settlement.officeDelivered),
-        cash: money(settlement.collected),
-        check: money(0),
-        balance: money(settlement.difference),
-      }))
-    : [
-        {
-          date: dateLabel(snapshot.businessDate),
-          total: money(
-            snapshot.totals.collected + snapshot.totals.officeDelivered,
-          ),
-          cash: money(snapshot.totals.collected),
-          check: money(0),
-          balance: money(snapshot.totals.difference),
-        },
-      ];
-  return (
-    <>
-      <div className="page-title compact-title">
-        <div>
-          <div className="eyebrow">ARQUEO</div>
-          <h1>
-            Cuadres Diarios<span className="title-dot">.</span>
-          </h1>
-          <p>Consulta de cierres por rango de fecha y moneda.</p>
-        </div>
-      </div>
-      <section className="legacy-workspace settlement-legacy-workspace">
-        <aside className="legacy-filter-panel">
-          <h2>Filtro de Cuadres</h2>
-          <label className="field compact-field">
-            Fecha Inicial
-            <input type="date" defaultValue="2026-09-01" />
-          </label>
-          <label className="field compact-field">
-            Fecha Final
-            <input type="date" defaultValue="2026-09-16" />
-          </label>
-          <label className="field compact-field">
-            Moneda
-            <select>
-              <option>DOP</option>
-              <option>USD</option>
-              <option>EUR</option>
-            </select>
-          </label>
-          <button className="btn full" onClick={onRefresh}>
-            <RefreshCw size={16} /> Refrescar
-          </button>
-        </aside>
-        <div className="legacy-grid-panel">
-          <div className="legacy-icon-toolbar">
-            <button onClick={onRefresh}>
-              <RefreshCw size={16} />
-            </button>
-            <button>
-              <Download size={16} />
-            </button>
-          </div>
-          <LegacyTable
-            dense
-            columns={[
-              { key: "date", label: "Fecha" },
-              { key: "total", label: "Total", align: "right" },
-              { key: "cash", label: "Efectivo", align: "right" },
-              { key: "check", label: "Cheque", align: "right" },
-              { key: "balance", label: "Balance", align: "right" },
-            ]}
-            rows={rows}
-          />
-        </div>
-      </section>
-    </>
+type SettlementBreakdown = {
+  opening: number;
+  collected: number;
+  deposited: number;
+  collectionDifference: number;
+  delivered: number;
+  paid: number;
+  payoutDifference: number;
+  final: number;
+  balance: number;
+};
+
+type DailySettlementGridRow = {
+  id: string;
+  date: string;
+  cash: SettlementBreakdown;
+  check: SettlementBreakdown;
+  total: SettlementBreakdown;
+  closed: boolean;
+};
+
+type SettlementBalanceDraft = {
+  date: string;
+  currency: string;
+  note: string;
+  cashOpening: string;
+  cashIncome: string;
+  cashExpenses: string;
+  cashFinal: string;
+  checkOpening: string;
+  checkIncome: string;
+  checkExpenses: string;
+  checkFinal: string;
+};
+
+type SettlementDraftField = keyof SettlementBalanceDraft;
+type SettlementDenominationTarget = { section: "cash" | "check"; field: "Opening" | "Final" };
+
+function settlementBusinessDate(timestamp: string) {
+  const values = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Santo_Domingo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(new Date(timestamp)).map((part) => [part.type, part.value]),
   );
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function settlementBreakdown(opening: number, collected: number, deposited: number, delivered: number, paid: number, final?: number): SettlementBreakdown {
+  const collectionDifference = collected - deposited;
+  const payoutDifference = delivered - paid;
+  const expectedFinal = opening + collectionDifference + payoutDifference;
+  const finalAmount = final ?? expectedFinal;
+  return {
+    opening,
+    collected,
+    deposited,
+    collectionDifference,
+    delivered,
+    paid,
+    payoutDifference,
+    final: finalAmount,
+    balance: final === undefined ? collectionDifference + payoutDifference : expectedFinal - finalAmount,
+  };
+}
+
+function combineSettlementBreakdowns(cash: SettlementBreakdown, check: SettlementBreakdown): SettlementBreakdown {
+  return {
+    opening: cash.opening + check.opening,
+    collected: cash.collected + check.collected,
+    deposited: cash.deposited + check.deposited,
+    collectionDifference: cash.collectionDifference + check.collectionDifference,
+    delivered: cash.delivered + check.delivered,
+    paid: cash.paid + check.paid,
+    payoutDifference: cash.payoutDifference + check.payoutDifference,
+    final: cash.final + check.final,
+    balance: cash.balance + check.balance,
+  };
+}
+
+function emptySettlementRow(date: string, id = `local-settlement-${date}`): DailySettlementGridRow {
+  const cash = settlementBreakdown(0, 0, 0, 0, 0);
+  const check = settlementBreakdown(0, 0, 0, 0, 0);
+  return { id, date, cash, check, total: combineSettlementBreakdowns(cash, check), closed: false };
+}
+
+function dailySettlementRows(snapshot: Snapshot, currency: string): DailySettlementGridRow[] {
+  if (currency !== "Peso Dominicano") return [];
+  const grouped = new Map<string, { collected: number; deposited: number; delivered: number; paid: number; closed: boolean }>();
+  const closedCollectorDates = new Set<string>();
+  const ensureDate = (date: string) => {
+    const existing = grouped.get(date);
+    if (existing) return existing;
+    const created = { collected: 0, deposited: 0, delivered: 0, paid: 0, closed: false };
+    grouped.set(date, created);
+    return created;
+  };
+
+  snapshot.settlements.forEach((settlement) => {
+    const row = ensureDate(settlement.date);
+    row.collected += settlement.collected;
+    row.deposited += settlement.deposited;
+    row.delivered += settlement.officeDelivered;
+    row.paid += settlement.paidToClients;
+    row.closed = true;
+    closedCollectorDates.add(`${settlement.collectorId}:${settlement.date}`);
+  });
+
+  snapshot.movements.forEach((movement) => {
+    if (movement.cancelledAt) return;
+    const date = settlementBusinessDate(movement.createdAt);
+    if (closedCollectorDates.has(`${movement.collectorId}:${date}`)) return;
+    const row = ensureDate(date);
+    if (movement.type === "collection") row.collected += movement.amount;
+    if (movement.type === "deposit") row.deposited += movement.amount;
+    if (movement.type === "office_delivery") row.delivered += movement.amount;
+    if (movement.type === "payout") row.paid += movement.amount;
+  });
+
+  if (grouped.size === 0) ensureDate(snapshot.businessDate);
+  return Array.from(grouped.entries()).sort(([first], [second]) => second.localeCompare(first)).map(([date, values]) => {
+    const cash = settlementBreakdown(0, values.collected, values.deposited, values.delivered, values.paid);
+    const check = settlementBreakdown(0, 0, 0, 0, 0);
+    return { id: `settlement-${date}`, date, cash, check, total: combineSettlementBreakdowns(cash, check), closed: values.closed };
+  });
+}
+
+function settlementMoney(value: number, currency: string) {
+  const symbol = currency === "Peso Dominicano" ? "RD$" : currency === "Dólar Americano" ? "US$" : currency === "Euro" ? "€" : "";
+  const amount = new Intl.NumberFormat("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value / 100);
+  return symbol ? `${symbol} ${amount}` : amount;
+}
+
+function settlementInputAmount(value: number) {
+  return (value / 100).toFixed(2);
+}
+
+function settlementInputCents(value: string) {
+  return Math.round((Number(value) || 0) * 100);
+}
+
+function settlementDraftForRow(row: DailySettlementGridRow, currency: string): SettlementBalanceDraft {
+  return {
+    date: row.date,
+    currency,
+    note: "",
+    cashOpening: settlementInputAmount(row.cash.opening),
+    cashIncome: settlementInputAmount(row.cash.collected + row.cash.delivered),
+    cashExpenses: settlementInputAmount(row.cash.deposited + row.cash.paid),
+    cashFinal: settlementInputAmount(row.cash.final),
+    checkOpening: settlementInputAmount(row.check.opening),
+    checkIncome: settlementInputAmount(row.check.collected + row.check.delivered),
+    checkExpenses: settlementInputAmount(row.check.deposited + row.check.paid),
+    checkFinal: settlementInputAmount(row.check.final),
+  };
+}
+
+function SettlementBreakdownCell({ summary, currency }: Readonly<{ summary: SettlementBreakdown; currency: string }>) {
+  return <div className="settlement-breakdown-cell">
+    <div><span>Monto Inicial:</span><strong>{settlementMoney(summary.opening, currency)}</strong></div>
+    <div className="settlement-breakdown-gap" />
+    <div><span>Cobrado:</span><strong>{settlementMoney(summary.collected, currency)}</strong></div>
+    <div><span>Depositado:</span><strong>{settlementMoney(summary.deposited, currency)}</strong></div>
+    <hr />
+    <div><span>Diferencia:</span><strong>{settlementMoney(summary.collectionDifference, currency)}</strong></div>
+    <div className="settlement-breakdown-gap" />
+    <div><span>Entregado:</span><strong>{settlementMoney(summary.delivered, currency)}</strong></div>
+    <div><span>Pagado:</span><strong>{settlementMoney(summary.paid, currency)}</strong></div>
+    <hr />
+    <div><span>Diferencia:</span><strong>{settlementMoney(summary.payoutDifference, currency)}</strong></div>
+    <div className="settlement-breakdown-gap" />
+    <div><span>Monto Final:</span><strong>{settlementMoney(summary.final, currency)}</strong></div>
+    <hr />
+    <div className="settlement-breakdown-balance"><span>Balance:</span><strong>{settlementMoney(summary.balance, currency)}</strong></div>
+  </div>;
+}
+
+function DailySettlementsView({ snapshot, onRefresh }: Readonly<{ snapshot: Snapshot; onRefresh: () => void }>) {
+  const [filtersVisible, setFiltersVisible] = useState(true);
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [currency, setCurrency] = useState("Peso Dominicano");
+  const [rows, setRows] = useState(() => dailySettlementRows(snapshot, "Peso Dominicano"));
+  const [selectedRow, setSelectedRow] = useState<DailySettlementGridRow | null>(null);
+  const [dateDialogOpen, setDateDialogOpen] = useState(false);
+  const [dateDraft, setDateDraft] = useState(snapshot.businessDate);
+  const [editingRow, setEditingRow] = useState<DailySettlementGridRow | null>(null);
+  const [balanceDraft, setBalanceDraft] = useState<SettlementBalanceDraft | null>(null);
+  const [denominationTarget, setDenominationTarget] = useState<SettlementDenominationTarget | null>(null);
+  const [denominationCounts, setDenominationCounts] = useState<Record<number, string>>(() => Object.fromEntries(DENOMS.map((denomination) => [denomination, ""])));
+  const [confirmCloseOpen, setConfirmCloseOpen] = useState(false);
+  const [alertMessage, setAlertMessage] = useState("");
+
+  useEffect(() => {
+    setRows(dailySettlementRows(snapshot, currency));
+    setSelectedRow(null);
+  }, [snapshot, currency]);
+
+  const visibleRows = rows.filter((row) => (!fromDate || row.date >= fromDate) && (!toDate || row.date <= toDate));
+  const visibleTotals = visibleRows.reduce((total, row) => ({
+    count: total.count + 1,
+    amount: total.amount + row.total.collected + row.total.delivered,
+    balance: total.balance + row.total.balance,
+  }), { count: 0, amount: 0, balance: 0 });
+  const centsForDraft = (section: "cash" | "check", field: "Opening" | "Income" | "Expenses" | "Final") => settlementInputCents(balanceDraft?.[`${section}${field}`] ?? "0");
+  const draftSectionTotal = (section: "cash" | "check") => centsForDraft(section, "Opening") + centsForDraft(section, "Income") - centsForDraft(section, "Expenses");
+  const draftSectionBalance = (section: "cash" | "check") => centsForDraft(section, "Final") - draftSectionTotal(section);
+
+  const moveSelected = (direction: "first" | "up" | "down" | "last") => {
+    if (!selectedRow) return;
+    setRows((current) => {
+      const index = current.findIndex((row) => row.id === selectedRow.id);
+      if (index < 0) return current;
+      const target = direction === "first" ? 0 : direction === "last" ? current.length - 1 : direction === "up" ? Math.max(0, index - 1) : Math.min(current.length - 1, index + 1);
+      if (index === target) return current;
+      const updated = [...current];
+      const [item] = updated.splice(index, 1);
+      updated.splice(target, 0, item);
+      return updated;
+    });
+  };
+
+  const refreshRows = () => {
+    setRows(dailySettlementRows(snapshot, currency));
+    setSelectedRow(null);
+    setFromDate("");
+    setToDate("");
+    onRefresh();
+  };
+
+  const openBalance = () => {
+    if (!selectedRow) return toast.info("Seleccione un cuadre.");
+    setEditingRow(selectedRow);
+    setBalanceDraft(settlementDraftForRow(selectedRow, currency));
+  };
+
+  const createDailyBalance = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!dateDraft) {
+      setAlertMessage("Seleccione una fecha válida.");
+      return;
+    }
+    const existingRow = rows.find((row) => row.date === dateDraft);
+    if (existingRow) {
+      setSelectedRow(existingRow);
+      setDateDialogOpen(false);
+      toast.info("Ya existe un cuadre para esa fecha.");
+      return;
+    }
+    const generated = dailySettlementRows(snapshot, currency).find((row) => row.date === dateDraft) ?? emptySettlementRow(dateDraft, `local-settlement-${dateDraft}-${Date.now()}`);
+    setRows((current) => [generated, ...current]);
+    setSelectedRow(generated);
+    setDateDialogOpen(false);
+    toast.success("Cuadre agregado a la vista local.");
+  };
+
+  const updateDraft = (field: SettlementDraftField, value: string) => setBalanceDraft((current) => current ? { ...current, [field]: value } : current);
+
+  const sectionFromDraft = (section: "cash" | "check") => {
+    const opening = centsForDraft(section, "Opening");
+    const income = centsForDraft(section, "Income");
+    const expenses = centsForDraft(section, "Expenses");
+    const final = centsForDraft(section, "Final");
+    return settlementBreakdown(opening, income, expenses, 0, 0, final);
+  };
+
+  const saveBalance = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!editingRow || !balanceDraft) return;
+    const cash = sectionFromDraft("cash");
+    const check = sectionFromDraft("check");
+    const updated = { ...editingRow, cash, check, total: combineSettlementBreakdowns(cash, check) };
+    setRows((current) => current.map((row) => row.id === updated.id ? updated : row));
+    setSelectedRow(updated);
+    setEditingRow(null);
+    setBalanceDraft(null);
+    toast.success("Balance actualizado en la vista local.");
+  };
+
+  const openDenominationDialog = (target: SettlementDenominationTarget) => {
+    setDenominationCounts(Object.fromEntries(DENOMS.map((denomination) => [denomination, ""])));
+    setDenominationTarget(target);
+  };
+
+  const denominationTotal = DENOMS.reduce((total, denomination) => total + denomination * (Number(denominationCounts[denomination]) || 0), 0);
+  const saveDenominations = () => {
+    if (!denominationTarget) return;
+    const field = `${denominationTarget.section}${denominationTarget.field}` as SettlementDraftField;
+    updateDraft(field, settlementInputAmount(denominationTotal));
+    setDenominationTarget(null);
+  };
+
+  const requestCloseOrReverse = () => {
+    if (!selectedRow) return toast.info("Seleccione un cuadre.");
+    const previous = new Date(`${selectedRow.date}T00:00:00Z`);
+    previous.setUTCDate(previous.getUTCDate() - 1);
+    const previousDate = previous.toISOString().slice(0, 10);
+    const previousIsClosed = rows.some((row) => row.date === previousDate && row.closed);
+    if (!previousIsClosed) {
+      const formattedPrevious = new Intl.DateTimeFormat("es-DO", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" }).format(previous);
+      setAlertMessage(`El día anterior debe estar cerrado (${formattedPrevious}).`);
+      return;
+    }
+    setConfirmCloseOpen(true);
+  };
+
+  const confirmCloseOrReverse = () => {
+    if (!selectedRow) return;
+    const nextClosed = !selectedRow.closed;
+    setRows((current) => current.map((row) => row.id === selectedRow.id ? { ...row, closed: nextClosed } : row));
+    setSelectedRow({ ...selectedRow, closed: nextClosed });
+    setConfirmCloseOpen(false);
+    toast.success(nextClosed ? "Día cerrado en la vista local." : "Día reabierto en la vista local.");
+  };
+
+  return <div className="daily-settlements-mdi">
+    <LegacyToolbar
+      onToggleFilters={() => setFiltersVisible((visible) => !visible)}
+      filtersVisible={filtersVisible}
+      onFirst={() => moveSelected("first")}
+      onPrevious={() => moveSelected("up")}
+      onNext={() => moveSelected("down")}
+      onLast={() => moveSelected("last")}
+      onNew={() => { setDateDraft(snapshot.businessDate); setDateDialogOpen(true); }}
+      newTitle="Generar cuadre"
+      newIcon={<span className="settlement-generate-icon"><Database size={14} /><Plus size={9} /></span>}
+      onEdit={openBalance}
+      onDelete={requestCloseOrReverse}
+      deleteIcon="x"
+      deleteTitle="Cerrar / reversar día"
+      onRefresh={refreshRows}
+      onPrint={() => window.print()}
+      disableEdit={!selectedRow}
+      disableDelete={!selectedRow}
+    />
+    <div className="daily-settlements-workspace">
+      {filtersVisible && <aside className="daily-settlements-filter">
+        <h2>Panel de Filtro</h2>
+        <label>Fecha Inicial:<input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} /></label>
+        <label>Fecha Final:<input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} /></label>
+        <label>Moneda:<select value={currency} onChange={(event) => setCurrency(event.target.value)}><option>No definido</option><option>Peso Dominicano</option><option>Dólar Americano</option><option>Euro</option></select></label>
+      </aside>}
+      <section className="daily-settlements-grid-panel">
+        <div className="daily-settlements-grid-scroll">
+          <table className="daily-settlements-grid">
+            <colgroup><col className="settlement-date-column" /><col className="settlement-total-column" /><col className="settlement-cash-column" /><col className="settlement-check-column" /><col className="settlement-balance-column" /></colgroup>
+            <thead><tr><th>Fecha</th><th>Total</th><th>Efectivo</th><th>Cheque</th><th>Balance...</th></tr></thead>
+            <tbody>{visibleRows.map((row) => {
+              const selected = selectedRow?.id === row.id;
+              return <tr key={row.id} className={selected ? "selected-row" : undefined} aria-selected={selected} role="button" tabIndex={0} onClick={() => setSelectedRow(row)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedRow(row))}>
+                <td className="settlement-date-cell">{dateLabel(row.date)}</td>
+                <td><SettlementBreakdownCell summary={row.total} currency={currency} /></td>
+                <td><SettlementBreakdownCell summary={row.cash} currency={currency} /></td>
+                <td><SettlementBreakdownCell summary={row.check} currency={currency} /></td>
+                <td className="settlement-balance-value">{settlementMoney(row.total.balance, currency)}</td>
+              </tr>;
+            })}</tbody>
+          </table>
+          {visibleRows.length === 0 && <div className="daily-settlements-empty">No hay cuadres para los filtros seleccionados.</div>}
+        </div>
+        <footer className="daily-settlements-footer"><span>Cantidad: <strong>{visibleTotals.count}</strong></span><span>Total: <strong>{settlementMoney(visibleTotals.amount, currency)}</strong></span><span>Balance: <strong>{settlementMoney(visibleTotals.balance, currency)}</strong></span></footer>
+      </section>
+    </div>
+
+    {dateDialogOpen && <LegacyDialog title="Entre una fecha..." onClose={() => setDateDialogOpen(false)} className="settlement-date-dialog">
+      <form className="settlement-date-form" onSubmit={createDailyBalance}>
+        <label>Valor:<input type="date" value={dateDraft} onChange={(event) => setDateDraft(event.target.value)} /></label>
+        <div className="legacy-dialog-actions centered"><button type="submit">oK</button><button type="button" onClick={() => setDateDialogOpen(false)}>Cancelar</button></div>
+      </form>
+    </LegacyDialog>}
+
+    {editingRow && balanceDraft && <LegacyDialog title="Balance del Día..." onClose={() => { setEditingRow(null); setBalanceDraft(null); }} className="settlement-balance-editor-dialog">
+      <form className="settlement-balance-editor" onSubmit={saveBalance}>
+        <div className="settlement-balance-header"><label>Fecha:<input value={dateLabel(balanceDraft.date)} readOnly /></label><label>Moneda:<select value={balanceDraft.currency} onChange={(event) => updateDraft("currency", event.target.value)}><option>No definido</option><option>Peso Dominicano</option><option>Dólar Americano</option><option>Euro</option></select></label></div>
+        <div className="settlement-balance-columns"><span /><strong>Efectivo</strong><strong>Cheque</strong></div>
+        <label className="settlement-balance-row"><span>Monto al Inicio:</span><span className="settlement-money-entry"><input type="number" step="0.01" value={balanceDraft.cashOpening} onChange={(event) => updateDraft("cashOpening", event.target.value)} /><button type="button" onClick={() => openDenominationDialog({ section: "cash", field: "Opening" })}>[...]</button></span><span className="settlement-money-entry"><input type="number" step="0.01" value={balanceDraft.checkOpening} onChange={(event) => updateDraft("checkOpening", event.target.value)} /><button type="button" onClick={() => openDenominationDialog({ section: "check", field: "Opening" })}>[...]</button></span></label>
+        <label className="settlement-balance-row"><span>Ingresos:</span><input type="number" step="0.01" value={balanceDraft.cashIncome} onChange={(event) => updateDraft("cashIncome", event.target.value)} /><input type="number" step="0.01" value={balanceDraft.checkIncome} onChange={(event) => updateDraft("checkIncome", event.target.value)} /></label>
+        <label className="settlement-balance-row"><span>Egresos:</span><input type="number" step="0.01" value={balanceDraft.cashExpenses} onChange={(event) => updateDraft("cashExpenses", event.target.value)} /><input type="number" step="0.01" value={balanceDraft.checkExpenses} onChange={(event) => updateDraft("checkExpenses", event.target.value)} /></label>
+        <div className="settlement-balance-row"><span>Totales:</span><input value={settlementMoney(draftSectionTotal("cash"), balanceDraft.currency)} readOnly /><input value={settlementMoney(draftSectionTotal("check"), balanceDraft.currency)} readOnly /></div>
+        <label className="settlement-balance-row"><span>Monto al Final:</span><span className="settlement-money-entry"><input type="number" step="0.01" value={balanceDraft.cashFinal} onChange={(event) => updateDraft("cashFinal", event.target.value)} /><button type="button" onClick={() => openDenominationDialog({ section: "cash", field: "Final" })}>[...]</button></span><span className="settlement-money-entry"><input type="number" step="0.01" value={balanceDraft.checkFinal} onChange={(event) => updateDraft("checkFinal", event.target.value)} /><button type="button" onClick={() => openDenominationDialog({ section: "check", field: "Final" })}>[...]</button></span></label>
+        <div className="settlement-balance-row"><span>Balance:</span><input value={settlementMoney(draftSectionBalance("cash"), balanceDraft.currency)} readOnly /><input value={settlementMoney(draftSectionBalance("check"), balanceDraft.currency)} readOnly /></div>
+        <label className="settlement-balance-note">Nota:<input value={balanceDraft.note} onChange={(event) => updateDraft("note", event.target.value)} /></label>
+        <div className="legacy-dialog-actions centered"><button type="submit">oK</button><button type="button" onClick={() => { setEditingRow(null); setBalanceDraft(null); }}>Cancelar</button></div>
+      </form>
+    </LegacyDialog>}
+
+    {denominationTarget && balanceDraft && <LegacyDialog title="Desglose del Dinero..." onClose={() => setDenominationTarget(null)} className="settlement-denomination-dialog">
+      <div className="settlement-denomination-content"><div className="settlement-denomination-scroll"><table><thead><tr><th>Denom.</th><th>Cantidad</th><th>Importe</th></tr></thead><tbody>{DENOMS.map((denomination) => <tr key={denomination}><td>{settlementMoney(denomination, balanceDraft.currency)}</td><td><input type="number" min="0" step="1" value={denominationCounts[denomination] ?? ""} onChange={(event) => setDenominationCounts((current) => ({ ...current, [denomination]: event.target.value }))} /></td><td>{settlementMoney(denomination * (Number(denominationCounts[denomination]) || 0), balanceDraft.currency)}</td></tr>)}</tbody></table></div><div className="settlement-denomination-total">Total: <strong>{settlementMoney(denominationTotal, balanceDraft.currency)}</strong></div><div className="legacy-dialog-actions centered"><button type="button" onClick={saveDenominations}>oK</button><button type="button" onClick={() => setDenominationTarget(null)}>Cancelar</button></div></div>
+    </LegacyDialog>}
+
+    {confirmCloseOpen && selectedRow && <LegacyDialog title="Confirm" onClose={() => setConfirmCloseOpen(false)} className="settlement-confirm-dialog"><div className="settlement-confirm-content"><CircleHelp size={28} /><p>¿Está seguro que desea cerrar/reversar el día?</p><div className="legacy-dialog-actions centered"><button type="button" onClick={confirmCloseOrReverse}>Sí</button><button type="button" onClick={() => setConfirmCloseOpen(false)}>No</button></div></div></LegacyDialog>}
+    {alertMessage && <LegacyDialog title="Error" onClose={() => setAlertMessage("")} className="settlement-alert-dialog"><div className="settlement-confirm-content"><X size={28} /><p>{alertMessage}</p><div className="legacy-dialog-actions centered"><button type="button" onClick={() => setAlertMessage("")}>Aceptar</button></div></div></LegacyDialog>}
+  </div>;
 }
 
 function ReportsView() {

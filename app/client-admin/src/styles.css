@@ -6614,6 +6614,91 @@ table {
 .collector-monitor-map-dialog .legacy-dialog-body { display: flex; flex: 1 1 auto; min-height: 0; padding: 0; overflow: hidden; background: #e2e8f0; }
 .collector-monitor-map-placeholder { display: flex; flex: 1 1 auto; align-items: center; justify-content: center; width: min(600px, calc(100vw - 48px)); min-height: 300px; height: 400px; margin: 10px; padding: 20px; border: 1px solid #cbd5e1; background: #fff; color: #64748b; font-size: 13px; text-align: center; }
 
+/* Compact MDI ledger for daily settlements and cash reconciliation. */
+.daily-settlements-mdi { display: flex; flex: 1 1 auto; flex-direction: column; width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; border: 1px solid #9ca3af; background: #e8e8e0; color: #1f2937; font-size: 11px; }
+.daily-settlements-mdi > .legacy-mdi-toolbar { flex: 0 0 auto; min-height: 31px; border: 0; border-bottom: 1px solid #9ca3af; border-radius: 0; background: #e5e7eb; }
+.settlement-generate-icon { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 17px; height: 17px; }
+.settlement-generate-icon svg:last-child { position: absolute; right: -2px; bottom: -1px; stroke-width: 3; }
+.daily-settlements-workspace { display: flex; flex: 1 1 auto; min-width: 0; min-height: 0; overflow: hidden; border-top: 1px solid #cbd5e1; }
+.daily-settlements-filter { display: flex; flex: 0 0 220px; flex-direction: column; gap: 9px; min-width: 220px; padding: 7px; overflow-y: auto; border-right: 1px solid #9ca3af; background: #e8e8e0; }
+.daily-settlements-filter h2 { margin: -7px -7px 2px; padding: 6px 8px; background: #065f46; color: #fff; font-size: 11px; font-weight: 800; }
+.daily-settlements-filter label { display: flex; flex-direction: column; gap: 3px; color: #334155; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.daily-settlements-filter input,
+.daily-settlements-filter select { box-sizing: border-box; width: 100%; height: 25px; border: 1px solid #9ca3af; border-radius: 2px; padding: 2px 5px; background: #fff; color: #1f2937; font-size: 11px; }
+.daily-settlements-grid-panel { display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: #fff; }
+.daily-settlements-grid-scroll { flex: 1 1 auto; min-width: 0; min-height: 0; overflow: auto; background: #fff; }
+.daily-settlements-grid { width: 100%; min-width: 1240px; border-collapse: collapse; table-layout: fixed; background: #fff; font-size: 10px; }
+.daily-settlements-grid .settlement-date-column { width: 110px; }
+.daily-settlements-grid .settlement-total-column,
+.daily-settlements-grid .settlement-cash-column,
+.daily-settlements-grid .settlement-check-column { width: 335px; }
+.daily-settlements-grid .settlement-balance-column { width: 125px; }
+.daily-settlements-grid th,
+.daily-settlements-grid td { border: 1px solid #a3aab4; }
+.daily-settlements-grid th { position: sticky; top: 0; z-index: 2; height: 25px; padding: 4px 6px; background: #d1d5db; color: #1f2937; font-size: 11px; font-weight: 800; text-align: left; white-space: nowrap; }
+.daily-settlements-grid td { padding: 4px 5px; vertical-align: top; }
+.daily-settlements-grid tbody tr { cursor: pointer; }
+.daily-settlements-grid tbody tr:hover td { background: #eff6ff; }
+.daily-settlements-grid tbody tr.selected-row td { background: #bfdbfe; color: #1e3a8a; }
+.daily-settlements-grid tbody tr.selected-row:hover td { background: #93c5fd; }
+.settlement-date-cell { padding-top: 8px !important; font-weight: 700; white-space: nowrap; }
+.settlement-breakdown-cell { width: 100%; max-width: 330px; min-width: 0; color: #334155; font-size: 9px; font-variant-numeric: tabular-nums; text-align: right; }
+.settlement-breakdown-cell > div:not(.settlement-breakdown-gap) { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; min-height: 15px; align-items: center; }
+.settlement-breakdown-cell span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.settlement-breakdown-cell strong { color: #111827; font-weight: 700; white-space: nowrap; }
+.settlement-breakdown-gap { height: 5px; }
+.settlement-breakdown-cell hr { width: 100%; margin: 2px 0; border: 0; border-top: 1px solid #cbd5e1; }
+.settlement-breakdown-balance strong { color: #065f46; }
+.settlement-balance-value { padding-top: 8px !important; font-weight: 800; text-align: right; white-space: nowrap; }
+.daily-settlements-empty { padding: 20px; color: #64748b; text-align: center; }
+.daily-settlements-footer { display: flex; flex: 0 0 auto; align-items: center; justify-content: flex-end; gap: 24px; min-height: 27px; padding: 3px 8px; border-top: 1px solid #9ca3af; background: #f3f4f6; color: #334155; font-size: 10px; }
+.daily-settlements-footer strong { color: #065f46; font-variant-numeric: tabular-nums; }
+.settlement-date-dialog { width: min(370px, calc(100vw - 36px)); }
+.settlement-date-form { display: grid; gap: 12px; padding: 2px; }
+.settlement-date-form label { display: grid; grid-template-columns: 55px minmax(0, 1fr); align-items: center; gap: 8px; font-size: 12px; font-weight: 700; }
+.settlement-date-form input { height: 27px; border: 1px solid #9ca3af; border-radius: 2px; padding: 3px 6px; background: #fff; }
+.settlement-balance-editor-dialog { width: min(760px, calc(100vw - 36px)); }
+.settlement-balance-editor { display: flex; flex-direction: column; gap: 7px; }
+.settlement-balance-editor input,
+.settlement-balance-editor select { box-sizing: border-box; width: 100%; min-width: 0; height: 26px; border: 1px solid #9ca3af; border-radius: 2px; padding: 3px 5px; background: #fff; color: #1f2937; font-size: 11px; }
+.settlement-balance-editor input[readonly] { background: #dbe2ea; color: #475569; }
+.settlement-balance-header { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding-bottom: 3px; border-bottom: 1px solid #a3aab4; }
+.settlement-balance-header label { display: grid; grid-template-columns: 55px minmax(0, 1fr); align-items: center; gap: 5px; font-weight: 700; }
+.settlement-balance-columns,
+.settlement-balance-row { display: grid; grid-template-columns: 130px minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: 8px; }
+.settlement-balance-columns { padding: 3px 0; color: #065f46; text-align: center; }
+.settlement-balance-row > span:first-child { color: #334155; font-weight: 700; text-align: right; white-space: nowrap; }
+.settlement-money-entry { display: flex; min-width: 0; gap: 4px; }
+.settlement-money-entry button { flex: 0 0 46px; min-width: 46px; height: 26px; border: 1px solid #94a3b8; border-radius: 2px; background: #f8fafc; color: #334155; font-size: 10px; font-weight: 700; }
+.settlement-money-entry button:hover { border-color: #059669; background: #ecfdf5; }
+.settlement-balance-note { display: grid; grid-template-columns: 130px minmax(0, 1fr); align-items: center; gap: 8px; }
+.settlement-balance-note input { grid-column: 2; }
+.settlement-balance-editor .legacy-dialog-actions { justify-content: flex-end; padding-top: 3px; }
+.settlement-denomination-dialog { width: min(410px, calc(100vw - 36px)); }
+.settlement-denomination-content { display: flex; flex-direction: column; gap: 7px; }
+.settlement-denomination-scroll { max-height: 300px; overflow: auto; border: 1px solid #cbd5e1; background: #fff; }
+.settlement-denomination-scroll table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.settlement-denomination-scroll th,
+.settlement-denomination-scroll td { padding: 3px 6px; border: 1px solid #cbd5e1; text-align: right; }
+.settlement-denomination-scroll th { position: sticky; top: 0; background: #e2e8f0; }
+.settlement-denomination-scroll td:first-child { text-align: left; }
+.settlement-denomination-scroll input { width: 85px; height: 23px; border: 1px solid #9ca3af; padding: 2px 4px; text-align: right; }
+.settlement-denomination-total { padding: 5px 7px; border: 1px solid #cbd5e1; background: #f8fafc; text-align: right; }
+.settlement-confirm-content { display: grid; justify-items: center; gap: 8px; padding: 3px; text-align: center; }
+.settlement-confirm-content > svg { color: #d97706; }
+.settlement-alert-dialog .settlement-confirm-content > svg { color: #dc2626; }
+.settlement-confirm-content p { margin: 0; color: #1f2937; font-size: 12px; font-weight: 700; }
+.settlement-confirm-content .legacy-dialog-actions { padding-top: 2px; }
+
+@media (max-width: 700px) {
+  .daily-settlements-filter { flex-basis: 190px; min-width: 190px; }
+  .daily-settlements-footer { justify-content: space-between; gap: 8px; }
+  .settlement-balance-editor-dialog { width: calc(100vw - 24px); }
+  .settlement-balance-columns,
+  .settlement-balance-row { grid-template-columns: 100px minmax(0, 1fr) minmax(0, 1fr); gap: 5px; }
+  .settlement-balance-note { grid-template-columns: 100px minmax(0, 1fr); }
+}
+
 @media (max-width: 720px) {
   .collector-monitor-topbar { align-items: flex-start; flex-direction: column; }
   .collector-monitor-controls { flex-wrap: wrap; }

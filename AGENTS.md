@@ -78,6 +78,8 @@ decisiones y su alcance no se aplican aqui. No mezclar los dos proyectos.
 
 **Update 2026-09-24 — Monitor de Rutas MDI:** Monitor R usa ahora la misma vista compacta que Monitor Z con cabecera de Ruta, selección visual, límites, métricas financieras, totales alineados y Auto. desmarcado por defecto. Monitoreo abre el diálogo MDI con el texto reservado para el mapa de ruta; se elimina la búsqueda y la vista holgada anterior. `npm run check`: typechecks y builds correctos, 21 pruebas aprobadas y 1 omitida por PostgreSQL de integración no configurado; Vite mantiene el aviso de bundle superior a 500 kB.
 
+**Update 2026-09-24 — Cuadres Diarios MDI:** Se reemplazó la plantilla genérica por toolbar legacy, filtro lateral y grilla compacta con desglose anidado de Total/Efectivo/Cheque, balance por fórmula, selección y reordenamiento local. Generar por fecha, editar Balance del Día con desglose de denominaciones y cerrar/reversar con validación del día anterior operan en estado local; no se modificó API ni backend. `npm run check`: typechecks y builds correctos, 21 pruebas aprobadas y 1 omitida por PostgreSQL de integración no configurado; Vite conserva el aviso de bundle de Admin superior a 500 kB.
+
 ### Done so far
 
 - Repositorio clonado y dependencias instaladas con pnpm.
