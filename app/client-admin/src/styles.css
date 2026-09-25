@@ -10786,6 +10786,25 @@ table {
   font-size: 11px;
 }
 
+.pending-charges-filter-fields .report-inline-check {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+}
+
+.pending-charges-filter-fields .report-inline-check > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.pending-charges-filter-fields .report-inline-check input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+}
+
 .pending-charges-filter-actions {
   display: flex;
   flex-direction: column;

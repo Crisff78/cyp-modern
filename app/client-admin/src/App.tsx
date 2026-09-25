@@ -495,6 +495,48 @@ function ReportesLauncher({ onLaunch }: Readonly<{ onLaunch: (page: ReportPageId
   );
 }
 
+function CompactReportLayout({ title, snapshot, onRefresh, children }: Readonly<{ title: string; snapshot: Snapshot; onRefresh: () => void; children?: ReactNode }>) {
+  const [startDate, setStartDate] = useState(() => `${snapshot.businessDate.slice(0, 7)}-01`);
+  const [endDate, setEndDate] = useState(snapshot.businessDate);
+  const [currency, setCurrency] = useState("Peso Dominicano");
+  const [refreshStatus, setRefreshStatus] = useState("");
+  const table: ReportTableModel = {
+    columns: ["Nro.", "Fecha", "Descripción", "Moneda", "Importe"],
+    rows: [],
+    totalColumns: [4],
+    moneyColumns: [4],
+    totalLabelColumn: 2,
+    emptyMessage: "Use los filtros y presione Refrescar para generar el reporte.",
+  };
+  const handleRefresh = () => {
+    onRefresh();
+    setRefreshStatus(`Actualizado ${new Date().toLocaleTimeString("es-DO", { hour: "2-digit", minute: "2-digit" })}`);
+  };
+
+  return (
+    <div className="pending-charges-report">
+      <aside className="pending-charges-filter-panel">
+        <div className="pending-charges-filter-heading">Panel de Filtro</div>
+        <div className="pending-charges-filter-fields">
+          <label>Fecha inicial:<input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label>
+          <label>Fecha final:<input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} /></label>
+          <label>Moneda:<select value={currency} onChange={(event) => setCurrency(event.target.value)}><option>No definido</option><option>Peso Dominicano</option><option>Dólar Americano</option><option>Euro</option></select></label>
+          {children}
+        </div>
+        <div className="pending-charges-filter-actions">
+          <div className="pending-charges-separator"><span>---</span></div>
+          <button type="button" className="pending-charges-refresh" onClick={handleRefresh}><RefreshCw size={14} /> Refrescar</button>
+          <ReportOutputActions title={title} table={table} />
+          <span className="pending-charges-refresh-status" aria-live="polite">{refreshStatus}</span>
+        </div>
+      </aside>
+      <section className="pending-charges-grid-panel" aria-label={`Resultados de ${title}`}>
+        <div className="pending-charges-grid-scroll"><ReportGrid table={table} /></div>
+      </section>
+    </div>
+  );
+}
+
 function ReportLayout({ title, snapshot, children }: Readonly<{ title: string; snapshot: Snapshot; children?: ReactNode }>) {
   return (
     <div className="report-layout">
@@ -515,10 +557,7 @@ function ReportLayout({ title, snapshot, children }: Readonly<{ title: string; s
         </div>
       </aside>
       <section className="report-results-panel" aria-label={`Resultados de ${title}`}>
-        <div className="report-results-header">
-          <strong>{title}</strong>
-          <span>Vista preliminar</span>
-        </div>
+        <div className="report-results-header"><strong>{title}</strong><span>Vista preliminar</span></div>
         <div className="legacy-mdi-table-wrap report-empty-grid">
           <table className="legacy-mdi-table">
             <thead><tr><th>Nro.</th><th>Fecha</th><th>Descripción</th><th>Moneda</th><th>Importe</th></tr></thead>
@@ -530,17 +569,17 @@ function ReportLayout({ title, snapshot, children }: Readonly<{ title: string; s
   );
 }
 
-function ReportView({ page, snapshot }: Readonly<{ page: ReportPageId; snapshot: Snapshot }>) {
+function ReportView({ page, snapshot, onRefresh }: Readonly<{ page: ReportPageId; snapshot: Snapshot; onRefresh: () => void }>) {
   if (page === "reportClientPendingCharges") {
-    return <PendingClientChargesReport snapshot={snapshot} />;
+    return <PendingClientChargesReport snapshot={snapshot} onRefresh={onRefresh} />;
   }
 
   const definition = reportDefinitions.find((report) => report.id === page);
   const title = definition ? definition.label.replace(/\.$/, "") : "Reporte";
   const zones = Array.from(new Set(snapshot.routes.map((route) => route.sector)));
   const services = Array.from(new Set([...snapshot.charges.map((charge) => charge.service), ...snapshot.payouts.map((payout) => payout.concept)]));
-  return (
-    <ReportLayout title={title} snapshot={snapshot}>
+  const filters = (
+    <>
       {definition?.filters.includes("route") && (
         <label>Ruta:<select defaultValue=""><option value="">Todas</option>{snapshot.routes.map((route) => <option key={route.id}>{route.name}</option>)}</select></label>
       )}
@@ -553,8 +592,20 @@ function ReportView({ page, snapshot }: Readonly<{ page: ReportPageId; snapshot:
       {definition?.filters.includes("collectorCheck") && (
         <label className="report-inline-check"><span><input type="checkbox" /> Cobrador</span><select defaultValue=""><option value="">Todos</option>{snapshot.collectors.map((collector) => <option key={collector.id}>{collector.name}</option>)}</select></label>
       )}
-    </ReportLayout>
+    </>
   );
+  const compactReportPages: ReportPageId[] = [
+    "reportClientPendingChargesByRoutes",
+    "reportClientPendingChargesByZones",
+    "reportPendingChargesByRoutes",
+    "reportPendingChargesByZones",
+    "reportClientChargesByZoneService",
+    "reportCollectionsSummary",
+    "reportCollectionsGeneralSummary",
+    "reportCollectionsByService",
+  ];
+  if (compactReportPages.includes(page)) return <CompactReportLayout title={title} snapshot={snapshot} onRefresh={onRefresh}>{filters}</CompactReportLayout>;
+  return <ReportLayout title={title} snapshot={snapshot}>{filters}</ReportLayout>;
 }
 
 function MdiWindow({ windowState, onClose, onFocus, onMove, children }: Readonly<{ windowState: MdiWindowState; onClose: (id: string) => void; onFocus: (id: string) => void; onMove: (id: string, x: number, y: number) => void; children: ReactNode }>) {
@@ -628,6 +679,17 @@ type PendingClientChargeRow = {
   pending: number;
 };
 
+type ReportCellValue = string | number;
+type ReportTableModel = {
+  columns: readonly string[];
+  rows: readonly (readonly ReportCellValue[])[];
+  rowKeys?: readonly string[];
+  totalColumns: readonly number[];
+  moneyColumns: readonly number[];
+  totalLabelColumn: number;
+  emptyMessage?: string;
+};
+
 const pendingChargeExportFormats = [
   { value: "0", label: "0- Texto simple" },
   { value: "1", label: "1- Texto delimitado por ;" },
@@ -670,11 +732,6 @@ function reportAmount(value: number) {
   return new Intl.NumberFormat("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value / 100);
 }
 
-function pendingChargeReportHtml(title: string, rows: readonly PendingClientChargeRow[], totals: { amount: number; received: number; pending: number }) {
-  const rowMarkup = rows.map((row) => `<tr><td>${escapeReportHtml(safeDateLabel(row.date))}</td><td>${row.overdueDays}</td><td>${escapeReportHtml(row.identification)}</td><td>${escapeReportHtml(row.client)}</td><td class="num">${escapeReportHtml(reportAmount(row.amount))}</td><td class="num">${escapeReportHtml(reportAmount(row.received))}</td><td class="num">${escapeReportHtml(reportAmount(row.pending))}</td></tr>`).join("");
-  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${escapeReportHtml(title)}</title><style>body{font:12px Arial,sans-serif;color:#111;margin:24px}h1{font-size:16px;margin:0 0 14px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #777;padding:5px 7px;text-align:left}th{background:#eee}.num{text-align:right}tfoot{font-weight:bold} @media print{body{margin:12mm}thead{display:table-header-group}tr{break-inside:avoid}}</style></head><body><h1>${escapeReportHtml(title)}</h1><table><thead><tr>${pendingChargeColumns.map((column) => `<th>${escapeReportHtml(column)}</th>`).join("")}</tr></thead><tbody>${rowMarkup}</tbody><tfoot><tr><td colspan="3"></td><th>Total</th><td class="num">${escapeReportHtml(reportAmount(totals.amount))}</td><td class="num">${escapeReportHtml(reportAmount(totals.received))}</td><td class="num">${escapeReportHtml(reportAmount(totals.pending))}</td></tr></tfoot></table></body></html>`;
-}
-
 function csvCell(value: string, delimiter: string) {
   const escaped = value.replace(/"/g, '""');
   return escaped.includes(delimiter) || /["\r\n]/.test(escaped) ? `"${escaped}"` : escaped;
@@ -690,12 +747,63 @@ function rtfText(value: string) {
     });
 }
 
-function downloadPendingChargeReport(format: string, rows: readonly PendingClientChargeRow[], totals: { amount: number; received: number; pending: number }) {
-  const tableRows = [
-    [...pendingChargeColumns],
-    ...rows.map((row) => [safeDateLabel(row.date), String(row.overdueDays), row.identification, row.client, reportAmount(row.amount), reportAmount(row.received), reportAmount(row.pending)]),
-    ["", "", "", "Total", reportAmount(totals.amount), reportAmount(totals.received), reportAmount(totals.pending)],
-  ];
+function reportTableMatrix(table: ReportTableModel) {
+  const visibleRows = table.rows.map((row) => table.columns.map((_, columnIndex) => {
+    const value = row[columnIndex] ?? "";
+    if (typeof value === "number" && table.moneyColumns.includes(columnIndex)) return reportAmount(value);
+    return String(value);
+  }));
+  const totalRow = table.columns.map(() => "");
+  totalRow[table.totalLabelColumn] = "Total";
+  for (const columnIndex of table.totalColumns) {
+    const total = table.rows.reduce((sum, row) => {
+      const value = row[columnIndex];
+      return sum + (typeof value === "number" && Number.isFinite(value) ? value : 0);
+    }, 0);
+    totalRow[columnIndex] = table.moneyColumns.includes(columnIndex) ? reportAmount(total) : String(total);
+  }
+  return [table.columns.map(String), ...visibleRows, totalRow];
+}
+
+function reportTableHtml(title: string, table: ReportTableModel) {
+  const matrix = reportTableMatrix(table);
+  const header = matrix[0] ?? [];
+  const body = matrix.slice(1, -1).map((row) => `<tr>${row.map((cell, columnIndex) => `<td${table.moneyColumns.includes(columnIndex) ? ' class="num"' : ""}>${escapeReportHtml(cell)}</td>`).join("")}</tr>`).join("");
+  const totals = matrix.at(-1) ?? [];
+  const footer = totals.map((cell, columnIndex) => {
+    const tag = columnIndex === table.totalLabelColumn ? "th" : "td";
+    const className = table.moneyColumns.includes(columnIndex) ? ' class="num"' : "";
+    return `<${tag}${className}>${escapeReportHtml(cell)}</${tag}>`;
+  }).join("");
+  const emptyRow = table.rows.length === 0 ? `<tr><td colspan="${table.columns.length}">${escapeReportHtml(table.emptyMessage ?? "Sin registros.")}</td></tr>` : "";
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${escapeReportHtml(title)}</title><style>body{font:12px Arial,sans-serif;color:#111;margin:24px}h1{font-size:16px;margin:0 0 14px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #777;padding:5px 7px;text-align:left}th{background:#eee}.num{text-align:right}tfoot{font-weight:bold}@media print{body{margin:12mm}thead{display:table-header-group}tr{break-inside:avoid}}</style></head><body><h1>${escapeReportHtml(title)}</h1><table><thead><tr>${header.map((cell) => `<th>${escapeReportHtml(cell)}</th>`).join("")}</tr></thead><tbody>${body || emptyRow}</tbody><tfoot><tr>${footer}</tr></tfoot></table></body></html>`;
+}
+
+function printReportTable(title: string, table: ReportTableModel) {
+  const frame = document.createElement("iframe");
+  frame.setAttribute("aria-hidden", "true");
+  frame.style.position = "fixed";
+  frame.style.width = "100vw";
+  frame.style.height = "100vh";
+  frame.style.left = "-10000px";
+  frame.style.top = "0";
+  frame.srcdoc = reportTableHtml(title, table);
+  frame.onload = () => {
+    const printWindow = frame.contentWindow;
+    if (!printWindow) {
+      frame.remove();
+      toast.error("No se pudo abrir la vista de impresión.");
+      return;
+    }
+    printWindow.focus();
+    printWindow.print();
+    window.setTimeout(() => frame.remove(), 1500);
+  };
+  document.body.appendChild(frame);
+}
+
+function downloadReportTable(format: string, title: string, table: ReportTableModel) {
+  const tableRows = reportTableMatrix(table);
   let content: string;
   let mimeType: string;
   let extension: string;
@@ -704,15 +812,15 @@ function downloadPendingChargeReport(format: string, rows: readonly PendingClien
     mimeType = "text/csv;charset=utf-8";
     extension = "csv";
   } else if (format === "2" || format === "3") {
-    const elementName = format === "2" ? "fila" : "cargoPendiente";
+    const elementName = format === "2" ? "fila" : "registro";
+    const columns = table.columns.map((column, index) => `<columna id="campo${index + 1}" nombre="${escapeReportHtml(column)}"/>`).join("");
     const body = tableRows.slice(1, -1).map((row) => `<${elementName}>${row.map((value, index) => `<campo${index + 1}>${escapeReportHtml(value)}</campo${index + 1}>`).join("")}</${elementName}>`).join("\n");
-    const headers = tableRows[0]?.map((value) => `<columna>${escapeReportHtml(value)}</columna>`).join("") ?? "";
-    const totalRow = tableRows.at(-1)?.map((value) => `<campo>${escapeReportHtml(value)}</campo>`).join("") ?? "";
-    content = `<?xml version="1.0" encoding="UTF-8"?>\n<reporte><cabeceras>${headers}</cabeceras><datos>${body}</datos><totales><fila>${totalRow}</fila></totales></reporte>`;
+    const totals = tableRows.at(-1)?.map((value, index) => `<campo${index + 1}>${escapeReportHtml(value)}</campo${index + 1}>`).join("") ?? "";
+    content = `<?xml version="1.0" encoding="UTF-8"?>\n<reporte titulo="${escapeReportHtml(title)}"><cabeceras>${columns}</cabeceras><datos>${body}</datos><totales><fila>${totals}</fila></totales></reporte>`;
     mimeType = "application/xml;charset=utf-8";
     extension = "xml";
   } else if (format === "4") {
-    content = pendingChargeReportHtml("Cargos pendientes de cobros de los clientes", rows, totals);
+    content = reportTableHtml(title, table);
     mimeType = "text/html;charset=utf-8";
     extension = "html";
   } else if (format === "5") {
@@ -729,19 +837,80 @@ function downloadPendingChargeReport(format: string, rows: readonly PendingClien
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = `cargos-pendientes-clientes.${extension}`;
+  const fileTitle = title.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "reporte";
+  anchor.download = `${fileTitle}.${extension}`;
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function PendingClientChargesReport({ snapshot }: Readonly<{ snapshot: Snapshot }>) {
+function ReportGrid({ table }: Readonly<{ table: ReportTableModel }>) {
+  const totals = new Map(table.totalColumns.map((columnIndex) => [columnIndex, table.rows.reduce((sum, row) => {
+    const value = row[columnIndex];
+    return sum + (typeof value === "number" && Number.isFinite(value) ? value : 0);
+  }, 0)]));
+  return (
+    <table className="pending-charges-grid">
+      <thead><tr>{table.columns.map((column) => <th key={column}>{column}</th>)}</tr></thead>
+      <tbody>
+        {table.rows.map((row, rowIndex) => <tr key={table.rowKeys?.[rowIndex] ?? `${JSON.stringify(row)}-${rowIndex}`}>{table.columns.map((_, columnIndex) => {
+          const value = row[columnIndex] ?? "";
+          const isMoney = table.moneyColumns.includes(columnIndex) && typeof value === "number";
+          return <td key={table.columns[columnIndex] ?? columnIndex} className={table.moneyColumns.includes(columnIndex) ? "pending-charges-number" : undefined}>{isMoney ? money(value) : String(value)}</td>;
+        })}</tr>)}
+        {table.rows.length === 0 && <tr><td colSpan={table.columns.length} className="pending-charges-empty">{table.emptyMessage ?? "Sin registros."}</td></tr>}
+      </tbody>
+      <tfoot><tr>{table.columns.map((_, columnIndex) => {
+        const value = totals.get(columnIndex);
+        if (columnIndex === table.totalLabelColumn) return <th key={columnIndex} scope="row">Total</th>;
+        return <td key={columnIndex} className={table.moneyColumns.includes(columnIndex) ? "pending-charges-number" : undefined}>{value === undefined ? "" : table.moneyColumns.includes(columnIndex) ? money(value) : value}</td>;
+      })}</tr></tfoot>
+    </table>
+  );
+}
+
+function ReportOutputActions({ title, table }: Readonly<{ title: string; table: ReportTableModel }>) {
+  const [exportOpen, setExportOpen] = useState(false);
+  const [format, setFormat] = useState("1");
+  const handlePrint = () => {
+    try {
+      printReportTable(title, table);
+    } catch {
+      toast.error("No se pudo abrir la vista de impresión.");
+    }
+  };
+  const handleExport = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    try {
+      downloadReportTable(format, title, table);
+      setExportOpen(false);
+    } catch {
+      toast.error("No se pudo exportar el reporte.");
+    }
+  };
+  return (
+    <>
+      <div className="pending-charges-action-row">
+        <button type="button" onClick={handlePrint}><Printer size={14} /> Imprimir</button>
+        <button type="button" onClick={() => setExportOpen(true)}><Download size={14} /> Exportar</button>
+      </div>
+      {exportOpen && (
+        <LegacyDialog title="Seleccione un valor..." onClose={() => setExportOpen(false)} className="pending-charges-export-dialog">
+          <form className="pending-charges-export-form" onSubmit={handleExport}>
+            <label htmlFor={`report-export-${title}`}><span>Valor:</span><select id={`report-export-${title}`} value={format} onChange={(event) => setFormat(event.target.value)}>{pendingChargeExportFormats.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+            <div className="pending-charges-export-actions"><button type="submit">oK</button><button type="button" onClick={() => setExportOpen(false)}>Cancelar</button></div>
+          </form>
+        </LegacyDialog>
+      )}
+    </>
+  );
+}
+
+function PendingClientChargesReport({ snapshot, onRefresh }: Readonly<{ snapshot: Snapshot; onRefresh: () => void }>) {
   const [startDate, setStartDate] = useState(() => `${snapshot.businessDate.slice(0, 7)}-01`);
   const [endDate, setEndDate] = useState(snapshot.businessDate);
   const [currency, setCurrency] = useState("Peso Dominicano");
-  const [exportFormat, setExportFormat] = useState("1");
-  const [exportOpen, setExportOpen] = useState(false);
   const [refreshCount, setRefreshCount] = useState(0);
   const [refreshStatus, setRefreshStatus] = useState("");
 
@@ -765,47 +934,21 @@ function PendingClientChargesReport({ snapshot }: Readonly<{ snapshot: Snapshot 
     }];
   }), [snapshot.charges, snapshot.clients, snapshot.businessDate, currency, startDate, endDate, refreshCount]);
 
-  const totals = useMemo(() => rows.reduce((sum, row) => ({
-    amount: sum.amount + row.amount,
-    received: sum.received + row.received,
-    pending: sum.pending + row.pending,
-  }), { amount: 0, received: 0, pending: 0 }), [rows]);
+  const table = useMemo<ReportTableModel>(() => ({
+    columns: pendingChargeColumns,
+    rows: rows.map((row) => [safeDateLabel(row.date), row.overdueDays, row.identification, row.client, row.amount, row.received, row.pending]),
+    rowKeys: rows.map((row) => row.id),
+    totalColumns: [4, 5, 6],
+    moneyColumns: [4, 5, 6],
+    totalLabelColumn: 3,
+    emptyMessage: "No hay cargos pendientes para los filtros seleccionados.",
+  }), [rows]);
 
   const title = "Cargos pendientes de cobros de los clientes";
-  const handlePrint = () => {
-    const frame = document.createElement("iframe");
-    frame.setAttribute("aria-hidden", "true");
-    frame.style.position = "fixed";
-    frame.style.width = "100vw";
-    frame.style.height = "100vh";
-    frame.style.left = "-10000px";
-    frame.style.top = "0";
-    frame.srcdoc = pendingChargeReportHtml(title, rows, totals);
-    frame.onload = () => {
-      const printWindow = frame.contentWindow;
-      if (!printWindow) {
-        frame.remove();
-        toast.error("No se pudo abrir la vista de impresión.");
-        return;
-      }
-      printWindow.focus();
-      printWindow.print();
-      window.setTimeout(() => frame.remove(), 1500);
-    };
-    document.body.appendChild(frame);
-  };
   const handleRefresh = () => {
+    onRefresh();
     setRefreshCount((count) => count + 1);
     setRefreshStatus(`Actualizado ${new Date().toLocaleTimeString("es-DO", { hour: "2-digit", minute: "2-digit" })}`);
-  };
-  const handleExport = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    try {
-      downloadPendingChargeReport(exportFormat, rows, totals);
-      setExportOpen(false);
-    } catch {
-      toast.error("No se pudo exportar el reporte.");
-    }
   };
 
   return (
@@ -820,43 +963,13 @@ function PendingClientChargesReport({ snapshot }: Readonly<{ snapshot: Snapshot 
         <div className="pending-charges-filter-actions">
           <div className="pending-charges-separator"><span>---</span></div>
           <button type="button" className="pending-charges-refresh" onClick={handleRefresh}><RefreshCw size={14} /> Refrescar</button>
-          <div className="pending-charges-action-row">
-            <button type="button" onClick={handlePrint}><Printer size={14} /> Imprimir</button>
-            <button type="button" onClick={() => setExportOpen(true)}><Download size={14} /> Exportar</button>
-          </div>
+          <ReportOutputActions title={title} table={table} />
           <span className="pending-charges-refresh-status" aria-live="polite">{refreshStatus}</span>
         </div>
       </aside>
       <section className="pending-charges-grid-panel" aria-label={title}>
-        <div className="pending-charges-grid-scroll">
-          <table className="pending-charges-grid">
-            <thead><tr>{pendingChargeColumns.map((column) => <th key={column}>{column}</th>)}</tr></thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.id}>
-                  <td>{safeDateLabel(row.date)}</td>
-                  <td className="pending-charges-number">{row.overdueDays}</td>
-                  <td>{row.identification}</td>
-                  <td>{row.client}</td>
-                  <td className="pending-charges-number">{money(row.amount)}</td>
-                  <td className="pending-charges-number">{money(row.received)}</td>
-                  <td className="pending-charges-number">{money(row.pending)}</td>
-                </tr>
-              ))}
-              {rows.length === 0 && <tr><td colSpan={7} className="pending-charges-empty">No hay cargos pendientes para los filtros seleccionados.</td></tr>}
-            </tbody>
-            <tfoot><tr><td colSpan={3}></td><th scope="row">Total</th><td className="pending-charges-number">{money(totals.amount)}</td><td className="pending-charges-number">{money(totals.received)}</td><td className="pending-charges-number">{money(totals.pending)}</td></tr></tfoot>
-          </table>
-        </div>
+        <div className="pending-charges-grid-scroll"><ReportGrid table={table} /></div>
       </section>
-      {exportOpen && (
-        <LegacyDialog title="Seleccione un valor..." onClose={() => setExportOpen(false)} className="pending-charges-export-dialog">
-          <form className="pending-charges-export-form" onSubmit={handleExport}>
-            <label htmlFor="pending-charges-export-format"><span>Valor:</span><select id="pending-charges-export-format" value={exportFormat} onChange={(event) => setExportFormat(event.target.value)}>{pendingChargeExportFormats.map((format) => <option key={format.value} value={format.value}>{format.label}</option>)}</select></label>
-            <div className="pending-charges-export-actions"><button type="submit">oK</button><button type="button" onClick={() => setExportOpen(false)}>Cancelar</button></div>
-          </form>
-        </LegacyDialog>
-      )}
     </div>
   );
 }
@@ -4460,7 +4573,7 @@ export default function App() {
               ) : windowState.page === "reports" ? (
                 <ReportesLauncher onLaunch={openMdiWindow} />
               ) : isReportPage(windowState.page) ? (
-                <ReportView page={windowState.page} snapshot={snapshot} />
+                <ReportView page={windowState.page} snapshot={snapshot} onRefresh={() => void refresh()} />
               ) : windowState.page === "clients" ? (
                 <ClientsLegacyView snapshot={snapshot} onRefresh={() => refresh()} />
               ) : windowState.page === "charges" ? (
