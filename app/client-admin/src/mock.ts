@@ -648,8 +648,15 @@ function deleteAdminRecord(entity: string, id: string, body: Record<string, unkn
       }
     }
   }
-  if (["deposits", "cashDeliveries"].includes(entity))
+  if (entity === "deposits")
     state.movements = state.movements.filter((item) => item.id !== id);
+  if (entity === "cashDeliveries") {
+    const movement = state.movements.find((item) => item.id === id && item.type === "office_delivery");
+    if (movement && !movement.cancelledAt) {
+      movement.cancelledAt = now();
+      movement.cancellationNote = String(body.note ?? "").trim();
+    }
+  }
   state = derive(state);
   return { ok: true };
 }
@@ -872,6 +879,7 @@ export async function mockApi<T>(
     let createdCharge: Snapshot["charges"][number] | undefined;
     let createdPayout: Snapshot["payouts"][number] | undefined;
     let createdDeposit: Snapshot["movements"][number] | undefined;
+    let createdDelivery: Snapshot["movements"][number] | undefined;
     if (path === "/cargos") {
       createdCharge = {
         id: uid("chg"),
@@ -922,14 +930,16 @@ export async function mockApi<T>(
       };
       state.movements.push(createdDeposit);
     }
-    if (path === "/entregas")
-      state.movements.push({
+    if (path === "/entregas") {
+      createdDelivery = {
         id: uid("mov"),
         collectorId: body.collectorId,
         type: "office_delivery",
         amount: body.amount,
         createdAt: now(),
-      });
+      };
+      state.movements.push(createdDelivery);
+    }
     state = derive(state);
     return (path === "/cargos"
       ? structuredClone(createdCharge)
@@ -937,6 +947,8 @@ export async function mockApi<T>(
         ? structuredClone(createdPayout)
       : path === "/depositos"
         ? { movement: structuredClone(createdDeposit) }
+        : path === "/entregas"
+          ? { movement: structuredClone(createdDelivery) }
         : { ok: true }) as T;
   }
   if (path === "/descargos-recurrentes" && method === "POST") {

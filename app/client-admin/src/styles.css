@@ -10379,3 +10379,128 @@ table {
   .payment-data-content .collection-receipt-footer { align-items: stretch; flex-direction: column; }
   .payment-data-content .collection-receipt-footer-actions { justify-content: flex-end; }
 }
+
+/* Compact MDI workspace for cash deliveries. */
+.cash-deliveries-legacy-view {
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid #9ca3af;
+  background: #e5e7eb;
+}
+.cash-deliveries-legacy-view > .legacy-mdi-toolbar {
+  flex: 0 0 auto;
+  min-height: 32px;
+  border: 0;
+  border-bottom: 1px solid #9ca3af;
+  border-radius: 0;
+  background: #e8e8e8;
+}
+.cash-deliveries-layout {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: row;
+  align-items: stretch;
+  min-width: 0;
+  min-height: 0;
+  gap: 0;
+  overflow: hidden;
+  background: #d1d5db;
+}
+.cash-deliveries-filter-panel {
+  box-sizing: border-box;
+  flex: 0 0 240px;
+  width: 240px;
+  min-width: 240px;
+  max-width: 240px;
+  height: 100%;
+  gap: 8px;
+  padding: 0 8px 8px;
+  overflow: auto;
+  border: 0;
+  border-right: 1px solid #9ca3af;
+  border-radius: 0;
+  background: #e8e8e0;
+  box-shadow: none;
+}
+.cash-deliveries-filter-panel > h2 {
+  flex: 0 0 auto;
+  margin: 0 -8px 2px;
+  padding: 7px 9px;
+  background: #047857;
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.cash-deliveries-filter-panel .charges-filter-options {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 7px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.cash-deliveries-filter-panel .charges-filter-group { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.cash-deliveries-filter-panel .charges-radio-row,
+.cash-deliveries-filter-panel .charges-radio-row span { flex: 0 0 auto; flex-shrink: 0; white-space: nowrap; }
+.cash-deliveries-filter-panel .charges-radio-row { color: #334155; font-size: 11px; }
+.cash-deliveries-filter-panel .compact-field { gap: 4px; margin: 0; color: #334155; font-size: 11px; }
+.cash-deliveries-filter-panel input:not([type="radio"]),
+.cash-deliveries-filter-panel select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: 27px;
+  min-height: 27px;
+  margin: 0;
+  border: 1px solid #94a3b8;
+  border-radius: 2px;
+  padding: 3px 6px;
+  background: #fff;
+  color: #1e293b;
+  font-size: 11px;
+}
+.cash-deliveries-filter-panel input[type="radio"] { flex: 0 0 14px; width: 14px; height: 14px; min-width: 14px; min-height: 14px; margin: 0; accent-color: #059669; transform: none; }
+.cash-deliveries-filter-panel select:disabled { background: #e2e8f0; color: #64748b; }
+.cash-deliveries-grid-panel {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: #fff;
+  box-shadow: none;
+}
+.cash-deliveries-grid-panel .legacy-mdi-table-wrap { flex: 1 1 auto; min-width: 0; min-height: 0; overflow: auto; border: 0; }
+.cash-deliveries-table { min-width: 850px; color: #1e293b; }
+.cash-deliveries-table th,
+.cash-deliveries-table td { white-space: nowrap; }
+.cash-deliveries-table th { position: sticky; top: 0; z-index: 1; }
+.cash-deliveries-table td { padding: 3px 6px; border-bottom: 1px solid #e2e8f0; }
+.cash-deliveries-table tbody tr { cursor: pointer; }
+.cash-deliveries-table tbody tr:hover td,
+.cash-deliveries-table tbody tr:focus-visible td { background: #ecfdf5; }
+.cash-deliveries-table tbody tr.selected-row td { background: #d1fae5; color: #065f46; }
+.cash-deliveries-table tbody tr.selected-row:hover td { background: #a7f3d0; }
+.cash-deliveries-table td.numeric-cell { text-align: right; font-variant-numeric: tabular-nums; }
+.cash-deliveries-table td input[type="checkbox"] { accent-color: #059669; }
+.cash-deliveries-grid-panel .legacy-footerbar { flex: 0 0 auto; min-height: 36px; }
+.cash-deliveries-layout.filters-collapsed .cash-deliveries-grid-panel { width: 100%; }
+.cash-deliveries-legacy-view .legacy-mdi-toolbar button:disabled { cursor: not-allowed; color: #94a3b8; background: #f1f5f9; opacity: .7; }
+.cash-deliveries-legacy-view .legacy-mdi-toolbar .danger-tool:not(:disabled) { color: #be123c; }
+.cash-delivery-data-dialog { width: min(620px, calc(100vw - 32px)); height: min(600px, calc(100vh - 40px)); border-color: #065f46; }
+.cash-delivery-data-dialog .legacy-dialog-titlebar { border-bottom-color: #064e3b; background: linear-gradient(180deg, #047857 0%, #065f46 100%); }
+.cash-delivery-data-dialog .deposit-denominations-table td:nth-child(2) { text-align: right; }
+
+@media (max-width: 700px) {
+  .cash-deliveries-layout { overflow: auto; }
+  .cash-deliveries-filter-panel { flex-basis: 220px; width: 220px; min-width: 220px; max-width: 220px; }
+  .cash-deliveries-grid-panel { min-width: 320px; }
+  .cash-delivery-data-dialog { width: calc(100vw - 20px); max-height: calc(100vh - 20px); }
+}

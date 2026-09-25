@@ -6006,7 +6006,9 @@ function LegacyOperationView({
   ].filter((zone): zone is string => Boolean(zone))));
   return (
     <>
-      {spec.entity === "deposits" ? (
+      {spec.entity === "cashDeliveries" ? (
+        <CashDeliveriesOperationalView snapshot={snapshot} currentUser={currentUser} onRefresh={onRefresh} />
+      ) : spec.entity === "deposits" ? (
         <DepositsOperationalView snapshot={snapshot} currentUser={currentUser} onRefresh={onRefresh} />
       ) : spec.entity === "payouts" ? (
         <PayoutsOperationalView snapshot={snapshot} currentUser={currentUser} onRefresh={onRefresh} />
@@ -6698,6 +6700,271 @@ function DepositDataDialog({ snapshot, movement, initialDraft, onClose, onSave }
       <div className="deposit-data-meta-row"><label>Doc:<input value={movement?.id ?? "-1"} readOnly disabled /></label><label>Fecha:<input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label></div>
       <label className="deposit-dialog-row"><span>Moneda:</span><select value={currency} onChange={(event) => setCurrency(event.target.value)}>{CURRENCIES.map((item) => <option key={item}>{item}</option>)}</select></label>
       <label className="deposit-dialog-row"><span>Cobrad.:</span><select value={collectorId} onChange={(event) => setCollectorId(event.target.value)}>{snapshot.collectors.map((collector) => <option key={collector.id} value={collector.id}>{collector.name}</option>)}</select></label>
+      <label className="deposit-dialog-row"><span>Nota:</span><input value={note} onChange={(event) => setNote(event.target.value)} /></label>
+    </div>
+    <section className="deposit-denominations-section"><div className="deposit-denominations-toolbar"><strong>Denominaciones</strong><button type="button" onClick={refreshDenominations}><RefreshCw size={14} /> Refrescar</button></div><div className="deposit-denominations-table-wrap"><table className="deposit-denominations-table"><thead><tr><th>Denom.</th><th>Cantidad</th><th>Importe</th></tr></thead><tbody>{DENOMS.map((denomination) => { const quantity = Number(quantities[denomination] ?? 0) || 0; return <tr key={denomination}><td>{depositMoney(denomination, currency)}</td><td><span className="deposit-denomination-quantity">{quantity}</span></td><td>{depositMoney(denomination * quantity, currency)}</td></tr>; })}</tbody></table></div></section>
+    <div className="deposit-data-footer"><label>Total:<input value={depositMoney(total, currency)} readOnly disabled /></label><div className="legacy-dialog-actions"><button type="button" disabled={busy} onClick={() => void submit(false)}>Guardar</button><button type="button" disabled={busy} onClick={() => void submit(true)}>Guardar e Imp.</button><button type="button" disabled={busy} onClick={onClose}>Cancelar</button></div></div>
+  </div>{errorOpen && <LegacyAlertDialog title="Error" message={'El campo "Total" no contiene un valor real válido'} onClose={() => setErrorOpen(false)} overlayClassName="collection-receipt-suboverlay" />}</LegacyDialog>;
+}
+
+function cashDeliveryTicketFromDraft(draft: DepositDraft, id: string, snapshot: Snapshot): CollectionTicketModel {
+  const lines = depositDenominations(draft.quantities).map(({ denominacion, cantidad }) => ({
+    service: "Entrega de dinero",
+    concept: `${money(denominacion)} × ${cantidad}`,
+    amount: denominacion * cantidad,
+  }));
+  const collector = snapshot.collectors.find((item) => item.id === draft.collectorId);
+  return {
+    id,
+    receiptNumber: id,
+    date: draft.date,
+    currency: draft.currency,
+    clientName: "Entrega de dinero al cobrador",
+    clientIdentification: "",
+    collectorName: collector?.name ?? "",
+    paymentForm: "Entrega de efectivo",
+    bank: "No Definido",
+    checkNumber: "",
+    note: draft.note,
+    amount: depositAmount(draft.quantities),
+    lines,
+  };
+}
+
+function CashDeliveriesOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{ snapshot: Snapshot; currentUser: User; onRefresh: () => void }>) {
+  const permissions = permissionsFor(currentUser);
+  const [mode, setMode] = useState("Todos");
+  const [collectorFilter, setCollectorFilter] = useState("Todas");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [status, setStatus] = useState("Todos");
+  const [filtersVisible, setFiltersVisible] = useState(true);
+  const [selectedId, setSelectedId] = useState("");
+  const [order, setOrder] = useState<string[]>([]);
+  const [localDetails, setLocalDetails] = useState<Record<string, DepositDraft>>({});
+  const [formOpen, setFormOpen] = useState(false);
+  const [confirmInactivateOpen, setConfirmInactivateOpen] = useState(false);
+  const [printTicket, setPrintTicket] = useState<CollectionTicketModel | null>(null);
+  const [flash, setFlash] = useState(false);
+  const movementIds = snapshot.movements.filter((item) => item.type === "office_delivery").map((item) => item.id);
+  const orderKey = movementIds.join("|");
+
+  useEffect(() => {
+    setOrder((current) => {
+      const retained = current.filter((id) => movementIds.includes(id));
+      return [...retained, ...movementIds.filter((id) => !retained.includes(id))];
+    });
+  }, [orderKey]);
+
+  const allRows = snapshot.movements
+    .filter((movement) => movement.type === "office_delivery")
+    .map((movement, index): TableRow => {
+      const local = localDetails[movement.id];
+      const raw = local ? {
+        ...movement,
+        createdAt: `${local.date}T12:00:00.000Z`,
+        amount: depositAmount(local.quantities),
+        denominations: depositDenominations(local.quantities),
+        currency: local.currency,
+        note: local.note,
+      } : movement;
+      const collector = snapshot.collectors.find((item) => item.id === movement.collectorId);
+      return {
+        __id: movement.id,
+        __date: raw.createdAt.slice(0, 10),
+        __status: movement.cancelledAt ? "Inactivo" : "Activo",
+        __amount: movement.amount,
+        __raw: raw as unknown as Record<string, unknown>,
+        n: index + 1,
+        date: dateLabel(raw.createdAt.slice(0, 10)),
+        collector: collector?.name ?? "Cobrador",
+        currency: local?.currency ?? "Peso Dominicano",
+        amount: money(movement.amount),
+        checks: "0",
+        checkAmount: money(0),
+        active: !movement.cancelledAt,
+        accepted: false,
+      };
+    });
+  const visibleRows = allRows.filter((row) => {
+    const movement = row.__raw as unknown as Movement;
+    const date = String(row.__date ?? "");
+    return (mode !== "Por Cobrador" || collectorFilter === "Todas" || movement.collectorId === collectorFilter)
+      && (!fromDate || date >= fromDate)
+      && (!toDate || date <= toDate)
+      && (status === "Todos" || row.__status === status);
+  });
+  const orderedRows = [...visibleRows].sort((left, right) => {
+    const leftIndex = order.indexOf(String(left.__id ?? ""));
+    const rightIndex = order.indexOf(String(right.__id ?? ""));
+    return (leftIndex < 0 ? Number.MAX_SAFE_INTEGER : leftIndex) - (rightIndex < 0 ? Number.MAX_SAFE_INTEGER : rightIndex);
+  });
+  const selectedRow = orderedRows.find((row) => String(row.__id ?? "") === selectedId) ?? null;
+
+  const moveSelected = (target: "first" | "previous" | "next" | "last") => {
+    if (!selectedId) return;
+    setOrder((current) => {
+      const ids = current.length ? [...current] : [...movementIds];
+      const index = ids.indexOf(selectedId);
+      if (index < 0) return current;
+      const [item] = ids.splice(index, 1);
+      const destination = target === "first" ? 0 : target === "last" ? ids.length : target === "previous" ? Math.max(0, index - 1) : Math.min(ids.length, index + 1);
+      ids.splice(destination, 0, item);
+      return ids;
+    });
+  };
+  const refresh = () => {
+    setMode("Todos");
+    setCollectorFilter("Todas");
+    setFromDate("");
+    setToDate("");
+    setStatus("Todos");
+    setSelectedId("");
+    setFlash(true);
+    window.setTimeout(() => setFlash(false), 280);
+    onRefresh();
+  };
+  const cancelSelected = async () => {
+    if (!selectedRow?.__id) return;
+    const mockMode = isMockToken(getToken()) || localStorage.getItem("cyp-admin-force-mock") === "true";
+    if (!mockMode) {
+      toast.error("La API actual no ofrece inactivación de entregas; el registro no fue modificado.");
+      setConfirmInactivateOpen(false);
+      return;
+    }
+    try {
+      await api(`/mock/admin/cashDeliveries/${encodeURIComponent(String(selectedRow.__id))}`, {
+        method: "DELETE",
+        body: JSON.stringify({ note: "Inactivar datos" }),
+      });
+      setConfirmInactivateOpen(false);
+      setSelectedId("");
+      toast.success("Entrega inactivada en el modo de demostración.");
+      onRefresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo inactivar la entrega.");
+    }
+  };
+  const saveDelivery = async (draft: DepositDraft, shouldPrint: boolean) => {
+    try {
+      const result = await api<{ movement?: Movement }>("/entregas", {
+        method: "POST",
+        headers: { "Idempotency-Key": crypto.randomUUID() },
+        body: JSON.stringify({ collectorId: draft.collectorId, amount: depositAmount(draft.quantities) }),
+      });
+      const id = result.movement?.id;
+      if (!id) throw new Error("El servidor no devolvió la entrega creada.");
+      setLocalDetails((current) => ({ ...current, [id]: draft }));
+      setFormOpen(false);
+      setSelectedId(id);
+      toast.success("Entrega de dinero registrada.");
+      await onRefresh();
+      if (shouldPrint) setPrintTicket(cashDeliveryTicketFromDraft(draft, id, snapshot));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo registrar la entrega de dinero.");
+    }
+  };
+
+  return <>
+    <div className={`charges-view cash-deliveries-legacy-view ${flash ? "refresh-flash" : ""}`}>
+      <LegacyToolbar
+        filtersVisible={filtersVisible}
+        onToggleFilters={() => setFiltersVisible((visible) => !visible)}
+        onFirst={() => moveSelected("first")}
+        onPrevious={() => moveSelected("previous")}
+        onNext={() => moveSelected("next")}
+        onLast={() => moveSelected("last")}
+        onNew={() => setFormOpen(true)}
+        onDelete={() => selectedRow ? setConfirmInactivateOpen(true) : toast.info("Seleccione una entrega.")}
+        onRefresh={refresh}
+        disableNew={!permissions.canCreate}
+        disableDelete={!selectedRow || Boolean((selectedRow.__raw as unknown as Movement | undefined)?.cancelledAt) || !permissions.canDelete}
+        showEdit={false}
+        deleteIcon="x"
+        deleteTitle="Inactivar entrega"
+      />
+      <div className={`cash-deliveries-layout ${filtersVisible ? "" : "filters-collapsed"}`}>
+        {filtersVisible && <aside className="legacy-filter-panel cash-deliveries-filter-panel" aria-label="Panel de filtro de entregas">
+          <h2>Panel de Filtro</h2>
+          <div className="charges-filter-options">
+            <label className="charges-radio-row"><input type="radio" name="cash-delivery-filter-mode" checked={mode === "Todos"} onChange={() => setMode("Todos")} /><span>Todos</span></label>
+            <div className="charges-filter-group"><label className="charges-radio-row"><input type="radio" name="cash-delivery-filter-mode" checked={mode === "Por Cobrador"} onChange={() => setMode("Por Cobrador")} /><span>por Cobrador:</span></label><select className="charges-filter-control" aria-label="Filtrar por cobrador" value={collectorFilter} disabled={mode !== "Por Cobrador"} onChange={(event) => setCollectorFilter(event.target.value)}><option value="Todas">Todos</option>{snapshot.collectors.map((collector) => <option key={collector.id} value={collector.id}>{collector.name}</option>)}</select></div>
+          </div>
+          <label className="field compact-field">Fecha Inicial:<input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} /></label>
+          <label className="field compact-field">Fecha final:<input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} /></label>
+          <label className="field compact-field">Estado:<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="Todos">Todos</option><option value="Activo">Activo</option><option value="Inactivo">Inactivo</option></select></label>
+        </aside>}
+        <section className="legacy-grid-panel cash-deliveries-grid-panel" aria-label="Grilla de entregas de dinero">
+          <div className="legacy-mdi-table-wrap"><table className="legacy-mdi-table cash-deliveries-table">
+            <thead><tr><th>Nro.</th><th>Fecha</th><th>Cobrador</th><th>Moneda</th><th>Importe</th><th>Cheques</th><th>Imp. Ch...</th><th>Activo</th><th>Acep.</th></tr></thead>
+            <tbody>{orderedRows.length ? orderedRows.map((row, index) => {
+              const movement = row.__raw as unknown as Movement;
+              const isSelected = String(row.__id ?? "") === selectedId;
+              return <tr key={String(row.__id ?? index)} className={isSelected ? "selected-row" : undefined} aria-selected={isSelected} role="button" tabIndex={0} onClick={() => setSelectedId(String(row.__id ?? ""))} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedId(String(row.__id ?? "")))}>
+                <td>{index + 1}</td><td>{String(row.date ?? "")}</td><td>{String(row.collector ?? "")}</td><td>{String(row.currency ?? "Peso Dominicano")}</td><td className="numeric-cell">{String(row.amount ?? money(0))}</td><td>{String(row.checks ?? "0")}</td><td className="numeric-cell">{String(row.checkAmount ?? money(0))}</td><td><LegacyCheck checked={!movement.cancelledAt} /></td><td><LegacyCheck checked={false} /></td>
+              </tr>;
+            }) : <tr><td colSpan={9} className="collections-empty-cell">Sin entregas de dinero registradas.</td></tr>}</tbody>
+          </table></div>
+          <div className="legacy-footerbar"><span>Cantidad: <strong>{orderedRows.length}</strong></span></div>
+        </section>
+      </div>
+    </div>
+    {formOpen && <CashDeliveryDataDialog snapshot={snapshot} onClose={() => setFormOpen(false)} onSave={saveDelivery} />}
+    {confirmInactivateOpen && <LegacyConfirmDialog message="¿Inactivar datos?" onYes={() => void cancelSelected()} onNo={() => setConfirmInactivateOpen(false)} />}
+    {printTicket && <CollectionReceiptPrintDialog receipts={[printTicket]} title="Imprimir Recibo de Entrega..." onClose={() => setPrintTicket(null)} />}
+  </>;
+}
+
+function CashDeliveryDataDialog({ snapshot, onClose, onSave }: Readonly<{ snapshot: Snapshot; onClose: () => void; onSave: (draft: DepositDraft, shouldPrint: boolean) => Promise<void> }>) {
+  const [date, setDate] = useState(localSystemDate());
+  const [currency, setCurrency] = useState("Peso Dominicano");
+  const [collectorId, setCollectorId] = useState(snapshot.collectors[0]?.id ?? "");
+  const [note, setNote] = useState("");
+  const [quantities, setQuantities] = useState<Record<number, string>>(emptyDepositQuantities());
+  const [errorOpen, setErrorOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const total = depositAmount(quantities);
+  const refreshDenominations = () => {
+    const collector = snapshot.collectors.find((item) => item.id === collectorId);
+    const loaded = emptyDepositQuantities();
+    if (collector && currency === "Peso Dominicano") {
+      const movements = snapshot.movements.filter((item) => item.collectorId === collector.id && !item.cancelledAt);
+      const delivered = movements.filter((item) => item.type === "office_delivery").reduce((sum, item) => sum + item.amount, 0);
+      const paid = movements.filter((item) => item.type === "payout").reduce((sum, item) => sum + item.amount, 0);
+      const capacity = Math.max(0, collector.payoutLimit - (delivered - paid));
+      let remaining = Math.min(capacity, 50000);
+      for (const denomination of DENOMS) {
+        const quantity = Math.floor(remaining / denomination);
+        loaded[denomination] = quantity ? String(quantity) : "";
+        remaining -= denomination * quantity;
+      }
+    }
+    setQuantities(loaded);
+    toast.success(collector && currency === "Peso Dominicano" && depositAmount(loaded) > 0
+      ? `Desglose simulado para ${collector.name} · ${currency}.`
+      : `No hay efectivo disponible para simular una entrega en ${currency}.`);
+  };
+  const submit = async (shouldPrint: boolean) => {
+    if (total <= 0) {
+      setErrorOpen(true);
+      return;
+    }
+    if (!collectorId) {
+      toast.error("Seleccione un cobrador.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await onSave({ date, currency, collectorId, note, quantities: { ...quantities } }, shouldPrint);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return <LegacyDialog title="Datos de la Entrega de Dinero..." onClose={onClose} className="cash-delivery-data-dialog deposit-data-dialog"><div className="deposit-data-content">
+    <div className="deposit-data-fields">
+      <div className="deposit-data-meta-row"><label>Doc:<input value="-1" readOnly disabled /></label><label>Fecha:<input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label></div>
+      <label className="deposit-dialog-row"><span>Moneda:</span><select value={currency} onChange={(event) => { setCurrency(event.target.value); setQuantities(emptyDepositQuantities()); }}>{CURRENCIES.map((item) => <option key={item}>{item}</option>)}</select></label>
+      <label className="deposit-dialog-row"><span>Cobrad.:</span><select value={collectorId} onChange={(event) => { setCollectorId(event.target.value); setQuantities(emptyDepositQuantities()); }}><option value="">Seleccione</option>{snapshot.collectors.map((collector) => <option key={collector.id} value={collector.id}>{collector.name}</option>)}</select></label>
       <label className="deposit-dialog-row"><span>Nota:</span><input value={note} onChange={(event) => setNote(event.target.value)} /></label>
     </div>
     <section className="deposit-denominations-section"><div className="deposit-denominations-toolbar"><strong>Denominaciones</strong><button type="button" onClick={refreshDenominations}><RefreshCw size={14} /> Refrescar</button></div><div className="deposit-denominations-table-wrap"><table className="deposit-denominations-table"><thead><tr><th>Denom.</th><th>Cantidad</th><th>Importe</th></tr></thead><tbody>{DENOMS.map((denomination) => { const quantity = Number(quantities[denomination] ?? 0) || 0; return <tr key={denomination}><td>{depositMoney(denomination, currency)}</td><td><span className="deposit-denomination-quantity">{quantity}</span></td><td>{depositMoney(denomination * quantity, currency)}</td></tr>; })}</tbody></table></div></section>
@@ -7912,13 +8179,13 @@ function CollectionCancelReasonDialog({ note, onNoteChange, onClose, onConfirm }
   );
 }
 
-function CollectionReceiptPrintDialog({ receipts, onClose }: Readonly<{ receipts: readonly CollectionTicketModel[]; onClose: () => void }>) {
+function CollectionReceiptPrintDialog({ receipts, onClose, title = "Imprimir Recibo de Cobro..." }: Readonly<{ receipts: readonly CollectionTicketModel[]; onClose: () => void; title?: string }>) {
   const [url, setUrl] = useState("http://vp.gamera.ddns");
   const [port, setPort] = useState("8080");
   const [printer, setPrinter] = useState("zebra");
   const printedAt = new Date().toLocaleString("es-DO", { dateStyle: "short", timeStyle: "medium" });
   return (
-    <LegacyDialog title="Imprimir Recibo de Cobro..." onClose={onClose} className="collection-flow-dialog collection-ticket-dialog" overlayClassName="collection-receipt-suboverlay collection-ticket-print-overlay">
+    <LegacyDialog title={title} onClose={onClose} className="collection-flow-dialog collection-ticket-dialog" overlayClassName="collection-receipt-suboverlay collection-ticket-print-overlay">
       <div className="collection-ticket-print-content">
         <div className="collection-ticket-printer-setup collection-ticket-controls">
           <label>URL:<input value={url} onChange={(event) => setUrl(event.target.value)} /></label>
