@@ -340,8 +340,8 @@ const reportWindowTitles: Partial<Record<ReportPageId, string>> = {
   reportPendingChargesByZones: "Reporte de Cobros Pendientes por Zonas",
   reportClientChargesByZoneService: "Cargos de clientes por zona por servicio",
   reportCollectionsSummary: "Reporte de Cobros Resumido",
-  reportCollectionsGeneralSummary: "Reporte de Cobros Gen. Resumido",
-  reportCollectionsByService: "Reporte de Cobros x Servicio",
+  reportCollectionsGeneralSummary: "Reporte Resumido General",
+  reportCollectionsByService: "Reporte de Cobros por Servicios",
 };
 const reportTitle = (page: ReportPageId) =>
   reportWindowTitles[page] ?? reportDefinitions.find((report) => report.id === page)?.label.replace(/\.$/, "") ?? "Reporte";
@@ -843,7 +843,9 @@ function buildCompactReportTable(page: ReportPageId, snapshot: Snapshot, filters
 
   const chargeById = new Map(snapshot.charges.map((charge) => [charge.id, charge]));
   const movements = snapshot.movements.filter((movement) => {
-    if (movement.type !== "collection" || movement.cancelledAt) return false;
+    const isGeneralSummary = page === "reportCollectionsGeneralSummary";
+    const relevantType = isGeneralSummary || movement.type === "collection";
+    if (!relevantType || movement.cancelledAt) return false;
     const date = movement.createdAt.slice(0, 10);
     if ((filters.startDate && date < filters.startDate) || (filters.endDate && date > filters.endDate)) return false;
     if ((page === "reportCollectionsSummary" || page === "reportCollectionsGeneralSummary") && filters.filterCollector && filters.collectorId && movement.collectorId !== filters.collectorId) return false;
@@ -877,19 +879,50 @@ function buildCompactReportTable(page: ReportPageId, snapshot: Snapshot, filters
   }
 
   if (page === "reportCollectionsGeneralSummary") {
-    const groups = summarize((movement) => ({
-      key: movement.clientId ?? "no-client",
-      label: movement.clientId ? clientById.get(movement.clientId)?.name ?? "Cliente sin nombre" : "Sin cliente",
-    }));
-    return table(["Cliente", "Importe"], groups.map(([, group]) => [group.label, group.amount]), [1], 0, [1], groups.map(([key]) => key), "No hay cobros para los filtros seleccionados.");
+    const groups = new Map<string, { collector: string; collected: number; deposited: number; delivered: number; paid: number }>();
+    for (const movement of movements) {
+      const collector = snapshot.collectors.find((item) => item.id === movement.collectorId)?.name ?? "Cobrador sin nombre";
+      const summary = groups.get(movement.collectorId) ?? { collector, collected: 0, deposited: 0, delivered: 0, paid: 0 };
+      if (movement.type === "collection") summary.collected += movement.amount;
+      if (movement.type === "deposit") summary.deposited += movement.amount;
+      if (movement.type === "office_delivery") summary.delivered += movement.amount;
+      if (movement.type === "payout") summary.paid += movement.amount;
+      groups.set(movement.collectorId, summary);
+    }
+    const summaries = [...groups.entries()].sort((left, right) => left[1].collector.localeCompare(right[1].collector, "es"));
+    return table(
+      ["Cobrador", "Cobrado", "Depositado", "Dif_Cobros", "Entregado", "Pagado", "Dif_Pagos"],
+      summaries.map(([, summary]) => [summary.collector, summary.collected, summary.deposited, summary.collected - summary.deposited, summary.delivered, summary.paid, summary.delivered - summary.paid]),
+      [1, 2, 3, 4, 5, 6],
+      0,
+      [1, 2, 3, 4, 5, 6],
+      summaries.map(([collectorId]) => collectorId),
+      "No hay movimientos para los filtros seleccionados.",
+    );
   }
 
-  const groups = summarize((movement) => {
+  const serviceRows = movements.map((movement) => {
     const charge = movement.chargeId ? chargeById.get(movement.chargeId) : undefined;
-    const label = charge?.service ?? "No definido";
-    return { key: label, label };
+    const client = movement.clientId ? clientById.get(movement.clientId) : undefined;
+    return {
+      id: movement.id,
+      clientCode: client?.code ?? "",
+      identification: client?.identification || client?.code || "",
+      clientName: client?.name ?? "Cliente sin nombre",
+      service: charge?.service ?? "No definido",
+      concept: charge?.concept ?? "",
+      amount: movement.amount,
+    };
   });
-  return table(["Servicio", "Importe"], groups.map(([, group]) => [group.label, group.amount]), [1], 0, [1], groups.map(([key]) => key), "No hay cobros para los filtros seleccionados.");
+  return table(
+    ["Código", "Ident.", "Cliente", "Servicio", "Concepto", "Importe"],
+    serviceRows.map((row) => [row.clientCode, row.identification, row.clientName, row.service, row.concept, row.amount]),
+    [5],
+    4,
+    [5],
+    serviceRows.map((row) => row.id),
+    "No hay cobros para los filtros seleccionados.",
+  );
 }
 
 const pendingChargeExportFormats = [
