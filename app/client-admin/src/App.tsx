@@ -9541,51 +9541,16 @@ function operationSpec(page: Page, snapshot: Snapshot): OperationSpec {
 }
 
 function MonitorView(props: Readonly<{ page: Page; snapshot: Snapshot; refreshing: boolean; currentUser: User; onRefresh: () => void }>) {
-  if (props.page === "monitorCollectors") {
-    return <CollectorMonitorView snapshot={props.snapshot} refreshing={props.refreshing} onRefresh={props.onRefresh} />;
+  if (props.page === "monitorCollectors" || props.page === "monitorZones") {
+    return <FinancialMonitorView key={props.page} page={props.page} snapshot={props.snapshot} refreshing={props.refreshing} onRefresh={props.onRefresh} />;
   }
   return <MapMonitorView {...props} />;
 }
 
-function collectorMonitorRows(snapshot: Snapshot, currency: string): MonitorRow[] {
-  const currencyCode = currency === "Peso Dominicano" ? "DOP" : currency === "Dólar Americano" ? "USD" : "EUR";
-  return snapshot.collectors.map((collector) => {
-    const configuredLimit = collector.limits?.find((limit) => limit.abbr === currencyCode);
-    const movements = currencyCode === "DOP"
-      ? snapshot.movements.filter((movement) => movement.collectorId === collector.id && !movement.cancelledAt)
-      : [];
-    const collected = sumMovements(movements, "collection");
-    const deposited = sumMovements(movements, "deposit");
-    const delivered = sumMovements(movements, "office_delivery");
-    const paid = sumMovements(movements, "payout");
-    const metrics: MonitorMetricValues = {
-      collectionLimit: currencyCode === "DOP" ? collector.collectionLimit : configuredLimit?.collectionLimit ?? 0,
-      payoutLimit: currencyCode === "DOP" ? collector.payoutLimit : configuredLimit?.payoutLimit ?? 0,
-      collected,
-      deposited,
-      delivered,
-      paid,
-      difference: collected - deposited + (delivered - paid),
-    };
-    return {
-      entityId: collector.id,
-      entityType: "collector",
-      rawName: collector.name,
-      name: collector.name,
-      collectionLimit: money(metrics.collectionLimit),
-      payoutLimit: money(metrics.payoutLimit),
-      collected: money(metrics.collected),
-      deposited: money(metrics.deposited),
-      delivered: money(metrics.delivered),
-      paid: money(metrics.paid),
-      difference: <span className={metrics.difference === 0 ? "balanced-text" : "warning-text"}>{money(metrics.difference)}</span>,
-      metrics,
-    };
-  });
-}
-
-function CollectorMonitorView({ snapshot, refreshing, onRefresh }: Readonly<{ snapshot: Snapshot; refreshing: boolean; onRefresh: () => void }>) {
-  const [auto, setAuto] = useState(true);
+function FinancialMonitorView({ page, snapshot, refreshing, onRefresh }: Readonly<{ page: "monitorCollectors" | "monitorZones"; snapshot: Snapshot; refreshing: boolean; onRefresh: () => void }>) {
+  const isZoneMonitor = page === "monitorZones";
+  const entityLabel = isZoneMonitor ? "Zona" : "Cobrador";
+  const [auto, setAuto] = useState(() => !isZoneMonitor);
   const [seconds, setSeconds] = useState("60");
   const [remaining, setRemaining] = useState(60);
   const [currency, setCurrency] = useState("Peso Dominicano");
@@ -9593,7 +9558,7 @@ function CollectorMonitorView({ snapshot, refreshing, onRefresh }: Readonly<{ sn
   const [mapOpen, setMapOpen] = useState(false);
   const onRefreshRef = useRef(onRefresh);
   const refreshSeconds = Math.max(1, Number(seconds) || 60);
-  const rows = collectorMonitorRows(snapshot, currency);
+  const rows = monitorRows(page, snapshot, currency);
   const totals = rows.reduce<MonitorMetricValues>((total, row) => ({
     collectionLimit: total.collectionLimit + row.metrics.collectionLimit,
     payoutLimit: total.payoutLimit + row.metrics.payoutLimit,
@@ -9650,7 +9615,7 @@ function CollectorMonitorView({ snapshot, refreshing, onRefresh }: Readonly<{ sn
       <div className="collector-monitor-grid-content">
         <table className="collector-monitor-table">
           <colgroup><col className="monitor-collector-name-column" /><col span={7} /></colgroup>
-          <thead><tr><th>Cobrador</th><th>Lim. de C...</th><th>Lim. de P...</th><th>Cobrado</th><th>Depositado</th><th>Entregado</th><th>Pagado</th><th>Diferencia</th></tr></thead>
+          <thead><tr><th>{entityLabel}</th><th>Lim. de C...</th><th>Lim. de P...</th><th>Cobrado</th><th>Depositado</th><th>Entregado</th><th>Pagado</th><th>Diferencia</th></tr></thead>
           <tbody>{rows.map((row) => {
             const selected = selectedRow?.entityId === row.entityId;
             return <tr key={row.entityId} className={selected ? "selected-row" : undefined} aria-selected={selected} role="button" tabIndex={0} onClick={() => setSelectedRow(row)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedRow(row))}>
@@ -9669,7 +9634,7 @@ function CollectorMonitorView({ snapshot, refreshing, onRefresh }: Readonly<{ sn
       </div>
     </div>
     {mapOpen && selectedRow && <LegacyDialog title={`Mapa de Monitoreo - ${selectedRow.rawName}`} onClose={() => setMapOpen(false)} className="collector-monitor-map-dialog">
-      <div className="collector-monitor-map-placeholder">Contenedor reservado para la integración del módulo de mapas</div>
+      <div className="collector-monitor-map-placeholder">{isZoneMonitor ? "Contenedor reservado para la integración del módulo de mapas (Zona)" : "Contenedor reservado para la integración del módulo de mapas"}</div>
     </LegacyDialog>}
   </div>;
 }
@@ -10136,12 +10101,13 @@ function ReportsView() {
   );
 }
 
-function monitorRows(page: Page, snapshot: Snapshot): MonitorRow[] {
+function monitorRows(page: Page, snapshot: Snapshot, currency = "Peso Dominicano"): MonitorRow[] {
+  const currencyCode = currency === "Peso Dominicano" ? "DOP" : currency === "Dólar Americano" ? "USD" : "EUR";
   if (page === "monitorCollectors") {
     return snapshot.collectors.map((collector) =>
       ledgerForEntity(collector.id, "collector", collector.name, snapshot, [
         collector.id,
-      ]),
+      ], currencyCode),
     );
   }
 
@@ -10149,7 +10115,7 @@ function monitorRows(page: Page, snapshot: Snapshot): MonitorRow[] {
     return snapshot.routes.map((route) =>
       ledgerForEntity(route.id, "route", route.name, snapshot, [
         route.collectorId,
-      ]),
+      ], currencyCode),
     );
   }
 
@@ -10161,7 +10127,7 @@ function monitorRows(page: Page, snapshot: Snapshot): MonitorRow[] {
   });
 
   return Array.from(zones.entries()).map(([zone, collectorIds]) =>
-    ledgerForEntity(zone, "zone", zone, snapshot, Array.from(collectorIds)),
+    ledgerForEntity(zone, "zone", zone, snapshot, Array.from(collectorIds), currencyCode),
   );
 }
 
@@ -10171,22 +10137,23 @@ function ledgerForEntity(
   name: string,
   snapshot: Snapshot,
   collectorIds: string[],
+  currencyCode = "DOP",
 ): MonitorRow {
   const collectorIdSet = new Set(collectorIds);
   const collectors = snapshot.collectors.filter((collector) =>
     collectorIdSet.has(collector.id),
   );
-  const movements = snapshot.movements.filter((movement) =>
-    collectorIdSet.has(movement.collectorId),
-  );
-  const collectionLimit = collectors.reduce(
-      (sum, collector) => sum + collector.collectionLimit,
-      0,
-    ),
-    payoutLimit = collectors.reduce(
-      (sum, collector) => sum + collector.payoutLimit,
-      0,
-    ),
+  const movements = currencyCode === "DOP"
+    ? snapshot.movements.filter((movement) => collectorIdSet.has(movement.collectorId) && !movement.cancelledAt)
+    : [];
+  const collectionLimit = collectors.reduce((sum, collector) => {
+      const currencyLimit = collector.limits?.find((limit) => limit.abbr === currencyCode);
+      return sum + (currencyCode === "DOP" ? collector.collectionLimit : currencyLimit?.collectionLimit ?? 0);
+    }, 0),
+    payoutLimit = collectors.reduce((sum, collector) => {
+      const currencyLimit = collector.limits?.find((limit) => limit.abbr === currencyCode);
+      return sum + (currencyCode === "DOP" ? collector.payoutLimit : currencyLimit?.payoutLimit ?? 0);
+    }, 0),
     collected = sumMovements(movements, "collection"),
     deposited = sumMovements(movements, "deposit"),
     delivered = sumMovements(movements, "office_delivery"),
