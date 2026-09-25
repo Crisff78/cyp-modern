@@ -4528,11 +4528,20 @@ type OperationSpec = {
 };
 
 type MonitorEntity = "collector" | "zone" | "route";
+type MonitorMetricValues = {
+  collectionLimit: number;
+  payoutLimit: number;
+  collected: number;
+  deposited: number;
+  delivered: number;
+  paid: number;
+  difference: number;
+};
 type MonitorRow = TableRow & {
   entityId: string;
   entityType: MonitorEntity;
   rawName: string;
-  name: ReactNode;
+  name: string;
   collectionLimit: ReactNode;
   payoutLimit: ReactNode;
   collected: ReactNode;
@@ -4540,6 +4549,7 @@ type MonitorRow = TableRow & {
   delivered: ReactNode;
   paid: ReactNode;
   difference: ReactNode;
+  metrics: MonitorMetricValues;
 };
 type MapData = {
   collector: {
@@ -9530,7 +9540,141 @@ function operationSpec(page: Page, snapshot: Snapshot): OperationSpec {
   };
 }
 
-function MonitorView({
+function MonitorView(props: Readonly<{ page: Page; snapshot: Snapshot; refreshing: boolean; currentUser: User; onRefresh: () => void }>) {
+  if (props.page === "monitorCollectors") {
+    return <CollectorMonitorView snapshot={props.snapshot} refreshing={props.refreshing} onRefresh={props.onRefresh} />;
+  }
+  return <MapMonitorView {...props} />;
+}
+
+function collectorMonitorRows(snapshot: Snapshot, currency: string): MonitorRow[] {
+  const currencyCode = currency === "Peso Dominicano" ? "DOP" : currency === "Dólar Americano" ? "USD" : "EUR";
+  return snapshot.collectors.map((collector) => {
+    const configuredLimit = collector.limits?.find((limit) => limit.abbr === currencyCode);
+    const movements = currencyCode === "DOP"
+      ? snapshot.movements.filter((movement) => movement.collectorId === collector.id && !movement.cancelledAt)
+      : [];
+    const collected = sumMovements(movements, "collection");
+    const deposited = sumMovements(movements, "deposit");
+    const delivered = sumMovements(movements, "office_delivery");
+    const paid = sumMovements(movements, "payout");
+    const metrics: MonitorMetricValues = {
+      collectionLimit: currencyCode === "DOP" ? collector.collectionLimit : configuredLimit?.collectionLimit ?? 0,
+      payoutLimit: currencyCode === "DOP" ? collector.payoutLimit : configuredLimit?.payoutLimit ?? 0,
+      collected,
+      deposited,
+      delivered,
+      paid,
+      difference: collected - deposited + (delivered - paid),
+    };
+    return {
+      entityId: collector.id,
+      entityType: "collector",
+      rawName: collector.name,
+      name: collector.name,
+      collectionLimit: money(metrics.collectionLimit),
+      payoutLimit: money(metrics.payoutLimit),
+      collected: money(metrics.collected),
+      deposited: money(metrics.deposited),
+      delivered: money(metrics.delivered),
+      paid: money(metrics.paid),
+      difference: <span className={metrics.difference === 0 ? "balanced-text" : "warning-text"}>{money(metrics.difference)}</span>,
+      metrics,
+    };
+  });
+}
+
+function CollectorMonitorView({ snapshot, refreshing, onRefresh }: Readonly<{ snapshot: Snapshot; refreshing: boolean; onRefresh: () => void }>) {
+  const [auto, setAuto] = useState(true);
+  const [seconds, setSeconds] = useState("60");
+  const [remaining, setRemaining] = useState(60);
+  const [currency, setCurrency] = useState("Peso Dominicano");
+  const [selectedRow, setSelectedRow] = useState<MonitorRow | null>(null);
+  const [mapOpen, setMapOpen] = useState(false);
+  const onRefreshRef = useRef(onRefresh);
+  const refreshSeconds = Math.max(1, Number(seconds) || 60);
+  const rows = collectorMonitorRows(snapshot, currency);
+  const totals = rows.reduce<MonitorMetricValues>((total, row) => ({
+    collectionLimit: total.collectionLimit + row.metrics.collectionLimit,
+    payoutLimit: total.payoutLimit + row.metrics.payoutLimit,
+    collected: total.collected + row.metrics.collected,
+    deposited: total.deposited + row.metrics.deposited,
+    delivered: total.delivered + row.metrics.delivered,
+    paid: total.paid + row.metrics.paid,
+    difference: total.difference + row.metrics.difference,
+  }), { collectionLimit: 0, payoutLimit: 0, collected: 0, deposited: 0, delivered: 0, paid: 0, difference: 0 });
+
+  useEffect(() => {
+    onRefreshRef.current = onRefresh;
+  }, [onRefresh]);
+  useEffect(() => {
+    setRemaining(refreshSeconds);
+  }, [refreshSeconds]);
+  useEffect(() => {
+    if (!auto) return;
+    const timer = window.setInterval(() => {
+      setRemaining((current) => {
+        if (current <= 1) {
+          onRefreshRef.current();
+          return refreshSeconds;
+        }
+        return current - 1;
+      });
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [auto, refreshSeconds]);
+
+  const refresh = () => {
+    setRemaining(refreshSeconds);
+    onRefresh();
+  };
+  const handleMonitoreoClick = () => {
+    if (selectedRow) setMapOpen(true);
+  };
+  return <div className="collector-monitor-mdi">
+    <div className="collector-monitor-topbar">
+      <div className="collector-monitor-controls">
+        <label className="collector-monitor-auto"><input type="checkbox" checked={auto} onChange={(event) => setAuto(event.target.checked)} />Auto.</label>
+        <input className="collector-monitor-seconds" aria-label="Tiempo de refresco en segundos" type="number" min="1" max="3600" value={seconds} onChange={(event) => setSeconds(event.target.value)} />
+        <label htmlFor="collector-monitor-currency">Moneda:</label>
+        <select id="collector-monitor-currency" value={currency} onChange={(event) => setCurrency(event.target.value)}>
+          <option>Peso Dominicano</option><option>Dólar Americano</option><option>Euro</option>
+        </select>
+      </div>
+      <div className="collector-monitor-actions">
+        <button type="button" disabled={!selectedRow} onClick={handleMonitoreoClick}><MapPinned size={14} />Monitoreo</button>
+        <button type="button" disabled={refreshing} onClick={refresh}><RefreshCw size={14} className={refreshing ? "spin" : undefined} />Refrescar</button>
+      </div>
+    </div>
+    <div className="collector-monitor-grid-scroll">
+      <div className="collector-monitor-grid-content">
+        <table className="collector-monitor-table">
+          <colgroup><col className="monitor-collector-name-column" /><col span={7} /></colgroup>
+          <thead><tr><th>Cobrador</th><th>Lim. de C...</th><th>Lim. de P...</th><th>Cobrado</th><th>Depositado</th><th>Entregado</th><th>Pagado</th><th>Diferencia</th></tr></thead>
+          <tbody>{rows.map((row) => {
+            const selected = selectedRow?.entityId === row.entityId;
+            return <tr key={row.entityId} className={selected ? "selected-row" : undefined} aria-selected={selected} role="button" tabIndex={0} onClick={() => setSelectedRow(row)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedRow(row))}>
+              <td>{row.name}</td><td>{row.collectionLimit}</td><td>{row.payoutLimit}</td><td>{row.collected}</td><td>{row.deposited}</td><td>{row.delivered}</td><td>{row.paid}</td><td>{row.difference}</td>
+            </tr>;
+          })}</tbody>
+        </table>
+        <div className="collector-monitor-footer-grid">
+          <div className="collector-monitor-page-controls">
+            <button type="button" disabled aria-label="Primera página">|&lt;&lt;</button><button type="button" disabled aria-label="Página anterior">&lt;</button><span>Página [ 1 ] de 1</span><button type="button" disabled aria-label="Página siguiente">&gt;</button><button type="button" disabled aria-label="Última página">&gt;&gt;|</button>
+            <button type="button" className="monitor-footer-refresh" title="Refrescar" onClick={refresh}><RefreshCw size={12} /></button>
+            <span className="monitor-countdown">{auto ? `Faltan: ${remaining} seg(s)` : "Auto. pausado"}</span>
+          </div>
+          {[totals.collectionLimit, totals.payoutLimit, totals.collected, totals.deposited, totals.delivered, totals.paid, totals.difference].map((amount, index) => <span className="collector-monitor-total" key={`monitor-total-${index}`}>{money(amount)}</span>)}
+        </div>
+      </div>
+    </div>
+    {mapOpen && selectedRow && <LegacyDialog title={`Mapa de Monitoreo - ${selectedRow.rawName}`} onClose={() => setMapOpen(false)} className="collector-monitor-map-dialog">
+      <div className="collector-monitor-map-placeholder">Contenedor reservado para la integración del módulo de mapas</div>
+    </LegacyDialog>}
+  </div>;
+}
+
+function MapMonitorView({
   page,
   snapshot,
   refreshing,
@@ -10048,6 +10192,15 @@ function ledgerForEntity(
     delivered = sumMovements(movements, "office_delivery"),
     paid = sumMovements(movements, "payout");
   const difference = collected - deposited + (delivered - paid);
+  const metrics: MonitorMetricValues = {
+    collectionLimit,
+    payoutLimit,
+    collected,
+    deposited,
+    delivered,
+    paid,
+    difference,
+  };
   return {
     entityId,
     entityType,
@@ -10064,6 +10217,7 @@ function ledgerForEntity(
         {money(difference)}
       </span>
     ),
+    metrics,
   };
 }
 

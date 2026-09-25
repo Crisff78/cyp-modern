@@ -72,6 +72,8 @@ decisiones y su alcance no se aplican aqui. No mezclar los dos proyectos.
 
 **Update 2026-09-24 — Entregas de Dinero MDI:** el módulo abre ahora una vista compacta con toolbar legacy sin Editar, filtros por cobrador/fecha/estado, grilla seleccionable con orden local y contador. El alta usa `POST /entregas`; el desglose de denominaciones es de solo lectura y se carga al pulsar Refrescar con un importe simulado limitado al margen del tope de pago (solo DOP). Fecha, moneda y nota se conservan como metadatos locales porque la API no los persiste. Guardar e Imp. abre la vista previa térmica de entrega. En el modo demo la inactivación marca el movimiento cancelado y lo excluye del cuadre; en modo real se informa que el backend aún no ofrece una ruta para inactivar entregas. `npm run check`: typechecks y builds de los tres workspaces correctos, 21 pruebas pasan y 1 se omite por PostgreSQL de integración no configurado; Vite mantiene el aviso de bundle >500 kB.
 
+**Update 2026-09-24 — Monitor de Cobradores MDI:** Monitor C usa ahora una hoja compacta con selección visual, límites y métricas financieras, control de moneda, Auto. y contador regresivo que refresca cada 60 segundos por defecto. La acción Monitoreo abre una ventana MDI arrastrable con el espacio reservado para el mapa; seleccionar la fila no abre el diálogo. Monitor Z y Monitor R conservan su vista y mapa previos. `npm run check`: typechecks y builds correctos, 21 pruebas aprobadas y 1 omitida por PostgreSQL de integración no configurado; Vite mantiene el aviso de bundle superior a 500 kB.
+
 ### Done so far
 
 - Repositorio clonado y dependencias instaladas con pnpm.
