@@ -6609,10 +6609,14 @@ table {
 .collector-monitor-page-controls button.monitor-footer-refresh { color: #047857; }
 .monitor-countdown { margin-left: auto; font-variant-numeric: tabular-nums; }
 .collector-monitor-total { justify-content: flex-end; font-variant-numeric: tabular-nums; }
-.collector-monitor-map-dialog { width: min(620px, calc(100vw - 32px)); height: min(440px, calc(100vh - 40px)); border-color: #065f46; }
+.collector-monitor-map-dialog { width: min(980px, calc(100vw - 32px)); height: min(660px, calc(100vh - 40px)); border-color: #065f46; }
 .collector-monitor-map-dialog .legacy-dialog-titlebar { border-color: #064e3b; background: linear-gradient(180deg, #047857 0%, #065f46 100%); }
 .collector-monitor-map-dialog .legacy-dialog-body { display: flex; flex: 1 1 auto; min-height: 0; padding: 0; overflow: hidden; background: #e2e8f0; }
-.collector-monitor-map-placeholder { display: flex; flex: 1 1 auto; align-items: center; justify-content: center; width: min(600px, calc(100vw - 48px)); min-height: 300px; height: 400px; margin: 10px; padding: 20px; border: 1px solid #cbd5e1; background: #fff; color: #64748b; font-size: 13px; text-align: center; }
+.map-viewer { position: relative; display: flex; flex: 1 1 auto; width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: auto; background: #fff; }
+.map-viewer iframe { display: block; flex: 1 1 auto; width: 100%; height: 100%; }
+.map-viewer-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px; background: rgba(255, 255, 255, .9); color: #475569; font-size: 13px; pointer-events: none; }
+.map-viewer-spinner { animation: spin 1s linear infinite; }
+.map-viewer-error { position: absolute; right: 8px; bottom: 8px; padding: 6px 9px; border: 1px solid #fecdd3; border-radius: 4px; background: #fff1f2; color: #be123c; font-size: 12px; }
 
 /* Compact MDI ledger for daily settlements and cash reconciliation. */
 .daily-settlements-mdi { display: flex; flex: 1 1 auto; flex-direction: column; width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; border: 1px solid #9ca3af; background: #e8e8e0; color: #1f2937; font-size: 11px; }
@@ -6704,7 +6708,6 @@ table {
   .collector-monitor-controls { flex-wrap: wrap; }
   .collector-monitor-actions { justify-content: flex-end; width: 100%; }
   .collector-monitor-map-dialog { width: calc(100vw - 20px); height: calc(100vh - 30px); }
-  .collector-monitor-map-placeholder { min-height: 220px; height: 100%; margin: 6px; }
 }
 
 .main-content.desktop-canvas {

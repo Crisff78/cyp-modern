@@ -77,6 +77,7 @@ import {
   Modal,
   SectionHeading,
 } from "./components";
+import MapViewer, { type MapViewerType } from "./components/MapViewer";
 import { exportCsv } from "./Dashboard";
 import {
   dispatchMarkerClick,
@@ -5130,6 +5131,11 @@ type OperationSpec = {
 };
 
 type MonitorEntity = "collector" | "zone" | "route";
+const mapViewerTypeByEntity: Record<MonitorEntity, MapViewerType> = {
+  collector: "cobrador",
+  zone: "zona",
+  route: "ruta",
+};
 type MonitorMetricValues = {
   collectionLimit: number;
   payoutLimit: number;
@@ -10137,7 +10143,6 @@ function MonitorView(props: Readonly<{ page: Page; snapshot: Snapshot; refreshin
 
 function FinancialMonitorView({ page, snapshot, refreshing, onRefresh }: Readonly<{ page: "monitorCollectors" | "monitorZones" | "monitorRoutes"; snapshot: Snapshot; refreshing: boolean; onRefresh: () => void }>) {
   const entityLabel = page === "monitorCollectors" ? "Cobrador" : page === "monitorZones" ? "Zona" : "Ruta";
-  const mapEntityLabel = page === "monitorCollectors" ? "" : ` (${entityLabel})`;
   const [auto, setAuto] = useState(() => page === "monitorCollectors");
   const [seconds, setSeconds] = useState("60");
   const [remaining, setRemaining] = useState(60);
@@ -10222,7 +10227,10 @@ function FinancialMonitorView({ page, snapshot, refreshing, onRefresh }: Readonl
       </div>
     </div>
     {mapOpen && selectedRow && <LegacyDialog title={`Mapa de Monitoreo - ${selectedRow.rawName}`} onClose={() => setMapOpen(false)} className="collector-monitor-map-dialog">
-      <div className="collector-monitor-map-placeholder">{`Contenedor reservado para la integración del módulo de mapas${mapEntityLabel}`}</div>
+      <MapViewer
+        type={mapViewerTypeByEntity[selectedRow.entityType]}
+        entityId={selectedRow.entityId}
+      />
     </LegacyDialog>}
   </div>;
 }
