@@ -333,8 +333,18 @@ const reportDefinitions: ReportDefinition[] = [
   { id: "reportPaymentsByServiceSummary", label: "Pagos x servicio resumido.", category: "-- Pagos --", filters: ["zone", "service"] },
   { id: "reportServicesByZone", label: "Servicios por zona.", category: "-- Servicios --", filters: ["zone"] },
 ];
+const reportWindowTitles: Partial<Record<ReportPageId, string>> = {
+  reportClientPendingChargesByRoutes: "Reporte de Cobros Pendientes de Clientes por Ruta",
+  reportClientPendingChargesByZones: "Reporte de Cobros Pendientes de Clientes por Zona",
+  reportPendingChargesByRoutes: "Reporte de Cobros Pendientes por Rutas",
+  reportPendingChargesByZones: "Reporte de Cobros Pendientes por Zonas",
+  reportClientChargesByZoneService: "Cargos de clientes por zona por servicio",
+  reportCollectionsSummary: "Reporte de Cobros Resumido",
+  reportCollectionsGeneralSummary: "Reporte de Cobros Gen. Resumido",
+  reportCollectionsByService: "Reporte de Cobros x Servicio",
+};
 const reportTitle = (page: ReportPageId) =>
-  reportDefinitions.find((report) => report.id === page)?.label.replace(/\.$/, "") ?? "Reporte";
+  reportWindowTitles[page] ?? reportDefinitions.find((report) => report.id === page)?.label.replace(/\.$/, "") ?? "Reporte";
 const isReportPage = (page: MdiPage): page is ReportPageId =>
   reportDefinitions.some((report) => report.id === page);
 const mdiOperationPages: Page[] = [
@@ -495,19 +505,28 @@ function ReportesLauncher({ onLaunch }: Readonly<{ onLaunch: (page: ReportPageId
   );
 }
 
-function CompactReportLayout({ title, snapshot, onRefresh, children }: Readonly<{ title: string; snapshot: Snapshot; onRefresh: () => void; children?: ReactNode }>) {
+function CompactReportLayout({ page, title, snapshot, onRefresh }: Readonly<{ page: ReportPageId; title: string; snapshot: Snapshot; onRefresh: () => void }>) {
   const [startDate, setStartDate] = useState(() => `${snapshot.businessDate.slice(0, 7)}-01`);
   const [endDate, setEndDate] = useState(snapshot.businessDate);
   const [currency, setCurrency] = useState("Peso Dominicano");
+  const [routeId, setRouteId] = useState("");
+  const [zone, setZone] = useState("");
+  const [service, setService] = useState("");
+  const [filterCollector, setFilterCollector] = useState(false);
+  const [collectorId, setCollectorId] = useState("");
   const [refreshStatus, setRefreshStatus] = useState("");
-  const table: ReportTableModel = {
-    columns: ["Nro.", "Fecha", "Descripción", "Moneda", "Importe"],
-    rows: [],
-    totalColumns: [4],
-    moneyColumns: [4],
-    totalLabelColumn: 2,
-    emptyMessage: "Use los filtros y presione Refrescar para generar el reporte.",
-  };
+  const table = useMemo(() => buildCompactReportTable(page, snapshot, {
+    startDate,
+    endDate,
+    currency,
+    routeId,
+    zone,
+    service,
+    filterCollector,
+    collectorId,
+  }), [page, snapshot, startDate, endDate, currency, routeId, zone, service, filterCollector, collectorId]);
+  const zones = Array.from(new Set(snapshot.routes.map((route) => route.sector).filter(Boolean)));
+  const services = Array.from(new Set(snapshot.charges.map((charge) => charge.service).filter(Boolean)));
   const handleRefresh = () => {
     onRefresh();
     setRefreshStatus(`Actualizado ${new Date().toLocaleTimeString("es-DO", { hour: "2-digit", minute: "2-digit" })}`);
@@ -521,7 +540,18 @@ function CompactReportLayout({ title, snapshot, onRefresh, children }: Readonly<
           <label>Fecha inicial:<input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label>
           <label>Fecha final:<input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} /></label>
           <label>Moneda:<select value={currency} onChange={(event) => setCurrency(event.target.value)}><option>No definido</option><option>Peso Dominicano</option><option>Dólar Americano</option><option>Euro</option></select></label>
-          {children}
+          {(page === "reportClientPendingChargesByRoutes") && (
+            <label>Ruta:<select value={routeId} onChange={(event) => setRouteId(event.target.value)}><option value="">Todas</option>{snapshot.routes.map((route) => <option key={route.id} value={route.id}>{route.name}</option>)}</select></label>
+          )}
+          {(page === "reportClientPendingChargesByZones" || page === "reportClientChargesByZoneService" || page === "reportCollectionsByService") && (
+            <label>Zona:<select value={zone} onChange={(event) => setZone(event.target.value)}><option value="">Todas</option>{zones.map((zoneName) => <option key={zoneName} value={zoneName}>{zoneName}</option>)}</select></label>
+          )}
+          {(page === "reportClientChargesByZoneService" || page === "reportCollectionsByService") && (
+            <label>Servicio:<select value={service} onChange={(event) => setService(event.target.value)}><option value="">Todos</option>{services.map((serviceName) => <option key={serviceName} value={serviceName}>{serviceName}</option>)}</select></label>
+          )}
+          {(page === "reportCollectionsSummary" || page === "reportCollectionsGeneralSummary") && (
+            <label className="report-inline-check"><span><input type="checkbox" checked={filterCollector} onChange={(event) => setFilterCollector(event.target.checked)} /> Cobrador</span><select value={collectorId} disabled={!filterCollector} onChange={(event) => setCollectorId(event.target.value)}><option value="">Todos</option>{snapshot.collectors.map((collector) => <option key={collector.id} value={collector.id}>{collector.name}</option>)}</select></label>
+          )}
         </div>
         <div className="pending-charges-filter-actions">
           <div className="pending-charges-separator"><span>---</span></div>
@@ -575,7 +605,18 @@ function ReportView({ page, snapshot, onRefresh }: Readonly<{ page: ReportPageId
   }
 
   const definition = reportDefinitions.find((report) => report.id === page);
-  const title = definition ? definition.label.replace(/\.$/, "") : "Reporte";
+  const title = reportTitle(page);
+  const compactReportPages: ReportPageId[] = [
+    "reportClientPendingChargesByRoutes",
+    "reportClientPendingChargesByZones",
+    "reportPendingChargesByRoutes",
+    "reportPendingChargesByZones",
+    "reportClientChargesByZoneService",
+    "reportCollectionsSummary",
+    "reportCollectionsGeneralSummary",
+    "reportCollectionsByService",
+  ];
+  if (compactReportPages.includes(page)) return <CompactReportLayout page={page} title={title} snapshot={snapshot} onRefresh={onRefresh} />;
   const zones = Array.from(new Set(snapshot.routes.map((route) => route.sector)));
   const services = Array.from(new Set([...snapshot.charges.map((charge) => charge.service), ...snapshot.payouts.map((payout) => payout.concept)]));
   const filters = (
@@ -594,17 +635,6 @@ function ReportView({ page, snapshot, onRefresh }: Readonly<{ page: ReportPageId
       )}
     </>
   );
-  const compactReportPages: ReportPageId[] = [
-    "reportClientPendingChargesByRoutes",
-    "reportClientPendingChargesByZones",
-    "reportPendingChargesByRoutes",
-    "reportPendingChargesByZones",
-    "reportClientChargesByZoneService",
-    "reportCollectionsSummary",
-    "reportCollectionsGeneralSummary",
-    "reportCollectionsByService",
-  ];
-  if (compactReportPages.includes(page)) return <CompactReportLayout title={title} snapshot={snapshot} onRefresh={onRefresh}>{filters}</CompactReportLayout>;
   return <ReportLayout title={title} snapshot={snapshot}>{filters}</ReportLayout>;
 }
 
@@ -689,6 +719,178 @@ type ReportTableModel = {
   totalLabelColumn: number;
   emptyMessage?: string;
 };
+
+type CompactReportFilters = {
+  startDate: string;
+  endDate: string;
+  currency: string;
+  routeId: string;
+  zone: string;
+  service: string;
+  filterCollector: boolean;
+  collectorId: string;
+};
+
+type ChargeReportRow = {
+  id: string;
+  date: string;
+  overdueDays: number;
+  clientCode: string;
+  identification: string;
+  clientName: string;
+  routeId: string;
+  routeName: string;
+  zoneName: string;
+  service: string;
+  concept: string;
+  amount: number;
+  received: number;
+  pending: number;
+};
+
+function buildCompactReportTable(page: ReportPageId, snapshot: Snapshot, filters: CompactReportFilters): ReportTableModel {
+  const routeById = new Map(snapshot.routes.map((route) => [route.id, route]));
+  const clientById = new Map(snapshot.clients.map((client) => [client.id, client]));
+  const chargeRows: ChargeReportRow[] = snapshot.charges.flatMap((charge) => {
+    const date = charge.dueDate.slice(0, 10);
+    const pending = Math.max(0, charge.amount - charge.collected);
+    const client = clientById.get(charge.clientId);
+    const route = client ? routeById.get(client.routeId) : undefined;
+    const currencyMatches = filters.currency === "No definido" || reportCurrencyKey(charge.currency) === reportCurrencyKey(filters.currency);
+    if (charge.status === "cancelled" || !currencyMatches || (filters.startDate && date < filters.startDate) || (filters.endDate && date > filters.endDate)) return [];
+    return [{
+      id: charge.id,
+      date,
+      overdueDays: dateDifferenceInDays(date, snapshot.businessDate),
+      clientCode: client?.code ?? "",
+      identification: client?.identification || client?.code || "",
+      clientName: client?.name ?? "Cliente sin nombre",
+      routeId: client?.routeId ?? "",
+      routeName: route?.name ?? "Sin ruta",
+      zoneName: route?.sector ?? "Sin zona",
+      service: charge.service || "No definido",
+      concept: charge.concept ?? "",
+      amount: charge.amount,
+      received: charge.collected,
+      pending,
+    }];
+  });
+  const pendingRows = chargeRows.filter((row) => row.pending > 0);
+  const chargeRowMatchesLocation = (row: ChargeReportRow) => {
+    if (page === "reportClientPendingChargesByRoutes" && filters.routeId && row.routeId !== filters.routeId) return false;
+    if ((page === "reportClientPendingChargesByZones" || page === "reportClientChargesByZoneService") && filters.zone && row.zoneName !== filters.zone) return false;
+    if ((page === "reportClientChargesByZoneService" || page === "reportCollectionsByService") && filters.service && row.service !== filters.service) return false;
+    return true;
+  };
+  const table = (columns: readonly string[], rows: readonly (readonly ReportCellValue[])[], totalColumns: readonly number[], labelColumn: number, moneyColumns: readonly number[], rowKeys: readonly string[], emptyMessage: string): ReportTableModel => ({
+    columns,
+    rows,
+    rowKeys,
+    totalColumns,
+    moneyColumns,
+    totalLabelColumn: labelColumn,
+    emptyMessage,
+  });
+
+  if (page === "reportClientPendingChargesByRoutes" || page === "reportClientPendingChargesByZones") {
+    const rows = pendingRows.filter(chargeRowMatchesLocation);
+    return table(
+      ["Nro.", "Fecha", "DD", "Identificacion", "Cliente", "Importe", "Recibido", "Pendiente"],
+      rows.map((row, index) => [index + 1, safeDateLabel(row.date), row.overdueDays, row.identification, row.clientName, row.amount, row.received, row.pending]),
+      [5, 6, 7],
+      4,
+      [5, 6, 7],
+      rows.map((row) => row.id),
+      "No hay cargos pendientes para los filtros seleccionados.",
+    );
+  }
+
+  if (page === "reportPendingChargesByRoutes" || page === "reportPendingChargesByZones") {
+    const grouped = new Map<string, { label: string; amount: number; received: number; pending: number }>();
+    for (const row of pendingRows) {
+      const key = page === "reportPendingChargesByRoutes" ? row.routeId || "no-route" : row.zoneName;
+      const label = page === "reportPendingChargesByRoutes" ? row.routeName : row.zoneName;
+      const group = grouped.get(key) ?? { label, amount: 0, received: 0, pending: 0 };
+      group.amount += row.amount;
+      group.received += row.received;
+      group.pending += row.pending;
+      grouped.set(key, group);
+    }
+    const groups = [...grouped.entries()].sort((left, right) => left[1].label.localeCompare(right[1].label, "es"));
+    return table(
+      [page === "reportPendingChargesByRoutes" ? "Ruta" : "Zona", "Importe", "Recibido", "Pendiente"],
+      groups.map(([, group]) => [group.label, group.amount, group.received, group.pending]),
+      [1, 2, 3],
+      0,
+      [1, 2, 3],
+      groups.map(([key]) => key),
+      "No hay cargos pendientes para los filtros seleccionados.",
+    );
+  }
+
+  if (page === "reportClientChargesByZoneService") {
+    const rows = chargeRows.filter(chargeRowMatchesLocation);
+    return table(
+      ["Código", "Identif.", "Cliente", "Servicio", "Concepto", "Importe", "Recibido", "Pendiente"],
+      rows.map((row) => [row.clientCode, row.identification, row.clientName, row.service, row.concept, row.amount, row.received, row.pending]),
+      [5, 6, 7],
+      4,
+      [5, 6, 7],
+      rows.map((row) => row.id),
+      "No hay cargos para los filtros seleccionados.",
+    );
+  }
+
+  const chargeById = new Map(snapshot.charges.map((charge) => [charge.id, charge]));
+  const movements = snapshot.movements.filter((movement) => {
+    if (movement.type !== "collection" || movement.cancelledAt) return false;
+    const date = movement.createdAt.slice(0, 10);
+    if ((filters.startDate && date < filters.startDate) || (filters.endDate && date > filters.endDate)) return false;
+    if ((page === "reportCollectionsSummary" || page === "reportCollectionsGeneralSummary") && filters.filterCollector && filters.collectorId && movement.collectorId !== filters.collectorId) return false;
+    const client = movement.clientId ? clientById.get(movement.clientId) : undefined;
+    const route = client ? routeById.get(client.routeId) : undefined;
+    if ((page === "reportCollectionsByService") && filters.zone && route?.sector !== filters.zone) return false;
+    const charge = movement.chargeId ? chargeById.get(movement.chargeId) : undefined;
+    if (page === "reportCollectionsByService" && filters.service && charge?.service !== filters.service) return false;
+    const selectedCurrency = charge?.currency ?? "Peso Dominicano";
+    if (filters.currency !== "No definido" && reportCurrencyKey(selectedCurrency) !== reportCurrencyKey(filters.currency)) return false;
+    return true;
+  });
+
+  const summarize = (keyFor: (movement: Snapshot["movements"][number]) => { key: string; label: string }) => {
+    const totals = new Map<string, { label: string; amount: number }>();
+    for (const movement of movements) {
+      const identity = keyFor(movement);
+      const summary = totals.get(identity.key) ?? { label: identity.label, amount: 0 };
+      summary.amount += movement.amount;
+      totals.set(identity.key, summary);
+    }
+    return [...totals.entries()].sort((left, right) => left[1].label.localeCompare(right[1].label, "es"));
+  };
+
+  if (page === "reportCollectionsSummary") {
+    const groups = summarize((movement) => ({
+      key: movement.collectorId,
+      label: snapshot.collectors.find((collector) => collector.id === movement.collectorId)?.name ?? "Cobrador sin nombre",
+    }));
+    return table(["Cobrador", "Importe"], groups.map(([, group]) => [group.label, group.amount]), [1], 0, [1], groups.map(([key]) => key), "No hay cobros para los filtros seleccionados.");
+  }
+
+  if (page === "reportCollectionsGeneralSummary") {
+    const groups = summarize((movement) => ({
+      key: movement.clientId ?? "no-client",
+      label: movement.clientId ? clientById.get(movement.clientId)?.name ?? "Cliente sin nombre" : "Sin cliente",
+    }));
+    return table(["Cliente", "Importe"], groups.map(([, group]) => [group.label, group.amount]), [1], 0, [1], groups.map(([key]) => key), "No hay cobros para los filtros seleccionados.");
+  }
+
+  const groups = summarize((movement) => {
+    const charge = movement.chargeId ? chargeById.get(movement.chargeId) : undefined;
+    const label = charge?.service ?? "No definido";
+    return { key: label, label };
+  });
+  return table(["Servicio", "Importe"], groups.map(([, group]) => [group.label, group.amount]), [1], 0, [1], groups.map(([key]) => key), "No hay cobros para los filtros seleccionados.");
+}
 
 const pendingChargeExportFormats = [
   { value: "0", label: "0- Texto simple" },
