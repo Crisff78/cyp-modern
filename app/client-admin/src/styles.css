@@ -10720,3 +10720,172 @@ table {
   .cash-deliveries-grid-panel { min-width: 320px; }
   .cash-delivery-data-dialog { width: calc(100vw - 20px); max-height: calc(100vh - 20px); }
 }
+
+.pending-charges-report {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid #94a3b8;
+  background: #e8e8e0;
+  color: #1e293b;
+  font-size: 12px;
+}
+
+.pending-charges-filter-panel {
+  width: 238px;
+  min-width: 238px;
+  flex: 0 0 238px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 7px;
+  border-right: 1px solid #94a3b8;
+  background: #e8e8e0;
+}
+
+.pending-charges-filter-heading {
+  min-height: 25px;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  border: 1px solid #065f46;
+  background: linear-gradient(180deg, #047857 0%, #065f46 100%);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.pending-charges-filter-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.pending-charges-filter-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: #334155;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.pending-charges-filter-fields input,
+.pending-charges-filter-fields select {
+  width: 100%;
+  min-width: 0;
+  height: 26px;
+  border: 1px solid #94a3b8;
+  border-radius: 2px;
+  padding: 2px 5px;
+  background: #fff;
+  color: #1e293b;
+  font-size: 11px;
+}
+
+.pending-charges-filter-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: auto;
+}
+
+.pending-charges-separator {
+  height: 10px;
+  border-top: 1px solid #a8b0ba;
+  text-align: center;
+  color: #64748b;
+  font-size: 10px;
+  line-height: 1px;
+}
+
+.pending-charges-separator span { padding: 0 7px; background: #e8e8e0; }
+
+.pending-charges-filter-actions button,
+.pending-charges-export-actions button {
+  min-height: 27px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 1px solid #94a3b8;
+  border-radius: 2px;
+  padding: 3px 8px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.pending-charges-filter-actions button:hover,
+.pending-charges-export-actions button:hover {
+  border-color: #047857;
+  background: #ecfdf5;
+  color: #065f46;
+}
+
+.pending-charges-refresh { width: 100%; }
+
+.pending-charges-action-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.pending-charges-action-row button { min-width: 0; }
+.pending-charges-refresh-status { min-height: 13px; color: #64748b; font-size: 10px; text-align: center; }
+
+.pending-charges-grid-panel {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: #fff;
+}
+
+.pending-charges-grid-scroll { width: 100%; height: 100%; overflow: auto; }
+
+.pending-charges-grid {
+  width: 100%;
+  border-collapse: collapse;
+  color: #1e293b;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.pending-charges-grid th,
+.pending-charges-grid td {
+  height: 25px;
+  border-right: 1px solid #cbd5e1;
+  border-bottom: 1px solid #cbd5e1;
+  padding: 3px 6px;
+  text-align: left;
+}
+
+.pending-charges-grid thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #e2e8f0;
+  color: #334155;
+  font-weight: 800;
+}
+
+.pending-charges-grid tbody tr:hover td { background: #f0fdf4; }
+.pending-charges-grid .pending-charges-number { text-align: right; font-variant-numeric: tabular-nums; }
+.pending-charges-grid .pending-charges-empty { height: 90px; color: #64748b; text-align: center; }
+.pending-charges-grid tfoot { position: sticky; bottom: 0; background: #f1f5f9; font-weight: 800; }
+.pending-charges-grid tfoot th { text-align: right; }
+
+.pending-charges-export-dialog { width: min(420px, calc(100vw - 32px)); }
+.pending-charges-export-dialog .legacy-dialog-body { padding: 10px; background: #e2e8f0; }
+.pending-charges-export-form { display: flex; flex-direction: column; gap: 13px; }
+.pending-charges-export-form label { display: grid; grid-template-columns: 54px minmax(0, 1fr); align-items: center; gap: 7px; color: #334155; font-size: 12px; font-weight: 700; }
+.pending-charges-export-form select { height: 28px; min-width: 0; border: 1px solid #94a3b8; border-radius: 2px; padding: 3px 6px; background: #fff; color: #1e293b; font-size: 11px; }
+.pending-charges-export-actions { display: flex; justify-content: center; gap: 8px; }
+.pending-charges-export-actions button { min-width: 78px; }
+
+@media (max-width: 640px) {
+  .pending-charges-report { overflow: auto; }
+  .pending-charges-filter-panel { width: 205px; min-width: 205px; flex-basis: 205px; }
+  .pending-charges-grid-panel { min-width: 500px; }
+}

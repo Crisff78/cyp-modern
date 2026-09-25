@@ -316,7 +316,7 @@ type ReportDefinition = {
 };
 type MdiPage = Page | "controlPanel" | ReportPageId;
 const reportDefinitions: ReportDefinition[] = [
-  { id: "reportClientPendingCharges", label: "Cargos pendientes de clientes.", category: "-- Cargos --", filters: [] },
+  { id: "reportClientPendingCharges", label: "Cargos pendientes de cobros de los clientes", category: "-- Cargos --", filters: [] },
   { id: "reportClientPendingChargesByRoutes", label: "Cargos pendientes de clientes por rutas.", category: "-- Cargos --", filters: ["route"] },
   { id: "reportClientPendingChargesByZones", label: "Cargos pendientes de clientes por zonas.", category: "-- Cargos --", filters: ["zone"] },
   { id: "reportPendingChargesByRoutes", label: "Cargos pendientes por rutas.", category: "-- Cargos --", filters: [] },
@@ -531,6 +531,10 @@ function ReportLayout({ title, snapshot, children }: Readonly<{ title: string; s
 }
 
 function ReportView({ page, snapshot }: Readonly<{ page: ReportPageId; snapshot: Snapshot }>) {
+  if (page === "reportClientPendingCharges") {
+    return <PendingClientChargesReport snapshot={snapshot} />;
+  }
+
   const definition = reportDefinitions.find((report) => report.id === page);
   const title = definition ? definition.label.replace(/\.$/, "") : "Reporte";
   const zones = Array.from(new Set(snapshot.routes.map((route) => route.sector)));
@@ -609,6 +613,250 @@ function LegacyToolbar({ onToggleFilters, filtersVisible = true, onFirst, onPrev
       <button type="button" title="Refrescar" onClick={runToolbarAction(onRefresh)}><RefreshCw size={15} /></button>
       {onPrint && <button type="button" title="Imprimir" onClick={runToolbarAction(onPrint)}><Printer size={15} /></button>}
       {extra && <span className="mdi-toolbar-extra">{extra}</span>}
+    </div>
+  );
+}
+
+type PendingClientChargeRow = {
+  id: string;
+  date: string;
+  overdueDays: number;
+  identification: string;
+  client: string;
+  amount: number;
+  received: number;
+  pending: number;
+};
+
+const pendingChargeExportFormats = [
+  { value: "0", label: "0- Texto simple" },
+  { value: "1", label: "1- Texto delimitado por ;" },
+  { value: "2", label: "2- XML Simple" },
+  { value: "3", label: "3- XML Compuesto" },
+  { value: "4", label: "4- HTML" },
+  { value: "5", label: "5- RTF" },
+  { value: "6", label: "6- PDF" },
+  { value: "7", label: "7- Excel (XLS)" },
+] as const;
+
+const pendingChargeColumns = ["Fecha", "DD", "Identificacion", "Cliente", "Importe", "Recibido", "Pendiente"] as const;
+
+function reportCurrencyKey(value: string | undefined) {
+  const normalized = (value ?? "Peso Dominicano").trim().toLowerCase();
+  if (normalized === "dop" || normalized.includes("peso dominicano")) return "dop";
+  if (normalized === "usd" || normalized.includes("dólar") || normalized.includes("dolar")) return "usd";
+  if (normalized === "eur" || normalized.includes("euro")) return "eur";
+  return normalized;
+}
+
+function dateDifferenceInDays(from: string, to: string) {
+  const fromTime = Date.parse(`${from.slice(0, 10)}T00:00:00Z`);
+  const toTime = Date.parse(`${to.slice(0, 10)}T00:00:00Z`);
+  if (!Number.isFinite(fromTime) || !Number.isFinite(toTime)) return 0;
+  return Math.max(0, Math.floor((toTime - fromTime) / 86_400_000));
+}
+
+function escapeReportHtml(value: string) {
+  return value.replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  })[character] ?? character);
+}
+
+function reportAmount(value: number) {
+  return new Intl.NumberFormat("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value / 100);
+}
+
+function pendingChargeReportHtml(title: string, rows: readonly PendingClientChargeRow[], totals: { amount: number; received: number; pending: number }) {
+  const rowMarkup = rows.map((row) => `<tr><td>${escapeReportHtml(safeDateLabel(row.date))}</td><td>${row.overdueDays}</td><td>${escapeReportHtml(row.identification)}</td><td>${escapeReportHtml(row.client)}</td><td class="num">${escapeReportHtml(reportAmount(row.amount))}</td><td class="num">${escapeReportHtml(reportAmount(row.received))}</td><td class="num">${escapeReportHtml(reportAmount(row.pending))}</td></tr>`).join("");
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${escapeReportHtml(title)}</title><style>body{font:12px Arial,sans-serif;color:#111;margin:24px}h1{font-size:16px;margin:0 0 14px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #777;padding:5px 7px;text-align:left}th{background:#eee}.num{text-align:right}tfoot{font-weight:bold} @media print{body{margin:12mm}thead{display:table-header-group}tr{break-inside:avoid}}</style></head><body><h1>${escapeReportHtml(title)}</h1><table><thead><tr>${pendingChargeColumns.map((column) => `<th>${escapeReportHtml(column)}</th>`).join("")}</tr></thead><tbody>${rowMarkup}</tbody><tfoot><tr><td colspan="3"></td><th>Total</th><td class="num">${escapeReportHtml(reportAmount(totals.amount))}</td><td class="num">${escapeReportHtml(reportAmount(totals.received))}</td><td class="num">${escapeReportHtml(reportAmount(totals.pending))}</td></tr></tfoot></table></body></html>`;
+}
+
+function csvCell(value: string, delimiter: string) {
+  const escaped = value.replace(/"/g, '""');
+  return escaped.includes(delimiter) || /["\r\n]/.test(escaped) ? `"${escaped}"` : escaped;
+}
+
+function rtfText(value: string) {
+  return value
+    .replace(/[\\{}]/g, "\\$&")
+    .replace(/\r?\n/g, "\\line ")
+    .replace(/[^\x00-\x7F]/g, (character) => {
+      const codePoint = character.charCodeAt(0);
+      return `\\u${codePoint > 32767 ? codePoint - 65536 : codePoint}?`;
+    });
+}
+
+function downloadPendingChargeReport(format: string, rows: readonly PendingClientChargeRow[], totals: { amount: number; received: number; pending: number }) {
+  const tableRows = [
+    [...pendingChargeColumns],
+    ...rows.map((row) => [safeDateLabel(row.date), String(row.overdueDays), row.identification, row.client, reportAmount(row.amount), reportAmount(row.received), reportAmount(row.pending)]),
+    ["", "", "", "Total", reportAmount(totals.amount), reportAmount(totals.received), reportAmount(totals.pending)],
+  ];
+  let content: string;
+  let mimeType: string;
+  let extension: string;
+  if (format === "1" || format === "7") {
+    content = tableRows.map((row) => row.map((value) => csvCell(value, ";")).join(";")).join("\r\n");
+    mimeType = "text/csv;charset=utf-8";
+    extension = "csv";
+  } else if (format === "2" || format === "3") {
+    const elementName = format === "2" ? "fila" : "cargoPendiente";
+    const body = tableRows.slice(1, -1).map((row) => `<${elementName}>${row.map((value, index) => `<campo${index + 1}>${escapeReportHtml(value)}</campo${index + 1}>`).join("")}</${elementName}>`).join("\n");
+    const headers = tableRows[0]?.map((value) => `<columna>${escapeReportHtml(value)}</columna>`).join("") ?? "";
+    const totalRow = tableRows.at(-1)?.map((value) => `<campo>${escapeReportHtml(value)}</campo>`).join("") ?? "";
+    content = `<?xml version="1.0" encoding="UTF-8"?>\n<reporte><cabeceras>${headers}</cabeceras><datos>${body}</datos><totales><fila>${totalRow}</fila></totales></reporte>`;
+    mimeType = "application/xml;charset=utf-8";
+    extension = "xml";
+  } else if (format === "4") {
+    content = pendingChargeReportHtml("Cargos pendientes de cobros de los clientes", rows, totals);
+    mimeType = "text/html;charset=utf-8";
+    extension = "html";
+  } else if (format === "5") {
+    content = `{\\rtf1\\ansi\\uc1\n${tableRows.map((row) => row.map(rtfText).join("\\tab ")).join("\\line\n")}\n}`;
+    mimeType = "application/rtf;charset=utf-8";
+    extension = "rtf";
+  } else {
+    const delimiter = format === "0" ? "\t" : " | ";
+    content = `${tableRows.map((row) => row.join(delimiter)).join("\r\n")}\r\n\r\nFormato PDF simulado como texto tabular.`;
+    mimeType = "text/plain;charset=utf-8";
+    extension = "txt";
+  }
+  const blob = new Blob(["\ufeff", content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `cargos-pendientes-clientes.${extension}`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function PendingClientChargesReport({ snapshot }: Readonly<{ snapshot: Snapshot }>) {
+  const [startDate, setStartDate] = useState(() => `${snapshot.businessDate.slice(0, 7)}-01`);
+  const [endDate, setEndDate] = useState(snapshot.businessDate);
+  const [currency, setCurrency] = useState("Peso Dominicano");
+  const [exportFormat, setExportFormat] = useState("1");
+  const [exportOpen, setExportOpen] = useState(false);
+  const [refreshCount, setRefreshCount] = useState(0);
+  const [refreshStatus, setRefreshStatus] = useState("");
+
+  const rows = useMemo(() => snapshot.charges.flatMap((charge) => {
+    const pending = Math.max(0, charge.amount - charge.collected);
+    const date = charge.dueDate.slice(0, 10);
+    const selectedCurrency = currency === "No definido" || reportCurrencyKey(charge.currency) === reportCurrencyKey(currency);
+    if (charge.status === "cancelled" || pending <= 0 || !selectedCurrency) return [];
+    if (startDate && date < startDate) return [];
+    if (endDate && date > endDate) return [];
+    const client = snapshot.clients.find((item) => item.id === charge.clientId);
+    return [{
+      id: charge.id,
+      date,
+      overdueDays: dateDifferenceInDays(date, snapshot.businessDate),
+      identification: client?.identification || client?.code || "",
+      client: client?.name ?? "Cliente sin nombre",
+      amount: charge.amount,
+      received: charge.collected,
+      pending,
+    }];
+  }), [snapshot.charges, snapshot.clients, snapshot.businessDate, currency, startDate, endDate, refreshCount]);
+
+  const totals = useMemo(() => rows.reduce((sum, row) => ({
+    amount: sum.amount + row.amount,
+    received: sum.received + row.received,
+    pending: sum.pending + row.pending,
+  }), { amount: 0, received: 0, pending: 0 }), [rows]);
+
+  const title = "Cargos pendientes de cobros de los clientes";
+  const handlePrint = () => {
+    const frame = document.createElement("iframe");
+    frame.setAttribute("aria-hidden", "true");
+    frame.style.position = "fixed";
+    frame.style.width = "100vw";
+    frame.style.height = "100vh";
+    frame.style.left = "-10000px";
+    frame.style.top = "0";
+    frame.srcdoc = pendingChargeReportHtml(title, rows, totals);
+    frame.onload = () => {
+      const printWindow = frame.contentWindow;
+      if (!printWindow) {
+        frame.remove();
+        toast.error("No se pudo abrir la vista de impresión.");
+        return;
+      }
+      printWindow.focus();
+      printWindow.print();
+      window.setTimeout(() => frame.remove(), 1500);
+    };
+    document.body.appendChild(frame);
+  };
+  const handleRefresh = () => {
+    setRefreshCount((count) => count + 1);
+    setRefreshStatus(`Actualizado ${new Date().toLocaleTimeString("es-DO", { hour: "2-digit", minute: "2-digit" })}`);
+  };
+  const handleExport = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    try {
+      downloadPendingChargeReport(exportFormat, rows, totals);
+      setExportOpen(false);
+    } catch {
+      toast.error("No se pudo exportar el reporte.");
+    }
+  };
+
+  return (
+    <div className="pending-charges-report">
+      <aside className="pending-charges-filter-panel">
+        <div className="pending-charges-filter-heading">Panel de Filtro</div>
+        <div className="pending-charges-filter-fields">
+          <label>Fecha inicial:<input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label>
+          <label>Fecha final:<input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} /></label>
+          <label>Moneda:<select value={currency} onChange={(event) => setCurrency(event.target.value)}><option>No definido</option><option>Peso Dominicano</option><option>Dólar Americano</option><option>Euro</option></select></label>
+        </div>
+        <div className="pending-charges-filter-actions">
+          <div className="pending-charges-separator"><span>---</span></div>
+          <button type="button" className="pending-charges-refresh" onClick={handleRefresh}><RefreshCw size={14} /> Refrescar</button>
+          <div className="pending-charges-action-row">
+            <button type="button" onClick={handlePrint}><Printer size={14} /> Imprimir</button>
+            <button type="button" onClick={() => setExportOpen(true)}><Download size={14} /> Exportar</button>
+          </div>
+          <span className="pending-charges-refresh-status" aria-live="polite">{refreshStatus}</span>
+        </div>
+      </aside>
+      <section className="pending-charges-grid-panel" aria-label={title}>
+        <div className="pending-charges-grid-scroll">
+          <table className="pending-charges-grid">
+            <thead><tr>{pendingChargeColumns.map((column) => <th key={column}>{column}</th>)}</tr></thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.id}>
+                  <td>{safeDateLabel(row.date)}</td>
+                  <td className="pending-charges-number">{row.overdueDays}</td>
+                  <td>{row.identification}</td>
+                  <td>{row.client}</td>
+                  <td className="pending-charges-number">{money(row.amount)}</td>
+                  <td className="pending-charges-number">{money(row.received)}</td>
+                  <td className="pending-charges-number">{money(row.pending)}</td>
+                </tr>
+              ))}
+              {rows.length === 0 && <tr><td colSpan={7} className="pending-charges-empty">No hay cargos pendientes para los filtros seleccionados.</td></tr>}
+            </tbody>
+            <tfoot><tr><td colSpan={3}></td><th scope="row">Total</th><td className="pending-charges-number">{money(totals.amount)}</td><td className="pending-charges-number">{money(totals.received)}</td><td className="pending-charges-number">{money(totals.pending)}</td></tr></tfoot>
+          </table>
+        </div>
+      </section>
+      {exportOpen && (
+        <LegacyDialog title="Seleccione un valor..." onClose={() => setExportOpen(false)} className="pending-charges-export-dialog">
+          <form className="pending-charges-export-form" onSubmit={handleExport}>
+            <label htmlFor="pending-charges-export-format"><span>Valor:</span><select id="pending-charges-export-format" value={exportFormat} onChange={(event) => setExportFormat(event.target.value)}>{pendingChargeExportFormats.map((format) => <option key={format.value} value={format.value}>{format.label}</option>)}</select></label>
+            <div className="pending-charges-export-actions"><button type="submit">oK</button><button type="button" onClick={() => setExportOpen(false)}>Cancelar</button></div>
+          </form>
+        </LegacyDialog>
+      )}
     </div>
   );
 }
