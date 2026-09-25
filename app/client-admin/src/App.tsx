@@ -6284,35 +6284,35 @@ function RecurringChargesOperationalView({ snapshot, currentUser, onRefresh }: R
         disableDelete={!selectedRow || !permissions.canDelete}
       />
       <div className="charges-layout recurring-charges-legacy-layout flex flex-1 overflow-hidden border-t border-gray-300">
-        {filtersVisible && <aside className="legacy-filter-panel charges-filter-panel recurring-charge-filter-panel w-[220px] flex-shrink-0 bg-[#e8e8e0] border-r border-gray-400 p-2 flex flex-col gap-3 overflow-y-auto text-sm" aria-label="Panel de filtro de cargos recurrentes">
+        {filtersVisible && <aside className="legacy-filter-panel charges-filter-panel recurring-charge-filter-panel" aria-label="Panel de filtro de cargos recurrentes">
           <div className="pending-charges-filter-heading">Panel de Filtro</div>
-          <label className="recurring-legacy-radio flex items-center gap-1 whitespace-nowrap">
+          <label className="charges-radio-row">
             <input type="radio" name="recurring-charge-filter-mode" value="todos" checked={filterMode === "Todos"} onChange={() => setFilterMode("Todos")} /> Todos
           </label>
 
-          <div className="flex flex-col gap-1">
-            <label className="recurring-legacy-radio flex items-center gap-1 whitespace-nowrap">
+          <div className="charges-filter-group">
+            <label className="charges-radio-row">
               <input type="radio" name="recurring-charge-filter-mode" value="porCliente" checked={filterMode === "por Cliente"} onChange={() => setFilterMode("por Cliente")} /> por Cliente:
             </label>
-            <div className="flex gap-1 pl-4">
-              <input aria-label="Filtrar por cliente" type="text" className="min-w-0 w-full border p-1" value={clientQuery} disabled={filterMode !== "por Cliente"} onChange={(event) => setClientQuery(event.target.value)} />
-              <button type="button" className="border px-2 bg-gray-200" aria-label="Seleccionar cliente" disabled={filterMode !== "por Cliente"} onClick={() => setClientSearchOpen(true)}>...</button>
+            <div className="legacy-lookup-field charges-filter-control">
+              <input aria-label="Filtrar por cliente" type="text" value={clientQuery} disabled={filterMode !== "por Cliente"} onChange={(event) => setClientQuery(event.target.value)} />
+              <button type="button" aria-label="Seleccionar cliente" disabled={filterMode !== "por Cliente"} onClick={() => setClientSearchOpen(true)}>...</button>
             </div>
           </div>
 
-          <div className="flex flex-col gap-1 mt-2">
+          <div className="field compact-field">
             <label htmlFor="recurring-start-date">Fecha Inicial:</label>
-            <input id="recurring-start-date" type="date" className="border p-1" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
+            <input id="recurring-start-date" type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
           </div>
 
-          <div className="flex flex-col gap-1 mt-2">
+          <div className="field compact-field">
             <label htmlFor="recurring-end-date">Fecha final:</label>
-            <input id="recurring-end-date" type="date" className="border p-1" value={toDate} onChange={(event) => setToDate(event.target.value)} />
+            <input id="recurring-end-date" type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
           </div>
 
-          <div className="flex flex-col gap-1 mt-2">
+          <div className="field compact-field">
             <label htmlFor="recurring-status">Estado:</label>
-            <select id="recurring-status" className="border p-1" value={status} onChange={(event) => setStatus(event.target.value)}>
+            <select id="recurring-status" value={status} onChange={(event) => setStatus(event.target.value)}>
               <option value="Activo">Activo</option>
               <option value="Todos">Todos</option>
               <option value="Inactivo">Inactivo</option>
@@ -6321,19 +6321,19 @@ function RecurringChargesOperationalView({ snapshot, currentUser, onRefresh }: R
         </aside>}
 
         <section className="charges-grid-panel flex min-w-0 flex-1 flex-col overflow-hidden" aria-label="Grilla de cargos recurrentes">
-          <div className="flex-1 overflow-auto bg-white">
-            <table className="w-full text-sm border-collapse recurring-charges-table">
-              <thead className="bg-gray-100 border-b border-gray-300">
+          <div className="legacy-mdi-table-wrap">
+            <table className="legacy-mdi-table recurring-charges-table">
+              <thead>
                 <tr>
-                  <th className="border-r border-gray-300 p-1 font-normal text-left">Nro.</th>
-                  <th className="border-r border-gray-300 p-1 font-normal text-left">Fecha</th>
-                  <th className="border-r border-gray-300 p-1 font-normal text-left">Frecuencia</th>
-                  <th className="border-r border-gray-300 p-1 font-normal text-left">Identif.</th>
-                  <th className="border-r border-gray-300 p-1 font-normal text-left">Cliente</th>
-                  <th className="border-r border-gray-300 p-1 font-normal text-left">Servicio</th>
-                  <th className="border-r border-gray-300 p-1 font-normal text-left">Importe</th>
-                  <th className="border-r border-gray-300 p-1 font-normal text-left">Activo</th>
-                  <th className="border-r border-gray-300 p-1 font-normal text-left">Fecha de Registro</th>
+                  <th>Nro.</th>
+                  <th>Fecha</th>
+                  <th>Frecuencia</th>
+                  <th>Identif.</th>
+                  <th>Cliente</th>
+                  <th>Servicio</th>
+                  <th>Importe</th>
+                  <th>Activo</th>
+                  <th>Fecha de Registro</th>
                 </tr>
               </thead>
               <tbody>{visibleRecords.length ? visibleRecords.map((record, index) => {

@@ -9220,50 +9220,55 @@ table {
   flex-shrink: 0;
   height: 100%;
   overflow-x: hidden;
-  gap: 12px;
-  padding: 8px;
-  border: 0;
-  border-right: 1px solid #9ca3af;
-  border-radius: 0;
-  background: #e8e8e0;
+  gap: 8px;
+  padding: 0 11px 11px;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  background: #fff;
   box-shadow: none;
 }
-.recurring-charge-filter-panel .recurring-legacy-radio {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  width: max-content;
-  min-width: 0;
-  white-space: nowrap;
+.recurring-charges-view .recurring-charge-filter-panel > .pending-charges-filter-heading {
   flex: 0 0 auto;
-  margin: 0;
-  color: #111827;
-  font-size: 13px;
+  min-height: 0;
+  margin: 0 -11px 2px;
+  padding: 7px 11px;
+  border: 0;
+  border-radius: 0;
+  background: #1d4ed8;
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.25;
+  white-space: nowrap;
 }
-.recurring-charges-view .pending-charges-filter-heading { border-color: #1d4ed8; background: #1d4ed8; }
 .recurring-charge-filter-panel input[type="radio"] { width: 14px; height: 14px; min-width: 14px; flex: 0 0 14px; margin: 0; transform: none; }
 .recurring-charge-filter-panel input[type="text"],
 .recurring-charge-filter-panel input[type="date"],
 .recurring-charge-filter-panel select {
   box-sizing: border-box;
+  width: 100%;
   min-width: 0;
   height: 28px;
-  border: 1px solid #9ca3af;
-  border-radius: 0;
-  padding: 3px 5px;
-  background: white;
-  color: #111827;
-  font-size: 12px;
+  min-height: 28px;
+  margin: 0;
+  padding: 3px 6px;
+  border: 1px solid #94a3b8;
+  border-radius: 3px;
+  background: #fff;
+  color: #1e293b;
+  font-size: 11px;
 }
-.recurring-charge-filter-panel button {
+.recurring-charge-filter-panel .legacy-lookup-field button {
   height: 28px;
-  flex: 0 0 auto;
-  border-radius: 0;
-  color: #111827;
-  font-size: 12px;
+  min-width: 34px;
+  padding: 0 3px;
+  border-radius: 3px;
 }
-.recurring-charge-filter-panel input:disabled,
-.recurring-charge-filter-panel button:disabled { background: #e5e7eb; color: #6b7280; }
+.recurring-charge-filter-panel .compact-field {
+  gap: 4px;
+  margin: 0;
+  color: #334155;
+  font-size: 11px;
+}
 .recurring-charges-view .charges-grid-panel {
   display: flex;
   flex: 1 1 0;
@@ -9277,10 +9282,6 @@ table {
 .recurring-charges-view .charges-grid-panel > div:first-child { min-width: 0; min-height: 0; }
 .recurring-charges-view .legacy-footerbar { flex: 0 0 auto; min-height: 38px; }
 .recurring-charges-table { min-width: 980px; color: #111827; }
-.recurring-charges-table th,
-.recurring-charges-table td { white-space: nowrap; }
-.recurring-charges-table th { position: sticky; top: 0; z-index: 1; }
-.recurring-charges-table td { padding: 3px 4px; border-bottom: 1px solid #e5e7eb; }
 .recurring-charges-table tbody tr { cursor: pointer; }
 .recurring-charges-table tbody tr:hover td,
 .recurring-charges-table tbody tr:focus-visible td { background: #ecfdf5; }
