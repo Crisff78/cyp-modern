@@ -5563,6 +5563,7 @@ function MasterDataView({
 }
 
 const DENOMS = [2000, 1000, 500, 200, 100, 50, 20, 10, 5, 1];
+const SETTLEMENT_DENOMS = [2000, 1000, 500, 200, 100, 50, 25, 20, 10, 5, 1];
 
 type LocalCharge = Charge & { currency: string; concept: string; note: string };
 type CargoDialogDraft = {
@@ -10771,7 +10772,7 @@ function DailySettlementsView({ snapshot, onRefresh }: Readonly<{ snapshot: Snap
   const [editingRow, setEditingRow] = useState<DailySettlementGridRow | null>(null);
   const [balanceDraft, setBalanceDraft] = useState<SettlementBalanceDraft | null>(null);
   const [denominationTarget, setDenominationTarget] = useState<SettlementDenominationTarget | null>(null);
-  const [denominationCounts, setDenominationCounts] = useState<Record<number, string>>(() => Object.fromEntries(DENOMS.map((denomination) => [denomination, ""])));
+  const [denominationCounts, setDenominationCounts] = useState<Record<number, string>>(() => Object.fromEntries(SETTLEMENT_DENOMS.map((denomination) => [denomination, ""])));
   const [confirmCloseOpen, setConfirmCloseOpen] = useState(false);
   const [alertMessage, setAlertMessage] = useState("");
 
@@ -10790,18 +10791,14 @@ function DailySettlementsView({ snapshot, onRefresh }: Readonly<{ snapshot: Snap
   const draftSectionTotal = (section: "cash" | "check") => centsForDraft(section, "Opening") + centsForDraft(section, "Income") - centsForDraft(section, "Expenses");
   const draftSectionBalance = (section: "cash" | "check") => centsForDraft(section, "Final") - draftSectionTotal(section);
 
-  const moveSelected = (direction: "first" | "up" | "down" | "last") => {
-    if (!selectedRow) return;
-    setRows((current) => {
-      const index = current.findIndex((row) => row.id === selectedRow.id);
-      if (index < 0) return current;
-      const target = direction === "first" ? 0 : direction === "last" ? current.length - 1 : direction === "up" ? Math.max(0, index - 1) : Math.min(current.length - 1, index + 1);
-      if (index === target) return current;
-      const updated = [...current];
-      const [item] = updated.splice(index, 1);
-      updated.splice(target, 0, item);
-      return updated;
-    });
+  const navigateSelected = (direction: "first" | "previous" | "next" | "last") => {
+    if (visibleRows.length === 0) return;
+    const currentIndex = selectedRow ? visibleRows.findIndex((row) => row.id === selectedRow.id) : -1;
+    let targetIndex = 0;
+    if (direction === "last") targetIndex = visibleRows.length - 1;
+    if (direction === "previous" && currentIndex > 0) targetIndex = currentIndex - 1;
+    if (direction === "next" && currentIndex >= 0) targetIndex = Math.min(visibleRows.length - 1, currentIndex + 1);
+    setSelectedRow(visibleRows[targetIndex]);
   };
 
   const refreshRows = () => {
@@ -10862,11 +10859,11 @@ function DailySettlementsView({ snapshot, onRefresh }: Readonly<{ snapshot: Snap
   };
 
   const openDenominationDialog = (target: SettlementDenominationTarget) => {
-    setDenominationCounts(Object.fromEntries(DENOMS.map((denomination) => [denomination, ""])));
+    setDenominationCounts(Object.fromEntries(SETTLEMENT_DENOMS.map((denomination) => [denomination, ""])));
     setDenominationTarget(target);
   };
 
-  const denominationTotal = DENOMS.reduce((total, denomination) => total + denomination * (Number(denominationCounts[denomination]) || 0), 0);
+  const denominationTotal = SETTLEMENT_DENOMS.reduce((total, denomination) => total + denomination * (Number(denominationCounts[denomination]) || 0), 0);
   const saveDenominations = () => {
     if (!denominationTarget) return;
     const field = `${denominationTarget.section}${denominationTarget.field}` as SettlementDraftField;
@@ -10881,8 +10878,8 @@ function DailySettlementsView({ snapshot, onRefresh }: Readonly<{ snapshot: Snap
     const previousDate = previous.toISOString().slice(0, 10);
     const previousIsClosed = rows.some((row) => row.date === previousDate && row.closed);
     if (!previousIsClosed) {
-      const formattedPrevious = new Intl.DateTimeFormat("es-DO", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" }).format(previous);
-      setAlertMessage(`El día anterior debe estar cerrado (${formattedPrevious}).`);
+      const formattedPrevious = `${previous.getUTCDate()}/${previous.getUTCMonth() + 1}/${previous.getUTCFullYear()}`;
+      setAlertMessage(`El día anterior debe estar cerrado (${formattedPrevious})`);
       return;
     }
     setConfirmCloseOpen(true);
@@ -10901,10 +10898,10 @@ function DailySettlementsView({ snapshot, onRefresh }: Readonly<{ snapshot: Snap
     <LegacyToolbar
       onToggleFilters={() => setFiltersVisible((visible) => !visible)}
       filtersVisible={filtersVisible}
-      onFirst={() => moveSelected("first")}
-      onPrevious={() => moveSelected("up")}
-      onNext={() => moveSelected("down")}
-      onLast={() => moveSelected("last")}
+      onFirst={() => navigateSelected("first")}
+      onPrevious={() => navigateSelected("previous")}
+      onNext={() => navigateSelected("next")}
+      onLast={() => navigateSelected("last")}
       onNew={() => { setDateDraft(snapshot.businessDate); setDateDialogOpen(true); }}
       newTitle="Generar cuadre"
       newIcon={<span className="settlement-generate-icon"><Database size={14} /><Plus size={9} /></span>}
@@ -10969,7 +10966,7 @@ function DailySettlementsView({ snapshot, onRefresh }: Readonly<{ snapshot: Snap
     </LegacyDialog>}
 
     {denominationTarget && balanceDraft && <LegacyDialog title="Desglose del Dinero..." onClose={() => setDenominationTarget(null)} className="settlement-denomination-dialog">
-      <div className="settlement-denomination-content"><div className="settlement-denomination-scroll"><table><thead><tr><th>Denom.</th><th>Cantidad</th><th>Importe</th></tr></thead><tbody>{DENOMS.map((denomination) => <tr key={denomination}><td>{settlementMoney(denomination, balanceDraft.currency)}</td><td><input type="number" min="0" step="1" value={denominationCounts[denomination] ?? ""} onChange={(event) => setDenominationCounts((current) => ({ ...current, [denomination]: event.target.value }))} /></td><td>{settlementMoney(denomination * (Number(denominationCounts[denomination]) || 0), balanceDraft.currency)}</td></tr>)}</tbody></table></div><div className="settlement-denomination-total">Total: <strong>{settlementMoney(denominationTotal, balanceDraft.currency)}</strong></div><div className="legacy-dialog-actions centered"><button type="button" onClick={saveDenominations}>oK</button><button type="button" onClick={() => setDenominationTarget(null)}>Cancelar</button></div></div>
+      <div className="settlement-denomination-content"><div className="settlement-denomination-scroll"><table><thead><tr><th>Denom.</th><th>Cantidad</th><th>Importe</th></tr></thead><tbody>{SETTLEMENT_DENOMS.map((denomination) => <tr key={denomination}><td>{settlementMoney(denomination, balanceDraft.currency)}</td><td><input type="number" min="0" step="1" value={denominationCounts[denomination] ?? ""} onChange={(event) => setDenominationCounts((current) => ({ ...current, [denomination]: event.target.value }))} /></td><td>{settlementMoney(denomination * (Number(denominationCounts[denomination]) || 0), balanceDraft.currency)}</td></tr>)}</tbody></table></div><label className="settlement-denomination-total">Total:<input value={settlementMoney(denominationTotal, balanceDraft.currency)} readOnly /></label><div className="legacy-dialog-actions centered"><button type="button" onClick={saveDenominations}>oK</button><button type="button" onClick={() => setDenominationTarget(null)}>Cancelar</button></div></div>
     </LegacyDialog>}
 
     {confirmCloseOpen && selectedRow && <LegacyDialog title="Confirm" onClose={() => setConfirmCloseOpen(false)} className="settlement-confirm-dialog"><div className="settlement-confirm-content"><CircleHelp size={28} /><p>¿Está seguro que desea cerrar/reversar el día?</p><div className="legacy-dialog-actions centered"><button type="button" onClick={confirmCloseOrReverse}>Sí</button><button type="button" onClick={() => setConfirmCloseOpen(false)}>No</button></div></div></LegacyDialog>}
