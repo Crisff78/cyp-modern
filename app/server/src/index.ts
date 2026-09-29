@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { buildApp } from "./app.js";
-import { seed, seedPublicDemo } from "./seed.js";
+import { normalizeDemoCollectorLabel, seed, seedPublicDemo } from "./seed.js";
 import { FileStore, PostgresStore, type Store } from "./store.js";
 import { registerPublicWeb } from "./public-web.js";
 
@@ -41,6 +41,7 @@ async function openStore(): Promise<{
       if (requestedDemo)
         await postgres.transaction((s) => {
           if (s.collectors.length === 0) Object.assign(s, demoInitial);
+          normalizeDemoCollectorLabel(s, requestedDemo);
         });
       return {
         store: postgres,
@@ -57,11 +58,13 @@ async function openStore(): Promise<{
     throw new Error("DATABASE_URL es obligatorio en modo real; DEMO_MODE=true habilita la demostración explícita.");
   }
 
+  const store = await FileStore.open(
+    resolve(process.env.DATA_FILE ?? "../../.local/demo-state.json"),
+    demoInitial,
+  );
+  await store.transaction((state) => normalizeDemoCollectorLabel(state, requestedDemo));
   return {
-    store: await FileStore.open(
-      resolve(process.env.DATA_FILE ?? "../../.local/demo-state.json"),
-      demoInitial,
-    ),
+    store,
     demo: true,
     source: "FileStore demo",
   };

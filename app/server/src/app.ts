@@ -235,6 +235,8 @@ export async function buildApp(config: Config) {
         const collector = (await config.store.read()).collectors.find((c) => c.id === u.collectorId);
         if (!collector || collector.active === false) throw new DomainError("COLLECTOR_INACTIVE", "El cobrador está inactivo.", 403);
       }
+      if (config.demo && u.id === "demo-collector" && u.role === "collector" && u.collectorId === "col-1")
+        u.name = "Cobrador";
       return;
     }
     // Provisioned accounts: the token carries the account's credential
@@ -384,7 +386,7 @@ export async function buildApp(config: Config) {
         if (email === "collector@cyp.local" || email === "collector.demo")
           u = {
             id: "demo-collector",
-            name: "Ana Martínez",
+            name: "Cobrador",
             role: "collector",
             collectorId: "col-1",
           };
@@ -1256,7 +1258,7 @@ export async function buildApp(config: Config) {
   registerAdminToolsRoutes(app, config.store, user, mutate, describe);
   registerRemittanceRoutes(app, config.store, user, mutate, describe, config.demo ? [
     { id: "demo-admin", name: "Administración", role: "admin" },
-    { id: "demo-collector", name: "Ana Martínez", role: "collector", collectorId: "col-1" },
+    { id: "demo-collector", name: "Cobrador", role: "collector", collectorId: "col-1" },
   ] : [{ id: "configured-admin", name: "Administración", role: "admin" }]);
   app.get("/api/openapi.json", () => ({
     openapi: "3.1.0",

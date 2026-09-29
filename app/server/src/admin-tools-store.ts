@@ -50,7 +50,7 @@ export async function saveAdminTools(client: pg.PoolClient, state: State, before
   for (const row of data.sessions) {
     if (!changed(old.sessions, row)) continue;
     await client.query(`INSERT INTO auth_sessions(id,user_id,user_name,role,collector_id,started_at,expires_at,revoked_at,revoked_by)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(id) DO UPDATE SET revoked_at=EXCLUDED.revoked_at,revoked_by=EXCLUDED.revoked_by`,
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(id) DO UPDATE SET user_name=EXCLUDED.user_name,revoked_at=EXCLUDED.revoked_at,revoked_by=EXCLUDED.revoked_by`,
       [row.id,row.userId,row.userName,row.role,row.collectorId ?? null,row.startedAt,row.expiresAt,row.revokedAt ?? null,row.revokedBy ?? null]);
   }
   for (const row of data.authorizationRequests) {

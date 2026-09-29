@@ -1,14 +1,31 @@
 import { businessDate, emptyState, type State, type User } from "./domain.js";
-import { seedAdminTools } from "./admin-tools.js";
+import { getAdminTools, seedAdminTools } from "./admin-tools.js";
 import {
   cancelRemittance, createRemittance, openRemittanceCash, payRemittance,
   quoteRemittance, setDailyRate,
 } from "./remittances.js";
+
+export function normalizeDemoCollectorLabel(state: State, demo: boolean) {
+  if (!demo) return;
+  // Compatibility labels from the original synthetic demo, never real account names.
+  const previousNames = new Set(["Ana Martínez", "Ana Martinez"]);
+  const collector = state.collectors.find((row) => row.id === "col-1");
+  if (collector && previousNames.has(collector.name)) {
+    collector.name = "Cobrador";
+    collector.initials = "CO";
+  }
+  for (const session of getAdminTools(state).sessions) {
+    if (session.userId === "demo-collector" && session.collectorId === "col-1" &&
+        session.role === "collector" && previousNames.has(session.userName))
+      session.userName = "Cobrador";
+  }
+}
+
 export function seed(): State {
   const s = emptyState(),
     today = businessDate();
   s.collectors = [
-    ["Ana Martínez", "AM"],
+    ["Cobrador", "CO"],
     ["Luis Pérez", "LP"],
     ["Marta Reyes", "MR"],
   ].map(([name, initials], i) => ({
@@ -119,7 +136,7 @@ export function seedPublicDemo(): State {
   const now = new Date();
   const date = businessDate(now);
   const admin: User = { id: "demo-admin", name: "Administración", role: "admin" };
-  const collector: User = { id: "demo-collector", name: "Ana Martínez", role: "collector", collectorId: "col-1" };
+  const collector: User = { id: "demo-collector", name: "Cobrador", role: "collector", collectorId: "col-1" };
   setDailyRate(s, admin, { currency: "USD", rate: "59.000000", date }, now);
   setDailyRate(s, admin, { currency: "EUR", rate: "64.000000", date }, now);
   openRemittanceCash(s, admin, { operatorId: collector.id, currency: "USD", openingAmount: 100_000 }, [collector], now);

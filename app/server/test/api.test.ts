@@ -17,7 +17,7 @@ import { FileStore, MemoryStore, PostgresStore, type Store } from "../src/store.
 const admin: User = { id: "admin", name: "Admin", role: "admin" },
   collector: User = {
     id: "collector",
-    name: "Ana",
+    name: "Cobrador",
     role: "collector",
     collectorId: "col-1",
   };
@@ -504,7 +504,7 @@ test("monitoring map-data returns collector location, stops and decimal money", 
     assert.equal(response.statusCode, 200);
     const body = response.json();
     assert.equal(body.collector.id, "col-1");
-    assert.equal(body.collector.name, "Ana Martínez");
+    assert.equal(body.collector.name, "Cobrador");
     assert.equal(body.collector.collection_limit, 25000);
     assert.equal(body.collector.payout_limit, 10000);
     assert.equal(body.collector.lat, state.collectors[0].lat);
@@ -557,7 +557,7 @@ test("OpenAPI includes typed financial requests and bearer security", async () =
 });
 test("account provisioning: create, login, scope, password rotation and disable", async () => {
   const { app, post, store } = await setup();
-  const collectorEmail = "ana@example.com",
+  const collectorEmail = "cobrador@example.com",
     bossEmail = "jefe@example.com",
     strong = "ClaveDePrueba-2026!";
   const login = async (email: string, password: string) =>
@@ -571,7 +571,7 @@ test("account provisioning: create, login, scope, password rotation and disable"
     assert.equal(
       (
         await post("/api/usuarios", {
-          name: "Ana Martínez",
+          name: "Cobrador",
           email: collectorEmail,
           role: "collector",
           password: strong,
@@ -595,7 +595,7 @@ test("account provisioning: create, login, scope, password rotation and disable"
     assert.equal(
       (
         await post("/api/usuarios", {
-          name: "Ana Martínez",
+          name: "Cobrador",
           email: collectorEmail,
           role: "collector",
           collectorId: "col-1",
@@ -606,7 +606,7 @@ test("account provisioning: create, login, scope, password rotation and disable"
     );
     const created = (
       await post("/api/usuarios", {
-        name: "Ana Martínez",
+        name: "Cobrador",
         email: collectorEmail,
         role: "collector",
         collectorId: "col-1",
@@ -619,7 +619,7 @@ test("account provisioning: create, login, scope, password rotation and disable"
     assert.equal(
       (
         await post("/api/usuarios", {
-          name: "Ana Martínez",
+          name: "Cobrador",
           email: collectorEmail.toUpperCase(),
           role: "collector",
           collectorId: "col-1",
