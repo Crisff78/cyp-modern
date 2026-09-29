@@ -3,7 +3,7 @@
 La ampliación de Envíos de Dinero (2026-09-27) comparte API y aplicaciones,
 con dominio, eventos y caja por moneda separados del libro DOP original.
 Su interfaz se comparte entre Central, teléfono y tablet. Contratos y decisiones:
-[ENVIOS-API.md](ENVIOS-API.md), [ENVIOS-REQUISITOS.md](ENVIOS-REQUISITOS.md).
+[ENVIOS-API.md](ENVIOS-API.md).
 
 Dos aplicaciones web independientes, un backend y un dominio común del lado servidor. No se implementa aplicación móvil nativa. No se utiliza Docker para ejecutar, probar ni desplegar este scaffold, de acuerdo con la corrección del usuario.
 
@@ -21,7 +21,7 @@ flowchart LR
 
 ## Decisiones implementadas
 
-- npm workspaces y lockfile único; TypeScript estricto; React 19, Vite 7, Tailwind 4, Lucide y Radix Dialog. Toasts con Sonner y movimiento CSS respetando reduced-motion.
+- pnpm workspaces y lockfile único; TypeScript estricto; React 19, Vite 7, Tailwind 4, Lucide y Radix Dialog. Toasts con Sonner y movimiento CSS respetando reduced-motion.
 - Backend Fastify 5 y esquemas Zod que generan entradas OpenAPI 3.1. Un API compartido evita duplicar reglas entre administración y cobradores.
 - Dinero entero en centavos, ledger inmutable, roles comprobados en el servidor, idempotencia y operaciones serializadas. La UI nunca autoriza un saldo por sí sola.
 - Demo opt-in con datos ficticios, secretos locales fuera de Git y JWT ligados a la configuración activa. PostgreSQL obligatorio fuera de demo.

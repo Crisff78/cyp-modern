@@ -1,7 +1,7 @@
 # Reglas operativas y matemáticas
 
 Desde 2026-09-27, Envíos de Dinero tiene reglas propias documentadas en
-[ENVIOS-REQUISITOS.md](ENVIOS-REQUISITOS.md): comisión añadida, pago completo,
+[ENVIOS-API.md](ENVIOS-API.md): comisión añadida, pago completo,
 tasa fijada y caja por operador/moneda. La fórmula del libro de cobradores
 descrita abajo no incluye remesas ni convierte monedas.
 

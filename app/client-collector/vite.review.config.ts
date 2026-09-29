@@ -1,7 +1,7 @@
 import { defineConfig, mergeConfig } from "vite";
 import baseConfig from "./vite.config.ts";
 
-const demoApi = "http://127.0.0.1:3011";
+const demoApi = "http://127.0.0.1:3012";
 
 export default mergeConfig(baseConfig, defineConfig({
   server: {
