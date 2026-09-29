@@ -100,6 +100,7 @@ import { ConnectedCatalog, isConnectedCatalog } from "./ConnectedCatalog";
 import { ConnectedSettlements } from "./ConnectedSettlements";
 import { ConnectedLegacyReports } from "./ConnectedLegacyReports";
 import { ConnectedAdminTools, isConnectedAdminTool } from "./ConnectedAdminTools";
+import { ConnectedExchangeRates } from "./ConnectedExchangeRates";
 import { locationUnavailable, locationError as gpsError, validLocation } from "../../shared/geolocation";
 
 const collectorUrl = String(import.meta.env.VITE_COLLECTOR_URL || "http://127.0.0.1:5174");
@@ -408,7 +409,7 @@ const focusWindowCollection = (windows: MdiWindowState[], focusedId: string, zIn
   });
 
 const mdiWindowSize = (page: MdiPage): MdiWindowSize => {
-  if (page === "remittances" || page === "exchangeRates") return { width: 980, height: 640 };
+  if (page === "remittances") return { width: 980, height: 640 };
   if (page === "controlPanel") return { width: 600, height: 390 };
   if (page === "reports") return { width: 720, height: 430 };
   if (page === "recurringCharges") return { width: 860, height: 520 };
@@ -676,7 +677,7 @@ function MdiWindow({ windowState, onClose, onFocus, onMove, children }: Readonly
     setDrag({ startX: event.clientX, startY: event.clientY, x: windowState.x, y: windowState.y });
   };
   return (
-    <section className={`mdi-window ${windowState.isFocused ? "focused" : ""} ${windowState.page === "remittances" || windowState.page === "exchangeRates" ? "remittances-mdi-window" : ""}`} style={{ left: windowState.x, top: windowState.y, width: windowState.width, height: windowState.height, zIndex: windowState.zIndex }} onPointerDownCapture={focusIfNeeded} role="dialog" aria-label={windowState.title}>
+    <section className={`mdi-window ${windowState.isFocused ? "focused" : ""} ${windowState.page === "remittances" ? "remittances-mdi-window" : ""}`} style={{ left: windowState.x, top: windowState.y, width: windowState.width, height: windowState.height, zIndex: windowState.zIndex }} onPointerDownCapture={focusIfNeeded} role="dialog" aria-label={windowState.title}>
       <div className="mdi-window-titlebar" onMouseDown={startDrag}><span>{windowState.title}</span><button type="button" aria-label={`Cerrar ${windowState.title}`} onMouseDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onClose(windowState.id); }}><X size={15} /></button></div>
       <div className="mdi-window-content">{children}</div><span className="mdi-resize-cue" aria-hidden="true" />
     </section>
@@ -4852,8 +4853,10 @@ export default function App() {
                 <ReportesLauncher onLaunch={openMdiWindow} />
               ) : isReportPage(windowState.page) ? (
                 <ReportView page={windowState.page} snapshot={snapshot} onRefresh={() => void refresh()} />
-              ) : windowState.page === "remittances" || windowState.page === "exchangeRates" ? (
-                <RemittancesWorkspace api={remittancesApi} user={effectiveUser} isAdmin={["ADMIN", "SUPERADMIN"].includes(normalizeRole(effectiveUser.role))} initialTab={windowState.page === "exchangeRates" ? "tasas" : "envios"} />
+              ) : windowState.page === "exchangeRates" ? (
+                <ConnectedExchangeRates actorId={effectiveUser.id} isAdmin={["ADMIN", "SUPERADMIN"].includes(normalizeRole(effectiveUser.role))} />
+              ) : windowState.page === "remittances" ? (
+                <RemittancesWorkspace api={remittancesApi} user={effectiveUser} isAdmin={["ADMIN", "SUPERADMIN"].includes(normalizeRole(effectiveUser.role))} />
               ) : isConnectedCatalog(windowState.page) ? (
                 <ConnectedCatalog page={windowState.page} snapshot={snapshot} onRefresh={() => void refresh()} />
               ) : isConnectedAdminTool(windowState.page) ? (

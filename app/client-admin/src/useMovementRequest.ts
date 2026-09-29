@@ -13,6 +13,7 @@ const definitiveCodes = new Set([
   "MOVEMENT_NOT_FOUND", "CANCELLATION_REASON_REQUIRED", "CANCELLATION_DAY_MISMATCH",
   "INSUFFICIENT_COLLECTION_CASH", "INSUFFICIENT_PAYOUT_CASH", "PAYOUT_LIMIT",
   "MOVEMENT_BALANCE_MISMATCH",
+  "RATE_DATE", "DOP_RATE", "INVALID_RATE", "INVALID_CURRENCY",
 ]);
 const states = new Map<string, RequestState>();
 const listeners = new Set<() => void>();
