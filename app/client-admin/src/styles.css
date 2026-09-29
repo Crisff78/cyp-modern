@@ -6625,7 +6625,7 @@ table {
 .settlement-generate-icon svg:last-child { position: absolute; right: -2px; bottom: -1px; stroke-width: 3; }
 .daily-settlements-workspace { display: flex; flex: 1 1 auto; min-width: 0; min-height: 0; overflow: hidden; border-top: 1px solid #cbd5e1; }
 .daily-settlements-filter { display: flex; flex: 0 0 220px; flex-direction: column; gap: 9px; min-width: 220px; padding: 7px; overflow-y: auto; border-right: 1px solid #9ca3af; background: #f8fafc; }
-.daily-settlements-filter h2 { margin: -7px -7px 2px; padding: 6px 8px; background: #1d4ed8; color: #fff; font-size: 11px; font-weight: 800; }
+.daily-settlements-filter h2 { margin: -7px -7px 2px; padding: 6px 8px; background: linear-gradient(180deg, #0f766e 0%, #065f46 100%); color: #fff; font-size: 11px; font-weight: 800; border-bottom: 1px solid #064e3b; }
 .daily-settlements-filter label { display: flex; flex-direction: column; gap: 3px; color: #334155; font-size: 11px; font-weight: 700; white-space: nowrap; }
 .daily-settlements-filter input,
 .daily-settlements-filter select { box-sizing: border-box; width: 100%; height: 28px; border: 1px solid #94a3b8; border-radius: 3px; padding: 3px 6px; background: #fff; color: #1e293b; font-size: 11px; }
@@ -9020,7 +9020,7 @@ table {
   flex: 0 0 auto;
   margin: 0 -11px 2px;
   padding: 7px 11px;
-  background: #1d4ed8;
+  background: linear-gradient(180deg, #0f766e 0%, #065f46 100%);
   color: #fff;
   font-size: 12px;
   line-height: 1.25;
@@ -9237,7 +9237,7 @@ table {
   padding: 7px 11px;
   border: 0;
   border-radius: 0;
-  background: #1d4ed8;
+  background: linear-gradient(180deg, #0f766e 0%, #065f46 100%);
   color: #fff;
   font-size: 12px;
   line-height: 1.25;
@@ -9367,7 +9367,7 @@ table {
 .collections-legacy-view .charges-filter-panel > h2 {
   margin: 0 -8px 2px;
   padding: 7px 9px;
-  background: #1d4ed8;
+  background: linear-gradient(180deg, #0f766e 0%, #065f46 100%);
   color: #fff;
   font-size: 12px;
 }
@@ -10120,7 +10120,7 @@ table {
 .deposit-filter-panel > h2 {
   margin: 0 -9px 2px;
   padding: 7px 9px;
-  background: #1d4ed8;
+  background: linear-gradient(180deg, #0f766e 0%, #065f46 100%);
   color: #fff;
   font-size: 12px;
   line-height: 1.2;
@@ -10344,7 +10344,7 @@ table {
   flex: 0 0 auto;
   margin: 0 -8px 2px;
   padding: 7px 9px;
-  background: #1d4ed8;
+  background: linear-gradient(180deg, #0f766e 0%, #065f46 100%);
   color: #fff;
   font-size: 12px;
   line-height: 1.2;
@@ -10505,7 +10505,7 @@ table {
   flex: 0 0 auto;
   margin: 0 -8px 2px;
   padding: 7px 9px;
-  background: #1d4ed8;
+  background: linear-gradient(180deg, #0f766e 0%, #065f46 100%);
   color: #fff;
   font-size: 12px;
   line-height: 1.2;
@@ -10649,7 +10649,7 @@ table {
   flex: 0 0 auto;
   margin: 0 -8px 2px;
   padding: 7px 9px;
-  background: #1d4ed8;
+  background: linear-gradient(180deg, #0f766e 0%, #065f46 100%);
   color: #fff;
   font-size: 12px;
   line-height: 1.2;
@@ -10757,8 +10757,8 @@ table {
   display: flex;
   align-items: center;
   padding: 0 8px;
-  border: 1px solid #1d4ed8;
-  background: #1d4ed8;
+  border: 1px solid #064e3b;
+  background: linear-gradient(180deg, #0f766e 0%, #065f46 100%);
   color: #fff;
   font-size: 11px;
   font-weight: 800;
