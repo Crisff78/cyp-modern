@@ -12,6 +12,38 @@ cambios que haga un evaluador serán visibles para los demás porque comparten
 la misma base de demostración. No introduzcas datos de personas ni operaciones
 reales.
 
+## Ejemplos para recorrer la aplicación
+
+El arranque público agrega una ampliación identificada como `public-v2` y
+`collector-v2`. Se guarda una marca persistente en la misma transacción que los
+registros: reiniciar o publicar de nuevo no duplica los ejemplos ni repone los que
+un evaluador haya editado. Solo se ejecuta con ambos modos de demo activados y
+la base dedicada `cyp_demo`. Las instalaciones locales normales quedan intactas.
+
+- Clientes, zonas, rutas, servicios y motivos con etiquetas de demostración.
+- Cargos, cobros, descargos, pagos, entregas y depósitos en distintos estados.
+- Historial de seis jornadas cerradas de cobradores de ejemplo y una jornada
+  abierta. Para verlo en reportes, selecciona la semana de la primera carga.
+- Tasas y envíos DOP/USD/EUR con recibos pagados, pendientes y cancelaciones.
+- Grupos, PCPs, estaciones, máquinas, plantillas de cargos y solicitudes de
+  autorización. Las cuentas ficticias adicionales están deshabilitadas; se
+  conservan los accesos habituales de Administración y Cobrador.
+- Doce comercios de práctica adicionales en la ruta del cobrador habitual,
+  con cargos y autorizaciones de pago pendientes. Los límites, fondos, jornadas
+  y permisos normales siguen aplicándose al operar.
+
+Los datos anteriores se conservan. El historial nuevo se construye aparte usando
+las reglas del dominio, con cierres equilibrados y detección de colisiones antes
+de incorporarlo. No se alteran cajas anteriores ni tasas que ya existían.
+Las fechas se fijan en la primera carga; no avanzan artificialmente cada día.
+Los teléfonos de los nuevos ejemplos están vacíos y los correos usan
+`example.invalid`. Las coordenadas son de demostración.
+
+**Descargos Recurrentes** queda oculto en el menú, en la ficha del cliente y en
+las aperturas directas. El código y los registros se conservan. La constante
+`SHOW_RECURRING_PAYOUTS` del portal administrativo permite reactivar su interfaz.
+**Cargos Recurrentes** continúa disponible.
+
 ## Publicación
 
 1. Revisa y fusiona la rama de la demo en `main`.

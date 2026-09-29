@@ -130,6 +130,9 @@ const groupOrder = [
   "REPORTES & MONITOREO",
 ] as const;
 type NavGroup = (typeof groupOrder)[number];
+// Temporary UI switch: keep the module and stored templates available for later reactivation.
+const SHOW_RECURRING_PAYOUTS = false;
+const isUiPageVisible = (page: string) => SHOW_RECURRING_PAYOUTS || page !== "recurringPayouts";
 const navigation: {
   key: string;
   page?: Page;
@@ -213,10 +216,12 @@ const navigation: {
   { key: "daily-settlements", page: "dailySettlements", label: "Cuadres Diarios", icon: FileCheck2, group: "REPORTES & MONITOREO" },
   { key: "general-reports", page: "reports", label: "Reportes", icon: ChartNoAxesCombined, group: "REPORTES & MONITOREO" },
 ];
-const pageFromHash = (): Page =>
-  location.hash.slice(1) in pageTitles
-    ? (location.hash.slice(1) as Page)
+const pageFromHash = (): Page => {
+  const requested = location.hash.slice(1);
+  return requested in pageTitles && isUiPageVisible(requested)
+    ? requested as Page
     : "monitorCollectors";
+};
 const pageTitles: Record<Page, string> = {
   collectors: "Cobradores",
   clients: "Clientes",
@@ -2250,6 +2255,7 @@ function ClientFinancialDialog({ client, snapshot, onClose }: Readonly<{ client:
   const [fromDate, setFromDate] = useState("2026-09-18");
   const [toDate, setToDate] = useState("2026-09-18");
   const clientCharges = snapshot.charges.filter((charge) => charge.clientId === client.id);
+  const clientRecurringCharges = ((snapshot as Snapshot & { recurringCharges?: RecurringChargeRecord[] }).recurringCharges ?? []).filter((charge) => charge.clientId === client.id);
   const clientPayouts = snapshot.payouts.filter((payout) => payout.clientId === client.id);
   const clientCollections = snapshot.movements.filter((movement) => movement.type === "collection" && movement.clientId === client.id);
   const clientPayments = snapshot.movements.filter((movement) => movement.type === "payout" && movement.clientId === client.id);
@@ -2258,14 +2264,14 @@ function ClientFinancialDialog({ client, snapshot, onClose }: Readonly<{ client:
     <LegacyDialog title="Datos de Cobros y Pagos del Cliente..." onClose={onClose} className="client-finance-dialog">
       <div className="client-finance-view">
         <div className="client-finance-header"><span>Código: <strong>{client.code}</strong></span><span>Cliente: <strong>{client.name}</strong></span><label>Moneda:<select value={currency} onChange={(event) => setCurrency(event.target.value)}><option>No definido</option><option>Peso Dominicano</option><option>Dólar Americano</option><option>Euro</option></select></label></div>
-        <div className="legacy-tabs client-finance-tabs" role="tablist" aria-label="Cobros y Pagos del Cliente">{clientFinanceTabs.map((item) => <button type="button" key={item} className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{item}</button>)}</div>
+        <div className="legacy-tabs client-finance-tabs" role="tablist" aria-label="Cobros y Pagos del Cliente">{clientFinanceTabs.filter((item) => SHOW_RECURRING_PAYOUTS || item !== "Descargos Rec.").map((item) => <button type="button" key={item} className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{item}</button>)}</div>
         {(tab === "Cargos" || tab === "Cobros" || tab === "Descargos" || tab === "Pagos") && <div className="client-finance-filters"><label>Fecha Inicial:<input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} /></label><label>Fecha Final:<input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} /></label>{refreshButton}</div>}
-        {(tab === "Cargos Rec." || tab === "Descargos Rec.") && <div className="client-finance-filters compact-only">{refreshButton}</div>}
+        {(tab === "Cargos Rec." || (SHOW_RECURRING_PAYOUTS && tab === "Descargos Rec.")) && <div className="client-finance-filters compact-only">{refreshButton}</div>}
         {tab === "Cargos" && <ClientFinanceTable columns={["Nro.", "Fecha", "Servicio", "Concepto", "Importe", "Recibos", "Pendiente", "Activo"]} rows={clientCharges.map((charge, index) => [index + 1, safeDateLabel(charge.dueDate), charge.service, charge.service, money(charge.amount), money(charge.collected), money(Math.max(0, charge.amount - charge.collected)), <LegacyCheck checked={charge.status !== "cancelled"} />])} />}
-        {tab === "Cargos Rec." && <ClientFinanceTable columns={["Nro.", "Fecha", "Servicio", "Concepto", "Importe", "Activo"]} rows={snapshot.payoutRecurring.filter((item) => item.clientId === client.id).map((item, index) => [index + 1, safeDateLabel(item.nextRunDate), "Recurrente", item.concept, money(item.amount), <LegacyCheck checked={item.status === "active"} />])} />}
+        {tab === "Cargos Rec." && <ClientFinanceTable columns={["Nro.", "Fecha", "Servicio", "Concepto", "Importe", "Activo"]} rows={clientRecurringCharges.map((item, index) => [index + 1, safeDateLabel(item.startDate), item.service, item.concept, money(item.amount), <LegacyCheck checked={item.active} />])} />}
         {tab === "Cobros" && <ClientFinanceTable columns={["Nro.", "Fecha", "En Linea", "En Cen.", "Importe", "Activo", "Cobrador"]} rows={clientCollections.map((movement, index) => [index + 1, safeDateLabel(movement.createdAt.slice(0, 10)), "Sí", "No", money(movement.amount), <LegacyCheck />, snapshot.collectors.find((collector) => collector.id === movement.collectorId)?.name ?? ""]) } />}
         {tab === "Descargos" && <ClientFinanceTable columns={["Nro.", "Fecha", "Servicio", "Concepto", "Importe", "Activo"]} rows={clientPayouts.map((payout, index) => [index + 1, "18/09/2026", payout.concept, payout.concept, money(payout.amount), <LegacyCheck checked={payout.status !== "cancelled"} />])} />}
-        {tab === "Descargos Rec." && <ClientFinanceTable columns={["Nro.", "Fecha", "Servicio", "Concepto", "Importe", "Activo"]} rows={snapshot.payoutRecurring.filter((item) => item.clientId === client.id).map((item, index) => [index + 1, safeDateLabel(item.nextRunDate), "Descargo", item.concept, money(item.amount), <LegacyCheck checked={item.status === "active"} />])} />}
+        {SHOW_RECURRING_PAYOUTS && tab === "Descargos Rec." && <ClientFinanceTable columns={["Nro.", "Fecha", "Servicio", "Concepto", "Importe", "Activo"]} rows={snapshot.payoutRecurring.filter((item) => item.clientId === client.id).map((item, index) => [index + 1, safeDateLabel(item.nextRunDate), "Descargo", item.concept, money(item.amount), <LegacyCheck checked={item.status === "active"} />])} />}
         {tab === "Pagos" && <ClientFinanceTable columns={["Nro.", "Fecha", "EnLinea", "En Cen.", "Importe", "Activo", "Cobrador"]} rows={clientPayments.map((movement, index) => [index + 1, safeDateLabel(movement.createdAt.slice(0, 10)), "Sí", "No", money(movement.amount), <LegacyCheck />, snapshot.collectors.find((collector) => collector.id === movement.collectorId)?.name ?? ""]) } />}
       </div>
     </LegacyDialog>
@@ -4376,6 +4382,7 @@ export default function App() {
     };
   }, []);
   function navigate(next: Page, navKey = "") {
+    if (!isUiPageVisible(next)) return;
     setPage(next);
     setActiveNavKey(navKey);
     location.hash = next;
@@ -4386,6 +4393,7 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: "instant" });
   }
   const openMdiWindow = useCallback((next: MdiPage, navKey = "") => {
+    if (!isUiPageVisible(next)) return;
     setActiveNavKey(navKey);
     setMdiWindows((windows) => {
       const existing = windows.find((item) => item.page === next);
@@ -4428,7 +4436,7 @@ export default function App() {
     type: operationTypeForPage(targetPage),
   }), []);
   const activeNav = activeNavKey
-    ? navigation.find((n) => n.key === activeNavKey)
+    ? navigation.find((n) => n.key === activeNavKey && (!n.page || isUiPageVisible(n.page)))
     : undefined;
   const [auxWindow, setAuxWindow] = useState<
     null | "facturas" | "novedades" | "pagos"
@@ -4526,7 +4534,7 @@ export default function App() {
               {groupOrder.map((group) => {
                 const open = expandedGroups.includes(group) && !collapsed;
                 const groupItems = navigation.filter(
-                  (item) => item.group === group,
+                  (item) => item.group === group && (!item.page || isUiPageVisible(item.page)),
                 );
                 const groupActive = groupItems.some((item) =>
                   activeNavKey ? activeNavKey === item.key : false,
@@ -4778,7 +4786,7 @@ export default function App() {
                       <ul className="novedades-list">
                         <li>Versión modernizada: API Fastify, portal administrativo y PWA de cobrador.</li>
                         <li>Moneda única DOP con importes en centavos exactos.</li>
-                        <li>Aceptar/Cancelar depósitos y Descargos Recurrentes.</li>
+                        <li>Aceptar/Cancelar depósitos{SHOW_RECURRING_PAYOUTS ? " y Descargos Recurrentes" : ""}.</li>
                         <li>Importación masiva de Cargos y Descargos desde CSV.</li>
                         <li>Estado de cuenta por cliente (Cobros y Pagos del Cliente).</li>
                         <li>Configuración General persistente y reportes de Pagos del legacy.</li>
@@ -4839,7 +4847,7 @@ export default function App() {
               </div>
             </header>
             <main id="main-content" className="main-content desktop-canvas" tabIndex={-1}>
-          {snapshot && mdiWindows.map((windowState) => (
+          {snapshot && mdiWindows.filter((windowState) => isUiPageVisible(windowState.page)).map((windowState) => (
             <MdiWindow
               key={windowState.id}
               windowState={windowState}
@@ -5243,6 +5251,7 @@ function ModuleRouter({
   onOperation: (operation: Operation) => void;
   onAccount: (operation: AccountOperation) => void;
 }>) {
+  if (!isUiPageVisible(page)) return null;
   if (
     [
       "collectors",

@@ -1,6 +1,8 @@
 import { resolve } from "node:path";
 import { buildApp } from "./app.js";
 import { normalizeDemoCollectorLabel, seed, seedPublicDemo } from "./seed.js";
+import { enrichPublicDemo } from "./demo-scenarios.js";
+import { enrichCollectorDemo } from "./demo-collector-scenarios.js";
 import { FileStore, PostgresStore, type Store } from "./store.js";
 import { registerPublicWeb } from "./public-web.js";
 
@@ -42,6 +44,10 @@ async function openStore(): Promise<{
         await postgres.transaction((s) => {
           if (s.collectors.length === 0) Object.assign(s, demoInitial);
           normalizeDemoCollectorLabel(s, requestedDemo);
+          if (publicWeb) {
+            enrichPublicDemo(s);
+            enrichCollectorDemo(s);
+          }
         });
       return {
         store: postgres,
