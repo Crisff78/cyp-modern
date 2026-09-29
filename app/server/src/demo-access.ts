@@ -58,8 +58,8 @@ const accessScript = `"use strict";
 })();`;
 
 export async function registerDemoAccess(app: FastifyInstance, config: DemoAccessConfig) {
-  if (config.code.length < 32 || config.code.length > 256)
-    throw new Error("DEMO_ACCESS_CODE must contain between 32 and 256 characters.");
+  if (config.code.length < 10 || config.code.length > 256)
+    throw new Error("DEMO_ACCESS_CODE must contain between 10 and 256 characters.");
   const origin = new URL(config.origin).origin;
   if (!origin.startsWith("https://")) throw new Error("The public demo requires HTTPS.");
   const sign = (expiry: string) => createHmac("sha256", config.code).update(`cyp-demo:${expiry}`).digest("base64url");

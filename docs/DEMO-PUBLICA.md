@@ -51,7 +51,9 @@ las aperturas directas. El código y los registros se conservan. La constante
    **Blueprint Instance** para ese repositorio y la rama `main`.
 3. Antes de confirmar, comprueba que el único recurso es el servicio web `free`.
    Guarda la conexión de la base Neon `cyp_demo` en `DATABASE_URL`, con TLS
-   (`sslmode=verify-full`). Render genera `JWT_SECRET` y `DEMO_ACCESS_CODE`.
+   (`sslmode=verify-full`). Render genera `JWT_SECRET`. Configura
+   `DEMO_ACCESS_CODE` con 10 a 256 caracteres; una invitación más corta es más
+   fácil de adivinar y debe compartirse solo para esta demo de datos ficticios.
    No introduzcas contraseñas de la instalación local ni publiques estas variables.
 4. Espera el deploy y comprueba `GET /api/health`, `/`, `/collector/`, el login
    de ambos roles y un flujo de Envío/Recibo. `/` debe pedir primero la invitación.

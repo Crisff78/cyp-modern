@@ -14,8 +14,8 @@ if (publicWeb && !requestedDemo)
   throw new Error("CYP_PUBLIC_DEMO requires DEMO_MODE=true.");
 if (publicWeb && !process.env.DATABASE_URL)
   throw new Error("CYP_PUBLIC_DEMO requires a dedicated DATABASE_URL.");
-if (publicWeb && (!process.env.DEMO_ACCESS_CODE || process.env.DEMO_ACCESS_CODE.length < 32))
-  throw new Error("CYP_PUBLIC_DEMO requires a private DEMO_ACCESS_CODE of at least 32 characters.");
+if (publicWeb && (!process.env.DEMO_ACCESS_CODE || process.env.DEMO_ACCESS_CODE.length < 10))
+  throw new Error("CYP_PUBLIC_DEMO requires a private DEMO_ACCESS_CODE of at least 10 characters.");
 if (publicWeb) {
   let databaseName = "";
   try {
