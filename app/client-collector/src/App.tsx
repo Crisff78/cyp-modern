@@ -965,7 +965,7 @@ function RouteView({
           <p>RUTA ASIGNADA</p>
           <h2>{routeName}</h2>
           <span>
-            {sector || "Tu zona de trabajo"} · {snapshot.clients.length}{" "}
+            {sector || "Tu zona de trabajo"} · {snapshot.clients.filter((client) => client.active !== false).length}{" "}
             clientes
           </span>
         </div>
@@ -1109,7 +1109,7 @@ function RouteView({
       )}
       <div className="section-heading">
         <h2>
-          Mis paradas <span>{snapshot.clients.length}</span>
+          Mis paradas <span>{list.length}</span>
         </h2>
         <span>Orden de ruta</span>
       </div>
