@@ -17,6 +17,9 @@ test("public demo protects static pages, login, schema and receipts before invit
   const app = await setup();
   try {
     assert.equal((await app.inject("/api/health")).statusCode, 200);
+    const invitationPage = await app.inject("/demo-access");
+    assert.equal(invitationPage.headers["referrer-policy"], "same-origin");
+    assert.equal((await app.inject("/api/health")).headers["referrer-policy"], "no-referrer");
     for (const url of ["/", "/collector/", "/assets/file.js", "/%61pi/snapshot"]) {
       const response = await app.inject(url);
       assert.equal(response.statusCode, 303); assert.equal(response.headers.location, "/demo-access");
@@ -31,7 +34,9 @@ test("invitation uses secure signed cookie and still requires application login"
   try {
     const request = (value: string, requestOrigin = origin) => app.inject({ method: "POST", url: "/demo-access", headers: { origin: requestOrigin, "content-type": "application/x-www-form-urlencoded" }, payload: new URLSearchParams({ code: value }).toString() });
     assert.equal((await request(code, "https://other.example.test")).statusCode, 403);
+    assert.equal((await request(code, "null")).statusCode, 403);
     const wrong = await request("wrong"); assert.equal(wrong.statusCode, 401); assert.ok(!wrong.body.includes(code));
+    assert.equal(wrong.headers["referrer-policy"], "same-origin");
     const invited = await request(code); assert.equal(invited.statusCode, 303);
     const setCookie = String(invited.headers["set-cookie"]);
     for (const flag of ["Secure", "HttpOnly", "SameSite=Strict", "Path=/"]) assert.ok(setCookie.includes(flag));

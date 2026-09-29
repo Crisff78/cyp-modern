@@ -16,8 +16,11 @@ export async function registerDemoAccess(app: FastifyInstance, config: DemoAcces
   const origin = new URL(config.origin).origin;
   if (!origin.startsWith("https://")) throw new Error("The public demo requires HTTPS.");
   const sign = (expiry: string) => createHmac("sha256", config.code).update(`cyp-demo:${expiry}`).digest("base64url");
-  app.addHook("onSend", async (_request, reply, payload) => {
+  app.addHook("onSend", async (request, reply, payload) => {
     reply.header("X-Robots-Tag", "noindex, nofollow");
+    // Native form POSTs need their real Origin for the exact-origin check below.
+    if (request.url.split("?")[0] === "/demo-access")
+      reply.header("Referrer-Policy", "same-origin");
     return payload;
   });
   const validCookie = (header: string | undefined) => {
