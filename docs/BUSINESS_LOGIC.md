@@ -1,5 +1,10 @@
 # Reglas operativas y matemáticas
 
+Desde 2026-09-27, Envíos de Dinero tiene reglas propias documentadas en
+[ENVIOS-REQUISITOS.md](ENVIOS-REQUISITOS.md): comisión añadida, pago completo,
+tasa fijada y caja por operador/moneda. La fórmula del libro de cobradores
+descrita abajo no incluye remesas ni convierte monedas.
+
 CyP administra efectivo, cargos por servicios y pagos autorizados a clientes. No calcula impuestos, préstamos, intereses ni amortizaciones. La interpretación objetivo de **Descargo** es una autorización de salida de efectivo; su correspondencia exacta con el sistema legado sigue pendiente de acceso autenticado o extracción SQL.
 
 ## Dinero, fechas y ecuación

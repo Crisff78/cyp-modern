@@ -61,6 +61,10 @@ export const canAccessCollector = (user: User) =>
 export const isSuspendedUser = (user: User) =>
   user.isActive === false || user.hasWorkPermission === false;
 export type Client = {
+  lat?: number;
+  lng?: number;
+  note?: string;
+  active?: boolean;
   id: string;
   name: string;
   code: string;
@@ -88,6 +92,7 @@ export type Payout = {
   status: "pending" | "partial" | "paid" | "cancelled";
 };
 export type Collector = {
+  active?: boolean;
   id: string;
   name: string;
   initials: string;
@@ -96,8 +101,8 @@ export type Collector = {
   cashInHand: number;
   collectionLimit: number;
   payoutLimit: number;
-  lat: number;
-  lng: number;
+  lat: number | null;
+  lng: number | null;
   lastSeen: string;
 };
 export type Movement = {

@@ -1,5 +1,10 @@
 # Arquitectura del scaffold
 
+La ampliación de Envíos de Dinero (2026-09-27) comparte API y aplicaciones,
+con dominio, eventos y caja por moneda separados del libro DOP original.
+Su interfaz se comparte entre Central, teléfono y tablet. Contratos y decisiones:
+[ENVIOS-API.md](ENVIOS-API.md), [ENVIOS-REQUISITOS.md](ENVIOS-REQUISITOS.md).
+
 Dos aplicaciones web independientes, un backend y un dominio común del lado servidor. No se implementa aplicación móvil nativa. No se utiliza Docker para ejecutar, probar ni desplegar este scaffold, de acuerdo con la corrección del usuario.
 
 ```mermaid

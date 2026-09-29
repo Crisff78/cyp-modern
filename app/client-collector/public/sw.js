@@ -1,19 +1,22 @@
 /* Static app shell only. Financial data, authenticated API and receipt URLs never enter Cache Storage. */
-const CACHE = "cyp-static-v2";
-const SHELL = ["/", "/icon.svg", "/manifest.webmanifest"];
+const SCOPE = new URL(self.registration.scope).pathname;
+const ASSETS = `${SCOPE}assets/`;
+const CACHE_PREFIX = `cyp-static-${encodeURIComponent(SCOPE)}-`;
+const CACHE = `${CACHE_PREFIX}v3`;
+const SHELL = [SCOPE, `${SCOPE}icon.svg`, `${SCOPE}manifest.webmanifest`];
 self.addEventListener("install", (event) => {
   event.waitUntil(
     (async () => {
-      const shellResponse = await fetch("/", { cache: "reload" });
+      const shellResponse = await fetch(SCOPE, { cache: "reload" });
       if (!shellResponse.ok) throw new Error("Static shell unavailable");
       const html = await shellResponse.clone().text();
-      const assets = [
-        ...html.matchAll(/(?:src|href)="(\/assets\/[^"?#]+)"/g),
-      ].map((match) => match[1]);
+      const assets = [...html.matchAll(/(?:src|href)="([^"?#]+)"/g)]
+        .map((match) => match[1])
+        .filter((path) => path.startsWith(ASSETS));
       const cache = await caches.open(CACHE);
-      await cache.put("/", shellResponse);
+      await cache.put(SCOPE, shellResponse);
       await cache.addAll([
-        ...SHELL.filter((path) => path !== "/"),
+        ...SHELL.filter((path) => path !== SCOPE),
         ...new Set(assets),
       ]);
     })(),
@@ -26,7 +29,11 @@ self.addEventListener("activate", (event) => {
       .then((keys) =>
         Promise.all(
           keys
-            .filter((key) => key.startsWith("cyp-static-") && key !== CACHE)
+            .filter((key) =>
+              (key.startsWith(CACHE_PREFIX) ||
+                (SCOPE === "/" && key === "cyp-static-v2")) &&
+              key !== CACHE,
+            )
             .map((key) => caches.delete(key)),
         ),
       )
@@ -40,6 +47,7 @@ self.addEventListener("fetch", (event) => {
     request.method !== "GET" ||
     url.origin !== self.location.origin ||
     url.pathname.startsWith("/api") ||
+    !url.pathname.startsWith(SCOPE) ||
     request.headers.has("Authorization")
   )
     return;
@@ -49,13 +57,14 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       fetch(request).catch(
         async () =>
-          (await caches.match("/", { ignoreVary: true })) || Response.error(),
+          (await caches.match(SCOPE, { ignoreVary: true })) ||
+          Response.error(),
       ),
     );
     return;
   }
   if (url.search) return;
-  if (!url.pathname.startsWith("/assets/") && !SHELL.includes(url.pathname))
+  if (!url.pathname.startsWith(ASSETS) && !SHELL.includes(url.pathname))
     return;
   // Vite/other hosts set Vary: Origin, while static precache requests have no
   // Origin header. These exact, same-origin public assets are safe to reuse.

@@ -1,8 +1,7 @@
 import { resolve } from "node:path";
 import { buildApp } from "./app.js";
-import { emptyState } from "./domain.js";
 import { seed } from "./seed.js";
-import { FileStore, MemoryStore, PostgresStore, type Store } from "./store.js";
+import { FileStore, PostgresStore, type Store } from "./store.js";
 
 const requestedDemo = process.env.DEMO_MODE === "true";
 if (!process.env.JWT_SECRET)
@@ -30,26 +29,12 @@ async function openStore(): Promise<{
       };
     } catch (error) {
       await postgres.close().catch(() => undefined);
-      console.warn(
-        `PostgreSQL no disponible; usando MemoryStore demo temporal. ${(error as Error).message}`,
-      );
-      return {
-        store: new MemoryStore(demoInitial),
-        demo: true,
-        source: "MemoryStore demo fallback",
-      };
+      throw new Error("PostgreSQL no está disponible o faltan migraciones. El servidor no se inició.", { cause: error });
     }
   }
 
   if (!requestedDemo) {
-    console.warn(
-      "DATABASE_URL no está configurado; usando MemoryStore demo temporal para desarrollo local.",
-    );
-    return {
-      store: new MemoryStore(demoInitial),
-      demo: true,
-      source: "MemoryStore demo fallback",
-    };
+    throw new Error("DATABASE_URL es obligatorio en modo real; DEMO_MODE=true habilita la demostración explícita.");
   }
 
   return {

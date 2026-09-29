@@ -62,6 +62,7 @@ export const isSuspendedUser = (user: User) =>
   user.isActive === false || user.hasWorkPermission === false;
 
 export type Client = {
+  active?: boolean;
   id: string;
   name: string;
   code: string;
@@ -108,6 +109,7 @@ export type ClientMachineLog = {
   cancelledAt?: string;
 };
 export type Collector = {
+  active?: boolean;
   id: string;
   name: string;
   initials: string;
@@ -116,8 +118,8 @@ export type Collector = {
   cashInHand: number;
   collectionLimit: number;
   payoutLimit: number;
-  lat: number;
-  lng: number;
+  lat: number | null;
+  lng: number | null;
   lastSeen: string;
   ident?: string;
   cellular?: string;
@@ -221,7 +223,8 @@ export type Snapshot = {
   payouts: Payout[];
   payoutRecurring: RecurringPayout[];
   movements: Movement[];
-  routes: { id: string; name: string; sector: string; collectorId: string }[];
+  routes: { id: string; name: string; sector: string; collectorId: string; zoneId?: string }[];
+  zones?: { id: string; name: string; sector: string; active: boolean }[];
   settlements: (Balance & {
     id: string;
     collectorId: string;
@@ -251,6 +254,7 @@ export type Page =
   | "servicesProducts"
   | "delayReasons"
   | "exchangeRates"
+  | "remittances"
   | "sessions"
   | "traces"
   | "users"

@@ -1,5 +1,10 @@
 # Contratos REST
 
+Ampliación 2026-09-27: [Envíos de Dinero](ENVIOS-API.md) define cotización,
+tasas diarias, envíos, pagos, cancelaciones, caja por moneda y reportes. Sus
+importes son unidades menores de DOP/USD/EUR; las rutas históricas de este
+documento mantienen el libro DOP. El contrato nuevo incluye actividad de clientes.
+
 Base local `http://127.0.0.1:3001/api`. Especificación OpenAPI 3.1 generada desde los esquemas Zod en **GET `/api/openapi.json`**; copia versionada en `docs/openapi.json`. Swagger Editor/Swagger UI puede cargarla. Dinero = centavos enteros DOP. JSON UTF-8. CORS limitado por `ALLOWED_ORIGINS`.
 
 ## Autenticación y errores

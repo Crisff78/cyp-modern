@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 // Respaldo de la base de datos PostgreSQL con pg_dump (formato custom -Fc).
 //
-// Uso desde la raiz del repo (recomendado, via npm):
-//   npm run db:backup
-//   npm run db:backup -- --out=C:/ruta/respaldo.dump
+// Uso desde la raiz del repo (recomendado, via pnpm):
+//   pnpm db:backup
+//   pnpm db:backup -- --out=C:/ruta/respaldo.dump
 //
-// - Lee DATABASE_URL del entorno (el script npm de la raiz carga el .env con
+// - Lee DATABASE_URL del entorno (el script pnpm de la raiz carga el .env con
 //   --env-file-if-exists=.env).
 // - Nunca imprime la cadena de conexion ni credenciales; la contrasena viaja
 //   al proceso hijo unicamente por entorno (PGPASSWORD).
@@ -41,7 +41,7 @@ function parseArgs(argv) {
 
 function readDatabaseUrl() {
   const raw = process.env.DATABASE_URL;
-  if (!raw) fail('DATABASE_URL no esta definida en el entorno. Ejecuta con el .env de la raiz (npm run db:backup).');
+  if (!raw) fail('DATABASE_URL no esta definida en el entorno. Ejecuta con el .env de la raiz (pnpm db:backup).');
   let url;
   try {
     url = new URL(raw);

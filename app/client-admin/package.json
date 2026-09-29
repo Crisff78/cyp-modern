@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b --pretty false",
     "test:e2e": "echo \"TestSprite E2E hook ready\"",
-    "test": "npm run test:e2e"
+    "test": "pnpm test:e2e"
   },
   "dependencies": {
     "@fontsource/inter": "^5.2.6",

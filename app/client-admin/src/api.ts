@@ -1,4 +1,4 @@
-import { isMockToken, mockApi, MockApiError } from "./mock";
+import { isMockToken, mockApi } from "./mock";
 
 const TOKEN_KEY = "cyp-admin-token";
 export const getToken = () => localStorage.getItem(TOKEN_KEY);
@@ -16,40 +16,13 @@ export class ApiError extends Error {
     super(message);
   }
 }
-const shouldUseMock = (path: string, token: string | null) =>
-  isMockToken(token) ||
-  localStorage.getItem("cyp-admin-force-mock") === "true" ||
-  path === "/auth/login";
-
-const isBackendUnavailable = (status: number) =>
-  status === 0 || status === 502 || status === 503 || status === 504;
-
-function toApiError(error: unknown) {
-  if (error instanceof ApiError) return error;
-  if (error instanceof MockApiError)
-    return new ApiError(error.message, error.status);
-  return new ApiError(
-    error instanceof Error
-      ? error.message
-      : "No pudimos completar la operación.",
-    0,
-  );
-}
-
 export async function api<T>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
   const token = getToken();
-  if (path.startsWith("/mock/")) {
-    localStorage.setItem("cyp-admin-force-mock", "true");
-    return mockApi<T>(path, options);
-  }
-  if (
-    isMockToken(token) ||
-    localStorage.getItem("cyp-admin-force-mock") === "true"
-  )
-    return mockApi<T>(path, options);
+  if (isMockToken(token)) return mockApi<T>(path, options);
+  if (path.startsWith("/mock/")) throw new ApiError("Esta acción todavía no está disponible en la versión conectada. No se guardaron cambios.", 501);
   const request = () =>
     fetch(`/api${path}`, {
       ...options,
@@ -65,16 +38,12 @@ export async function api<T>(
     try {
       body = await response.json();
     } catch (error) {
-      if (shouldUseMock(path, token) && isBackendUnavailable(response.status))
-        return mockApi<T>(path, options);
       throw new ApiError(
         "El servidor no devolvió una respuesta válida.",
         response.status,
       );
     }
     if (!response.ok) {
-      if (shouldUseMock(path, token) && isBackendUnavailable(response.status))
-        return mockApi<T>(path, options);
       throw new ApiError(
         body.error?.message ?? "No pudimos completar la operación.",
         response.status,
@@ -82,16 +51,8 @@ export async function api<T>(
     }
     return body as T;
   } catch (error) {
-    const unavailable =
-      !(error instanceof ApiError) || isBackendUnavailable(error.status);
-    if (unavailable) {
-      try {
-        return await mockApi<T>(path, options);
-      } catch (mockError) {
-        throw toApiError(mockError);
-      }
-    }
-    throw error;
+    if (error instanceof ApiError) throw error;
+    throw new ApiError("No se pudo conectar con el servidor. Conserva los datos y comprueba el resultado antes de repetir una operación.", 0);
   }
 }
 export const money = (value: number) =>

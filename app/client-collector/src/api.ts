@@ -1,4 +1,4 @@
-import { isMockToken, mockApi, MockApiError } from "./mock";
+import { isMockToken, mockApi } from "./mock";
 
 const TOKEN_KEY = "cyp-collector-token";
 export const getToken = () => sessionStorage.getItem(TOKEN_KEY);
@@ -14,21 +14,6 @@ export class ApiError extends Error {
     super(message);
   }
 }
-const isBackendUnavailable = (status: number) =>
-  status === 0 || status === 502 || status === 503 || status === 504;
-
-function toApiError(error: unknown) {
-  if (error instanceof ApiError) return error;
-  if (error instanceof MockApiError)
-    return new ApiError(error.message, error.status);
-  return new ApiError(
-    error instanceof Error
-      ? error.message
-      : "No pudimos completar la solicitud.",
-    0,
-  );
-}
-
 export async function api<T>(
   path: string,
   options: RequestInit = {},
@@ -50,8 +35,6 @@ export async function api<T>(
     });
     const data = await response.json().catch(() => null);
     if (!response.ok) {
-      if (isBackendUnavailable(response.status))
-        return mockApi<T>(path, options);
       throw new ApiError(
         data?.error?.message ?? "No pudimos completar la solicitud.",
         response.status,
@@ -59,13 +42,8 @@ export async function api<T>(
     }
     return data as T;
   } catch (error) {
-    if (error instanceof ApiError && !isBackendUnavailable(error.status))
-      throw error;
-    try {
-      return await mockApi<T>(path, options);
-    } catch (mockError) {
-      throw toApiError(mockError);
-    }
+    if (error instanceof ApiError) throw error;
+    throw new ApiError("No se pudo conectar con el servidor. Conserva los datos y comprueba el resultado antes de repetir una operación.", 0);
   } finally {
     window.clearTimeout(timer);
   }

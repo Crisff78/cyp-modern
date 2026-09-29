@@ -4,6 +4,7 @@ import {
   scryptSync,
   timingSafeEqual,
 } from "node:crypto";
+import type { RemittanceState } from "./remittances.js";
 
 export type Role = "admin" | "collector";
 export type User = {
@@ -28,11 +29,13 @@ export type Account = {
 export type PublicAccount = Omit<Account, "salt" | "passwordHash">;
 export type Client = {
   id: string;
+  active?: boolean;
   name: string;
   code: string;
   phone: string;
   address: string;
   routeId: string;
+  collectionPointId?: string;
   alias?: string;
   sector?: string;
   cellular?: string;
@@ -77,6 +80,20 @@ export type Route = {
   name: string;
   sector: string;
   collectorId: string;
+  zoneId?: string;
+  number?: string;
+  from?: string;
+  to?: string;
+  active?: boolean;
+};
+export type Zone = { id: string; name: string; sector: string; number?: string; from?: string; to?: string; active?: boolean };
+export type Service = { id: string; service: string; abbr: string; caption: string; obligated: boolean; fixedAmount: boolean; active: boolean };
+export type DelayReason = { id: string; reason: string; active: boolean };
+export type RecurringCharge = {
+  id: string; clientId: string; routeId?: string; serviceId?: string;
+  registeredAt: string; startDate: string; endDate: string; frequency: string;
+  day1: string; day2: string; currency: string; service: string; concept: string;
+  useConceptAmount: boolean; amount: number; note: string; active: boolean;
 };
 export type Collector = {
   id: string;
@@ -86,14 +103,19 @@ export type Collector = {
   status: "active" | "offline" | "limit";
   collectionLimit: number;
   payoutLimit: number;
-  lat: number;
-  lng: number;
+  lat: number | null;
+  lng: number | null;
   lastSeen: string;
+  active?: boolean;
+  ident?: string;
+  cellular?: string;
+  accountId?: string;
 };
 export type Charge = {
   id: string;
   clientId: string;
   service: string;
+  serviceId?: string;
   concept?: string;
   currency?: string;
   note?: string;
@@ -169,10 +191,15 @@ export type DepositEvent = {
   createdAt: string;
 };
 export type State = {
+  remittances: RemittanceState;
   clients: Client[];
   clientMachines: ClientMachine[];
   clientMachineLogs: ClientMachineLog[];
   routes: Route[];
+  zones: Zone[];
+  services: Service[];
+  delayReasons: DelayReason[];
+  recurringCharges: RecurringCharge[];
   collectors: Collector[];
   charges: Charge[];
   payouts: Payout[];
@@ -201,10 +228,15 @@ export const businessDate = (date = new Date()) =>
     day: "2-digit",
   }).format(date);
 export const emptyState = (): State => ({
+  remittances: { rates: [], transfers: [], cashSessions: [], events: [] },
   clients: [],
   clientMachines: [],
   clientMachineLogs: [],
   routes: [],
+  zones: [],
+  services: [],
+  delayReasons: [],
+  recurringCharges: [],
   collectors: [],
   charges: [],
   payouts: [],
@@ -684,6 +716,8 @@ export function postMovement(
   const collector = state.collectors.find((c) => c.id === collectorId);
   if (!collector)
     throw new DomainError("NOT_FOUND", "Cobrador no encontrado.", 404);
+  if (collector.active === false)
+    throw new DomainError("COLLECTOR_INACTIVE", "El cobrador está inactivo.", 409);
   assertCollectorAccess(user, collector.id);
   const date = businessDate(now);
   if (
@@ -828,7 +862,7 @@ export function snapshot(state: State, user: User) {
       return {
         ...c,
         cashInHand: b.difference,
-        status: (b.collected - b.deposited >= c.collectionLimit ||
+        status: (c.active === false ? "offline" : b.collected - b.deposited >= c.collectionLimit ||
         b.officeDelivered - b.paidToClients >= c.payoutLimit
           ? "limit"
           : Date.now() - Date.parse(c.lastSeen) > 15 * 60 * 1000
@@ -869,6 +903,10 @@ export function snapshot(state: State, user: User) {
     businessDate: date,
     clients,
     routes,
+    zones: state.zones.filter((z) => user.role === "admin" || routes.some((r) => r.zoneId === z.id)),
+    services: state.services,
+    delayReasons: state.delayReasons,
+    recurringCharges: user.role === "admin" ? state.recurringCharges : [],
     collectors,
     accounts:
       user.role === "admin"

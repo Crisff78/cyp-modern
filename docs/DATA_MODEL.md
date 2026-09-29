@@ -71,7 +71,7 @@ Preserving the agreed price on a charge and storing a signed-off settlement snap
 
 ## Money, time, and risk
 
-- Currency is DOP. One peso equals 100 integer centavos. API values are integers and calculations use integers, with configured bounds inside JavaScript's safe integer range.
+- The original collections/payments ledger uses DOP. One peso equals 100 integer centavos. API values are integers and calculations use integers, with configured bounds inside JavaScript's safe integer range. The money-transfer module added on 2026-09-27 has its own currency-aware cash ledger (DOP/USD/EUR), frozen exchange quotes and append-only events; see [ENVIOS-API.md](ENVIOS-API.md) and [ENVIOS-REQUISITOS.md](ENVIOS-REQUISITOS.md). Its balances must never be mixed with the original DOP ledger.
 - SQL `BIGINT` stores centavos; never use floating point for cash. Percentages, fiscal taxes, interest and amortization tables are outside scope.
 - `business_date` is an explicit Dominican calendar date. Persist event timestamps as UTC with a timezone-aware type; derive business date server-side using `America/Santo_Domingo`.
 - Collection cash outstanding = collections − deposits. Office advance outstanding = office deliveries − client payouts. Both components stay nonnegative and are checked against their separate limits.

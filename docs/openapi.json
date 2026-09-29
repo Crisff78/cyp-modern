@@ -3,7 +3,7 @@
   "info": {
     "title": "Cobros y Pagos API",
     "version": "0.1.0",
-    "description": "Centavos enteros DOP. Sin impuestos ni amortización. Idempotency-Key requerido en operaciones financieras."
+    "description": "Cobros en centavos DOP; envíos con caja separada DOP/USD/EUR. Idempotency-Key requerido en operaciones financieras."
   },
   "servers": [
     {
@@ -62,9 +62,8 @@
                 "properties": {
                   "email": {
                     "type": "string",
-                    "maxLength": 200,
-                    "format": "email",
-                    "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                    "minLength": 1,
+                    "maxLength": 200
                   },
                   "password": {
                     "type": "string",
@@ -134,9 +133,367 @@
         }
       }
     },
+    "/api/usuarios": {
+      "get": {
+        "summary": "Cuentas provisionadas (sin secretos)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      },
+      "post": {
+        "summary": "Provisionar cuenta de usuario o cobrador",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 100
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "email": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "format": "email",
+                    "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "admin",
+                      "collector"
+                    ]
+                  },
+                  "collectorId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 12,
+                    "maxLength": 200
+                  }
+                },
+                "required": [
+                  "name",
+                  "email",
+                  "role",
+                  "password"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      }
+    },
+    "/api/usuarios/{id}/clave": {
+      "post": {
+        "summary": "Cambiar contraseña de una cuenta",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 100
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "password": {
+                    "type": "string",
+                    "minLength": 12,
+                    "maxLength": 200
+                  }
+                },
+                "required": [
+                  "password"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      }
+    },
+    "/api/usuarios/{id}/estado": {
+      "post": {
+        "summary": "Activar o desactivar una cuenta",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 100
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "active",
+                      "disabled"
+                    ]
+                  }
+                },
+                "required": [
+                  "status"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      }
+    },
     "/api/snapshot": {
       "get": {
         "summary": "Vista operacional autorizada",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      }
+    },
+    "/api/monitoring/collector/{id}/map-data": {
+      "get": {
+        "summary": "Datos geográficos y operativos de un cobrador",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      }
+    },
+    "/api/monitoring/route/{id}/map-data": {
+      "get": {
+        "summary": "Datos geográficos y operativos de una ruta",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      }
+    },
+    "/api/monitoring/zone/{id}/map-data": {
+      "get": {
+        "summary": "Datos geográficos y operativos de una zona",
         "security": [
           {
             "bearerAuth": []
@@ -232,6 +589,22 @@
                     "minLength": 1,
                     "maxLength": 160
                   },
+                  "concept": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "currency": {
+                    "default": "Peso Dominicano",
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "note": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 2000
+                  },
                   "amount": {
                     "type": "integer",
                     "exclusiveMinimum": 0,
@@ -250,6 +623,9 @@
                 "required": [
                   "clientId",
                   "service",
+                  "concept",
+                  "currency",
+                  "note",
                   "amount",
                   "dueDate",
                   "required"
@@ -401,6 +777,138 @@
           }
         ],
         "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      },
+      "post": {
+        "summary": "Crear cliente",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 100
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "code": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "phone": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "address": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 240
+                  },
+                  "routeId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "alias": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "sector": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "cellular": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "email": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "note": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  "identification": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 80
+                  },
+                  "lat": {
+                    "type": "number",
+                    "minimum": -90,
+                    "maximum": 90
+                  },
+                  "lng": {
+                    "type": "number",
+                    "minimum": -180,
+                    "maximum": 180
+                  }
+                },
+                "required": [
+                  "name",
+                  "code",
+                  "phone",
+                  "address",
+                  "routeId",
+                  "alias",
+                  "sector",
+                  "cellular",
+                  "email",
+                  "note",
+                  "identification"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Operación completada"
@@ -751,6 +1259,522 @@
         }
       }
     },
+    "/api/clientes/{id}": {
+      "post": {
+        "summary": "Actualizar cliente",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 100
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "code": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "phone": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "address": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 240
+                  },
+                  "routeId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "alias": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "sector": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "cellular": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "email": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "note": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  "identification": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 80
+                  },
+                  "lat": {
+                    "type": "number",
+                    "minimum": -90,
+                    "maximum": 90
+                  },
+                  "lng": {
+                    "type": "number",
+                    "minimum": -180,
+                    "maximum": 180
+                  }
+                },
+                "required": [
+                  "name",
+                  "code",
+                  "phone",
+                  "address",
+                  "routeId",
+                  "alias",
+                  "sector",
+                  "cellular",
+                  "email",
+                  "note",
+                  "identification"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      }
+    },
+    "/api/clientes/{id}/tragamonedas": {
+      "get": {
+        "summary": "Máquinas tragamonedas del cliente",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      },
+      "post": {
+        "summary": "Crear máquina tragamonedas del cliente",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 100
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "number": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "entry": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "exit": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "value": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1000000000
+                  },
+                  "percentage": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100
+                  }
+                },
+                "required": [
+                  "number",
+                  "entry",
+                  "exit",
+                  "value",
+                  "percentage"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      }
+    },
+    "/api/clientes/{id}/tragamonedas/{machineId}": {
+      "post": {
+        "summary": "Actualizar máquina tragamonedas del cliente",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "machineId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 100
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "number": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "entry": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "exit": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "value": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1000000000
+                  },
+                  "percentage": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100
+                  }
+                },
+                "required": [
+                  "number",
+                  "entry",
+                  "exit",
+                  "value",
+                  "percentage"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      }
+    },
+    "/api/clientes/{id}/tragamonedas/registros": {
+      "get": {
+        "summary": "Historial de máquinas tragamonedas del cliente",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      }
+    },
+    "/api/cargos/{id}": {
+      "post": {
+        "summary": "Modificar cargo sin cobros asociados",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 100
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "clientId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "service": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "concept": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "currency": {
+                    "default": "Peso Dominicano",
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "note": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  "amount": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000000000
+                  },
+                  "dueDate": {
+                    "type": "string",
+                    "format": "date",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                  },
+                  "required": {
+                    "default": false,
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "clientId",
+                  "service",
+                  "concept",
+                  "currency",
+                  "note",
+                  "amount",
+                  "dueDate",
+                  "required"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      }
+    },
     "/api/cargos/recurrentes": {
       "post": {
         "summary": "Generación atómica de cargos recurrentes",
@@ -956,6 +1980,653 @@
                   "collectorId",
                   "amount"
                 ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      }
+    },
+    "/api/configuracion": {
+      "get": {
+        "summary": "Configuración general del sistema",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      },
+      "post": {
+        "summary": "Guardar configuración general",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 100
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "config": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "config"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      }
+    },
+    "/api/clientes/{id}/estado": {
+      "get": {
+        "summary": "Estado de cuenta del cliente (cargos, cobros, autorizaciones y pagos)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      }
+    },
+    "/api/depositos/{id}/aceptar": {
+      "post": {
+        "summary": "Aceptar depósito de cobrador",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 100
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "desglose": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "denominacion": {
+                          "type": "number"
+                        },
+                        "cantidad": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "denominacion",
+                        "cantidad"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      }
+    },
+    "/api/depositos/{id}/cancelar": {
+      "post": {
+        "summary": "Cancelar depósito de cobrador",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 100
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      }
+    },
+    "/api/cargos/importar": {
+      "post": {
+        "summary": "Importación masiva de cargos",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 100
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "filas": {
+                    "minItems": 1,
+                    "maxItems": 1000,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "identificacion": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 80
+                        },
+                        "servicio": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 160
+                        },
+                        "importe": {
+                          "type": "number"
+                        },
+                        "fecha": {
+                          "type": "string",
+                          "format": "date",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                        },
+                        "requerido": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "identificacion",
+                        "servicio",
+                        "importe"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "filas"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      }
+    },
+    "/api/descargos/importar": {
+      "post": {
+        "summary": "Importación masiva de descargos",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 100
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "filas": {
+                    "minItems": 1,
+                    "maxItems": 1000,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "identificacion": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 80
+                        },
+                        "concepto": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 160
+                        },
+                        "importe": {
+                          "type": "number"
+                        },
+                        "cobrador": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 80
+                        }
+                      },
+                      "required": [
+                        "identificacion",
+                        "concepto",
+                        "importe"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "filas"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      }
+    },
+    "/api/descargos-recurrentes": {
+      "post": {
+        "summary": "Crear descargo recurrente",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 100
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "clientId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "concept": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "amount": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000000000
+                  },
+                  "frequency": {
+                    "type": "string",
+                    "enum": [
+                      "weekly",
+                      "monthly",
+                      "quarterly"
+                    ]
+                  },
+                  "nextRunDate": {
+                    "type": "string",
+                    "format": "date",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                  }
+                },
+                "required": [
+                  "clientId",
+                  "concept",
+                  "amount",
+                  "frequency",
+                  "nextRunDate"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      }
+    },
+    "/api/descargos-recurrentes/{id}": {
+      "post": {
+        "summary": "Modificar o archivar descargo recurrente",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 100
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "concept": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "amount": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000000000
+                  },
+                  "frequency": {
+                    "type": "string",
+                    "enum": [
+                      "weekly",
+                      "monthly",
+                      "quarterly"
+                    ]
+                  },
+                  "nextRunDate": {
+                    "type": "string",
+                    "format": "date",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "active",
+                      "paused",
+                      "archived"
+                    ]
+                  }
+                },
                 "additionalProperties": false
               }
             }
@@ -1266,13 +2937,14 @@
                     "maxLength": 80
                   },
                   "reason": {
+                    "default": "",
                     "type": "string",
-                    "maxLength": 500,
-                    "default": ""
+                    "maxLength": 500
                   }
                 },
                 "required": [
-                  "id"
+                  "id",
+                  "reason"
                 ],
                 "additionalProperties": false
               }
@@ -1335,13 +3007,737 @@
                     "maxLength": 80
                   },
                   "reason": {
+                    "default": "",
                     "type": "string",
-                    "maxLength": 500,
-                    "default": ""
+                    "maxLength": 500
                   }
                 },
                 "required": [
-                  "id"
+                  "id",
+                  "reason"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      }
+    },
+    "/api/envios/snapshot": {
+      "get": {
+        "summary": "Estado de envíos, tasas y cajas por moneda",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      }
+    },
+    "/api/envios": {
+      "get": {
+        "summary": "Consultar envíos o recibos autorizados",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      },
+      "post": {
+        "summary": "Registrar envío y recibir principal más comisión",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 100
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "sourceCurrency": {
+                    "type": "string",
+                    "enum": [
+                      "DOP",
+                      "USD",
+                      "EUR"
+                    ]
+                  },
+                  "destinationCurrency": {
+                    "type": "string",
+                    "enum": [
+                      "DOP",
+                      "USD",
+                      "EUR"
+                    ]
+                  },
+                  "amount": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "commissionBps": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 10000
+                  },
+                  "senderClientId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "recipientClientId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "sendingUserId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "quote": {
+                    "type": "object",
+                    "properties": {
+                      "date": {
+                        "type": "string",
+                        "format": "date",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                      },
+                      "sourceRate": {
+                        "type": "string",
+                        "maxLength": 19
+                      },
+                      "destinationRate": {
+                        "type": "string",
+                        "maxLength": 19
+                      }
+                    },
+                    "required": [
+                      "date",
+                      "sourceRate",
+                      "destinationRate"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "note": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "sourceCurrency",
+                  "destinationCurrency",
+                  "amount",
+                  "commissionBps",
+                  "senderClientId",
+                  "recipientClientId",
+                  "quote",
+                  "note"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      }
+    },
+    "/api/envios/recibos": {
+      "get": {
+        "summary": "Consultar envíos o recibos autorizados",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      }
+    },
+    "/api/envios/cotizacion": {
+      "get": {
+        "summary": "Cotizar envío con la tasa del día",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      }
+    },
+    "/api/envios/tasas": {
+      "post": {
+        "summary": "Registrar tasa diaria DOP por unidad",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 100
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "currency": {
+                    "type": "string",
+                    "enum": [
+                      "DOP",
+                      "USD",
+                      "EUR"
+                    ]
+                  },
+                  "rate": {
+                    "type": "string",
+                    "maxLength": 19
+                  },
+                  "date": {
+                    "type": "string",
+                    "format": "date",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                  }
+                },
+                "required": [
+                  "currency",
+                  "rate",
+                  "date"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      }
+    },
+    "/api/envios/{id}/pagar": {
+      "post": {
+        "summary": "Pagar recibo completo",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 100
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      }
+    },
+    "/api/envios/{id}/cancelar": {
+      "post": {
+        "summary": "Cancelar envío pendiente y devolver principal más comisión",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 100
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  }
+                },
+                "required": [
+                  "reason"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      }
+    },
+    "/api/envios/cajas/abrir": {
+      "post": {
+        "summary": "Abrir caja de envíos por operador y moneda",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 100
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "operatorId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "currency": {
+                    "type": "string",
+                    "enum": [
+                      "DOP",
+                      "USD",
+                      "EUR"
+                    ]
+                  },
+                  "openingAmount": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "operatorId",
+                  "currency",
+                  "openingAmount"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      }
+    },
+    "/api/envios/cajas/{id}/cerrar": {
+      "post": {
+        "summary": "Cerrar caja con contado exacto",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 100
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "countedAmount": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "countedAmount"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      }
+    },
+    "/api/envios/reportes": {
+      "get": {
+        "summary": "Reportes de envíos por rango o día, sin mezclar monedas",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      }
+    },
+    "/api/clientes/{id}/actividad": {
+      "post": {
+        "summary": "Activar o inactivar cliente conservando su historial",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 100
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "active": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "active"
                 ],
                 "additionalProperties": false
               }
