@@ -7,8 +7,55 @@ const lifetime = 8 * 60 * 60;
 const digest = (value: string) => createHash("sha256").update(value).digest();
 
 function page(error = false) {
-  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Acceso a la demo · CyP</title><style>body{font:16px system-ui;background:#eef2f7;color:#17283b;display:grid;place-items:center;min-height:100vh;margin:0}main{background:white;border:1px solid #d7e0ea;border-radius:12px;padding:32px;max-width:400px;margin:20px;box-shadow:0 12px 40px #17283b12}h1{font-size:24px}p{line-height:1.5;color:#526176}label{display:block;font-weight:600}input{box-sizing:border-box;width:100%;padding:12px;margin:8px 0 18px;border:1px solid #95a4b7;border-radius:6px;font:inherit}button{background:#145daa;color:white;border:0;border-radius:6px;padding:12px;width:100%;font:inherit;cursor:pointer}.error{color:#a61d24}</style></head><body><main><h1>Demo de Cobros y Pagos</h1><p>Introduce el código de invitación que te compartieron. Después podrás entrar al programa con el usuario de prueba.</p>${error ? '<p class="error" role="alert">Código incorrecto. Comprueba tu invitación.</p>' : ''}<form method="post" action="/demo-access"><label for="code">Código de invitación</label><input id="code" name="code" type="password" required maxlength="256" autocomplete="off"><button type="submit">Entrar a la demo</button></form><p>Entorno compartido de pruebas. Utiliza únicamente datos ficticios.</p></main></body></html>`;
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Acceso a la demo · CyP</title><script src="/demo-access.js" defer></script><style>body{font:16px system-ui;background:#eef2f7;color:#17283b;display:grid;place-items:center;min-height:100vh;margin:0}main{background:white;border:1px solid #d7e0ea;border-radius:12px;padding:32px;max-width:400px;margin:20px;box-shadow:0 12px 40px #17283b12}h1{font-size:24px}p{line-height:1.5;color:#526176}label{display:block;font-weight:600}input{box-sizing:border-box;width:100%;padding:12px;margin:8px 0 18px;border:1px solid #95a4b7;border-radius:6px;font:inherit}button{background:#145daa;color:white;border:0;border-radius:6px;padding:12px;width:100%;font:inherit;cursor:pointer}button:disabled{opacity:.65;cursor:wait}.error{color:#a61d24}</style></head><body><main><h1>Demo de Cobros y Pagos</h1><p>Introduce el código de invitación que te compartieron. Después podrás entrar al programa con el usuario de prueba.</p><p id="demo-access-feedback" class="error" role="alert" aria-live="polite">${error ? 'Código incorrecto. Comprueba tu invitación.' : ''}</p><form id="demo-access-form" method="post" action="/demo-access"><label for="code">Código de invitación</label><input id="code" name="code" type="password" required maxlength="256" autocomplete="off"><button type="submit">Entrar a la demo</button></form><p>Entorno compartido de pruebas. Utiliza únicamente datos ficticios.</p></main></body></html>`;
 }
+
+const accessScript = `"use strict";
+(() => {
+  const form = document.getElementById("demo-access-form");
+  const feedback = document.getElementById("demo-access-feedback");
+  if (!form || !feedback) return;
+  const button = form.querySelector('button[type="submit"]');
+  let pending = false;
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (pending || !form.reportValidity()) return;
+    pending = true;
+    button.disabled = true;
+    button.textContent = "Comprobando…";
+    form.setAttribute("aria-busy", "true");
+    feedback.className = "";
+    feedback.textContent = "Comprobando invitación…";
+    try {
+      const response = await fetch("/demo-access", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { Accept: "application/json" },
+        body: new URLSearchParams(new FormData(form))
+      });
+      const result = await response.json().catch(() => null);
+      if (response.ok && result?.ok === true) {
+        form.reset();
+        window.location.assign("/");
+        return;
+      }
+      feedback.textContent = response.status === 401
+        ? "Código incorrecto. Comprueba tu invitación."
+        : response.status === 403
+          ? "No se pudo validar el acceso. Recarga esta página e inténtalo de nuevo."
+          : response.status === 429
+            ? "Demasiados intentos. Espera un minuto antes de volver a intentar."
+            : "No se pudo completar el acceso. Inténtalo de nuevo.";
+    } catch {
+      feedback.textContent = "No se pudo conectar. Comprueba tu conexión o si el navegador bloqueó la solicitud e inténtalo de nuevo.";
+    }
+    feedback.className = "error";
+    form.setAttribute("aria-busy", "false");
+    button.disabled = false;
+    button.textContent = "Entrar a la demo";
+    pending = false;
+  });
+})();`;
 
 export async function registerDemoAccess(app: FastifyInstance, config: DemoAccessConfig) {
   if (config.code.length < 32 || config.code.length > 256)
@@ -38,6 +85,7 @@ export async function registerDemoAccess(app: FastifyInstance, config: DemoAcces
   app.addHook("onRequest", async (request, reply) => {
     const path = request.url.split("?")[0];
     if (request.method === "GET" && path === "/api/health") return;
+    if (request.method === "GET" && path === "/demo-access.js") return;
     if (path === "/demo-access" && (request.method === "GET" || request.method === "POST")) return;
     if (validCookie(request.headers.cookie)) return;
     reply.header("Cache-Control", "no-store").header("X-Robots-Tag", "noindex, nofollow");
@@ -45,13 +93,19 @@ export async function registerDemoAccess(app: FastifyInstance, config: DemoAcces
     return reply.code(303).redirect("/demo-access");
   });
   app.get("/demo-access", async (_request, reply) => reply.type("text/html").send(page()));
+  app.get("/demo-access.js", { exposeHeadRoute: false }, async (_request, reply) => reply.type("application/javascript; charset=utf-8").send(accessScript));
   app.post("/demo-access", { config: { rateLimit: { max: 10, timeWindow: "1 minute" } }, bodyLimit: 1024 }, async (request, reply) => {
-    if (request.headers.origin !== origin) return reply.code(403).send("Solicitud no válida.");
+    const wantsJson = request.headers.accept?.split(",").some(value => value.trim().split(";")[0] === "application/json");
+    if (request.headers.origin !== origin)
+      return reply.code(403).send(wantsJson ? { error: { code: "DEMO_ORIGIN_INVALID", message: "Solicitud no válida." } } : "Solicitud no válida.");
     const code = (request.body as { code?: unknown } | null)?.code;
-    if (typeof code !== "string" || !timingSafeEqual(digest(code), digest(config.code)))
+    if (typeof code !== "string" || !timingSafeEqual(digest(code), digest(config.code))) {
+      if (wantsJson) return reply.code(401).send({ error: { code: "DEMO_INVITATION_INVALID", message: "Código incorrecto. Comprueba tu invitación." } });
       return reply.code(401).type("text/html").send(page(true));
+    }
     const expiry = String(Math.floor(Date.now() / 1000) + lifetime);
     reply.header("Set-Cookie", `${cookieName}=${expiry}.${sign(expiry)}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${lifetime}`);
+    if (wantsJson) return reply.send({ ok: true });
     return reply.code(303).redirect("/");
   });
 }

@@ -205,6 +205,7 @@ export async function buildApp(config: Config) {
   app.addHook("preHandler", async (req) => {
     const path = req.url.split("?")[0];
     if (config.publicWeb && config.demoAccess && req.routeOptions.url === "/demo-access") return;
+    if (config.publicWeb && config.demoAccess && req.method === "GET" && path === "/demo-access.js") return;
     if (config.publicWeb && ["/", "/collector", "/*"].includes(req.routeOptions.url ?? "")) return;
     if (
       path === "/api/health" ||
