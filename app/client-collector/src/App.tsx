@@ -1606,9 +1606,11 @@ function PocketView({
                   : "Compartir mi ubicación"}
             </strong>
             <small>
-              {tracking
-                ? "Activa mientras esta aplicación esté abierta"
-                : "Activa el permiso solo cuando lo necesites"}
+              {import.meta.env.VITE_PUBLIC_DEMO === "true"
+                ? "La última ubicación queda guardada y visible para administradores de esta demo"
+                : tracking
+                  ? "Activa mientras esta aplicación esté abierta"
+                  : "Activa el permiso solo cuando lo necesites"}
             </small>
           </span>
           <span

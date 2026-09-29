@@ -1,4 +1,8 @@
-import { businessDate, emptyState, type State } from "./domain.js";
+import { businessDate, emptyState, type State, type User } from "./domain.js";
+import {
+  cancelRemittance, createRemittance, openRemittanceCash, payRemittance,
+  quoteRemittance, setDailyRate,
+} from "./remittances.js";
 export function seed(): State {
   const s = emptyState(),
     today = businessDate();
@@ -101,5 +105,37 @@ export function seed(): State {
       actorId: "demo-admin",
     },
   ];
+  return s;
+}
+
+export function seedPublicDemo(): State {
+  const s = seed();
+  s.clients.forEach((client, i) => {
+    client.lat = 18.472 + i * 0.004;
+    client.lng = -69.936 + i * 0.005;
+    client.note = "DATOS DE PRUEBA: ubicación ficticia para revisar el mapa.";
+  });
+  const now = new Date();
+  const date = businessDate(now);
+  const admin: User = { id: "demo-admin", name: "Administración", role: "admin" };
+  const collector: User = { id: "demo-collector", name: "Ana Martínez", role: "collector", collectorId: "col-1" };
+  setDailyRate(s, admin, { currency: "USD", rate: "59.000000", date }, now);
+  setDailyRate(s, admin, { currency: "EUR", rate: "64.000000", date }, now);
+  openRemittanceCash(s, admin, { operatorId: collector.id, currency: "USD", openingAmount: 100_000 }, [collector], now);
+  openRemittanceCash(s, admin, { operatorId: collector.id, currency: "DOP", openingAmount: 1_000_000 }, [collector], now);
+  const examples = [
+    { senderClientId: "cli-2", recipientClientId: "cli-3", sourceCurrency: "USD", destinationCurrency: "DOP", amount: 12_000, status: "paid" },
+    { senderClientId: "cli-3", recipientClientId: "cli-2", sourceCurrency: "DOP", destinationCurrency: "USD", amount: 250_000, status: "pending" },
+    { senderClientId: "cli-4", recipientClientId: "cli-1", sourceCurrency: "DOP", destinationCurrency: "USD", amount: 100_000, status: "cancelled" },
+  ] as const;
+  for (const example of examples) {
+    const { status, ...input } = example;
+    const quote = quoteRemittance(s, { ...input, commissionBps: 100 }, now).quote;
+    const transfer = createRemittance(s, collector, {
+      ...input, commissionBps: 100, quote, note: "Operación ficticia de demostración",
+    }, [], now);
+    if (status === "paid") payRemittance(s, collector, transfer.id, now);
+    if (status === "cancelled") cancelRemittance(s, collector, transfer.id, "Cancelación ficticia de demostración", now);
+  }
   return s;
 }

@@ -8841,7 +8841,7 @@ function CollectionCancelReasonDialog({ note, onNoteChange, onClose, onConfirm }
 }
 
 function CollectionReceiptPrintDialog({ receipts, onClose, title = "Imprimir Recibo de Cobro..." }: Readonly<{ receipts: readonly CollectionTicketModel[]; onClose: () => void; title?: string }>) {
-  const [url, setUrl] = useState("http://vp.gamera.ddns");
+  const [url, setUrl] = useState("");
   const [port, setPort] = useState("8080");
   const [printer, setPrinter] = useState("zebra");
   const printedAt = new Date().toLocaleString("es-DO", { dateStyle: "short", timeStyle: "medium" });
@@ -8849,7 +8849,7 @@ function CollectionReceiptPrintDialog({ receipts, onClose, title = "Imprimir Rec
     <LegacyDialog title={title} onClose={onClose} className="collection-flow-dialog collection-ticket-dialog" overlayClassName="collection-receipt-suboverlay collection-ticket-print-overlay">
       <div className="collection-ticket-print-content">
         <div className="collection-ticket-printer-setup collection-ticket-controls">
-          <label>URL:<input value={url} onChange={(event) => setUrl(event.target.value)} /></label>
+          <label>URL:<input value={url} placeholder="URL de impresora" onChange={(event) => setUrl(event.target.value)} /></label>
           <label>Puerto:<input value={port} onChange={(event) => setPort(event.target.value)} /></label>
           <label>Imp.:<select value={printer} onChange={(event) => setPrinter(event.target.value)}><option value="zebra">zebra</option><option value="virtual">Impresora Virtual</option><option value="matrix">Impresora de Matriz</option></select></label>
           <button type="button" onClick={() => toast.info(`Impresora seleccionada: ${printer}.`)}>Buscar</button>

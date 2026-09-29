@@ -4,6 +4,9 @@ Un backend REST, un portal administrativo y una PWA para cobradores. Incluye cob
 
 El repositorio contiene código, migraciones de PostgreSQL y ejemplos ficticios. La base local de trabajo y los datos de clientes no forman parte de GitHub. El esquema moderno no es una extracción directa del respaldo legado.
 
+La [demo pública en navegador](docs/DEMO-PUBLICA.md) usa un despliegue separado
+con una base exclusiva de datos ficticios. No requiere descargar el proyecto.
+
 ## Inicio rápido en Windows con PostgreSQL
 
 Requisitos: Node.js 22.12+, Corepack y PostgreSQL local. En PowerShell:

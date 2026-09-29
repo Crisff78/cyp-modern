@@ -45,6 +45,7 @@ type Config = {
   store: Store;
   secret: string;
   demo: boolean;
+  publicWeb?: boolean;
   origins: string[];
   collectorUrl: string;
   adminEmail?: string;
@@ -133,7 +134,21 @@ export async function buildApp(config: Config) {
     origin: config.origins,
     methods: ["GET", "POST"],
   });
-  await app.register(helmet, { referrerPolicy: { policy: "no-referrer" } });
+  await app.register(helmet, {
+    referrerPolicy: { policy: "no-referrer" },
+    ...(config.publicWeb
+      ? {
+          contentSecurityPolicy: {
+            directives: {
+              imgSrc: ["'self'", "data:", "https://tile.openstreetmap.org"],
+              styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+              fontSrc: ["'self'", "data:", "https://fonts.gstatic.com"],
+              connectSrc: ["'self'"],
+            },
+          },
+        }
+      : {}),
+  });
   await app.register(jwt, { secret: config.secret });
   await app.register(rateLimit, { max: 120, timeWindow: "1 minute" });
   app.addHook("onSend", async (_req, reply, payload) => {
@@ -182,6 +197,7 @@ export async function buildApp(config: Config) {
   });
   app.addHook("preHandler", async (req) => {
     const path = req.url.split("?")[0];
+    if (config.publicWeb && ["/", "/collector", "/*"].includes(req.routeOptions.url ?? "")) return;
     if (
       path === "/api/health" ||
       path === "/api/auth/login" ||
