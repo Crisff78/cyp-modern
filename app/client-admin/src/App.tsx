@@ -6290,7 +6290,7 @@ function RecurringChargesOperationalView({ snapshot, currentUser, onRefresh }: R
     toast.success("Cargo recurrente inactivado");
   };
   return (
-    <div className="charges-view recurring-charges-view flex h-full flex-col bg-[#e8e8e0]">
+    <div className="charges-view recurring-charges-view flex h-full flex-col bg-slate-50">
       <LegacyToolbar
         filtersVisible={filtersVisible}
         onToggleFilters={() => setFiltersVisible((visible) => !visible)}
