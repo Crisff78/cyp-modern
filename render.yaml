@@ -4,7 +4,7 @@ services:
     runtime: node
     plan: free
     region: virginia
-    buildCommand: corepack enable && corepack pnpm install --frozen-lockfile --prod=false && corepack pnpm build
+    buildCommand: mkdir -p .corepack-bin && corepack enable --install-directory .corepack-bin pnpm && export PATH="$PWD/.corepack-bin:$PATH" && corepack pnpm install --frozen-lockfile --prod=false && corepack pnpm build
     startCommand: corepack pnpm --filter @cyp/server db:migrate --apply && node app/server/dist/index.js
     healthCheckPath: /api/health
     envVars:
