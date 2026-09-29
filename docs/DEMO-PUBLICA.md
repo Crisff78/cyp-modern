@@ -4,7 +4,7 @@
 el portal del cobrador en `/collector/` bajo un mismo dominio HTTPS de Render.
 Los visitantes no necesitan cuenta de ChatGPT ni instalar el proyecto.
 
-La base PostgreSQL creada por el Blueprint es exclusiva de la demo. Al estar
+La base PostgreSQL `cyp_demo` se crea en el plan gratuito de Neon y es exclusiva de la demo. Al estar
 vacía, el servidor agrega datos ficticios de clientes, cobradores, cobros,
 pagos, tasas y envíos. No se copia la base de la laptop ni se publica `.env`.
 Las credenciales ficticias de ambos roles se describen en el README. Los
@@ -17,34 +17,53 @@ reales.
 1. Revisa y fusiona la rama de la demo en `main`.
 2. En la cuenta de Render que ya tiene conectado `Crisff78/cyp-modern`, crea un
    **Blueprint Instance** para ese repositorio y la rama `main`.
-3. Antes de confirmar, comprueba que los dos recursos indican `free`: web y
-   PostgreSQL. El secreto `JWT_SECRET` lo genera Render; no introduzcas
-   contraseñas de la instalación local.
+3. Antes de confirmar, comprueba que el único recurso es el servicio web `free`.
+   Guarda la conexión de la base Neon `cyp_demo` en `DATABASE_URL`, con TLS
+   (`sslmode=verify-full`). Render genera `JWT_SECRET` y `DEMO_ACCESS_CODE`.
+   No introduzcas contraseñas de la instalación local ni publiques estas variables.
 4. Espera el deploy y comprueba `GET /api/health`, `/`, `/collector/`, el login
-   de ambos roles y un flujo de Envío/Recibo. El enlace público será el dominio
+   de ambos roles y un flujo de Envío/Recibo. `/` debe pedir primero la invitación.
+   El enlace público será el dominio
    HTTPS `onrender.com` que muestre Render.
 
 El comando de inicio aplica migraciones idempotentes antes de abrir el puerto.
 Si la migración o la conexión a PostgreSQL fallan, la API no inicia y no usa
 silenciosamente un archivo local.
 
+Comparte el dominio y el código `DEMO_ACCESS_CODE` únicamente con los evaluadores.
+La invitación habilita una cookie segura de ocho horas; después se necesita el
+inicio de sesión del programa. Los visitantes no necesitan cuentas en Render,
+Neon ni ChatGPT. Cambiar el código invalida las invitaciones anteriores.
+Las sesiones del programa se pueden consultar y cerrar desde Administración.
+Al actualizar desde una versión sin sesiones persistidas, hay que iniciar sesión
+de nuevo. Las trazas registran acciones nuevas, sin cuerpos ni contraseñas.
+
+El esquema incluye las migraciones 014 (anulaciones con historial inmutable) y
+015 (estaciones, grupos, PCPs, sesiones, solicitudes y trazas). El alta central
+de cobros guarda todas sus líneas o ninguna. Las anulaciones se limitan a la
+jornada actual abierta y respetan los fondos disponibles. Las solicitudes de
+autorización registran una decisión administrativa; no crean pagos ni alteran
+límites de caja. Las licencias de estaciones son metadatos registrados manualmente.
+
 ## Límites de esta demo gratuita
 
 - Render puede dormir el servicio tras 15 minutos sin tráfico. La primera
   visita posterior puede tardar mientras arranca.
-- PostgreSQL Free expira a los 30 días y no incluye respaldo administrado.
-  Para conservar los cambios de los evaluadores, migra o cambia a un plan con
-  persistencia antes de esa fecha.
+- Se usa Neon en lugar del PostgreSQL Free de Render, que vence a los 30 días.
+  Neon conserva el almacenamiento al suspender el cómputo. Su plan gratuito
+  mantiene cuotas de almacenamiento, cómputo y transferencia; no es ilimitado.
+  La retención de restauración gratuita es limitada y no sustituye un respaldo
+  operativo para datos reales.
 - El GPS del cobrador se activa voluntariamente en el navegador. Si se pulsa
   «Compartir ubicación», las coordenadas reales se envían a la base compartida
   y pueden verse desde el panel administrativo de la demo. Usa un dispositivo
   de prueba y permiso consciente para verificarlo; no se ha certificado la
   precisión física desde esta laptop.
-- Algunas pantallas heredadas de administración aún usan rutas `/mock/admin/`
-  que devuelven 501 en modo conectado. Esta publicación habilita los flujos
-  implementados; no convierte esas acciones pendientes en funcionalidades
-  reales.
+- Los evaluadores comparten una base: los cambios de uno aparecen al otro.
+- La impresión usa las funciones del navegador y del dispositivo disponible.
+  El alojamiento no da acceso automático a impresoras de la red de la laptop.
 
 Referencias de la plataforma: [Render Free](https://render.com/docs/free),
 [Blueprints](https://render.com/docs/blueprint-spec) y
-[Web Services](https://render.com/docs/web-services).
+[Web Services](https://render.com/docs/web-services),
+[Neon Free](https://neon.com/pricing).

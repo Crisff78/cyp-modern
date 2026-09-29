@@ -12,6 +12,8 @@ if (publicWeb && !requestedDemo)
   throw new Error("CYP_PUBLIC_DEMO requires DEMO_MODE=true.");
 if (publicWeb && !process.env.DATABASE_URL)
   throw new Error("CYP_PUBLIC_DEMO requires a dedicated DATABASE_URL.");
+if (publicWeb && (!process.env.DEMO_ACCESS_CODE || process.env.DEMO_ACCESS_CODE.length < 32))
+  throw new Error("CYP_PUBLIC_DEMO requires a private DEMO_ACCESS_CODE of at least 32 characters.");
 if (publicWeb) {
   let databaseName = "";
   try {
@@ -71,6 +73,7 @@ const app = await buildApp({
   secret: process.env.JWT_SECRET,
   demo,
   publicWeb,
+  demoAccess: publicWeb ? { code: process.env.DEMO_ACCESS_CODE!, origin: publicOrigin } : undefined,
   origins: (
     process.env.ALLOWED_ORIGINS ?? (publicWeb ? publicOrigin : "http://127.0.0.1:5173,http://127.0.0.1:5174")
   ).split(","),

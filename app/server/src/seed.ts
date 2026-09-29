@@ -1,4 +1,5 @@
 import { businessDate, emptyState, type State, type User } from "./domain.js";
+import { seedAdminTools } from "./admin-tools.js";
 import {
   cancelRemittance, createRemittance, openRemittanceCash, payRemittance,
   quoteRemittance, setDailyRate,
@@ -137,5 +138,6 @@ export function seedPublicDemo(): State {
     if (status === "paid") payRemittance(s, collector, transfer.id, now);
     if (status === "cancelled") cancelRemittance(s, collector, transfer.id, "Cancelación ficticia de demostración", now);
   }
+  seedAdminTools(s);
   return s;
 }

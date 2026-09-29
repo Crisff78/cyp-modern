@@ -300,6 +300,11 @@ export function App() {
     } else setInstallHelp(true);
   }
   function logout() {
+    const token = getToken();
+    // Capture authorization before cleaning up the local session and GPS watcher.
+    const remote = token && !isMockToken(token)
+      ? remittancesApi<{ id: string; closed: boolean }>("/auth/logout", { method: "POST", body: "{}" })
+      : null;
     currentUser.current = null;
     stopTracking();
     setToken(null);
@@ -307,6 +312,9 @@ export function App() {
     setSnapshot(null);
     setOperation(null);
     navigate("route");
+    if (remote) void remote.then((result) => {
+      if (!result?.closed || !result.id) throw new Error("Cierre remoto no confirmado.");
+    }).catch(() => toast.warning("La sesión se cerró en este dispositivo. No pudimos confirmar su cierre en el servidor; podría seguir activa hasta vencer."));
   }
   if (receiptToken)
     return (

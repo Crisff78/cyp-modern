@@ -92,11 +92,14 @@ import OperationModal, { type Operation } from "./Operations";
 import AccountModal, { type AccountOperation } from "./Users";
 import RemittancesWorkspace from "../../shared/remittances/RemittancesWorkspace";
 import { remittancesApi } from "./remittancesApi";
+import { hasUnresolvedMovementRequest, pendingMovementDraft, useMovementRequest } from "./useMovementRequest";
+import { decimalCents, formatMoney } from "../../shared/remittances/output";
 import { GeoMap, type GeoPoint } from "./GeoMap";
 import { MonitorGeoMap } from "./MonitorGeoMap";
 import { ConnectedCatalog, isConnectedCatalog } from "./ConnectedCatalog";
 import { ConnectedSettlements } from "./ConnectedSettlements";
 import { ConnectedLegacyReports } from "./ConnectedLegacyReports";
+import { ConnectedAdminTools, isConnectedAdminTool } from "./ConnectedAdminTools";
 import { locationUnavailable, locationError as gpsError, validLocation } from "../../shared/geolocation";
 
 const collectorUrl = String(import.meta.env.VITE_COLLECTOR_URL || "http://127.0.0.1:5174");
@@ -4279,7 +4282,7 @@ export default function App() {
     highestZIndex.current += 1;
     return highestZIndex.current;
   }, []);
-  const logout = useCallback(() => {
+  const clearLocalSession = useCallback(() => {
     clearToken();
     setAuthenticated(false);
     setSnapshot(null);
@@ -4288,6 +4291,17 @@ export default function App() {
     setMdiWindows([]);
     highestZIndex.current = 140;
   }, []);
+  const logout = useCallback(() => {
+    const token = getToken();
+    // Start while the token is still available, then clear this device immediately.
+    const remote = token && !isMockToken(token)
+      ? remittancesApi<{ id: string; closed: boolean }>("/auth/logout", { method: "POST", body: "{}" })
+      : null;
+    clearLocalSession();
+    if (remote) void remote.then((result) => {
+      if (!result?.closed || !result.id) throw new Error("Cierre remoto no confirmado.");
+    }).catch(() => toast.warning("La sesión se cerró en este dispositivo. No pudimos confirmar su cierre en el servidor; podría seguir activa hasta vencer."));
+  }, [clearLocalSession]);
   const refresh = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -4297,7 +4311,7 @@ export default function App() {
       setLastUpdated(new Date());
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
-        logout();
+        clearLocalSession();
         return;
       }
       setInitialError(
@@ -4308,7 +4322,7 @@ export default function App() {
     } finally {
       setRefreshing(false);
     }
-  }, [logout]);
+  }, [clearLocalSession]);
   useEffect(() => {
     if (!authenticated) return;
     api<User | { user: User }>("/auth/me")
@@ -4316,10 +4330,10 @@ export default function App() {
         const next = "user" in result ? result.user : result;
         const user = enrichUserRole(next);
         if (isSuspendedUser(user)) {
-          logout();
+          clearLocalSession();
           toast.error("Cuenta o empresa suspendida.");
         } else if (!canAccessAdmin(user)) {
-          logout();
+          clearLocalSession();
           toast.error(
             normalizeRole(user.role) === "COLLECTOR"
               ? "Acceso no autorizado al panel administrativo. Ingrese desde la terminal móvil de cobrador."
@@ -4327,13 +4341,13 @@ export default function App() {
           );
         } else setUser(user);
       })
-      .catch(() => logout());
+      .catch(() => clearLocalSession());
     void refresh();
     const interval = setInterval(() => {
       void refresh();
     }, 30000);
     return () => clearInterval(interval);
-  }, [authenticated, refresh, logout]);
+  }, [authenticated, refresh, clearLocalSession]);
   useEffect(() => {
     const interval = setInterval(() => setClock(new Date()), 1000);
     return () => clearInterval(interval);
@@ -4403,8 +4417,12 @@ export default function App() {
     setMdiWindows((windows) => windows.map((item) => item.id === id ? { ...item, x, y } : item));
   }, []);
   const closeMdiWindow = useCallback((id: string) => {
+    if (user && hasUnresolvedMovementRequest(user.id)) {
+      toast.info("Completa o reintenta la operación pendiente antes de cerrar la ventana.");
+      return;
+    }
     setMdiWindows((windows) => windows.filter((item) => item.id !== id));
-  }, []);
+  }, [user]);
   const createOperationForPage = useCallback((targetPage: Page): Operation => ({
     type: operationTypeForPage(targetPage),
   }), []);
@@ -4838,8 +4856,8 @@ export default function App() {
                 <RemittancesWorkspace api={remittancesApi} user={effectiveUser} isAdmin={["ADMIN", "SUPERADMIN"].includes(normalizeRole(effectiveUser.role))} initialTab={windowState.page === "exchangeRates" ? "tasas" : "envios"} />
               ) : isConnectedCatalog(windowState.page) ? (
                 <ConnectedCatalog page={windowState.page} snapshot={snapshot} onRefresh={() => void refresh()} />
-              ) : ["stations", "groups", "pcps", "sessions", "traces", "authorizationRequests"].includes(windowState.page) ? (
-                <section className="connected-placeholder"><h2>{pageTitles[windowState.page]}</h2><p>Esta pantalla todavía no está conectada. No hay datos operativos disponibles ni se pueden guardar cambios aquí.</p></section>
+              ) : isConnectedAdminTool(windowState.page) ? (
+                <ConnectedAdminTools page={windowState.page} snapshot={snapshot} onRefresh={() => void refresh()} />
               ) : windowState.page === "clients" ? (
                 <ClientsLegacyView snapshot={snapshot} onRefresh={() => refresh()} />
               ) : windowState.page === "charges" ? (
@@ -6088,6 +6106,16 @@ function localSystemDate(): string {
   return `${now.getFullYear()}-${month}-${day}`;
 }
 
+function movementBusinessDate(value: string): string {
+  // A calendar date from a form is already a business date, not midnight UTC.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const timestamp = new Date(value);
+  if (!Number.isFinite(timestamp.getTime())) return "";
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Santo_Domingo", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(timestamp);
+}
+
 function RecurringChargeDialog({
   row,
   clients,
@@ -6396,8 +6424,8 @@ function LegacyOperationView({
   const [mode, setMode] = useState(spec.modes[0] ?? "Todos"),
     [status, setStatus] = useState("Todos"),
     [query, setQuery] = useState(""),
-    [fromDate, setFromDate] = useState("2026-09-01"),
-    [toDate, setToDate] = useState("2026-09-16"),
+    [fromDate, setFromDate] = useState(spec.entity === "recurringPayouts" ? "" : "2026-09-01"),
+    [toDate, setToDate] = useState(spec.entity === "recurringPayouts" ? "" : "2026-09-16"),
     [quickRecord, setQuickRecord] = useState<TableRow | "new" | null>(null),
     [flash, setFlash] = useState(false),
     [selectedRow, setSelectedRow] = useState<TableRow | null>(null);
@@ -6409,11 +6437,9 @@ function LegacyOperationView({
   const [collectionToDate, setCollectionToDate] = useState("");
   const [collectionStatus, setCollectionStatus] = useState("Activo");
   const [collectionClientSearchOpen, setCollectionClientSearchOpen] = useState(false);
-  const [collectionReceiptOpen, setCollectionReceiptOpen] = useState(false);
-  const [, setCollectionReceiptDrafts] = useState<CollectionReceiptDraft[]>([]);
-  const [collectionCancelConfirmOpen, setCollectionCancelConfirmOpen] = useState(false);
-  const [collectionCancelReasonOpen, setCollectionCancelReasonOpen] = useState(false);
-  const [collectionCancelNote, setCollectionCancelNote] = useState("Digitado por error.");
+  const [collectionReceiptOpen, setCollectionReceiptOpen] = useState(() => Boolean(pendingMovementDraft(currentUser.id, "central-collection")));
+  const [collectionToCancel, setCollectionToCancel] = useState<Movement | null>(() => pendingMovementDraft<{ movement: Movement }>(currentUser.id, "cancel-collection")?.movement ?? null);
+  const [recurringToArchive, setRecurringToArchive] = useState<TableRow | null>(() => pendingMovementDraft<TableRow>(currentUser.id, "archive-recurring-payout") ?? null);
   const [collectionPrintChoiceOpen, setCollectionPrintChoiceOpen] = useState(false);
   const [collectionPrintTickets, setCollectionPrintTickets] = useState<CollectionTicketModel[] | null>(null);
   const [collectionMapChoiceOpen, setCollectionMapChoiceOpen] = useState(false);
@@ -6455,9 +6481,10 @@ function LegacyOperationView({
         .includes(status.toLowerCase());
     const modeOk =
       mode === "Todos" ||
+      (spec.entity === "recurringPayouts" && mode === "Por Cliente") ||
       haystack.includes(mode.replace("Por ", "").toLowerCase());
     return (
-      haystack.includes(query.toLowerCase()) && dateOk && statusOk && modeOk
+      (spec.entity === "recurringPayouts" && mode === "Por Cliente" ? String(row.client ?? "").toLowerCase() : haystack).includes(query.toLowerCase()) && dateOk && statusOk && modeOk
     );
   });
   const footer = [
@@ -6489,8 +6516,8 @@ function LegacyOperationView({
     setMode(spec.modes[0] ?? "Todos");
     setStatus("Todos");
     setQuery("");
-    setFromDate("2026-09-01");
-    setToDate("2026-09-16");
+    setFromDate(spec.entity === "recurringPayouts" ? "" : "2026-09-01");
+    setToDate(spec.entity === "recurringPayouts" ? "" : "2026-09-16");
     setSelectedRow(null);
     setCollectionClientId("");
     setCollectionCollectorId("Todas");
@@ -6500,9 +6527,6 @@ function LegacyOperationView({
     setCollectionToDate("");
     setCollectionStatus("Activo");
     setCollectionClientSearchOpen(false);
-    setCollectionCancelConfirmOpen(false);
-    setCollectionCancelReasonOpen(false);
-    setCollectionCancelNote("Digitado por error.");
     setCollectionPrintChoiceOpen(false);
     setCollectionPrintTickets(null);
     setCollectionMapChoiceOpen(false);
@@ -6512,7 +6536,12 @@ function LegacyOperationView({
     onRefresh();
   };
   const deleteRow = async (row: TableRow) => {
-    if (!row.__id || !spec.entity) return;
+    if (!row.__id || !spec.entity || !permissions.canDelete) return;
+    if (spec.entity === "recurringPayouts") {
+      if (row.__status === "archived") return toast.info("La plantilla ya está archivada.");
+      setRecurringToArchive(row);
+      return;
+    }
     if (
       permissions.deleteNeedsConfirm &&
       !confirm("Confirma la eliminación de este registro.")
@@ -6568,7 +6597,7 @@ function LegacyOperationView({
         const collector = snapshot.collectors.find((item) => item.id === movement?.collectorId);
         const queryText = query.trim().toLowerCase();
         const clientSearch = `${client?.code ?? ""} ${client?.identification ?? ""} ${client?.name ?? ""}`.toLowerCase();
-        const movementDate = movement?.createdAt.slice(0, 10) ?? "";
+        const movementDate = movement ? movementBusinessDate(movement.createdAt) : "";
         const zoneName = client?.sector || route?.sector || "";
         const matchesClient = mode !== "Por Cliente" || (collectionClientId ? movement?.clientId === collectionClientId : !queryText || clientSearch.includes(queryText));
         const matchesCollector = mode !== "Por Cobrador" || collectionCollectorId === "Todas" || movement?.collectorId === collectionCollectorId;
@@ -6585,7 +6614,7 @@ function LegacyOperationView({
     const rightIndex = collectionOrder.indexOf(String(right.__id ?? ""));
     return (leftIndex < 0 ? Number.MAX_SAFE_INTEGER : leftIndex) - (rightIndex < 0 ? Number.MAX_SAFE_INTEGER : rightIndex);
   });
-  const collectionTotal = orderedCollectionRows.reduce((sum, row) => sum + Number(row.__amount ?? 0), 0);
+  const collectionTotal = orderedCollectionRows.filter((row) => !(row.__raw as unknown as Movement)?.cancelledAt).reduce((sum, row) => sum + Number(row.__amount ?? 0), 0);
   const collectionCancelledTotal = orderedCollectionRows.reduce((sum, row) => {
     const movement = row.__raw as unknown as Snapshot["movements"][number] | undefined;
     return sum + (movement?.cancelledAt ? Number(row.__amount ?? 0) : 0);
@@ -6599,22 +6628,6 @@ function LegacyOperationView({
     const destination = target === "first" ? 0 : target === "last" ? ids.length : target === "previous" ? Math.max(0, currentIndex - 1) : Math.min(ids.length, currentIndex + 1);
     ids.splice(destination, 0, item);
     setCollectionOrder(ids);
-  };
-  const cancelSelectedCollection = async (note: string) => {
-    if (!selectedRow?.__id || !permissions.canDelete) return;
-    try {
-      await api(`/mock/admin/collections/${encodeURIComponent(String(selectedRow.__id))}`, {
-        method: "DELETE",
-        body: JSON.stringify({ note }),
-      });
-      toast.success("Cobro cancelado");
-      setCollectionCancelReasonOpen(false);
-      setCollectionCancelNote("Digitado por error.");
-      setSelectedRow(null);
-      await onRefresh();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo cancelar el cobro.");
-    }
   };
   const openCollectionPrint = (scope: CollectionRecordScope) => {
     const targetRows = scope === "current"
@@ -6684,11 +6697,11 @@ function LegacyOperationView({
             onPrevious={() => moveSelectedCollection("previous")}
             onNext={() => moveSelectedCollection("next")}
             onLast={() => moveSelectedCollection("last")}
-            onNew={() => toast.info("Registra el cobro desde la terminal del cobrador. El formulario de recibo en central todavía no está conectado.")}
-            onDelete={() => toast.info("La cancelación de cobros desde central todavía no está disponible. No se modificó el registro.")}
+            onNew={() => setCollectionReceiptOpen(true)}
+            onDelete={() => selectedRow && setCollectionToCancel(selectedRow.__raw as unknown as Movement)}
             onRefresh={resetFilters}
             disableNew={!permissions.canCreate}
-            disableDelete={!selectedRow || !permissions.canDelete}
+            disableDelete={!selectedRow || !permissions.canDelete || Boolean((selectedRow.__raw as unknown as Movement)?.cancelledAt)}
             showEdit={false}
             deleteIcon="x"
             deleteTitle="Cancelar cobro"
@@ -6726,16 +6739,16 @@ function LegacyOperationView({
             <section className="legacy-grid-panel charges-grid-panel collections-grid-panel" aria-label="Grilla de cobros">
               <div className="legacy-mdi-table-wrap">
                 <table className="legacy-mdi-table collections-table">
-                  <thead><tr><th>Nro.</th><th>Identif.</th><th>Cliente</th><th>Fecha</th><th>Linea</th><th>Ce...</th><th>Importe</th><th>Activo</th><th>Registro</th></tr></thead>
+                  <thead><tr><th>Nro.</th><th>Identif.</th><th>Cliente</th><th>Fecha</th><th>Cobrador</th><th>Central</th><th>Recibo</th><th>Importe</th><th>Activo</th><th>Registro</th></tr></thead>
                   <tbody>{orderedCollectionRows.length ? orderedCollectionRows.map((row, index) => {
                     const movement = row.__raw as unknown as Snapshot["movements"][number];
                     const client = movement.clientId ? snapshot.clients.find((item) => item.id === movement.clientId) : undefined;
                     const collector = snapshot.collectors.find((item) => item.id === movement.collectorId);
                     const isSelected = selectedRow?.__id === row.__id;
                     return <tr key={String(row.__id ?? index)} className={isSelected ? "selected-row" : undefined} aria-selected={isSelected} role="button" tabIndex={0} onClick={() => setSelectedRow(row)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedRow(row))}>
-                      <td>{index + 1}</td><td>{client?.identification || client?.code || ""}</td><td>{client?.name ?? "Cliente sin nombre"}</td><td>{String(row.date ?? "")}</td><td>{collector?.name ?? String(row.line ?? "")}</td><td>{String(row.receipt ?? "")}</td><td>{String(row.amount ?? money(Number(row.__amount ?? 0)))}</td><td><LegacyCheck checked={!movement.cancelledAt} /></td><td>{String(row.registry ?? "")}</td>
+                      <td>{index + 1}</td><td>{client?.identification || client?.code || ""}</td><td>{client?.name ?? "Cliente sin nombre"}</td><td>{String(row.date ?? "")}</td><td>{collector?.name ?? String(row.line ?? "")}</td><td>{(movement as Movement & { registeredCentrally?: boolean }).registeredCentrally === undefined ? "—" : (movement as Movement & { registeredCentrally?: boolean }).registeredCentrally ? "Sí" : "No"}</td><td>{String(row.receipt ?? "")}</td><td>{String(row.amount ?? money(Number(row.__amount ?? 0)))}</td><td><LegacyCheck checked={!movement.cancelledAt} /></td><td>{String(row.registry ?? "")}</td>
                     </tr>;
-                  }) : <tr><td className="collections-empty-cell" colSpan={9}>Sin cobros registrados.</td></tr>}</tbody>
+                  }) : <tr><td className="collections-empty-cell" colSpan={10}>Sin cobros registrados.</td></tr>}</tbody>
                 </table>
               </div>
               <div className="legacy-footerbar"><span>Cantidad: <strong>{orderedCollectionRows.length}</strong></span><span>Total: <strong>{money(collectionTotal)}</strong></span><span>Cancelado: <strong>{money(collectionCancelledTotal)}</strong></span></div>
@@ -6796,11 +6809,7 @@ function LegacyOperationView({
               onChange={(event) => setStatus(event.target.value)}
             >
               <option>Todos</option>
-              <option>pending</option>
-              <option>partial</option>
-              <option>paid</option>
-              <option>Activo</option>
-              <option>Cancelado</option>
+              {spec.entity === "recurringPayouts" ? <><option value="active">Activo</option><option value="paused">Pausado</option><option value="archived">Archivado</option></> : <><option>pending</option><option>partial</option><option>paid</option><option>Activo</option><option>Cancelado</option></>}
             </select>
           </label>
           {spec.relationLabel && (
@@ -6872,31 +6881,9 @@ function LegacyOperationView({
               </>
             )}
             {spec.entity === "recurringPayouts" && (
-              <button
-                title="Archivar descargo recurrente"
-                disabled={!selectedRow}
-                onClick={() => {
-                  if (!selectedRow?.__id) return;
-                  void api(
-                    `/descargos-recurrentes/${encodeURIComponent(String(selectedRow.__id))}`,
-                    { method: "POST", body: JSON.stringify({ status: "archived" }) },
-                  )
-                    .then(() => {
-                      toast.success("Descargo recurrente archivado");
-                      setSelectedRow(null);
-                      onRefresh();
-                    })
-                    .catch((error: unknown) =>
-                      toast.error(
-                        error instanceof Error
-                          ? error.message
-                          : "No se pudo archivar.",
-                      ),
-                    );
-                }}
-              >
-                <Trash2 size={16} />
-              </button>
+              <button type="button" title="Eliminar / archivar descargo recurrente" aria-label="Archivar descargo recurrente"
+                disabled={!selectedRow || selectedRow.__status === "archived" || !permissions.canDelete}
+                onClick={() => selectedRow && setRecurringToArchive(selectedRow)}><Trash2 size={16} /></button>
             )}
             <label className="legacy-toolbar-search">
               <Search size={15} />
@@ -6944,9 +6931,14 @@ function LegacyOperationView({
       </>
       )}
       {collectionClientSearchOpen && spec.entity === "collections" && <ClientSearchSubmodal clients={snapshot.clients} onClose={() => setCollectionClientSearchOpen(false)} onSelect={(client) => { setCollectionClientId(client.id); setQuery(client.code); setCollectionClientSearchOpen(false); }} />}
-      {collectionReceiptOpen && spec.entity === "collections" && <CollectionReceiptDialog snapshot={snapshot} onClose={() => setCollectionReceiptOpen(false)} onSave={(draft) => { setCollectionReceiptDrafts((current) => [...current, draft]); setCollectionReceiptOpen(false); toast.success("Recibo preparado en memoria."); }} onPrint={(draft) => { setCollectionReceiptDrafts((current) => [...current, draft]); setCollectionReceiptOpen(false); setCollectionPrintTickets([collectionTicketFromDraft(draft, snapshot)]); }} />}
-      {collectionCancelConfirmOpen && spec.entity === "collections" && <LegacyConfirmDialog message="¿Está seguro que desea cancelar el Cobro actual?" onYes={() => { setCollectionCancelConfirmOpen(false); setCollectionCancelNote("Digitado por error."); setCollectionCancelReasonOpen(true); }} onNo={() => setCollectionCancelConfirmOpen(false)} />}
-      {collectionCancelReasonOpen && spec.entity === "collections" && <CollectionCancelReasonDialog note={collectionCancelNote} onNoteChange={setCollectionCancelNote} onClose={() => { setCollectionCancelReasonOpen(false); setCollectionCancelNote("Digitado por error."); }} onConfirm={() => void cancelSelectedCollection(collectionCancelNote)} />}
+      {collectionReceiptOpen && spec.entity === "collections" && <CollectionReceiptDialog snapshot={snapshot} actorId={currentUser.id} onRefresh={onRefresh} onClose={() => setCollectionReceiptOpen(false)} onSaved={(movements, print) => {
+        setCollectionReceiptOpen(false);
+        toast.success(`${movements.length} cobro(s) registrado(s).`);
+        onRefresh();
+        if (print) setCollectionPrintTickets(movements.map((movement, index) => collectionTicketFromRow({ __id: movement.id, __raw: movement as unknown as Record<string, unknown>, __amount: movement.amount, receipt: movement.receiptToken }, index, snapshot)));
+      }} />}
+      {collectionToCancel && spec.entity === "collections" && <MovementCancellationDialog actorId={currentUser.id} movement={collectionToCancel} kind="cobros" onClose={() => setCollectionToCancel(null)} onSaved={() => { setCollectionToCancel(null); setSelectedRow(null); onRefresh(); }} />}
+      {recurringToArchive && spec.entity === "recurringPayouts" && <RecurringPayoutArchiveDialog actorId={currentUser.id} row={recurringToArchive} onClose={() => setRecurringToArchive(null)} onSaved={() => { setRecurringToArchive(null); setSelectedRow(null); onRefresh(); }} />}
       {collectionPrintChoiceOpen && spec.entity === "collections" && <CollectionScopeSelectorDialog title="Seleccione..." allLabel="Listado de registros" currentLabel="Registro actual" hasCurrent={Boolean(selectedRow)} onClose={() => setCollectionPrintChoiceOpen(false)} onConfirm={openCollectionPrint} />}
       {collectionPrintTickets && spec.entity === "collections" && <CollectionReceiptPrintDialog receipts={collectionPrintTickets} onClose={() => setCollectionPrintTickets(null)} />}
       {collectionMapChoiceOpen && spec.entity === "collections" && <CollectionScopeSelectorDialog title="Mostrar mapa de cobro(s)..." allLabel="Todos los Cobroos" currentLabel="Cobro actual" hasCurrent={Boolean(selectedRow)} onClose={() => setCollectionMapChoiceOpen(false)} onConfirm={openCollectionMap} />}
@@ -7404,7 +7396,7 @@ function CashDeliveriesOperationalView({ snapshot, currentUser, onRefresh }: Rea
   const [order, setOrder] = useState<string[]>([]);
   const [localDetails, setLocalDetails] = useState<Record<string, DepositDraft>>({});
   const [formOpen, setFormOpen] = useState(false);
-  const [confirmInactivateOpen, setConfirmInactivateOpen] = useState(false);
+  const [deliveryToCancel, setDeliveryToCancel] = useState<Movement | null>(() => pendingMovementDraft<{ movement: Movement }>(currentUser.id, "cancel-office_delivery")?.movement ?? null);
   const [printTicket, setPrintTicket] = useState<CollectionTicketModel | null>(null);
   const [flash, setFlash] = useState(false);
   const movementIds = snapshot.movements.filter((item) => item.type === "office_delivery").map((item) => item.id);
@@ -7485,27 +7477,6 @@ function CashDeliveriesOperationalView({ snapshot, currentUser, onRefresh }: Rea
     window.setTimeout(() => setFlash(false), 280);
     onRefresh();
   };
-  const cancelSelected = async () => {
-    if (!selectedRow?.__id) return;
-    const mockMode = isMockToken(getToken());
-    if (!mockMode) {
-      toast.error("La API actual no ofrece inactivación de entregas; el registro no fue modificado.");
-      setConfirmInactivateOpen(false);
-      return;
-    }
-    try {
-      await api(`/mock/admin/cashDeliveries/${encodeURIComponent(String(selectedRow.__id))}`, {
-        method: "DELETE",
-        body: JSON.stringify({ note: "Inactivar datos" }),
-      });
-      setConfirmInactivateOpen(false);
-      setSelectedId("");
-      toast.success("Entrega inactivada en el modo de demostración.");
-      onRefresh();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo inactivar la entrega.");
-    }
-  };
   const saveDelivery = async (draft: DepositDraft, shouldPrint: boolean) => {
     try {
       const result = await api<{ movement?: Movement }>("/entregas", {
@@ -7536,13 +7507,13 @@ function CashDeliveriesOperationalView({ snapshot, currentUser, onRefresh }: Rea
         onNext={() => moveSelected("next")}
         onLast={() => moveSelected("last")}
         onNew={() => setFormOpen(true)}
-        onDelete={() => selectedRow ? setConfirmInactivateOpen(true) : toast.info("Seleccione una entrega.")}
+        onDelete={() => selectedRow && setDeliveryToCancel(selectedRow.__raw as unknown as Movement)}
         onRefresh={refresh}
         disableNew={!permissions.canCreate}
         disableDelete={!selectedRow || Boolean((selectedRow.__raw as unknown as Movement | undefined)?.cancelledAt) || !permissions.canDelete}
         showEdit={false}
         deleteIcon="x"
-        deleteTitle="Inactivar entrega"
+        deleteTitle="Cancelar entrega"
       />
       <div className={`cash-deliveries-layout ${filtersVisible ? "" : "filters-collapsed"}`}>
         {filtersVisible && <aside className="legacy-filter-panel cash-deliveries-filter-panel" aria-label="Panel de filtro de entregas">
@@ -7571,7 +7542,7 @@ function CashDeliveriesOperationalView({ snapshot, currentUser, onRefresh }: Rea
       </div>
     </div>
     {formOpen && <CashDeliveryDataDialog snapshot={snapshot} onClose={() => setFormOpen(false)} onSave={saveDelivery} />}
-    {confirmInactivateOpen && <LegacyConfirmDialog message="¿Inactivar datos?" onYes={() => void cancelSelected()} onNo={() => setConfirmInactivateOpen(false)} />}
+    {deliveryToCancel && <MovementCancellationDialog actorId={currentUser.id} movement={deliveryToCancel} kind="entregas" onClose={() => setDeliveryToCancel(null)} onSaved={() => { setDeliveryToCancel(null); setSelectedId(""); onRefresh(); }} />}
     {printTicket && <CollectionReceiptPrintDialog receipts={[printTicket]} title="Imprimir Recibo de Entrega..." onClose={() => setPrintTicket(null)} />}
   </>;
 }
@@ -7928,9 +7899,7 @@ function PaymentsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
   const [orderedIds, setOrderedIds] = useState<string[]>([]);
   const [clientSearchOpen, setClientSearchOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
-  const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
-  const [cancelReasonOpen, setCancelReasonOpen] = useState(false);
-  const [cancelNote, setCancelNote] = useState("Digitado por error.");
+  const [paymentToCancel, setPaymentToCancel] = useState<Movement | null>(() => pendingMovementDraft<{ movement: Movement }>(currentUser.id, "cancel-payout")?.movement ?? null);
   const [printTicket, setPrintTicket] = useState<CollectionTicketModel | null>(null);
   const [metadata, setMetadata] = useState<Record<string, PaymentDisplayMetadata>>({});
   const [flash, setFlash] = useState(false);
@@ -7994,28 +7963,6 @@ function PaymentsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
     setFlash(true);
     window.setTimeout(() => setFlash(false), 280);
     onRefresh();
-  };
-  const cancelSelected = async () => {
-    if (!selectedPayment) return;
-    const demoStore = isMockToken(getToken());
-    if (!demoStore) {
-      toast.error("La API actual no ofrece cancelación de pagos; el registro no fue modificado.");
-      return;
-    }
-    try {
-      await api(`/mock/admin/payments/${encodeURIComponent(selectedPayment.id)}`, {
-        method: "DELETE",
-        body: JSON.stringify({ note: cancelNote.trim() }),
-      });
-      setCancelReasonOpen(false);
-      setConfirmCancelOpen(false);
-      setSelectedId("");
-      setCancelNote("Digitado por error.");
-      toast.success("Pago inactivado en el modo de demostración.");
-      onRefresh();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo inactivar el pago.");
-    }
   };
   const savePayment = async (draft: PaymentFormDraft, shouldPrint: boolean): Promise<PaymentSaveOutcome> => {
     const client = snapshot.clients.find((item) => item.id === draft.clientId);
@@ -8094,7 +8041,7 @@ function PaymentsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
           onNext={() => moveSelected("next")}
           onLast={() => moveSelected("last")}
           onNew={() => setFormOpen(true)}
-          onDelete={() => selectedPayment && setConfirmCancelOpen(true)}
+          onDelete={() => selectedPayment && setPaymentToCancel(selectedPayment)}
           onRefresh={refresh}
           disableNew={!permissions.canCreate}
           disableDelete={!selectedPayment || Boolean(selectedPayment.cancelledAt) || !permissions.canDelete}
@@ -8123,7 +8070,7 @@ function PaymentsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
                 const details = metadata[movement.id];
                 const active = selectedId === movement.id;
                 return <tr key={movement.id} className={active ? "selected-row" : undefined} aria-selected={active} role="button" tabIndex={0} onClick={() => setSelectedId(movement.id)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedId(movement.id))}>
-                  <td>{index + 1}</td><td>{client?.identification || client?.code || ""}</td><td>{client?.name ?? "Cliente sin nombre"}</td><td>{safeDateLabel(movement.createdAt.slice(0, 10))}</td><td><LegacyCheck checked={details?.online ?? Boolean(movement.receiptToken)} /></td><td><LegacyCheck checked={details?.central ?? false} /></td><td className="numeric-cell">{money(movement.amount)}</td><td>{movement.cancellationNote || details?.note || ""}</td>
+                  <td>{index + 1}</td><td>{client?.identification || client?.code || ""}</td><td>{client?.name ?? "Cliente sin nombre"}</td><td>{safeDateLabel(movement.createdAt.slice(0, 10))}</td><td><LegacyCheck checked={details?.online ?? Boolean(movement.receiptToken)} /></td><td>{(movement as Movement & { registeredCentrally?: boolean }).registeredCentrally === undefined ? "—" : (movement as Movement & { registeredCentrally?: boolean }).registeredCentrally ? "Sí" : "No"}</td><td className="numeric-cell">{money(movement.amount)}</td><td>{movement.cancellationNote || details?.note || ""}</td>
                 </tr>;
               }) : <tr><td colSpan={8} className="payouts-empty-cell">Sin pagos registrados.</td></tr>}
             </tbody></table></div>
@@ -8133,8 +8080,7 @@ function PaymentsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
       </div>
       {formOpen && <PaymentDataDialog key="new-payment" snapshot={snapshot} onClose={() => setFormOpen(false)} onSave={savePayment} onPrint={(ticket) => setPrintTicket(ticket)} />}
       {clientSearchOpen && <ClientSearchSubmodal clients={snapshot.clients} onClose={() => setClientSearchOpen(false)} onSelect={(client) => { findClientForFilter(client); setClientSearchOpen(false); }} />}
-      {confirmCancelOpen && <LegacyConfirmDialog message="¿Realmente desea cancelar el registro actual?" onYes={() => { setConfirmCancelOpen(false); setCancelReasonOpen(true); }} onNo={() => setConfirmCancelOpen(false)} />}
-      {cancelReasonOpen && <PaymentCancelNoteDialog note={cancelNote} onChange={setCancelNote} onClose={() => setCancelReasonOpen(false)} onConfirm={() => void cancelSelected()} />}
+      {paymentToCancel && <MovementCancellationDialog actorId={currentUser.id} movement={paymentToCancel} kind="pagos" onClose={() => setPaymentToCancel(null)} onSaved={() => { setPaymentToCancel(null); setSelectedId(""); onRefresh(); }} />}
       {printTicket && <CollectionReceiptPrintDialog receipts={[printTicket]} onClose={() => setPrintTicket(null)} />}
     </>
   );
@@ -8403,7 +8349,7 @@ function RecurringPayoutModal({
         {
           method: "POST",
           body: JSON.stringify({
-            clientId,
+            ...(row?.__id ? {} : { clientId }),
             concept: concept.trim(),
             amount: cents,
             frequency,
@@ -8433,6 +8379,7 @@ function RecurringPayoutModal({
           Cliente
           <select
             value={clientId}
+            disabled={Boolean(row)}
             onChange={(event) => setClientId(event.target.value)}
           >
             {snapshot.clients.map((client) => (
@@ -8716,17 +8663,8 @@ type ReceiptDetailLine = {
   amount: number;
 };
 
-type CollectionReceiptDraft = {
-  date: string;
-  currency: string;
-  clientId: string;
-  collectorId: string;
-  paymentForm: string;
-  bank: string;
-  number: string;
-  note: string;
-  lines: ReceiptDetailLine[];
-};
+type CentralCollectionDraft = { clientId: string; clientCode: string; collectorId: string; lines: ReceiptDetailLine[]; print: boolean };
+type CentralCollectionResult = { movements: Movement[]; receipts: { movementId: string; token: string; url: string }[] };
 
 type CollectionRecordScope = "all" | "current";
 
@@ -8756,27 +8694,6 @@ type CollectionMapPoint = {
   date: string;
 };
 
-function collectionTicketFromDraft(draft: CollectionReceiptDraft, snapshot: Snapshot): CollectionTicketModel {
-  const client = snapshot.clients.find((item) => item.id === draft.clientId);
-  const collector = snapshot.collectors.find((item) => item.id === draft.collectorId);
-  const lines = draft.lines.map((line) => ({ service: line.service, concept: line.concept, amount: line.amount }));
-  return {
-    id: `draft-${crypto.randomUUID()}`,
-    receiptNumber: "-1",
-    date: draft.date,
-    currency: draft.currency,
-    clientName: client?.name ?? "Cliente",
-    clientIdentification: client?.identification || client?.code || "",
-    collectorName: collector?.name ?? "",
-    paymentForm: draft.paymentForm,
-    bank: draft.bank,
-    checkNumber: draft.number,
-    note: draft.note,
-    amount: lines.reduce((sum, line) => sum + line.amount, 0),
-    lines,
-  };
-}
-
 function collectionTicketFromRow(row: TableRow, index: number, snapshot: Snapshot): CollectionTicketModel {
   const movement = row.__raw as unknown as Snapshot["movements"][number] | undefined;
   const client = movement?.clientId ? snapshot.clients.find((item) => item.id === movement.clientId) : undefined;
@@ -8785,8 +8702,8 @@ function collectionTicketFromRow(row: TableRow, index: number, snapshot: Snapsho
   const amount = Number(row.__amount ?? movement?.amount ?? 0);
   return {
     id: String(row.__id ?? movement?.id ?? index),
-    receiptNumber: String(row.receipt ?? movement?.receiptToken ?? row.__id ?? index + 1),
-    date: movement?.createdAt ?? String(row.date ?? localSystemDate()),
+    receiptNumber: String(movement?.receiptToken ?? row.receipt ?? row.__id ?? index + 1),
+    date: movement ? movementBusinessDate(movement.createdAt) : String(row.__date ?? row.date ?? localSystemDate()),
     currency: String(row.currency ?? "Peso Dominicano"),
     clientName: client?.name ?? "Cliente sin nombre",
     clientIdentification: client?.identification || client?.code || "",
@@ -8794,7 +8711,7 @@ function collectionTicketFromRow(row: TableRow, index: number, snapshot: Snapsho
     paymentForm: String(row.forma ?? "Efectivo"),
     bank: String(row.banco ?? "No Definido"),
     checkNumber: String(row.numero ?? ""),
-    note: String(row.note ?? ""),
+    note: movement?.cancelledAt ? "ANULADO · " + (movement.cancellationNote ?? "") : String(row.note ?? ""),
     amount,
     lines: [{
       service: charge?.service ?? "Cobro de servicio",
@@ -8831,30 +8748,62 @@ function CollectionScopeSelectorDialog({
   );
 }
 
-function CollectionCancelReasonDialog({ note, onNoteChange, onClose, onConfirm }: Readonly<{ note: string; onNoteChange: (value: string) => void; onClose: () => void; onConfirm: () => void }>) {
-  return (
-    <LegacyDialog title="Cancelar Cobro..." onClose={onClose} className="collection-flow-dialog collection-cancel-reason-dialog" overlayClassName="collection-receipt-suboverlay">
-      <label className="collection-flow-field">Nota:<input autoFocus value={note} onChange={(event) => onNoteChange(event.target.value)} /></label>
-      <div className="legacy-dialog-actions centered"><button type="button" onClick={onConfirm}>oK</button><button type="button" onClick={onClose}>Cancelar</button></div>
-    </LegacyDialog>
-  );
+function MovementCancellationDialog({ actorId, movement, kind, onClose, onSaved }: Readonly<{ actorId: string; movement: Movement; kind: "cobros" | "pagos" | "entregas"; onClose: () => void; onSaved: () => void }>) {
+  const scope = "cancel-" + movement.type;
+  const request = useMovementRequest(actorId, scope);
+  const [reason, setReason] = useState(() => pendingMovementDraft<{ reason: string }>(actorId, scope)?.reason ?? "");
+  const [validation, setValidation] = useState("");
+  const label = kind === "cobros" ? "cobro" : kind === "pagos" ? "pago" : "entrega";
+  const close = () => { if (!request.locked) { request.clear(); onClose(); } };
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (request.busy) return;
+    if (!reason.trim() || reason.trim().length > 500) { setValidation("Escribe un motivo de entre 1 y 500 caracteres."); return; }
+    setValidation("");
+    try {
+      await request.run<Movement>("/" + kind + "/" + encodeURIComponent(movement.id) + "/cancelar", { reason: reason.trim() }, { movement, reason }, (result) => result?.id === movement.id && Boolean(result.cancelledAt));
+    } catch { return; }
+    toast.success(label === "entrega" ? "Entrega cancelada." : label === "cobro" ? "Cobro cancelado." : "Pago cancelado.");
+    onSaved();
+  };
+  return <LegacyDialog title={"Cancelar " + label} onClose={close} className="collection-flow-dialog collection-cancel-reason-dialog" overlayClassName="collection-receipt-suboverlay">
+    <form onSubmit={(event) => void submit(event)}>
+      <p>Confirma la cancelación del {label}: <strong>{formatMoney(movement.amount, "RD$")}</strong> · {safeDateLabel(movementBusinessDate(movement.createdAt))}.</p>
+      <p>Referencia: {movement.id}. Solo se puede cancelar en la jornada actual, sin cierre y con saldo disponible.</p>
+      <label className="collection-flow-field">Motivo:<input autoFocus required maxLength={500} disabled={request.locked} value={reason} onChange={(event) => { setReason(event.target.value); setValidation(""); }} /></label>
+      {(validation || request.error) && <p className="collection-receipt-error" role="alert">{validation || request.error}</p>}
+      {request.uncertain && <p role="status">El resultado está pendiente de confirmación. Reintenta con estos mismos datos.</p>}
+      <div className="legacy-dialog-actions centered"><button type="submit" disabled={request.busy}>{request.busy ? "Enviando…" : request.uncertain ? "Reintentar" : "Confirmar cancelación"}</button><button type="button" disabled={request.locked} onClick={close}>Volver</button></div>
+    </form>
+  </LegacyDialog>;
+}
+
+function RecurringPayoutArchiveDialog({ actorId, row, onClose, onSaved }: Readonly<{ actorId: string; row: TableRow; onClose: () => void; onSaved: () => void }>) {
+  const request = useMovementRequest(actorId, "archive-recurring-payout");
+  const close = () => { if (!request.locked) { request.clear(); onClose(); } };
+  const archive = async () => {
+    if (request.busy) return;
+    try {
+      await request.run<{ id: string; status: string }>("/descargos-recurrentes/" + encodeURIComponent(String(row.__id)), { status: "archived" }, row, (result) => result?.id === row.__id && result.status === "archived");
+    } catch { return; }
+    toast.success("Descargo recurrente archivado.");
+    onSaved();
+  };
+  return <LegacyDialog title="Archivar descargo recurrente" onClose={close} className="legacy-confirm-dialog">
+    <p>¿Eliminar esta plantilla de las activas? <strong>{String(row.concept ?? "")}</strong> · {String(row.client ?? "")}</p>
+    <p>Quedará archivada. Los descargos ya generados se conservan.</p>
+    {request.error && <p className="collection-receipt-error" role="alert">{request.error}</p>}
+    {request.uncertain && <p role="status">Reintenta para confirmar el resultado con la misma solicitud.</p>}
+    <div className="legacy-dialog-actions centered"><button type="button" disabled={request.busy} onClick={() => void archive()}>{request.busy ? "Archivando…" : request.uncertain ? "Reintentar" : "Archivar"}</button><button type="button" disabled={request.locked} onClick={close}>Volver</button></div>
+  </LegacyDialog>;
 }
 
 function CollectionReceiptPrintDialog({ receipts, onClose, title = "Imprimir Recibo de Cobro..." }: Readonly<{ receipts: readonly CollectionTicketModel[]; onClose: () => void; title?: string }>) {
-  const [url, setUrl] = useState("");
-  const [port, setPort] = useState("8080");
-  const [printer, setPrinter] = useState("zebra");
-  const printedAt = new Date().toLocaleString("es-DO", { dateStyle: "short", timeStyle: "medium" });
+  const printedAt = new Date().toLocaleString("es-DO", { dateStyle: "short", timeStyle: "medium", timeZone: "America/Santo_Domingo" });
   return (
     <LegacyDialog title={title} onClose={onClose} className="collection-flow-dialog collection-ticket-dialog" overlayClassName="collection-receipt-suboverlay collection-ticket-print-overlay">
       <div className="collection-ticket-print-content">
-        <div className="collection-ticket-printer-setup collection-ticket-controls">
-          <label>URL:<input value={url} placeholder="URL de impresora" onChange={(event) => setUrl(event.target.value)} /></label>
-          <label>Puerto:<input value={port} onChange={(event) => setPort(event.target.value)} /></label>
-          <label>Imp.:<select value={printer} onChange={(event) => setPrinter(event.target.value)}><option value="zebra">zebra</option><option value="virtual">Impresora Virtual</option><option value="matrix">Impresora de Matriz</option></select></label>
-          <button type="button" onClick={() => toast.info(`Impresora seleccionada: ${printer}.`)}>Buscar</button>
-          <button type="button" onClick={() => toast.success("Prueba de impresora preparada.")}>Test</button>
-        </div>
+        <p className="collection-ticket-controls">Selecciona tu impresora o "Guardar como PDF" en el diálogo de impresión del navegador.</p>
         <div className="collection-ticket-preview-list">
           {receipts.map((receipt) => (
             <pre className="collection-ticket-preview" key={receipt.id}>{[
@@ -8867,7 +8816,7 @@ function CollectionReceiptPrintDialog({ receipts, onClose, title = "Imprimir Rec
               `Recibo: ${receipt.receiptNumber}`,
               `Ident: ${receipt.clientIdentification}`,
               `Cliente: ${receipt.clientName}`,
-              `Fecha: ${safeDateLabel(receipt.date.slice(0, 10))}`,
+              `Fecha: ${safeDateLabel(movementBusinessDate(receipt.date))}`,
               `Moneda: ${receipt.currency}`,
               `Cobrador: ${receipt.collectorName || "Administración"}`,
               "--------------------------------",
@@ -8885,7 +8834,7 @@ function CollectionReceiptPrintDialog({ receipts, onClose, title = "Imprimir Rec
             ].join("\n")}</pre>
           ))}
         </div>
-        <div className="legacy-dialog-actions collection-ticket-actions"><button type="button" onClick={onClose}>oK</button><button type="button" className="primary" onClick={() => window.print()}>Imprimir</button></div>
+        <div className="legacy-dialog-actions collection-ticket-actions"><button type="button" onClick={onClose}>oK</button><button type="button" className="primary" onClick={() => window.print()}>Imprimir / Guardar PDF</button></div>
       </div>
     </LegacyDialog>
   );
@@ -8900,188 +8849,89 @@ function CollectionMapDialog({ points, onClose }: Readonly<{ points: readonly Co
   </LegacyDialog>;
 }
 
-function CollectionReceiptDialog({
-  snapshot,
-  onClose,
-  onSave,
-  onPrint,
-}: Readonly<{
-  snapshot: Snapshot;
-  onClose: () => void;
-  onSave: (draft: CollectionReceiptDraft) => void;
-  onPrint: (draft: CollectionReceiptDraft) => void;
-}>) {
-  const [receiptDate, setReceiptDate] = useState(localSystemDate());
-  const [currency, setCurrency] = useState(CURRENCIES[1] ?? "Peso Dominicano");
-  const [clientId, setClientId] = useState("");
-  const [clientCode, setClientCode] = useState("");
-  const [collectorId, setCollectorId] = useState(snapshot.collectors[0]?.id ?? "");
-  const [paymentForm, setPaymentForm] = useState("Efectivo");
-  const [bank, setBank] = useState("No Definido");
-  const [checkNumber, setCheckNumber] = useState("");
-  const [note, setNote] = useState("");
-  const [lines, setLines] = useState<ReceiptDetailLine[]>([]);
+function CollectionReceiptDialog({ snapshot, actorId, onClose, onSaved, onRefresh }: Readonly<{ snapshot: Snapshot; actorId: string; onRefresh: () => void; onClose: () => void; onSaved: (movements: Movement[], print: boolean) => void }>) {
+  const request = useMovementRequest(actorId, "central-collection");
+  const pending = pendingMovementDraft<CentralCollectionDraft>(actorId, "central-collection");
+  const [clientId, setClientId] = useState(pending?.clientId ?? "");
+  const [clientCode, setClientCode] = useState(pending?.clientCode ?? "");
+  const [lines, setLines] = useState<ReceiptDetailLine[]>(pending?.lines ?? []);
   const [selectedLineId, setSelectedLineId] = useState("");
   const [clientSearchOpen, setClientSearchOpen] = useState(false);
   const [chargePickerOpen, setChargePickerOpen] = useState(false);
   const [editingLine, setEditingLine] = useState<ReceiptDetailLine | null>(null);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
-  const [clientRequiredOpen, setClientRequiredOpen] = useState(false);
   const [saveError, setSaveError] = useState("");
   const client = snapshot.clients.find((item) => item.id === clientId);
+  const route = snapshot.routes.find((item) => item.id === client?.routeId);
+  const collectorId = pending?.collectorId ?? route?.collectorId ?? "";
+  const collector = snapshot.collectors.find((item) => item.id === collectorId);
   const selectedLine = lines.find((line) => line.id === selectedLineId) ?? null;
   const total = lines.reduce((sum, line) => sum + line.amount, 0);
-  const banks = [
-    "No Definido",
-    "BANCO DE RESERVAS",
-    "BANCO POPULAR",
-    "BANCO HIPOTECARIO DOMINICANO",
-    "BANCO LEON",
-    "GERENCIAL FIDUCIARIO",
-    "BANCO NACIONAL",
-    "BANCO METROPOLITANO",
-    "SCOTIA BANK",
-    "CITY BANK",
-    "BANCO DE OSAKE",
-    "BANCO ADEMI",
-    "BANCO",
-    "BANCO DE COMERCIO",
-    "BANCO GLOBAL",
-  ];
+  const close = () => { if (!request.locked) { request.clear(); onClose(); } };
+  const chooseClient = (id: string, code: string) => {
+    if (request.locked) return;
+    if (id !== clientId) { setLines([]); setSelectedLineId(""); }
+    setClientId(id); setClientCode(code); setClientSearchOpen(false); setSaveError("");
+  };
   const resolveClientCode = (value: string) => {
-    setClientCode(value);
     const normalized = value.trim().toLocaleLowerCase();
-    const match = snapshot.clients.find((item) =>
-      [item.code, item.identification ?? "", item.id]
-        .some((candidate) => candidate.toLocaleLowerCase() === normalized),
-    );
-    setClientId(match?.id ?? "");
+    const match = snapshot.clients.find((item) => [item.code, item.identification ?? "", item.id].some((candidate) => candidate.toLocaleLowerCase() === normalized));
+    chooseClient(match?.id ?? "", value);
   };
   const addLine = (charge: Charge) => {
-    if (lines.some((line) => line.chargeId === charge.id)) {
-      toast.info("Este cargo ya está agregado al recibo.");
-      return;
-    }
-    const pendingAmount = Math.max(0, charge.amount - charge.collected);
-    if (pendingAmount <= 0) return;
-    const nextLine: ReceiptDetailLine = {
-      id: crypto.randomUUID(),
-      chargeId: charge.id,
-      service: charge.service,
-      concept: charge.concept ?? charge.service,
-      amount: pendingAmount,
-    };
-    setLines((current) => [...current, nextLine]);
-    setSelectedLineId(nextLine.id);
-    setChargePickerOpen(false);
+    if (request.locked) return;
+    if (lines.some((line) => line.chargeId === charge.id)) { setSaveError("Este cargo ya está agregado al recibo."); return; }
+    const amount = charge.amount - charge.collected;
+    if (amount <= 0) return;
+    const line: ReceiptDetailLine = { id: crypto.randomUUID(), chargeId: charge.id, service: charge.service, concept: charge.concept ?? charge.service, amount };
+    setLines((current) => [...current, line]); setSelectedLineId(line.id); setChargePickerOpen(false); setSaveError("");
+  };
+  const save = async (print: boolean) => {
+    if (request.busy) return;
     setSaveError("");
-  };
-  const requestAddLine = () => {
-    if (!client) {
-      setClientRequiredOpen(true);
-      return;
+    const draft = pending ?? { clientId, clientCode, collectorId, lines: lines.map((line) => ({ ...line })), print };
+    if (!request.uncertain) {
+      if (!client || client.active === false || !collector || collector.active === false) { setSaveError("Escoge un cliente activo con ruta y cobrador activos."); return; }
+      if (!lines.length || !Number.isSafeInteger(total) || total <= 0) { setSaveError("Agrega al menos un cargo pendiente con importe válido."); return; }
+      const invalidLine = lines.some((line) => {
+        const charge = snapshot.charges.find((item) => item.id === line.chargeId);
+        return !charge || charge.clientId !== client.id || charge.status === "cancelled" || !Number.isSafeInteger(line.amount) || line.amount <= 0 || line.amount > charge.amount - charge.collected;
+      });
+      if (invalidLine) { setSaveError("Un importe supera el saldo pendiente o el cargo ya no está disponible. Refresca y revisa el detalle."); return; }
     }
-    setChargePickerOpen(true);
+    let result: CentralCollectionResult;
+    try {
+      result = await request.run<CentralCollectionResult>("/cobros/central", { clientId: draft.clientId, collectorId: draft.collectorId, lines: draft.lines.map((line) => ({ chargeId: line.chargeId, amount: line.amount })) }, draft, (data) =>
+        Array.isArray(data?.movements) && Array.isArray(data.receipts) && data.movements.length === draft.lines.length && new Set(data.movements.map((movement) => movement.id)).size === draft.lines.length && data.movements.every((movement) => Boolean(movement.id && movement.receiptToken) && movement.type === "collection" && draft.lines.some((line) => line.chargeId === movement.chargeId && line.amount === movement.amount) && data.receipts.some((receipt) => receipt.movementId === movement.id && receipt.token === movement.receiptToken)));
+    } catch { return; }
+    onSaved(result.movements, draft.print);
   };
-  const saveReceipt = (event?: FormEvent, print = false) => {
-    event?.preventDefault();
-    setSaveError("");
-    if (!client) {
-      setClientRequiredOpen(true);
-      return;
-    }
-    if (!lines.length) {
-      setSaveError("Agregue al menos un cargo al recibo.");
-      return;
-    }
-    const draft = {
-      date: receiptDate,
-      currency,
-      clientId: client.id,
-      collectorId,
-      paymentForm,
-      bank,
-      number: checkNumber,
-      note,
-      lines: lines.map((line) => ({ ...line })),
-    };
-    if (print) onPrint(draft);
-    else onSave(draft);
-  };
-  return (
-    <LegacyDialog title="Datos del Cobro..." onClose={onClose} className="collection-receipt-dialog">
-      <div className="collection-receipt-content">
+  const eligibleCharges = snapshot.charges.filter((charge) => charge.clientId === clientId && charge.status !== "paid" && charge.status !== "cancelled" && charge.amount > charge.collected && (!charge.currency || ["DOP", "Peso Dominicano"].includes(charge.currency)));
+  return <LegacyDialog title="Datos del Cobro..." onClose={close} className="collection-receipt-dialog">
+    <div className="collection-receipt-content">
+      <fieldset disabled={request.locked} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
         <div className="collection-receipt-fields">
-          <div className="collection-receipt-row collection-receipt-meta-row">
-            <label>Doc:<input type="number" value="-1" readOnly disabled aria-label="Documento" /></label>
-            <label>Fecha:<input type="date" value={receiptDate} onChange={(event) => setReceiptDate(event.target.value)} /></label>
-            <label>Moneda:<select value={currency} onChange={(event) => setCurrency(event.target.value)}>{CURRENCIES.map((option) => <option key={option}>{option}</option>)}</select></label>
-          </div>
-          <div className="collection-receipt-row collection-receipt-client-row">
-            <label htmlFor="receipt-client-code">Cliente:</label>
-            <input id="receipt-client-code" value={clientCode} onChange={(event) => resolveClientCode(event.target.value)} aria-label="Código del cliente" />
-            <button type="button" aria-label="Buscar cliente" onClick={() => setClientSearchOpen(true)}>[...]</button>
-            <input value={client?.name ?? ""} readOnly disabled aria-label="Nombre del cliente" />
-          </div>
-          <div className="collection-receipt-row collection-receipt-labeled-row">
-            <label htmlFor="receipt-collector">Cobrad.:</label>
-            <select id="receipt-collector" value={collectorId} onChange={(event) => setCollectorId(event.target.value)}>
-              <option value="">No definido</option>
-              {snapshot.collectors.map((collector) => <option key={collector.id} value={collector.id}>{collector.name}</option>)}
-            </select>
-          </div>
-          <div className="collection-receipt-row collection-receipt-labeled-row">
-            <label htmlFor="receipt-payment-form">Forma:</label>
-            <select id="receipt-payment-form" value={paymentForm} onChange={(event) => setPaymentForm(event.target.value)}>{["Cheque", "Depósito", "Efectivo", "Mixto", "Tarjeta"].map((option) => <option key={option}>{option}</option>)}</select>
-          </div>
-          <div className="collection-receipt-row collection-receipt-labeled-row">
-            <label htmlFor="receipt-bank">Banco:</label>
-            <select id="receipt-bank" value={bank} onChange={(event) => setBank(event.target.value)}>{banks.map((option) => <option key={option}>{option}</option>)}</select>
-          </div>
-          <div className="collection-receipt-row collection-receipt-labeled-row">
-            <label htmlFor="receipt-check-number">Número:</label>
-            <input id="receipt-check-number" value={checkNumber} onChange={(event) => setCheckNumber(event.target.value)} />
-          </div>
-          <div className="collection-receipt-row collection-receipt-labeled-row">
-            <label htmlFor="receipt-note">Nota:</label>
-            <input id="receipt-note" value={note} onChange={(event) => setNote(event.target.value)} />
-          </div>
+          <div className="collection-receipt-row collection-receipt-meta-row"><label>Doc:<input value="Nuevo" title="El número se asigna al guardar" readOnly /></label><label>Fecha:<input type="date" value={snapshot.businessDate} readOnly /></label><label>Moneda:<input value="Peso Dominicano (DOP)" readOnly /></label></div>
+          <div className="collection-receipt-row collection-receipt-client-row"><label htmlFor="receipt-client-code">Cliente:</label><input id="receipt-client-code" autoFocus value={clientCode} onChange={(event) => resolveClientCode(event.target.value)} /><button type="button" aria-label="Buscar cliente" onClick={() => setClientSearchOpen(true)}>[...]</button><input value={client?.name ?? ""} readOnly aria-label="Nombre del cliente" /></div>
+          <div className="collection-receipt-row collection-receipt-labeled-row"><label htmlFor="receipt-collector">Cobrad.:</label><input id="receipt-collector" value={collector?.name ?? "Sin cobrador asignado"} readOnly /></div>
+          <div className="collection-receipt-row collection-receipt-labeled-row"><label htmlFor="receipt-payment-form">Forma:</label><input id="receipt-payment-form" value="Efectivo · registrado desde central" readOnly /></div>
         </div>
-
         <section className="collection-receipt-detail" aria-label="Detalle del recibo">
           <div className="collection-receipt-detail-toolbar">
-            <button type="button" onClick={requestAddLine}>Agregar</button>
-            <button type="button" disabled={!selectedLine} onClick={() => selectedLine && setEditingLine(selectedLine)}>Modificar</button>
-            <button type="button" disabled={!selectedLine} onClick={() => setConfirmDeleteOpen(true)}>Borrar</button>
-            <button type="button" onClick={() => { setSelectedLineId(""); setSaveError(""); toast.info("Detalle refrescado."); }}>Refrescar</button>
+            <button type="button" disabled={!client || client.active === false} onClick={() => setChargePickerOpen(true)}>Agregar</button><button type="button" disabled={!selectedLine} onClick={() => selectedLine && setEditingLine(selectedLine)}>Modificar</button><button type="button" disabled={!selectedLine} onClick={() => setConfirmDeleteOpen(true)}>Borrar</button><button type="button" onClick={onRefresh}>Actualizar saldos</button>
           </div>
-          <div className="collection-receipt-table-wrap">
-            <table className="collection-receipt-table">
-              <thead><tr><th>Nro.</th><th>Servicio</th><th>Concepto</th><th>Importe</th></tr></thead>
-              <tbody>{lines.length ? lines.map((line, index) => <tr key={line.id} className={selectedLineId === line.id ? "selected-row" : undefined} aria-selected={selectedLineId === line.id} role="button" tabIndex={0} onClick={() => setSelectedLineId(line.id)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedLineId(line.id))}>
-                <td>{index + 1}</td><td>{line.service}</td><td>{line.concept}</td><td className="numeric-cell">{money(line.amount)}</td>
-              </tr>) : <tr><td colSpan={4} className="collection-receipt-empty">Sin cargos agregados.</td></tr>}</tbody>
-            </table>
-          </div>
+          <div className="collection-receipt-table-wrap"><table className="collection-receipt-table"><thead><tr><th>Nro.</th><th>Servicio</th><th>Concepto</th><th>Importe</th></tr></thead><tbody>{lines.length ? lines.map((line, index) => <tr key={line.id} className={selectedLineId === line.id ? "selected-row" : undefined} aria-selected={selectedLineId === line.id} role="button" tabIndex={0} onClick={() => setSelectedLineId(line.id)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedLineId(line.id))}><td>{index + 1}</td><td>{line.service}</td><td>{line.concept}</td><td className="numeric-cell">{formatMoney(line.amount, "RD$")}</td></tr>) : <tr><td colSpan={4} className="collection-receipt-empty">Sin cargos agregados.</td></tr>}</tbody></table></div>
         </section>
-
-        {saveError && <div className="collection-receipt-error" role="alert">{saveError}</div>}
-        <div className="collection-receipt-footer">
-          <label className="collection-receipt-total">Total:<input value={money(total)} readOnly disabled aria-label="Total del recibo" /></label>
-          <div className="collection-receipt-footer-actions">
-            <button type="button" onClick={() => saveReceipt()}>Guardar</button>
-            <button type="button" onClick={() => saveReceipt(undefined, true)}>Guardar e Imp.</button>
-            <button type="button" onClick={onClose}>Cancelar</button>
-          </div>
-        </div>
-      </div>
-      {clientSearchOpen && <ClientSearchSubmodal clients={snapshot.clients} onClose={() => setClientSearchOpen(false)} onSelect={(selectedClient) => { setClientId(selectedClient.id); setClientCode(selectedClient.code); setClientSearchOpen(false); }} />}
-      {chargePickerOpen && client && <CollectionChargePickerDialog charges={snapshot.charges.filter((charge) => charge.clientId === client.id && charge.status !== "paid" && charge.status !== "cancelled" && charge.amount - charge.collected > 0)} onClose={() => setChargePickerOpen(false)} onSelect={addLine} />}
-      {editingLine && <ModifyReceiptAmountDialog line={editingLine} onClose={() => setEditingLine(null)} onSave={(amount) => { setLines((current) => current.map((line) => line.id === editingLine.id ? { ...line, amount } : line)); setEditingLine(null); }} />}
-      {confirmDeleteOpen && <LegacyConfirmDialog message="¿Está seguro que desea borrar el elemento actual?" onYes={() => { setLines((current) => current.filter((line) => line.id !== selectedLineId)); setSelectedLineId(""); setConfirmDeleteOpen(false); }} onNo={() => setConfirmDeleteOpen(false)} />}
-      {clientRequiredOpen && <LegacyAlertDialog message="Debe escoger un Cliente válido primero." onClose={() => setClientRequiredOpen(false)} />}
-    </LegacyDialog>
-  );
+      </fieldset>
+      {(saveError || request.error) && <div className="collection-receipt-error" role="alert">{saveError || request.error}</div>}
+      {request.uncertain && <p role="status">No se ha confirmado el resultado. Reintenta la misma solicitud para evitar cobros duplicados.</p>}
+      <div className="collection-receipt-footer"><label className="collection-receipt-total">Total:<input value={formatMoney(total, "RD$")} readOnly aria-label="Total del recibo" /></label><div className="collection-receipt-footer-actions"><button type="button" disabled={request.busy} onClick={() => void save(false)}>{request.busy ? "Guardando…" : request.uncertain ? "Reintentar" : "Guardar"}</button><button type="button" disabled={request.locked} onClick={() => void save(true)}>Guardar e Imp.</button><button type="button" disabled={request.locked} onClick={close}>Cancelar</button></div></div>
+    </div>
+    {clientSearchOpen && <ClientSearchSubmodal clients={snapshot.clients.filter((item) => item.active !== false)} onClose={() => setClientSearchOpen(false)} onSelect={(item) => chooseClient(item.id, item.code)} />}
+    {chargePickerOpen && <CollectionChargePickerDialog charges={eligibleCharges} onClose={() => setChargePickerOpen(false)} onSelect={addLine} />}
+    {editingLine && <ModifyReceiptAmountDialog line={editingLine} onClose={() => setEditingLine(null)} onSave={(amount) => { setLines((current) => current.map((line) => line.id === editingLine.id ? { ...line, amount } : line)); setEditingLine(null); }} />}
+    {confirmDeleteOpen && <LegacyConfirmDialog message="¿Borrar el cargo seleccionado del recibo?" onYes={() => { setLines((current) => current.filter((line) => line.id !== selectedLineId)); setSelectedLineId(""); setConfirmDeleteOpen(false); }} onNo={() => setConfirmDeleteOpen(false)} />}
+  </LegacyDialog>;
 }
 
 function CollectionChargePickerDialog({
@@ -9123,16 +8973,12 @@ function ModifyReceiptAmountDialog({
   onClose: () => void;
   onSave: (amount: number) => void;
 }>) {
-  const [amount, setAmount] = useState((line.amount / 100).toFixed(2));
+  const [amount, setAmount] = useState(String(BigInt(line.amount) / 100n) + "." + String(BigInt(line.amount) % 100n).padStart(2, "0"));
   const [error, setError] = useState("");
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    const cents = Math.round(Number(amount) * 100);
-    if (!Number.isFinite(cents) || cents <= 0) {
-      setError("El importe debe ser mayor a cero.");
-      return;
-    }
-    onSave(cents);
+    try { onSave(decimalCents(amount)); }
+    catch (failure) { setError(failure instanceof Error ? failure.message : "El importe no es válido."); }
   };
   return (
     <LegacyDialog title="Modificar Importe..." onClose={onClose} className="collection-receipt-modify-dialog" overlayClassName="collection-receipt-suboverlay">
@@ -9916,14 +9762,14 @@ function operationSpec(page: Page, snapshot: Snapshot): OperationSpec {
       ],
       rows: rows.map((movement, index) => ({
         __id: movement.id,
-        __date: movement.createdAt.slice(0, 10),
+        __date: movementBusinessDate(movement.createdAt),
         __status: "Activo",
         __amount: movement.amount,
         __raw: movement as unknown as Record<string, unknown>,
         n: index + 1,
         ident: client(movement.clientId)?.code,
         client: client(movement.clientId)?.name,
-        date: dateLabel(movement.createdAt.slice(0, 10)),
+        date: dateLabel(movementBusinessDate(movement.createdAt)),
         line: collector(movement.collectorId)?.name,
         receipt:
           movement.receiptToken?.slice(0, 10) ?? movement.id.slice(0, 10),
