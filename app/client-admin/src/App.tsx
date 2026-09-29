@@ -4835,6 +4835,8 @@ export default function App() {
                 <ReportView page={windowState.page} snapshot={snapshot} onRefresh={() => void refresh()} />
               ) : windowState.page === "remittances" || windowState.page === "exchangeRates" ? (
                 <RemittancesWorkspace api={remittancesApi} user={effectiveUser} isAdmin={["ADMIN", "SUPERADMIN"].includes(normalizeRole(effectiveUser.role))} initialTab={windowState.page === "exchangeRates" ? "tasas" : "envios"} />
+              ) : windowState.page === "recurringCharges" ? (
+                <RecurringChargesOperationalView snapshot={snapshot} currentUser={effectiveUser} onRefresh={() => void refresh()} />
               ) : isConnectedCatalog(windowState.page) ? (
                 <ConnectedCatalog page={windowState.page} snapshot={snapshot} onRefresh={() => void refresh()} />
               ) : ["stations", "groups", "pcps", "sessions", "traces", "authorizationRequests"].includes(windowState.page) ? (
