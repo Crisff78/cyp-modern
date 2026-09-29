@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // Restauracion de un dump pg_dump (formato custom) hacia una base DESTINO distinta.
 //
-// Uso desde la raiz del repo (via npm):
-//   npm run db:restore -- --file=<ruta del dump> --target=<base destino>
-//   npm run db:restore -- --file=<ruta del dump> --target=<base destino> --yes
+// Uso desde la raiz del repo (via pnpm):
+//   pnpm db:restore -- --file=<ruta del dump> --target=<base destino>
+//   pnpm db:restore -- --file=<ruta del dump> --target=<base destino> --yes
 //
 // - PROHIBIDO restaurar sobre la base de DATABASE_URL: se valida y se aborta.
 // - Si la base destino existe y ya tiene tablas en el esquema public, se
@@ -15,7 +15,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, statSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import pg from 'pg';
 import process from 'node:process';
 
@@ -39,7 +39,7 @@ function parseArgs(argv) {
 
 function readDatabaseUrl() {
   const raw = process.env.DATABASE_URL;
-  if (!raw) fail('DATABASE_URL no esta definida en el entorno. Ejecuta con el .env de la raiz (npm run db:restore).');
+  if (!raw) fail('DATABASE_URL no esta definida en el entorno. Ejecuta con el .env de la raiz (pnpm db:restore).');
   let url;
   try {
     url = new URL(raw);

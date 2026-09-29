@@ -38,6 +38,8 @@ import {
   type User,
 } from "./domain.js";
 import type { Store } from "./store.js";
+import { registerRemittanceRoutes } from "./remittance-routes.js";
+import { registerCatalogRoutes } from "./catalog-routes.js";
 
 type Config = {
   store: Store;
@@ -203,6 +205,10 @@ export async function buildApp(config: Config) {
           "La configuración de acceso cambió. Inicia sesión de nuevo.",
           401,
         );
+      if (u.role === "collector") {
+        const collector = (await config.store.read()).collectors.find((c) => c.id === u.collectorId);
+        if (!collector || collector.active === false) throw new DomainError("COLLECTOR_INACTIVE", "El cobrador está inactivo.", 403);
+      }
       return;
     }
     // Provisioned accounts: the token carries the account's credential
@@ -221,6 +227,8 @@ export async function buildApp(config: Config) {
         "La configuración de acceso cambió. Inicia sesión de nuevo.",
         401,
       );
+    if (u.role === "collector" && !state.collectors.some((c) => c.id === u.collectorId && c.active !== false))
+      throw new DomainError("COLLECTOR_INACTIVE", "El cobrador está inactivo.", 403);
   });
   const user = (req: FastifyRequest) => req.user as User;
   const paths: Record<string, Record<string, unknown>> = {};
@@ -386,6 +394,8 @@ export async function buildApp(config: Config) {
           "Correo o contraseña incorrectos.",
           401,
         );
+      if (u.role === "collector" && !(await config.store.read()).collectors.some((c) => c.id === u!.collectorId && c.active !== false))
+        throw new DomainError("COLLECTOR_INACTIVE", "El cobrador está inactivo.", 403);
       return {
         token: app.jwt.sign({ ...u, authVersion: version }, { expiresIn: "8h" }),
         user: u,
@@ -446,11 +456,11 @@ export async function buildApp(config: Config) {
         );
       if (
         body.collectorId &&
-        !state.collectors.some((c) => c.id === body.collectorId)
+        !state.collectors.some((c) => c.id === body.collectorId && c.active !== false)
       )
         throw new DomainError(
           "NOT_FOUND",
-          "El cobrador seleccionado no existe.",
+          "El cobrador seleccionado no existe o está inactivo.",
           404,
         );
       if (findAccount(state, email))
@@ -478,6 +488,23 @@ export async function buildApp(config: Config) {
       return publicAccount(account);
     },
   );
+  mutate("/api/usuarios/:id", "Editar perfil y permisos de cuenta", accountBody.omit({ password: true }), (state, actor, body, params) => {
+    assertAdmin(actor);
+    const account = state.accounts.find((item) => item.id === params.id);
+    if (!account) throw new DomainError("NOT_FOUND", "La cuenta no existe.", 404);
+    if (actor.id === account.id && body.role !== "admin") throw new DomainError("FORBIDDEN", "No puedes retirar tu propio acceso administrativo.", 403);
+    if (body.role === "collector" && !body.collectorId) throw new DomainError("COLLECTOR_REQUIRED", "Una cuenta de cobrador necesita un cobrador asignado.", 422);
+    if (body.role === "admin" && body.collectorId) throw new DomainError("COLLECTOR_NOT_ALLOWED", "Una cuenta de administración no se asocia a un cobrador.", 422);
+    if (body.collectorId && !state.collectors.some((item) => item.id === body.collectorId && item.active !== false))
+      throw new DomainError("COLLECTOR_INACTIVE", "Selecciona un cobrador activo.", 409);
+    const email = body.email.trim().toLowerCase();
+    if (state.accounts.some((item) => item.id !== account.id && item.email.toLowerCase() === email))
+      throw new DomainError("DUPLICATE_EMAIL", "Ya existe una cuenta con ese correo.", 409);
+    Object.assign(account, { name: body.name, email, role: body.role });
+    if (body.collectorId) account.collectorId = body.collectorId;
+    else delete account.collectorId;
+    touch(account); return publicAccount(account);
+  });
   mutate(
     "/api/usuarios/:id/clave",
     "Cambiar contraseña de una cuenta",
@@ -534,11 +561,10 @@ export async function buildApp(config: Config) {
   describe("get", "/api/snapshot", "Vista operacional autorizada");
 
   const moneyUnits = (value: number) => Number((value / 100).toFixed(2));
-  const stopCoordinates = (lat: number, lng: number, index: number) => ({
-    lat: Number((lat + 0.003 + index * 0.0017).toFixed(6)),
-    lng: Number((lng + 0.002 - index * 0.0013).toFixed(6)),
-  });
-  const mapDataForCollectors = (state: State, collectorIds: string[]) => {
+  const hasLocation = (item: { lat?: number | null; lng?: number | null }) =>
+    typeof item.lat === "number" && Number.isFinite(item.lat) && item.lat >= -90 && item.lat <= 90 &&
+    typeof item.lng === "number" && Number.isFinite(item.lng) && item.lng >= -180 && item.lng <= 180;
+  const mapDataForCollectors = (state: State, collectorIds: string[], routeIds?: string[]) => {
     const collectors = state.collectors.filter((collector) =>
       collectorIds.includes(collector.id),
     );
@@ -550,44 +576,41 @@ export async function buildApp(config: Config) {
       );
     const primary = collectors[0],
       clients = state.clients.filter((client) =>
+        (!routeIds || routeIds.includes(client.routeId)) &&
         collectors.some((collector) => {
           const route = state.routes.find((item) => item.id === client.routeId);
           return route?.collectorId === collector.id;
         }),
       );
-    const stops = clients.map((client, index) => {
-      const charge = state.charges.find((item) => item.clientId === client.id),
-        route = state.routes.find((item) => item.id === client.routeId),
-        routeCollector =
-          collectors.find((collector) => collector.id === route?.collectorId) ??
-          primary,
-        coords = stopCoordinates(routeCollector.lat, routeCollector.lng, index);
+    const stops = clients.filter(hasLocation).map((client, index) => {
+      const charges = state.charges.filter((item) => item.clientId === client.id && item.status !== "cancelled");
+      const pending = charges.filter((charge) => charge.collected < charge.amount);
       return {
         id: `pcp-${client.id}`,
         order: index + 1,
         client_name: client.name,
-        lat: coords.lat,
-        lng: coords.lng,
-        amount_due: moneyUnits(
-          (charge?.amount ?? 0) - (charge?.collected ?? 0),
-        ),
-        status: charge?.status ?? "pending",
-        obligated: Boolean(charge?.required),
+        lat: client.lat!,
+        lng: client.lng!,
+        amount_due: moneyUnits(pending.reduce((sum, charge) => sum + charge.amount - charge.collected, 0)),
+        status: pending.length ? "pending" : charges.length ? "paid" : "pending",
+        obligated: pending.some((charge) => charge.required),
       };
     });
     return {
       collector: {
         id: primary.id,
         name: primary.name,
-        phone: clients[0]?.phone ?? "809-555-0101",
-        lat: primary.lat,
-        lng: primary.lng,
+        phone: primary.cellular ?? "",
+        lat: hasLocation(primary) ? primary.lat : null,
+        lng: hasLocation(primary) ? primary.lng : null,
         cash_in_hand: moneyUnits(preview(state, primary.id).difference),
         collection_limit: moneyUnits(primary.collectionLimit),
         payout_limit: moneyUnits(primary.payoutLimit),
         last_ping: primary.lastSeen,
       },
       stops,
+      missingLocationCount: clients.length - stops.length,
+      collectorLocationMissing: !hasLocation(primary),
       route_geometry: null,
     };
   };
@@ -625,7 +648,7 @@ export async function buildApp(config: Config) {
           "No encontramos esta ruta.",
           404,
         );
-      return mapDataForCollectors(state, [route.collectorId]);
+      return mapDataForCollectors(state, [route.collectorId], [route.id]);
     },
   );
   describe(
@@ -639,7 +662,7 @@ export async function buildApp(config: Config) {
       const u = user(req);
       assertAdmin(u);
       const state = await config.store.read(),
-        routes = state.routes.filter((item) => item.sector === req.params.id);
+        routes = state.routes.filter((item) => item.zoneId === req.params.id || item.sector === req.params.id);
       if (!routes.length)
         throw new DomainError(
           "ZONE_NOT_FOUND",
@@ -649,6 +672,7 @@ export async function buildApp(config: Config) {
       return mapDataForCollectors(
         state,
         routes.map((route) => route.collectorId),
+        routes.map((route) => route.id),
       );
     },
   );
@@ -687,7 +711,7 @@ export async function buildApp(config: Config) {
       throw new DomainError("ROUTE_NOT_FOUND", "Selecciona una ruta válida.", 404);
     if (s.clients.some((client) => client.code === b.code))
       throw new DomainError("CLIENT_CODE_EXISTS", "El código de cliente ya existe.", 409);
-    const client = { id: randomUUID(), ...b };
+    const client = { id: randomUUID(), active: true, ...b };
     s.clients.push(client);
     return client;
   });
@@ -1164,13 +1188,18 @@ export async function buildApp(config: Config) {
       },
     );
   }
+  registerCatalogRoutes(app, config.store, user, mutate, describe);
+  registerRemittanceRoutes(app, config.store, user, mutate, describe, config.demo ? [
+    { id: "demo-admin", name: "Administración", role: "admin" },
+    { id: "demo-collector", name: "Ana Martínez", role: "collector", collectorId: "col-1" },
+  ] : [{ id: "configured-admin", name: "Administración", role: "admin" }]);
   app.get("/api/openapi.json", () => ({
     openapi: "3.1.0",
     info: {
       title: "Cobros y Pagos API",
       version: "0.1.0",
       description:
-        "Centavos enteros DOP. Sin impuestos ni amortización. Idempotency-Key requerido en operaciones financieras.",
+        "Cobros en centavos DOP; envíos con caja separada DOP/USD/EUR. Idempotency-Key requerido en operaciones financieras.",
     },
     servers: [{ url: "/" }],
     components: {

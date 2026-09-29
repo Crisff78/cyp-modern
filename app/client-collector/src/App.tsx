@@ -19,7 +19,6 @@ import {
   CircleAlert,
   Clock3,
   CloudOff,
-  Compass,
   Download,
   Eye,
   EyeOff,
@@ -52,6 +51,11 @@ import {
 } from "./api";
 import { CollectionSheet } from "./CollectionSheet";
 import { ReceiptView } from "./ReceiptView";
+import RemittancesWorkspace from "../../shared/remittances/RemittancesWorkspace";
+import { remittancesApi } from "./remittancesApi";
+import { isMockToken } from "./mock";
+import { GeoMap } from "../../client-admin/src/GeoMap";
+import { locationUnavailable, locationError, validLocation } from "../../shared/geolocation";
 import { transformRouteToMap } from "./services/mapAdapter";
 import type {
   Charge,
@@ -63,7 +67,8 @@ import type {
 } from "./types";
 import { canAccessCollector, enrichUserRole, isSuspendedUser } from "./types";
 
-type View = "route" | "payouts" | "receipts" | "pocket";
+const APP_BASE_URL = import.meta.env.BASE_URL;
+type View = "route" | "payouts" | "receipts" | "pocket" | "remittances";
 type Filter = "Todos" | "Pendientes" | "Cobrados" | "Con atraso";
 type RouteMode = "Por rutas" | "Por zonas" | "Rutas y zonas";
 type InstallEvent = Event & {
@@ -74,6 +79,7 @@ const tabs = [
   { id: "route", name: "Mi ruta", icon: Route },
   { id: "payouts", name: "Pagos", icon: ArrowUpRight },
   { id: "receipts", name: "Recibos", icon: ReceiptText },
+  { id: "remittances", name: "Envíos", icon: ArrowRight },
   { id: "pocket", name: "Mi bolsillo", icon: Wallet },
 ] as const;
 const getView = (): View => {
@@ -109,6 +115,7 @@ export function App() {
   const [trackingBusy, setTrackingBusy] = useState(false);
   const trackingRef = useRef<number | null>(null);
   const lastLocationSent = useRef(0);
+  const [trackingDetail, setTrackingDetail] = useState("");
 
   useEffect(() => {
     const on = () => setOnline(true);
@@ -209,12 +216,16 @@ export function App() {
   function navigate(next: View) {
     setView(next);
     setReceiptToken(null);
-    history.pushState({}, "", next === "route" ? "/" : `/?view=${next}`);
+    history.pushState(
+      {},
+      "",
+      next === "route" ? APP_BASE_URL : `${APP_BASE_URL}?view=${next}`,
+    );
     window.scrollTo({ top: 0, behavior: "instant" });
   }
   function openReceipt(token: string) {
     setReceiptToken(token);
-    history.pushState({}, "", `/?receipt=${encodeURIComponent(token)}`);
+    history.pushState({}, "", `${APP_BASE_URL}?receipt=${encodeURIComponent(token)}`);
     window.scrollTo({ top: 0, behavior: "instant" });
   }
   function stopTracking() {
@@ -230,8 +241,10 @@ export function App() {
       toast("Ubicación compartida detenida");
       return;
     }
-    if (!navigator.geolocation) {
-      toast.error("Este navegador no permite obtener tu ubicación.");
+    const unavailable = locationUnavailable();
+    if (unavailable) {
+      setTrackingDetail(unavailable);
+      toast.error(unavailable);
       return;
     }
     if (!online) {
@@ -239,13 +252,14 @@ export function App() {
       return;
     }
     setTrackingBusy(true);
+    setTrackingDetail("Solicitando permiso y señal GPS…");
     lastLocationSent.current = 0;
     trackingRef.current = navigator.geolocation.watchPosition(
       (position) => {
         if (!navigator.onLine || Date.now() - lastLocationSent.current < 45000)
           return;
         lastLocationSent.current = Date.now();
-        void api("/tracking", {
+        void remittancesApi("/tracking", {
           method: "POST",
           body: JSON.stringify({
             lat: position.coords.latitude,
@@ -256,10 +270,12 @@ export function App() {
             if (trackingRef.current !== null) {
               setTracking(true);
               setTrackingBusy(false);
+              setTrackingDetail(`Ubicación enviada ${new Date().toLocaleTimeString("es-DO")} · precisión aproximada ${Math.round(position.coords.accuracy)} m`);
             }
           })
           .catch((err) => {
             stopTracking();
+            setTrackingDetail("No se confirmó el envío de ubicación. Revisa la conexión y vuelve a activar GPS.");
             lastLocationSent.current = 0;
             toast.error(
               err instanceof Error
@@ -268,11 +284,10 @@ export function App() {
             );
           });
       },
-      () => {
+      (error) => {
         stopTracking();
-        toast.error(
-          "No se pudo obtener tu ubicación. Revisa el permiso del navegador.",
-        );
+        setTrackingDetail(locationError(error));
+        toast.error(locationError(error));
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 },
     );
@@ -333,15 +348,12 @@ export function App() {
       <a className="skip-link" href="#main">
         Saltar al contenido
       </a>
-      <div className="demo-strip">
-        <span />
-        Entorno de demostración
-      </div>
+      {(isMockToken(getToken()) || snapshot?.clients.some((client) => /PRUEBA|SINT[ÉE]TIC|DEMO/i.test(client.note ?? ""))) && <div className="demo-strip"><span />DATOS DE PRUEBA</div>}
       <header className="app-header">
         <div className="header-top">
           <a
             className="brand"
-            href="/"
+            href={APP_BASE_URL}
             onClick={(event) => {
               event.preventDefault();
               navigate("route");
@@ -464,6 +476,7 @@ export function App() {
             {view === "receipts" && (
               <ReceiptsView snapshot={snapshot} onOpen={openReceipt} />
             )}
+            {view === "remittances" && user && <RemittancesWorkspace api={remittancesApi} user={user} isAdmin={String(user.role).toUpperCase().replace("ROLE_", "") === "SUPERADMIN"} />}
             {view === "pocket" && (
               <PocketView
                 snapshot={snapshot}
@@ -479,6 +492,7 @@ export function App() {
             )}
           </>
         )}
+        {view === "pocket" && trackingDetail && <p className="location-feedback" role="status">{trackingDetail}</p>}
         <div className="content-end">
           <ShieldCheck size={14} />
           <span>CyP · Cobros y pagos, bajo control.</span>
@@ -565,13 +579,13 @@ function Login({
   initialError: string;
   onRetry?: () => void;
 }) {
-  const [email, setEmail] = useState("collector.demo");
-  const [password, setPassword] = useState("Demo-CyP-2026!");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(initialError);
   useEffect(() => setError(initialError), [initialError]);
-  async function submit(event?: FormEvent, demo = false) {
+  async function submit(event?: FormEvent) {
     event?.preventDefault();
     setBusy(true);
     setError("");
@@ -579,8 +593,8 @@ function Login({
       const result = await api<{ token: string; user: User }>("/auth/login", {
         method: "POST",
         body: JSON.stringify({
-          email: demo ? "collector.demo" : email,
-          password: demo ? "Demo-CyP-2026!" : password,
+          email,
+          password,
         }),
       });
       const next = enrichUserRole(result.user);
@@ -727,24 +741,7 @@ function Login({
             Verificar mi sesión guardada
           </button>
         )}
-        <div className="login-divider">
-          <span />
-          Ambiente de prueba
-          <span />
-        </div>
-        <button
-          className="secondary demo-button"
-          onClick={() => void submit(undefined, true)}
-          disabled={busy || !online}
-        >
-          <Compass size={19} />
-          Acceso Rápido Demo
-        </button>
-        <p className="login-note">
-          Entorno de demostración · Datos ficticios
-          <br />
-          La cuenta de prueba requiere DEMO_MODE=true.
-        </p>
+        <p className="login-note">Accede con la cuenta habilitada por el administrador.</p>
         <footer>
           <Fingerprint size={18} />
           Cobros y Pagos Móviles
@@ -778,29 +775,29 @@ function RouteView({
     clientId: string;
     chargeId: string;
   } | null>(null);
-  const [gpsStatus, setGpsStatus] = useState<
-    "Solicitando GPS" | "GPS activo" | "GPS no disponible"
-  >("Solicitando GPS");
+  const [gpsStatus, setGpsStatus] = useState("GPS sin solicitar");
   const [origin, setOrigin] = useState<{ lat: number; lng: number } | null>(
     null,
   );
-  useEffect(() => {
-    if (!navigator.geolocation) {
-      setGpsStatus("GPS no disponible");
+  const locate = () => {
+    const unavailable = locationUnavailable();
+    if (unavailable) {
+      setGpsStatus(unavailable);
       return;
     }
+    setGpsStatus("Solicitando permiso y señal GPS…");
     navigator.geolocation.getCurrentPosition(
       (position) => {
         setOrigin({
           lat: position.coords.latitude,
           lng: position.coords.longitude,
         });
-        setGpsStatus("GPS activo");
+        setGpsStatus(`GPS obtenido · precisión aproximada ${Math.round(position.coords.accuracy)} m`);
       },
-      () => setGpsStatus("GPS no disponible"),
-      { enableHighAccuracy: true, timeout: 8000 },
+      (error) => setGpsStatus(locationError(error)),
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 },
     );
-  }, []);
+  };
   const charges = snapshot.charges.filter(
     (charge) => charge.status !== "cancelled",
   );
@@ -844,15 +841,15 @@ function RouteView({
     (row) => row.status !== "paid",
   );
   const routeMap = transformRouteToMap(
-    list.map(({ client, charges: rows }, index) => {
+    list.filter(({ client }) => validLocation(client.lat, client.lng)).map(({ client, charges: rows }, index) => {
       const pendingCharge =
         rows.find((row) => row.status !== "paid") ?? rows[0];
       return {
         id: client.id,
         order: index + 1,
         clientName: client.name,
-        lat: 19.4517 + index * 0.0021,
-        lng: -70.697 - index * 0.0014,
+        lat: client.lat!,
+        lng: client.lng!,
         amountDue: rows.reduce(
           (sum, row) => sum + row.amount - row.collected,
           0,
@@ -867,8 +864,7 @@ function RouteView({
       };
     }),
   );
-  const estimatedKm = Math.max(0.7, routeMap.waypoints.length * 1.35);
-  const estimatedMinutes = Math.max(8, routeMap.waypoints.length * 7);
+  const missingLocations = list.length - routeMap.waypoints.length;
   return (
     <>
       <div className="page-greeting">
@@ -936,12 +932,12 @@ function RouteView({
       </section>
       <section className="route-metrics">
         <div>
-          <span>Distancia restante</span>
-          <strong>{estimatedKm.toFixed(1)} km</strong>
+          <span>Clientes ubicados</span>
+          <strong>{routeMap.waypoints.length} con GPS</strong>
         </div>
         <div>
-          <span>Tiempo estimado</span>
-          <strong>{estimatedMinutes} min</strong>
+          <span>Ubicación pendiente</span>
+          <strong>{missingLocations} sin GPS</strong>
         </div>
         <div>
           <span>Pendientes / Procesadas</span>
@@ -983,33 +979,15 @@ function RouteView({
           </button>
         </div>
         {display === "map" ? (
-          <div
-            className="collector-route-map"
-            role="img"
-            aria-label="Mapa de paradas calculado desde la ubicación GPS del cobrador"
-          >
-            <span className="gps-origin" style={{ left: "16%", top: "72%" }}>
-              Tú
-            </span>
-            {routeMap.markers.slice(0, 8).map((marker, index) => (
-              <span
-                className={`route-marker ${marker.color}`}
-                key={marker.id}
-                title={`${marker.popupTitle} · ${marker.popupSubtitle}`}
-                style={{
-                  left: `${24 + ((index * 17) % 58)}%`,
-                  top: `${20 + ((index * 23) % 48)}%`,
-                }}
-              >
-                {marker.order}
-              </span>
-            ))}
-            <i />
-            <small>
-              {origin
-                ? `GPS ${origin.lat.toFixed(4)}, ${origin.lng.toFixed(4)}`
-                : "Esperando posición GPS"}
-            </small>
+          <div className="real-route-map">
+            <GeoMap points={[
+              ...routeMap.markers.map((marker) => ({ id: marker.id, lat: marker.lat, lng: marker.lng, label: marker.clientName, detail: marker.popupSubtitle, kind: marker.status === "paid" ? "paid" as const : "pending" as const })),
+              ...(origin ? [{ id: "my-location", ...origin, label: "Mi ubicación GPS", kind: "operator" as const }] : []),
+            ]} />
+            <button className="secondary" type="button" onClick={locate}>Obtener mi ubicación GPS</button>
+            <p className="location-feedback" role="status">{gpsStatus}</p>
+            {missingLocations > 0 && <p>{missingLocations} cliente(s) sin coordenadas registradas. Puedes ver sus datos en la lista.</p>}
+            {list.some(({ client }) => /PRUEBA|SINT[ÉE]TIC|DEMO/i.test(client.note ?? "")) && <p className="location-feedback">DATOS DE PRUEBA: las ubicaciones de ejemplo sirven para revisar la aplicación.</p>}
           </div>
         ) : (
           <div className="compact-route-list">
@@ -1245,7 +1223,7 @@ function StopCard({
       </div>
       <a
         className="stop-address"
-        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(client.address)}`}
+        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(validLocation(client.lat, client.lng) ? `${client.lat},${client.lng}` : client.address)}`}
         target="_blank"
         rel="noreferrer"
       >

@@ -82,7 +82,8 @@ trazas, usuarios/roles, limites de cobrador, motivos de atraso, frecuencias
 | G9 | ~~Campos de contacto del cliente~~ **IMPLEMENTADO 2026-09-19** (legacy: alias, sector, telefono, celular, direccion, nota, email — validado contra layout A del .bak; el modelo nuevo solo tenia name/code/phone/address) | `006_client_contact.sql`, Client type, store carga/persistencia, formulario de cliente en QuickRecordModal, mock | MEDIA |
 
 Decisiones cerradas que explican diferencias intencionales (no son brechas):
-moneda unica DOP (selectores de Moneda del original quedan como pantalla),
+el libro original de cobros y pagos conserva DOP; Envíos usa DOP/USD/EUR en
+caja propia (véase [ENVIOS-API.md](ENVIOS-API.md)),
 cobros sin detalle de lineas (collections→charges), clientes no importados
 directo del .bak, credenciales hasheadas.
 

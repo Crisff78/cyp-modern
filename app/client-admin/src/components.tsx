@@ -45,6 +45,7 @@ export function Modal({
   children,
   sheet = false,
   className = "",
+  overlayClassName = "",
 }: {
   open: boolean;
   onClose: () => void;
@@ -53,6 +54,7 @@ export function Modal({
   children: ReactNode;
   sheet?: boolean;
   className?: string;
+  overlayClassName?: string;
 }) {
   return (
     <Dialog.Root
@@ -62,7 +64,7 @@ export function Modal({
       }}
     >
       <Dialog.Portal>
-        <Dialog.Overlay className="dialog-overlay" />
+        <Dialog.Overlay className={`dialog-overlay ${overlayClassName}`} />
         <Dialog.Content
           className={`${sheet ? "sheet" : "dialog"} ${className}`}
         >
@@ -249,8 +251,10 @@ export function CollectorMap({
         zoomControl={large}
       >
         <TileLayer
-          url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
+          url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>'
+          referrerPolicy="strict-origin-when-cross-origin"
+          maxZoom={19}
           eventHandlers={{
             tileerror: () => setTileError(true),
             tileload: () => setTileError(false),
@@ -262,7 +266,7 @@ export function CollectorMap({
           .map((collector, index) => (
             <Marker
               key={collector.id}
-              position={[collector.lat, collector.lng]}
+              position={[collector.lat!, collector.lng!]}
               icon={divIcon({
                 className: "",
                 html: `<div class="map-pin map-pin-${collector.status} color-${index % 3}"><span>${collector.initials.replace(/[^A-ZÁÉÍÓÚÑ]/gi, "")}</span><i></i></div>`,

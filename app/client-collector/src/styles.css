@@ -756,9 +756,7 @@ strong {
   font-size: 11px;
 }
 .current-stop-sheet {
-  position: sticky;
-  bottom: 82px;
-  z-index: 20;
+  position: static;
   margin-top: 14px;
   padding: 14px;
   border: 1px solid #bbf7d0;
@@ -1103,7 +1101,7 @@ strong {
   left: 50%;
   transform: translateX(-50%);
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   background: #ffffffef;
   backdrop-filter: blur(16px);
   border-top: 1px solid #e1e7e1;

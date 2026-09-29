@@ -1,8 +1,11 @@
-# Implementation coordination contract
+# Initial implementation coordination contract
 
-Two Spanish-language React + Vite frontends share a Fastify API on port 3001, under `/api`. Admin Vite port 5173, collector 5174; proxy `/api` to 3001. Root npm workspaces are `app/server`, `app/client-admin`, `app/client-collector`. Each frontend owns its package.json, tsconfig.json, vite.config.ts and src/public files; no root modifications.
+Historical design reference. For current setup and project state, use
+[README.md](../README.md) and [AGENTS.md](../AGENTS.md).
 
-Use React, TypeScript, lucide-react, Sonner, Tailwind via @tailwindcss/vite, @radix-ui/react-dialog (accessible dialogs/sheets); CSS tokens slate/white and emerald accents, Inter. No native mobile. Use npm current stable compatible versions; root performs npm install.
+Two Spanish-language React + Vite frontends share a Fastify API on port 3001, under `/api`. Admin Vite port 5173, collector 5174; proxy `/api` to 3001. Root pnpm workspaces are `app/server`, `app/client-admin`, `app/client-collector`. Each frontend owns its package.json, tsconfig.json, vite.config.ts and src/public files.
+
+Use React, TypeScript, lucide-react, Sonner, Tailwind via @tailwindcss/vite, @radix-ui/react-dialog (accessible dialogs/sheets); CSS tokens slate/white and emerald accents, Inter. No native mobile. Use the pnpm version pinned in `package.json` and the frozen lockfile.
 
 API amounts are integer centavos; format as DOP / RD$. Server uses local Dominican date YYYY-MM-DD. JSON request/response. Errors `{error:{code,message}}`. Login `POST /api/auth/login {email,password}` returns `{token,user:{id,name,role,collectorId?}}`; bearer auth. Demo accounts admin@cyp.local and collector@cyp.local, password `Demo-CyP-2026!` only enabled with DEMO_MODE=true. Keep token in sessionStorage; login screen and explicit demo entry button allowed. GET `/api/auth/me` returns user. GET `/api/snapshot` returns shape below, collector role scoped. Refresh after mutations; visible refresh and loading/error states. Always label fictional seed data `Entorno de demostración`.
 

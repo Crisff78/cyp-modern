@@ -77,7 +77,6 @@ import {
   Modal,
   SectionHeading,
 } from "./components";
-import MapViewer, { type MapViewerType } from "./components/MapViewer";
 import { exportCsv } from "./Dashboard";
 import {
   dispatchMarkerClick,
@@ -91,6 +90,16 @@ import { parseImportCsv } from "./services/importCsv";
 import { isMockToken } from "./mock";
 import OperationModal, { type Operation } from "./Operations";
 import AccountModal, { type AccountOperation } from "./Users";
+import RemittancesWorkspace from "../../shared/remittances/RemittancesWorkspace";
+import { remittancesApi } from "./remittancesApi";
+import { GeoMap, type GeoPoint } from "./GeoMap";
+import { MonitorGeoMap } from "./MonitorGeoMap";
+import { ConnectedCatalog, isConnectedCatalog } from "./ConnectedCatalog";
+import { ConnectedSettlements } from "./ConnectedSettlements";
+import { ConnectedLegacyReports } from "./ConnectedLegacyReports";
+import { locationUnavailable, locationError as gpsError, validLocation } from "../../shared/geolocation";
+
+const collectorUrl = String(import.meta.env.VITE_COLLECTOR_URL || "http://127.0.0.1:5174");
 import {
   canAccessAdmin,
   enrichUserRole,
@@ -129,6 +138,7 @@ const navigation: {
 }[] = [
   { key: "admin-panel", action: "controlPanel", label: "Admin.", icon: ServerCog, group: "ARCHIVOS" },
   { key: "clients", page: "clients", label: "Clientes", icon: FolderOpen, group: "ARCHIVOS" },
+  { key: "remittances", page: "remittances", label: "Envíos de Dinero", icon: ArrowRight, group: "PAGOS" },
   {
     key: "direct-charges",
     page: "charges",
@@ -215,6 +225,7 @@ const pageTitles: Record<Page, string> = {
   servicesProducts: "Servicios y Productos",
   delayReasons: "Motivos de Atraso",
   exchangeRates: "Tasas de Cambio",
+  remittances: "Envíos de Dinero",
   sessions: "Listado de Sesiones",
   traces: "Trazas del Sistema",
   users: "Usuarios",
@@ -394,6 +405,7 @@ const focusWindowCollection = (windows: MdiWindowState[], focusedId: string, zIn
   });
 
 const mdiWindowSize = (page: MdiPage): MdiWindowSize => {
+  if (page === "remittances" || page === "exchangeRates") return { width: 980, height: 640 };
   if (page === "controlPanel") return { width: 600, height: 390 };
   if (page === "reports") return { width: 720, height: 430 };
   if (page === "recurringCharges") return { width: 860, height: 520 };
@@ -636,7 +648,7 @@ function ReportView({ page, snapshot, onRefresh }: Readonly<{ page: ReportPageId
       )}
     </>
   );
-  return <ReportLayout title={title} snapshot={snapshot}>{filters}</ReportLayout>;
+  return <ConnectedLegacyReports page={page} title={title} snapshot={snapshot} onRefresh={onRefresh} />;
 }
 
 function MdiWindow({ windowState, onClose, onFocus, onMove, children }: Readonly<{ windowState: MdiWindowState; onClose: (id: string) => void; onFocus: (id: string) => void; onMove: (id: string, x: number, y: number) => void; children: ReactNode }>) {
@@ -661,7 +673,7 @@ function MdiWindow({ windowState, onClose, onFocus, onMove, children }: Readonly
     setDrag({ startX: event.clientX, startY: event.clientY, x: windowState.x, y: windowState.y });
   };
   return (
-    <section className={`mdi-window ${windowState.isFocused ? "focused" : ""}`} style={{ left: windowState.x, top: windowState.y, width: windowState.width, height: windowState.height, zIndex: windowState.zIndex }} onPointerDownCapture={focusIfNeeded} role="dialog" aria-label={windowState.title}>
+    <section className={`mdi-window ${windowState.isFocused ? "focused" : ""} ${windowState.page === "remittances" || windowState.page === "exchangeRates" ? "remittances-mdi-window" : ""}`} style={{ left: windowState.x, top: windowState.y, width: windowState.width, height: windowState.height, zIndex: windowState.zIndex }} onPointerDownCapture={focusIfNeeded} role="dialog" aria-label={windowState.title}>
       <div className="mdi-window-titlebar" onMouseDown={startDrag}><span>{windowState.title}</span><button type="button" aria-label={`Cerrar ${windowState.title}`} onMouseDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onClose(windowState.id); }}><X size={15} /></button></div>
       <div className="mdi-window-content">{children}</div><span className="mdi-resize-cue" aria-hidden="true" />
     </section>
@@ -2153,7 +2165,7 @@ const clientRecordFromSnapshot = (client: Client, routes: Snapshot["routes"]): C
   cellular: client.cellular ?? "",
   email: client.email ?? "",
   note: client.note ?? "",
-  active: true,
+  active: client.active ?? true,
   lat: client.lat,
   lng: client.lng,
 });
@@ -2259,15 +2271,17 @@ function ClientFinancialDialog({ client, snapshot, onClose }: Readonly<{ client:
 type ClientMapStyle = "Hybrid" | "Roadmap" | "Satellite" | "Terrain";
 
 function ClientMapDialog({ client, onClose, onSave }: Readonly<{ client: ClientLegacyRecord; onClose: () => void; onSave: (lat: number, lng: number) => Promise<boolean> }>) {
-  const [mapStyle, setMapStyle] = useState<ClientMapStyle>("Hybrid");
-  const [latitude, setLatitude] = useState(String(client.lat ?? 19.4517));
-  const [longitude, setLongitude] = useState(String(client.lng ?? -69.9700));
-  const [pinPosition, setPinPosition] = useState({ x: 50, y: 50 });
+  const [latitude, setLatitude] = useState(client.lat === undefined ? "" : String(client.lat));
+  const [longitude, setLongitude] = useState(client.lng === undefined ? "" : String(client.lng));
+  const [locating, setLocating] = useState(false);
+  const [locationError, setLocationError] = useState("");
+  const [locationDetail, setLocationDetail] = useState("");
   const [saving, setSaving] = useState(false);
+  const validCoordinates = latitude.trim() !== "" && longitude.trim() !== "" && Number.isFinite(Number(latitude)) && Math.abs(Number(latitude)) <= 90 && Number.isFinite(Number(longitude)) && Math.abs(Number(longitude)) <= 180;
   const save = async (closeAfterSave: boolean) => {
     const lat = Number(latitude);
     const lng = Number(longitude);
-    if (!Number.isFinite(lat) || lat < -90 || lat > 90 || !Number.isFinite(lng) || lng < -180 || lng > 180) {
+    if (!validCoordinates) {
       toast.error("Indica una latitud y longitud válidas.");
       return;
     }
@@ -2279,29 +2293,26 @@ function ClientMapDialog({ client, onClose, onSave }: Readonly<{ client: ClientL
       setSaving(false);
     }
   };
-  const placePin = (event: ReactMouseEvent<HTMLDivElement>) => {
-    const bounds = event.currentTarget.getBoundingClientRect();
-    const x = Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width));
-    const y = Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height));
-    setLatitude((19.95 - y * 1.05).toFixed(6));
-    setLongitude((-70.85 + x * 1.05).toFixed(6));
-    setPinPosition({ x: x * 100, y: y * 100 });
+  const locate = () => {
+    const unavailable = locationUnavailable();
+    if (unavailable) { setLocationError(`${unavailable} También puedes introducir coordenadas manualmente.`); return; }
+    setLocating(true); setLocationError("");
+    navigator.geolocation.getCurrentPosition((position) => {
+      setLatitude(position.coords.latitude.toFixed(6)); setLongitude(position.coords.longitude.toFixed(6)); setLocating(false);
+      setLocationDetail(`GPS obtenido ${new Date(position.timestamp).toLocaleTimeString("es-DO")} · precisión aproximada ${Math.round(position.coords.accuracy)} m. Revisa el punto antes de guardar.`);
+    }, (error) => { setLocating(false); setLocationError(gpsError(error)); }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 });
   };
   return (
-    <LegacyDialog title="Mapa del Cliente..." onClose={onClose} className={`client-map-dialog map-style-${mapStyle.toLowerCase()}`}>
-      <div className="client-map-view">
-        <div className="client-map-toolbar" role="group" aria-label="Tipo de mapa">
-          {(["Hybrid", "Roadmap", "Satellite", "Terrain"] as const).map((style) => <button key={style} type="button" className={mapStyle === style ? "active" : ""} onClick={() => setMapStyle(style)}>{style}</button>)}
-        </div>
-        <div className="client-map-canvas" role="button" tabIndex={0} aria-label="Seleccionar ubicación en el mapa" onClick={placePin} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); const bounds = event.currentTarget.getBoundingClientRect(); setLatitude((19.95 - (event.currentTarget.clientHeight / 2 / bounds.height) * 1.05).toFixed(6)); setLongitude((-70.85 + (event.currentTarget.clientWidth / 2 / bounds.width) * 1.05).toFixed(6)); } }}>
-          <div className="client-map-river" />
-          <div className="client-map-road road-one" /><div className="client-map-road road-two" /><div className="client-map-road road-three" />
-          <div className="client-map-label map-label-one">Centro</div><div className="client-map-label map-label-two">Los Jardines</div><div className="client-map-label map-label-three">Av. Principal</div>
-          <span className="client-map-pin" style={{ left: `${pinPosition.x}%`, top: `${pinPosition.y}%` }}><MapPinned size={24} /><small>{client.name}</small></span>
-          <span className="client-map-hint">Haz clic para marcar la ubicación</span>
-        </div>
-        <div className="client-map-coordinates"><label>Latitud:<input value={latitude} onChange={(event) => setLatitude(event.target.value)} /></label><label>Longitud:<input value={longitude} onChange={(event) => setLongitude(event.target.value)} /></label></div>
-        <div className="client-map-actions"><button type="button" onClick={() => { setLatitude(String(client.lat ?? 19.4517)); setLongitude(String(client.lng ?? -69.9700)); setPinPosition({ x: 50, y: 50 }); }}>Ajustar</button><button type="button" onClick={() => void save(true)} disabled={saving}>oK</button><button type="button" className="primary" onClick={() => void save(false)} disabled={saving}>{saving ? "Guardando…" : "Guardar"}</button><button type="button" onClick={onClose}>Cerrar</button></div>
+    <LegacyDialog title="Ubicación del Cliente..." onClose={onClose} className="client-map-dialog">
+      <div className="client-map-view client-location-real">
+        <p><strong>{client.name}</strong>. Introduce coordenadas verificadas o usa tu GPS si estás en la ubicación del cliente.</p>
+        {/PRUEBA|SINT[ÉE]TIC|DEMO/i.test(client.note) && <p className="location-feedback">DATOS DE PRUEBA: revisa estas coordenadas antes de usarlas como ubicación real.</p>}
+        <div className="client-map-coordinates"><label>Latitud:<input inputMode="decimal" value={latitude} onChange={(event) => setLatitude(event.target.value)} /></label><label>Longitud:<input inputMode="decimal" value={longitude} onChange={(event) => setLongitude(event.target.value)} /></label></div>
+        {locationError && <p role="alert">{locationError}</p>}
+        {locationDetail && <p role="status">{locationDetail}</p>}
+        <GeoMap points={validCoordinates ? [{ id: client.id, lat: Number(latitude), lng: Number(longitude), label: client.name }] : []} onPick={(lat, lng) => { setLatitude(lat.toFixed(6)); setLongitude(lng.toFixed(6)); setLocationDetail("Punto seleccionado en el mapa. Guarda para confirmar la ubicación."); }} />
+        <p>También puedes tocar el mapa para seleccionar el punto.</p>
+        <div className="client-map-actions"><button type="button" onClick={locate} disabled={locating || saving}>{locating ? "Obteniendo GPS…" : "Usar mi ubicación GPS"}</button>{validCoordinates && <a href={`https://www.openstreetmap.org/?mlat=${encodeURIComponent(latitude)}&mlon=${encodeURIComponent(longitude)}#map=17/${encodeURIComponent(latitude)}/${encodeURIComponent(longitude)}`} target="_blank" rel="noopener noreferrer">Ver punto en mapa</a>}<button type="button" onClick={() => void save(true)} disabled={saving || locating}>Guardar y cerrar</button><button type="button" className="primary" onClick={() => void save(false)} disabled={saving || locating}>{saving ? "Guardando…" : "Guardar"}</button><button type="button" onClick={onClose}>Cerrar</button></div>
       </div>
     </LegacyDialog>
   );
@@ -2449,8 +2460,8 @@ function ClientsLegacyView({ snapshot, onRefresh }: Readonly<{ snapshot: Snapsho
   const saveClient = async (draft: ClientLegacyDraft) => {
     try {
       const isEdit = formMode === "edit" && selectedClient;
-      const saved = await api<Client>(isEdit ? `/clientes/${encodeURIComponent(selectedClient.id)}` : "/clientes", {
-        method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify(clientPayload(draft, isEdit && selectedClient.lat !== undefined && selectedClient.lng !== undefined ? { lat: selectedClient.lat, lng: selectedClient.lng } : undefined)),
+      const saved = await remittancesApi<Client>(isEdit ? `/clientes/${encodeURIComponent(selectedClient.id)}` : "/clientes", {
+        method: "POST", body: JSON.stringify(clientPayload(draft, isEdit && selectedClient.lat !== undefined && selectedClient.lng !== undefined ? { lat: selectedClient.lat, lng: selectedClient.lng } : undefined)),
       });
       const record = { ...clientRecordFromSnapshot(saved, snapshot.routes), ...draft, id: saved.id, lat: saved.lat, lng: saved.lng, active: isEdit ? selectedClient.active : true };
       setClientsData((current) => isEdit ? current.map((client) => client.id === record.id ? record : client) : [...current, record]);
@@ -2466,8 +2477,8 @@ function ClientsLegacyView({ snapshot, onRefresh }: Readonly<{ snapshot: Snapsho
     if (!selectedClient) return false;
     const payload = clientPayload({ ...selectedClient, active: selectedClient.active }, { lat, lng });
     try {
-      const saved = await api<Client>(`/clientes/${encodeURIComponent(selectedClient.id)}`, {
-        method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify(payload),
+      const saved = await remittancesApi<Client>(`/clientes/${encodeURIComponent(selectedClient.id)}`, {
+        method: "POST", body: JSON.stringify(payload),
       });
       setClientsData((current) => current.map((client) => client.id === saved.id ? { ...client, lat, lng } : client));
       await onRefresh();
@@ -2475,11 +2486,15 @@ function ClientsLegacyView({ snapshot, onRefresh }: Readonly<{ snapshot: Snapsho
       return true;
     } catch (error) { toast.error(error instanceof Error ? error.message : "No se pudo guardar la ubicación."); return false; }
   };
-  const inactivateClient = () => {
+  const inactivateClient = async () => {
     if (!selectedClient) return;
-    setClientsData((current) => current.map((client) => client.id === selectedClient.id ? { ...client, active: false } : client));
-    setConfirmDelete(false);
-    toast.success("Cliente inactivado");
+    try {
+      const saved = await remittancesApi<Client>(`/clientes/${encodeURIComponent(selectedClient.id)}/actividad`, { method: "POST", body: JSON.stringify({ active: !selectedClient.active }) });
+      setClientsData((current) => current.map((client) => client.id === saved.id ? { ...client, active: saved.active ?? true } : client));
+      setConfirmDelete(false);
+      await onRefresh();
+      toast.success(saved.active ? "Cliente activado" : "Cliente inactivado");
+    } catch (error) { toast.error(error instanceof Error ? error.message : "No se pudo actualizar la actividad del cliente."); }
   };
   return (
     <div className="clients-mdi-view">
@@ -2496,7 +2511,7 @@ function ClientsLegacyView({ snapshot, onRefresh }: Readonly<{ snapshot: Snapsho
         <div className="clients-grid-panel"><div className="legacy-mdi-table-wrap"><table className="legacy-mdi-table clients-grid"><thead><tr><th>Código</th><th>Identificación</th><th>Cliente</th><th>Zona</th><th>Ruta</th><th>Teléfono</th><th>Celular</th><th>Activo</th></tr></thead><tbody>{visibleClients.map((client) => { const isSelected = selectedClientId === client.id; return <tr key={client.id} className={isSelected ? "selected-row" : ""} role="button" tabIndex={0} onClick={() => setSelectedClientId(client.id)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedClientId(client.id))}><td><span className={`mdi-row-select ${isSelected ? "selected" : ""}`}>{client.code}</span></td><td>{client.identification}</td><td>{client.name}</td><td>{client.zone}</td><td>{snapshot.routes.find((route) => route.id === client.routeId)?.name ?? ""}</td><td>{client.phone}</td><td>{client.cellular}</td><td><LegacyCheck checked={client.active} /></td></tr>; })}</tbody></table></div><div className="legacy-footerbar"><span>Cantidad</span><strong>{visibleClients.length}</strong></div></div>
       </div>
       {formMode && <ClientDataDialog client={formMode === "edit" ? selectedClient : undefined} zones={zones} routes={snapshot.routes} defaultCode={formMode === "new" ? nextClientCode(clientsData) : ""} onClose={() => setFormMode(null)} onSave={saveClient} />}
-      {confirmDelete && <LegacyConfirmDialog message="¿Inactivar datos?" onYes={inactivateClient} onNo={() => setConfirmDelete(false)} />}
+      {confirmDelete && <LegacyConfirmDialog message={selectedClient?.active ? "¿Inactivar cliente? Se conserva su historial." : "¿Activar cliente?"} onYes={() => void inactivateClient()} onNo={() => setConfirmDelete(false)} />}
       {financeOpen && selectedClient && <ClientFinancialDialog client={selectedClient} snapshot={snapshot} onClose={() => setFinanceOpen(false)} />}
       {mapOpen && selectedClient && <ClientMapDialog client={selectedClient} onClose={() => setMapOpen(false)} onSave={saveClientLocation} />}
       {machinesOpen && selectedClient && <ClientMachinesDialog client={selectedClient} onClose={() => setMachinesOpen(false)} />}
@@ -4052,8 +4067,8 @@ function Login({
 }: Readonly<{
   onLogin: (user: User, station: Station) => void;
 }>) {
-  const [email, setEmail] = useState("admin@cyp.local"),
-    [password, setPassword] = useState("Demo-CyP-2026!"),
+  const [email, setEmail] = useState(""),
+    [password, setPassword] = useState(""),
     [busy, setBusy] = useState(false),
     [blockedCollector, setBlockedCollector] = useState(false),
     [error, setError] = useState("");
@@ -4116,7 +4131,7 @@ function Login({
             </p>
             <a
               className="btn primary full login-submit"
-              href="http://127.0.0.1:5174"
+              href={collectorUrl}
             >
               Ir a la PWA del Cobrador <ArrowRight size={18} />
             </a>
@@ -4189,7 +4204,7 @@ function Login({
             </button>
           </form>
           <div className="login-divider">
-            <span>Credenciales de referencia</span>
+            <span>Acceso a la aplicación</span>
           </div>
           <div className="demo-access-panel static-demo-access">
             <div>
@@ -4197,26 +4212,25 @@ function Login({
                 <ShieldCheck size={15} />
                 <span>
                   <strong>Administrador</strong>
-                  <small>admin@cyp.local · Demo-CyP-2026!</small>
+                  <small>Utiliza tu cuenta habilitada.</small>
                 </span>
               </div>
               <a
                 className="demo-role-action"
-                href="http://127.0.0.1:5174"
+                href={collectorUrl}
                 target="_blank"
                 rel="noreferrer"
               >
                 <Users size={15} />
                 <span>
-                  <strong>Acceso por red local (LAN)</strong>
-                  <small>PWA Cobrador · http://127.0.0.1:5174</small>
+                  <strong>Terminal del cobrador</strong>
+                  <small>PWA Cobrador · {collectorUrl}</small>
                 </span>
               </a>
             </div>
           </div>
           <p className="demo-disclaimer">
-            La estación se asigna internamente como EST-01. Las credenciales
-            demo requieren que el servidor tenga DEMO_MODE activo.
+            Accede con las credenciales que te facilitó el administrador.
           </p>
         </div>
         <div className="login-bottom">
@@ -4476,6 +4490,8 @@ export default function App() {
             </div>
             <button
               className="workspace-switch"
+              aria-label="Mi organización y cuenta"
+              title="Mi organización y cuenta"
               onClick={() => setAccountOpen(true)}
             >
               <span className="workspace-icon">
@@ -4504,6 +4520,9 @@ export default function App() {
                     <button
                       type="button"
                       className={`nav-group-trigger ${groupActive ? "active" : ""}`}
+                      aria-label={group}
+                      title={group}
+                      data-short-label={group === "ARCHIVOS" ? "AR" : group === "COBROS" ? "CO" : group === "PAGOS" ? "PA" : "RE"}
                       onClick={() => {
                         if (collapsed) {
                           setCollapsed(false);
@@ -4543,7 +4562,8 @@ export default function App() {
                               setMobileMenu(false);
                             }
                           }}
-                          title={collapsed ? item.label : undefined}
+                          title={item.label}
+                          aria-label={item.label}
                           aria-current={
                             activeNavKey === item.key ? "page" : undefined
                           }
@@ -4589,6 +4609,8 @@ export default function App() {
               </div>
               <button
                 className="nav-item help-button"
+                aria-label="Centro de ayuda"
+                title="Centro de ayuda"
                 onClick={() => setHelpOpen(true)}
               >
                 <CircleHelp size={19} />
@@ -4635,7 +4657,7 @@ export default function App() {
                     <strong>{station.code}</strong>
                   </span>
                   <div className="module-context">
-                    <span>Módulo activo</span>
+                    <span>{isMockToken(getToken()) || snapshot?.clients.some((client) => /PRUEBA|SINT[ÉE]TIC|DEMO/i.test(client.note ?? "")) ? "DATOS DE PRUEBA" : "Módulo activo"}</span>
                     <strong>{activeNav?.label ?? "Escritorio"}</strong>
                   </div>
                 </div>
@@ -4654,6 +4676,8 @@ export default function App() {
                 </span>
                 <button
                   className="command-trigger"
+                  aria-label="Buscar en tu operación"
+                  title="Buscar en tu operación"
                   onClick={() => setCommandOpen(true)}
                 >
                   <Search size={16} />
@@ -4670,7 +4694,7 @@ export default function App() {
                   {alertCount > 0 && <i />}
                 </button>
                 <button
-                  className="icon-button"
+                  className="icon-button tablet-secondary"
                   aria-label="Facturas"
                   title="Ventana de Facturas"
                   onClick={() => setAuxWindow("facturas")}
@@ -4678,7 +4702,7 @@ export default function App() {
                   <ReceiptText size={19} />
                 </button>
                 <button
-                  className="icon-button"
+                  className="icon-button tablet-secondary"
                   aria-label="Qué hay de nuevo"
                   title="Qué hay de nuevo"
                   onClick={() => setAuxWindow("novedades")}
@@ -4686,7 +4710,7 @@ export default function App() {
                   <CircleHelp size={19} />
                 </button>
                 <button
-                  className="icon-button"
+                  className="icon-button tablet-secondary"
                   aria-label="Ventana de Pagos"
                   title="Ventana de Pagos"
                   onClick={() => setAuxWindow("pagos")}
@@ -4694,7 +4718,7 @@ export default function App() {
                   <Wallet size={19} />
                 </button>
                 <button
-                  className="icon-button"
+                  className="icon-button tablet-secondary"
                   aria-label="Hacer copia de respaldo"
                   title="Hacer copia de respaldo"
                   onClick={() => void downloadBackup()}
@@ -4810,6 +4834,12 @@ export default function App() {
                 <ReportesLauncher onLaunch={openMdiWindow} />
               ) : isReportPage(windowState.page) ? (
                 <ReportView page={windowState.page} snapshot={snapshot} onRefresh={() => void refresh()} />
+              ) : windowState.page === "remittances" || windowState.page === "exchangeRates" ? (
+                <RemittancesWorkspace api={remittancesApi} user={effectiveUser} isAdmin={["ADMIN", "SUPERADMIN"].includes(normalizeRole(effectiveUser.role))} initialTab={windowState.page === "exchangeRates" ? "tasas" : "envios"} />
+              ) : isConnectedCatalog(windowState.page) ? (
+                <ConnectedCatalog page={windowState.page} snapshot={snapshot} onRefresh={() => void refresh()} />
+              ) : ["stations", "groups", "pcps", "sessions", "traces", "authorizationRequests"].includes(windowState.page) ? (
+                <section className="connected-placeholder"><h2>{pageTitles[windowState.page]}</h2><p>Esta pantalla todavía no está conectada. No hay datos operativos disponibles ni se pueden guardar cambios aquí.</p></section>
               ) : windowState.page === "clients" ? (
                 <ClientsLegacyView snapshot={snapshot} onRefresh={() => refresh()} />
               ) : windowState.page === "charges" ? (
@@ -4817,12 +4847,6 @@ export default function App() {
                   snapshot={snapshot}
                   currentUser={effectiveUser}
                   onRefresh={async () => { await refresh(); }}
-                />
-              ) : windowState.page === "recurringCharges" ? (
-                <RecurringChargesOperationalView
-                  snapshot={snapshot}
-                  currentUser={effectiveUser}
-                  onRefresh={() => void refresh()}
                 />
               ) : isMdiOperationPage(windowState.page) ? (
                 (() => {
@@ -4839,7 +4863,7 @@ export default function App() {
                 })()
               ) : isMdiMonitoringPage(windowState.page) ? (
                 windowState.page === "dailySettlements" ? (
-                  <DailySettlementsView snapshot={snapshot} onRefresh={() => void refresh()} />
+                  <ConnectedSettlements snapshot={snapshot} onRefresh={() => void refresh()} />
                 ) : (
                   <MonitorView
                     page={windowState.page}
@@ -5131,11 +5155,6 @@ type OperationSpec = {
 };
 
 type MonitorEntity = "collector" | "zone" | "route";
-const mapViewerTypeByEntity: Record<MonitorEntity, MapViewerType> = {
-  collector: "cobrador",
-  zone: "zona",
-  route: "ruta",
-};
 type MonitorMetricValues = {
   collectionLimit: number;
   payoutLimit: number;
@@ -6665,8 +6684,8 @@ function LegacyOperationView({
             onPrevious={() => moveSelectedCollection("previous")}
             onNext={() => moveSelectedCollection("next")}
             onLast={() => moveSelectedCollection("last")}
-            onNew={() => setCollectionReceiptOpen(true)}
-            onDelete={() => selectedRow ? setCollectionCancelConfirmOpen(true) : toast.info("Seleccione un cobro.")}
+            onNew={() => toast.info("Registra el cobro desde la terminal del cobrador. El formulario de recibo en central todavía no está conectado.")}
+            onDelete={() => toast.info("La cancelación de cobros desde central todavía no está disponible. No se modificó el registro.")}
             onRefresh={resetFilters}
             disableNew={!permissions.canCreate}
             disableDelete={!selectedRow || !permissions.canDelete}
@@ -7468,7 +7487,7 @@ function CashDeliveriesOperationalView({ snapshot, currentUser, onRefresh }: Rea
   };
   const cancelSelected = async () => {
     if (!selectedRow?.__id) return;
-    const mockMode = isMockToken(getToken()) || localStorage.getItem("cyp-admin-force-mock") === "true";
+    const mockMode = isMockToken(getToken());
     if (!mockMode) {
       toast.error("La API actual no ofrece inactivación de entregas; el registro no fue modificado.");
       setConfirmInactivateOpen(false);
@@ -7978,7 +7997,7 @@ function PaymentsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
   };
   const cancelSelected = async () => {
     if (!selectedPayment) return;
-    const demoStore = isMockToken(getToken()) || localStorage.getItem("cyp-admin-force-mock") === "true";
+    const demoStore = isMockToken(getToken());
     if (!demoStore) {
       toast.error("La API actual no ofrece cancelación de pagos; el registro no fue modificado.");
       return;
@@ -8873,43 +8892,12 @@ function CollectionReceiptPrintDialog({ receipts, onClose, title = "Imprimir Rec
 }
 
 function CollectionMapDialog({ points, onClose }: Readonly<{ points: readonly CollectionMapPoint[]; onClose: () => void }>) {
-  const [mapStyle, setMapStyle] = useState<ClientMapStyle>("Hybrid");
-  const [selectedId, setSelectedId] = useState(points[0]?.id ?? "");
-  const locatedPoints = points.filter((point) => Number.isFinite(point.latitude) && Number.isFinite(point.longitude));
-  const selected = points.find((point) => point.id === selectedId) ?? null;
-  const latitudes = locatedPoints.map((point) => point.latitude as number);
-  const longitudes = locatedPoints.map((point) => point.longitude as number);
-  const minLat = Math.min(...latitudes);
-  const maxLat = Math.max(...latitudes);
-  const minLng = Math.min(...longitudes);
-  const maxLng = Math.max(...longitudes);
-  const markerPosition = (point: CollectionMapPoint) => {
-    const latRange = maxLat - minLat;
-    const lngRange = maxLng - minLng;
-    const pointIndex = locatedPoints.findIndex((item) => item.id === point.id);
-    return {
-      left: lngRange === 0 ? `${50 + (pointIndex - (locatedPoints.length - 1) / 2) * 5}%` : `${8 + (((point.longitude as number) - minLng) / lngRange) * 84}%`,
-      top: latRange === 0 ? "50%" : `${8 + (1 - ((point.latitude as number) - minLat) / latRange) * 84}%`,
-    };
-  };
-  return (
-    <LegacyDialog title="Mapa de Cobro(s)..." onClose={onClose} className={`client-map-dialog collections-map-dialog map-style-${mapStyle.toLowerCase()}`} overlayClassName="collection-receipt-suboverlay">
-      <div className="client-map-view">
-        <div className="client-map-toolbar" role="group" aria-label="Tipo de mapa">
-          {(["Hybrid", "Roadmap", "Satellite", "Terrain"] as const).map((style) => <button key={style} type="button" className={mapStyle === style ? "active" : ""} onClick={() => setMapStyle(style)}>{style}</button>)}
-        </div>
-        <div className="client-map-canvas" role="region" aria-label="Mapa de cobros">
-          <div className="client-map-river" />
-          <div className="client-map-road road-one" /><div className="client-map-road road-two" /><div className="client-map-road road-three" />
-          <div className="client-map-label map-label-one">Centro</div><div className="client-map-label map-label-two">Los Jardines</div><div className="client-map-label map-label-three">Av. Principal</div>
-          {locatedPoints.map((point) => <button type="button" key={point.id} className={`client-map-pin collection-map-pin ${selectedId === point.id ? "active" : ""}`} style={markerPosition(point)} aria-label={`Cobro de ${point.clientName}`} onClick={() => setSelectedId(point.id)}><MapPinned size={24} /><small>{point.clientName}</small></button>)}
-          {!locatedPoints.length && <div className="collection-map-no-points">Los cobros seleccionados no tienen coordenadas registradas.</div>}
-        </div>
-        <div className="collection-map-status"><span>{locatedPoints.length} de {points.length} cobro(s) con ubicación</span>{selected && <span>{selected.clientName} · {selected.identification} · {money(selected.amount)}</span>}</div>
-        <div className="client-map-actions"><button type="button" onClick={() => setSelectedId(points[0]?.id ?? "")}>Ajustar</button><button type="button" onClick={onClose}>oK</button><button type="button" onClick={onClose}>Cerrar</button></div>
-      </div>
-    </LegacyDialog>
-  );
+  const located = points.filter((point) => validLocation(point.latitude, point.longitude));
+  return <LegacyDialog title="Mapa de Cobros" onClose={onClose} className="client-map-dialog collections-map-dialog" overlayClassName="collection-receipt-suboverlay">
+    <GeoMap points={located.map((point) => ({ id: point.id, lat: point.latitude!, lng: point.longitude!, label: point.clientName, detail: money(point.amount) }))} />
+    <p className="geo-map-summary">{located.length} de {points.length} cobros con ubicación del cliente. Este mapa muestra el domicilio registrado, no el lugar donde se recibió el dinero.</p>
+    <div className="client-map-actions"><button type="button" onClick={onClose}>Cerrar</button></div>
+  </LegacyDialog>;
 }
 
 function CollectionReceiptDialog({
@@ -10227,10 +10215,7 @@ function FinancialMonitorView({ page, snapshot, refreshing, onRefresh }: Readonl
       </div>
     </div>
     {mapOpen && selectedRow && <LegacyDialog title={`Mapa de Monitoreo - ${selectedRow.rawName}`} onClose={() => setMapOpen(false)} className="collector-monitor-map-dialog">
-      <MapViewer
-        type={mapViewerTypeByEntity[selectedRow.entityType]}
-        entityId={selectedRow.entityId}
-      />
+      <MonitorGeoMap entityType={selectedRow.entityType} entityId={selectedRow.entityId} />
     </LegacyDialog>}
   </div>;
 }

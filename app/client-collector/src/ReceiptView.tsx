@@ -26,7 +26,10 @@ export function ReceiptView({
   const [error, setError] = useState("");
   const [width, setWidth] = useState<"58" | "80">("80");
   const [downloading, setDownloading] = useState(false);
-  const url = `${window.location.origin}/?receipt=${encodeURIComponent(token)}`;
+  const url = new URL(
+    `${import.meta.env.BASE_URL}?receipt=${encodeURIComponent(token)}`,
+    window.location.origin,
+  ).href;
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
@@ -98,7 +101,7 @@ export function ReceiptView({
           onClick={
             onBack ??
             (() => {
-              window.location.href = "/";
+              window.location.href = import.meta.env.BASE_URL;
             })
           }
         >

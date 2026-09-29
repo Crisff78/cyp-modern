@@ -2,10 +2,10 @@
 // Paridad de datos: compara la base de DATABASE_URL (origen) contra otra base
 // del mismo servidor (--other-db=<nombre>) o contra una URL completa (--other).
 //
-// Uso desde la raiz del repo (via npm):
-//   npm run db:parity -- --other-db=cyp_paridad
-//   npm run db:parity -- --other-db=cyp_paridad --skip=idempotency
-//   npm run db:parity -- --other=<URL completa de conexion a otra base>
+// Uso desde la raiz del repo (via pnpm):
+//   pnpm db:parity -- --other-db=cyp_paridad
+//   pnpm db:parity -- --other-db=cyp_paridad --skip=idempotency
+//   pnpm db:parity -- --other=<URL completa de conexion a otra base>
 //
 // - Compara TODAS las tablas del esquema public: conteo y checksum md5 por
 //   tabla (md5 de la concatenacion de cada fila serializada a JSON, en orden
@@ -44,7 +44,7 @@ function parseArgs(argv) {
 
 function readDatabaseUrl() {
   const raw = process.env.DATABASE_URL;
-  if (!raw) fail('DATABASE_URL no esta definida en el entorno. Ejecuta con el .env de la raiz (npm run db:parity).');
+  if (!raw) fail('DATABASE_URL no esta definida en el entorno. Ejecuta con el .env de la raiz (pnpm db:parity).');
   let url;
   try {
     url = new URL(raw);

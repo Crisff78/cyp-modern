@@ -13,7 +13,7 @@ import {
   type User,
 } from "../src/domain.js";
 import { seed } from "../src/seed.js";
-import { FileStore, MemoryStore, PostgresStore } from "../src/store.js";
+import { FileStore, MemoryStore, PostgresStore, type Store } from "../src/store.js";
 const admin: User = { id: "admin", name: "Admin", role: "admin" },
   collector: User = {
     id: "collector",
@@ -21,7 +21,7 @@ const admin: User = { id: "admin", name: "Admin", role: "admin" },
     role: "collector",
     collectorId: "col-1",
   };
-async function setup(store = new MemoryStore(seed())) {
+async function setup(store: Store = new MemoryStore(seed())) {
   const app = await buildApp({
     store,
     secret: "test-only-secret-32-characters-long!",
@@ -41,7 +41,7 @@ async function setup(store = new MemoryStore(seed())) {
     collectorToken = await login("collector@cyp.local");
   const post = (
     path: string,
-    body: unknown,
+    body: Record<string, unknown>,
     token = adminToken,
     key = randomUUID(),
   ) =>
@@ -488,7 +488,14 @@ test("file adapter persists and failed transactions never leak changes", async (
 });
 
 test("monitoring map-data returns collector location, stops and decimal money", async () => {
-  const { app, adminToken } = await setup();
+  const state = seed();
+  const routeClients = state.clients.filter((client) => client.routeId === "route-1");
+  routeClients.slice(0, -1).forEach((client, index) => {
+    // Explicit synthetic fixture coordinates; the API must return these exact values.
+    client.lat = 18.41 + index * 0.01;
+    client.lng = -69.72 - index * 0.01;
+  });
+  const { app, adminToken, store } = await setup(new MemoryStore(state));
   try {
     const response = await app.inject({
       url: "/api/monitoring/collector/col-1/map-data",
@@ -500,13 +507,30 @@ test("monitoring map-data returns collector location, stops and decimal money", 
     assert.equal(body.collector.name, "Ana Martínez");
     assert.equal(body.collector.collection_limit, 25000);
     assert.equal(body.collector.payout_limit, 10000);
-    assert.equal(typeof body.collector.lat, "number");
+    assert.equal(body.collector.lat, state.collectors[0].lat);
+    assert.equal(body.collector.lng, state.collectors[0].lng);
+    assert.equal(body.collector.phone, "");
+    assert.equal(body.collectorLocationMissing, false);
     assert.equal(Array.isArray(body.stops), true);
+    assert.equal(body.stops.length, routeClients.length - 1);
+    assert.equal(body.missingLocationCount, 1);
     assert.equal(body.stops[0].order, 1);
     assert.equal(body.stops[0].client_name, "Colmado La Esquina");
+    assert.equal(body.stops[0].lat, routeClients[0].lat);
+    assert.equal(body.stops[0].lng, routeClients[0].lng);
+    assert.equal(body.stops.some((stop: { client_name: string }) => stop.client_name === routeClients.at(-1)!.name), false);
     assert.equal(body.stops[0].amount_due, 4500);
     assert.equal(body.stops[0].obligated, true);
     assert.equal(body.route_geometry, null);
+    await store.transaction((draft) => { draft.collectors[0].lat = null; draft.collectors[0].lng = null; });
+    const withoutCollectorGps = (await app.inject({
+      url: "/api/monitoring/collector/col-1/map-data",
+      headers: { authorization: `Bearer ${adminToken}` },
+    })).json();
+    assert.equal(withoutCollectorGps.collector.lat, null);
+    assert.equal(withoutCollectorGps.collector.lng, null);
+    assert.equal(withoutCollectorGps.collectorLocationMissing, true);
+    assert.deepEqual(withoutCollectorGps.stops, body.stops);
   } finally {
     await app.close();
   }
@@ -796,11 +820,13 @@ test(
   "native PostgreSQL store integration",
   { skip: !process.env.TEST_DATABASE_URL },
   async () => {
-    const store = new PostgresStore(process.env.TEST_DATABASE_URL!);
+    const url = process.env.TEST_DATABASE_URL!;
+    assert.ok(["/cyp_remittances_backend", "/cyp_remittances_backend_install_20260928"].includes(new URL(url).pathname), "Use only the approved disposable synthetic databases.");
+    const store = new PostgresStore(url);
     await store.transaction((s) => {
       if (s.collectors.length === 0) Object.assign(s, seed());
     });
-    const { app, post, collectorToken } = await setup(store as MemoryStore);
+    const { app, post, collectorToken } = await setup(store);
     try {
       const key = randomUUID();
       const results = await Promise.all([
@@ -817,7 +843,7 @@ test(
           key,
         ),
       ]);
-      assert.ok(results.every((r) => r.statusCode === 200));
+      for (const response of results) assert.equal(response.statusCode, 200, JSON.stringify(response.json().error ?? {}));
       assert.equal(
         results[0].json().movement.id,
         results[1].json().movement.id,

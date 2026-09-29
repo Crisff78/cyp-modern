@@ -1,24 +1,25 @@
 # Cobros y Pagos · CyP
 
-Un backend REST, un portal administrativo y una PWA para cobradores. Scaffold funcional en TypeScript para cobros de servicios, pagos autorizados, seguimiento y cuadre diario. Interfaz en español, importes en pesos dominicanos, sin impuestos ni amortización de préstamos.
+Un backend REST, un portal administrativo y una PWA para cobradores. Incluye cobros de servicios, pagos autorizados, envíos y recibos de dinero, seguimiento y cuadre diario. Interfaz en español; los cobros originales usan pesos dominicanos y los envíos admiten DOP, USD y EUR.
 
-**Estado del descubrimiento:** respaldo localizado y verificado; restauración descartada por pivote explícito del usuario. Auditoría pública del demo completada, pantallas autenticadas pendientes de credenciales válidas. El esquema moderno es un diseño nuevo para PostgreSQL, no una extracción del respaldo. No se usa Docker ni SQL Server.
+El repositorio contiene código, migraciones de PostgreSQL y ejemplos ficticios. La base local de trabajo y los datos de clientes no forman parte de GitHub. El esquema moderno no es una extracción directa del respaldo legado.
 
 ## Inicio rápido en Windows con PostgreSQL
 
-Requisitos: Node.js 22.12+, npm y PostgreSQL local. En PowerShell:
+Requisitos: Node.js 22.12+, Corepack y PostgreSQL local. En PowerShell:
 
 ```powershell
 cd C:\CyP
-npm ci
+corepack enable
+pnpm install --frozen-lockfile
 Copy-Item .env.example .env
 node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 # Copiar el valor generado a JWT_SECRET en .env y configurar DATABASE_URL.
-npm run db:migrate
-npm run dev
+pnpm --filter @cyp/server db:migrate --apply
+pnpm -r --parallel dev
 ```
 
-Si `.env` ya existe, conserva sus valores. La configuración local creada durante esta entrega usa PostgreSQL nativo en loopback y datos ficticios con `DEMO_MODE=true`. Nunca subir `.env`.
+Si `.env` ya existe, conserva sus valores. Completa localmente `JWT_SECRET` y `DATABASE_URL` antes de ejecutar la migración. `DEMO_MODE=true` con `DATABASE_URL` abre esa base y habilita cuentas de demostración: usa únicamente una base dedicada con datos ficticios. Sin `DATABASE_URL`, la demo usa un archivo local. Nunca subir `.env`.
 
 | Servicio       | URL                                    |
 | -------------- | -------------------------------------- |
@@ -27,9 +28,9 @@ Si `.env` ya existe, conserva sus valores. La configuración local creada durant
 | API / health   | http://127.0.0.1:3001/api/health       |
 | OpenAPI        | http://127.0.0.1:3001/api/openapi.json |
 
-Demo: `admin@cyp.local` y `collector@cyp.local`, ambos con `Demo-CyP-2026!`. Son identidades ficticias habilitadas únicamente con `DEMO_MODE=true`. Con `DATABASE_URL`, los datos se guardan en PostgreSQL. No se importa ningún cliente del respaldo.
+Demo: `admin@cyp.local` y `collector@cyp.local`, ambos con `Demo-CyP-2026!`. Son identidades ficticias habilitadas únicamente con `DEMO_MODE=true`. Con `DATABASE_URL`, estas cuentas acceden a esa base; no uses el modo demo con datos reales. No se importa ningún cliente del respaldo.
 
-Para empezar una demo nueva, usa una base PostgreSQL dedicada vacía y vuelve a ejecutar `npm run db:migrate`. La API rechaza la operación si existe efectivo pendiente de una jornada anterior; no arrastra saldos silenciosamente.
+Para empezar una demo nueva, usa una base PostgreSQL dedicada vacía y ejecuta `pnpm --filter @cyp/server db:migrate --apply`. La API rechaza la operación si existe efectivo pendiente de una jornada anterior; no arrastra saldos silenciosamente.
 
 ## Recorrido de demostración
 
@@ -53,11 +54,11 @@ DEMO_MODE=true
 ```
 
 ```powershell
-npm run db:migrate
-npm run dev
+pnpm --filter @cyp/server db:migrate --apply
+pnpm -r --parallel dev
 ```
 
-La migración está en `app/server/database/` (`001_initial.sql` más los scripts posteriores en orden); crea `users`, `collectors`, `routes`, `zones`, `collection_points`, `clients`, `services`, `charges`, `payouts`, `collections`, `payments`, `cash_handovers` y `daily_settlements`, además de idempotencia, FKs, índices y triggers. `daily_settlements.difference` se genera con `(Cobrado - Depositado) + (Entregado - Pagado)` y el CHECK exige cero. Con demo activa y base vacía, el backend siembra datos ficticios. Con `DEMO_MODE=false`, no siembra datos y exige `DATABASE_URL`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` de 14+ caracteres y `JWT_SECRET`. Se proporciona inicio de sesión de administrador configurado; el aprovisionamiento de usuarios/cobradores reales se describe abajo y una importación validada es trabajo pendiente antes de usar datos reales.
+La migración está en `app/server/database/` (`001_initial.sql` más los scripts posteriores en orden); crea `users`, `collectors`, `routes`, `zones`, `collection_points`, `clients`, `services`, `charges`, `payouts`, `collections`, `payments`, `cash_handovers` y `daily_settlements`, además de idempotencia, FKs, índices y triggers. `daily_settlements.difference` se genera con `(Cobrado - Depositado) + (Entregado - Pagado)` y el CHECK exige cero. Con demo activa y base vacía dedicada, el backend siembra datos ficticios. Con `DEMO_MODE=false`, no siembra datos y exige `DATABASE_URL`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` de 14+ caracteres y `JWT_SECRET`. Se proporciona inicio de sesión de administrador configurado; el aprovisionamiento de usuarios/cobradores reales se describe abajo y una importación validada es trabajo pendiente antes de usar datos reales.
 
 ## Aprovisionamiento de usuarios
 
@@ -78,21 +79,21 @@ propia por cuenta; la API nunca devuelve el hash ni la sal.
 ## Construcción y comprobación
 
 ```powershell
-npm run typecheck
-npm test
-npm run build
+pnpm -r typecheck
+pnpm --filter @cyp/server test
+pnpm -r build
 # O ejecutar todo:
-npm run check
+pnpm check
 ```
 
 Pruebas del backend: autenticación y aislamiento por ruta, importes inválidos, carreras de cobro, idempotencia, rollback de lotes, dos límites de efectivo, cuadre exacto, cierre, privacidad/revocación de recibos, ESC/POS, zona horaria y persistencia. Para incluir integración PostgreSQL se requiere una **base de pruebas dedicada** ya migrada; contiene datos ficticios que se conservarán:
 
 ```powershell
 $env:TEST_DATABASE_URL='postgresql://user:password@127.0.0.1:5432/cyp_test'
-npm test
+pnpm --filter @cyp/server test
 ```
 
-`npm run build` genera `app/server/dist`, `app/client-admin/dist` y `app/client-collector/dist`. La API compilada se inicia con `npm start -w @cyp/server`. Servir ambos frontends con un servidor HTTPS estático y proxy `/api` hacia la API; cada portal necesita fallback de navegación a `index.html`. Ajustar `ALLOWED_ORIGINS` y `COLLECTOR_URL` a los dominios reales. El servidor Vite de desarrollo no es el servidor de producción.
+`pnpm -r build` genera `app/server/dist`, `app/client-admin/dist` y `app/client-collector/dist`. La API compilada se inicia con `pnpm --filter @cyp/server start`. Servir ambos frontends con un servidor HTTPS estático y proxy `/api` hacia la API; cada portal necesita fallback de navegación a `index.html`. Ajustar `ALLOWED_ORIGINS` y `COLLECTOR_URL` a los dominios reales. El servidor Vite de desarrollo no es el servidor de producción.
 
 ## PWA, GPS y uso en teléfono
 
@@ -120,11 +121,6 @@ Leer `docs/ADR-001-postgresql-primary.md`, `docs/DATA_MODEL.md`, `docs/BUSINESS_
 
 ## GitHub
 
-Repositorio privado por defecto debido al contexto operacional. `.gitignore` excluye respaldos, archivos comprimidos, secretos, estado local, dependencias y compilaciones. El lockfile se versiona. Si se configura otro destino:
-
-```powershell
-git remote add origin https://github.com/YOUR_ACCOUNT/cobros-y-pagos.git
-git push -u origin main
-```
+El repositorio es público. `.gitignore` excluye respaldos, archivos comprimidos, secretos, estado local, dependencias y compilaciones. El lockfile se versiona. Cada integrante configura su `.env` local y aplica las migraciones en una base propia; nunca debe publicar respaldos ni datos reales de clientes.
 
 Fuentes de implementación: [Fastify](https://fastify.dev/docs/latest/Reference/Validation-and-Serialization/), [PostgreSQL](https://www.postgresql.org/docs/current/explicit-locking.html), [Service workers (MDN)](https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API/Using_Service_Workers). Los hallazgos sobre el sistema anterior se sustentan en la evidencia guardada, no en estas referencias.
