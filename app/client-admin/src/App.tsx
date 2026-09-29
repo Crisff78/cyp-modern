@@ -174,13 +174,14 @@ const navigation: {
     icon: ArrowUpRight,
     group: "PAGOS",
   },
-  {
-    key: "recurring-payouts",
-    page: "recurringPayouts",
-    label: "Descargos Rec.",
-    icon: RefreshCw,
-    group: "PAGOS",
-  },
+  // Módulo temporalmente oculto hasta completar su diseño y flujo operativo.
+  // {
+  //   key: "recurring-payouts",
+  //   page: "recurringPayouts",
+  //   label: "Descargos Rec.",
+  //   icon: RefreshCw,
+  //   group: "PAGOS",
+  // },
   {
     key: "payments",
     page: "payments",
@@ -208,10 +209,12 @@ const navigation: {
   { key: "daily-settlements", page: "dailySettlements", label: "Cuadres Diarios", icon: FileCheck2, group: "REPORTES & MONITOREO" },
   { key: "general-reports", page: "reports", label: "Reportes", icon: ChartNoAxesCombined, group: "REPORTES & MONITOREO" },
 ];
-const pageFromHash = (): Page =>
-  location.hash.slice(1) in pageTitles
-    ? (location.hash.slice(1) as Page)
+const pageFromHash = (): Page => {
+  const requestedPage = location.hash.slice(1);
+  return requestedPage in pageTitles && requestedPage !== "recurringPayouts"
+    ? (requestedPage as Page)
     : "monitorCollectors";
+};
 const pageTitles: Record<Page, string> = {
   collectors: "Cobradores",
   clients: "Clientes",
@@ -360,7 +363,7 @@ const isReportPage = (page: MdiPage): page is ReportPageId =>
   reportDefinitions.some((report) => report.id === page);
 const mdiOperationPages: Page[] = [
   "charges",
-  "recurringPayouts",
+  // "recurringPayouts", // módulo temporalmente oculto de navegación MDI
   "collections",
   "deposits",
   "payouts",
@@ -2148,7 +2151,7 @@ type ClientLegacyDraft = Omit<ClientLegacyRecord, "id" | "active"> & { active: b
 type ClientFilterMode = "all" | "identification" | "name" | "zone" | "route";
 type ClientFinanceTab = "Cargos" | "Cargos Rec." | "Cobros" | "Descargos" | "Descargos Rec." | "Pagos";
 
-const clientFinanceTabs: ClientFinanceTab[] = ["Cargos", "Cargos Rec.", "Cobros", "Descargos", "Descargos Rec.", "Pagos"];
+const clientFinanceTabs: ClientFinanceTab[] = ["Cargos", "Cargos Rec.", "Cobros", "Descargos", /* "Descargos Rec.", temporalmente oculto */ "Pagos"];
 
 const clientRecordFromSnapshot = (client: Client, routes: Snapshot["routes"]): ClientLegacyRecord => ({
   id: client.id,
@@ -4370,6 +4373,7 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: "instant" });
   }
   const openMdiWindow = useCallback((next: MdiPage, navKey = "") => {
+    if (next === "recurringPayouts") return;
     setActiveNavKey(navKey);
     setMdiWindows((windows) => {
       const existing = windows.find((item) => item.page === next);
@@ -4758,7 +4762,7 @@ export default function App() {
                       <ul className="novedades-list">
                         <li>Versión modernizada: API Fastify, portal administrativo y PWA de cobrador.</li>
                         <li>Moneda única DOP con importes en centavos exactos.</li>
-                        <li>Aceptar/Cancelar depósitos y Descargos Recurrentes.</li>
+                        {/* <li>Aceptar/Cancelar depósitos y Descargos Recurrentes.</li> */}
                         <li>Importación masiva de Cargos y Descargos desde CSV.</li>
                         <li>Estado de cuenta por cliente (Cobros y Pagos del Cliente).</li>
                         <li>Configuración General persistente y reportes de Pagos del legacy.</li>
