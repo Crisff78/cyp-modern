@@ -95,7 +95,6 @@ import { remittancesApi } from "./remittancesApi";
 import { GeoMap, type GeoPoint } from "./GeoMap";
 import { MonitorGeoMap } from "./MonitorGeoMap";
 import { ConnectedCatalog, isConnectedCatalog } from "./ConnectedCatalog";
-import { ConnectedSettlements } from "./ConnectedSettlements";
 import { ConnectedLegacyReports } from "./ConnectedLegacyReports";
 import { locationUnavailable, locationError as gpsError, validLocation } from "../../shared/geolocation";
 
@@ -4863,7 +4862,7 @@ export default function App() {
                 })()
               ) : isMdiMonitoringPage(windowState.page) ? (
                 windowState.page === "dailySettlements" ? (
-                  <ConnectedSettlements snapshot={snapshot} onRefresh={() => void refresh()} />
+                  <DailySettlementsView snapshot={snapshot} onRefresh={() => void refresh()} />
                 ) : (
                   <MonitorView
                     page={windowState.page}
@@ -10952,7 +10951,7 @@ function DailySettlementsView({ snapshot, onRefresh }: Readonly<{ snapshot: Snap
 
     {editingRow && balanceDraft && <LegacyDialog title="Balance del Día..." onClose={() => { setEditingRow(null); setBalanceDraft(null); }} className="settlement-balance-editor-dialog">
       <form className="settlement-balance-editor" onSubmit={saveBalance}>
-        <div className="settlement-balance-header"><label>Fecha:<input value={dateLabel(balanceDraft.date)} readOnly /></label><label>Moneda:<select value={balanceDraft.currency} onChange={(event) => updateDraft("currency", event.target.value)}><option>No definido</option><option>Peso Dominicano</option><option>Dólar Americano</option><option>Euro</option></select></label></div>
+        <div className="settlement-balance-header"><label>Fecha:<input type="date" value={balanceDraft.date} onChange={(event) => updateDraft("date", event.target.value)} /></label><label>Moneda:<select value={balanceDraft.currency} onChange={(event) => updateDraft("currency", event.target.value)}><option>No definido</option><option>Peso Dominicano</option><option>Dólar Americano</option><option>Euro</option></select></label></div>
         <div className="settlement-balance-columns"><span /><strong>Efectivo</strong><strong>Cheque</strong></div>
         <label className="settlement-balance-row"><span>Monto al Inicio:</span><span className="settlement-money-entry"><input type="number" step="0.01" value={balanceDraft.cashOpening} onChange={(event) => updateDraft("cashOpening", event.target.value)} /><button type="button" onClick={() => openDenominationDialog({ section: "cash", field: "Opening" })}>[...]</button></span><span className="settlement-money-entry"><input type="number" step="0.01" value={balanceDraft.checkOpening} onChange={(event) => updateDraft("checkOpening", event.target.value)} /><button type="button" onClick={() => openDenominationDialog({ section: "check", field: "Opening" })}>[...]</button></span></label>
         <label className="settlement-balance-row"><span>Ingresos:</span><input type="number" step="0.01" value={balanceDraft.cashIncome} onChange={(event) => updateDraft("cashIncome", event.target.value)} /><input type="number" step="0.01" value={balanceDraft.checkIncome} onChange={(event) => updateDraft("checkIncome", event.target.value)} /></label>
