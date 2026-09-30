@@ -8096,7 +8096,7 @@ function PaymentDataDialog({ actorId, snapshot, onClose, onSaved }: Readonly<{ a
   };
   const resolveClientCode = (value: string) => {
     const normalized = value.trim().toLowerCase();
-    const next = snapshot.clients.find((item) => item.code.toLowerCase() === normalized || item.identification?.toLowerCase() === normalized);
+    const next = normalized ? snapshot.clients.find((item) => item.code.toLowerCase() === normalized || item.identification?.toLowerCase() === normalized) : undefined;
     selectClient(next, value);
   };
   const eligiblePayouts = snapshot.payouts.filter((payout) => {
