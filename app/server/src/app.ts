@@ -22,6 +22,7 @@ import {
   closeDay,
   createRecurringPayout,
   createCentralCollections,
+  createCentralPayments,
   collectorForClient,
   DomainError,
   findAccount,
@@ -952,6 +953,26 @@ export async function buildApp(config: Config) {
     }).strict(),
     (s, u, b) => {
       const movements = createCentralCollections(s, u, b);
+      return {
+        movements,
+        receipts: movements.map((movement) => ({
+          movementId: movement.id,
+          token: movement.receiptToken!,
+          url: `${config.collectorUrl}/?receipt=${movement.receiptToken}`,
+        })),
+      };
+    },
+  );
+  mutate(
+    "/api/pagos/central",
+    "Registrar pagos de un cliente desde administración en una sola operación",
+    z.object({
+      clientId: id,
+      collectorId: id,
+      lines: z.array(z.object({ payoutId: id, amount: money }).strict()).min(1).max(100),
+    }).strict(),
+    (s, u, b) => {
+      const movements = createCentralPayments(s, u, b);
       return {
         movements,
         receipts: movements.map((movement) => ({

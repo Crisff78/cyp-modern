@@ -7,7 +7,7 @@ import { join } from "node:path";
 import pg from "pg";
 import { buildApp } from "../src/app.js";
 import {
-  businessDate, cancelMovement, clientStatement, closeDay, createCentralCollections,
+  businessDate, cancelMovement, clientStatement, closeDay, createCentralCollections, createCentralPayments,
   postMovement, preview, snapshot, type Movement, type State, type User,
 } from "../src/domain.js";
 import { seed } from "../src/seed.js";
@@ -20,6 +20,12 @@ function fixture() {
   const state = seed();
   state.movements = [];
   state.charges.push({ ...state.charges[0], id: "second-charge", amount: 50000 });
+  return state;
+}
+
+function paymentFixture() {
+  const state = fixture();
+  state.payouts.push({ ...state.payouts[0], id: "second-payout", amount: 50000 });
   return state;
 }
 
@@ -88,6 +94,111 @@ test("invalid central receipt leaves no partial charge, ledger or idempotency ch
     const direct = fixture(), directBefore = structuredClone(direct);
     assert.throws(() => createCentralCollections(direct, admin, body));
     assert.deepEqual(direct, directBefore);
+  } finally { await app.close(); }
+});
+
+test("central payment persists one atomic batch for concurrent retries and attributes each receipt", async () => {
+  const { app, store, post, adminToken, collectorToken } = await setup(new MemoryStore(paymentFixture()));
+  try {
+    const funding = await post("/api/entregas", { collectorId: "col-1", amount: 200000 });
+    assert.equal(funding.statusCode, 200, funding.body);
+    const body = { clientId: "cli-2", collectorId: "col-1", lines: [{ payoutId: "pay-1", amount: 10000 }, { payoutId: "second-payout", amount: 50000 }] };
+    const key = randomUUID();
+    const responses = await Promise.all([post("/api/pagos/central", body, adminToken, key), post("/api/pagos/central", body, adminToken, key)]);
+    responses.forEach((response) => assert.equal(response.statusCode, 200, response.body));
+    assert.deepEqual(responses[0].json(), responses[1].json());
+    const result = responses[0].json();
+    assert.equal(result.movements.length, 2);
+    assert.equal(result.receipts.length, 2);
+    const state = await store.read();
+    assert.equal(state.movements.filter((item) => item.type === "payout").length, 2);
+    assert.equal(state.payouts.find((item) => item.id === "pay-1")?.paid, 10000);
+    assert.equal(state.payouts.find((item) => item.id === "second-payout")?.status, "paid");
+    assert.equal(state.idempotency.filter((item) => item.id === `${admin.id}:${key}`).length, 1);
+    for (const movement of result.movements) {
+      assert.equal(movement.type, "payout");
+      assert.equal(movement.actorId, admin.id);
+      assert.equal(movement.registeredCentrally, true);
+      assert.equal(movement.collectorId, body.collectorId);
+      assert.equal(movement.clientId, body.clientId);
+      assert.equal(businessDate(new Date(movement.createdAt)), businessDate());
+      const receipt = result.receipts.find((item: { movementId: string }) => item.movementId === movement.id);
+      assert.equal(receipt.token, movement.receiptToken);
+      assert.equal(receipt.url, `http://localhost:5174/?receipt=${movement.receiptToken}`);
+      assert.equal((await app.inject(`/api/recibos/${receipt.token}`)).json().id, movement.id);
+    }
+    const beforeRejected = await store.read();
+    const forbidden = await post("/api/pagos/central", body, collectorToken);
+    assert.equal(forbidden.statusCode, 403);
+    assert.equal(forbidden.json().error.code, "FORBIDDEN");
+    for (const field of ["date", "currency", "method", "registeredCentrally"]) {
+      assert.equal((await post("/api/pagos/central", { ...body, [field]: "synthetic-unsupported" })).statusCode, 400);
+    }
+    assert.equal((await post("/api/pagos/central", { ...body, lines: [{ ...body.lines[0], method: "synthetic-unsupported" }] })).statusCode, 400);
+    assert.deepEqual(await store.read(), beforeRejected);
+  } finally { await app.close(); }
+});
+
+test("central payment rejects crossed selections and rolls back every line when a batch fails", async () => {
+  const { app, store, post } = await setup(new MemoryStore(paymentFixture()));
+  const body = { clientId: "cli-2", collectorId: "col-1", lines: [{ payoutId: "pay-1", amount: 10000 }, { payoutId: "second-payout", amount: 50001 }] };
+  try {
+    const funding = await post("/api/entregas", { collectorId: "col-1", amount: 200000 });
+    assert.equal(funding.statusCode, 200, funding.body);
+    const before = await store.read();
+    assert.equal((await post("/api/pagos/central", body)).json().error.code, "INVALID_AMOUNT");
+    assert.deepEqual(await store.read(), before);
+    assert.equal((await post("/api/pagos/central", { ...body, clientId: "cli-1", lines: [body.lines[0]] })).json().error.code, "PAYOUT_CLIENT_MISMATCH");
+    assert.equal((await post("/api/pagos/central", { ...body, collectorId: "col-2", lines: [body.lines[0]] })).json().error.code, "PAYOUT_COLLECTOR_MISMATCH");
+    assert.equal((await post("/api/pagos/central", { ...body, lines: [body.lines[0], body.lines[0]] })).json().error.code, "INVALID_PAYMENT_LINES");
+    assert.equal((await post("/api/pagos/central", { ...body, lines: [{ payoutId: "missing-synthetic-payout", amount: 1 }] })).json().error.code, "PAYOUT_CLIENT_MISMATCH");
+    assert.equal((await post("/api/pagos/central", { ...body, lines: [] })).statusCode, 400);
+    assert.equal((await post("/api/pagos/central", { ...body, lines: Array.from({ length: 101 }, (_, index) => ({ payoutId: `synthetic-${index}`, amount: 1 })) })).statusCode, 400);
+    assert.deepEqual(await store.read(), before);
+    const direct = paymentFixture();
+    postMovement(direct, admin, "office_delivery", { collectorId: "col-1", amount: 200000 });
+    const directBefore = structuredClone(direct);
+    assert.throws(() => createCentralPayments(direct, admin, body), { code: "INVALID_AMOUNT" });
+    assert.deepEqual(direct, directBefore);
+    for (const amount of [0, -1, 1.5, 1_000_000_001, Number.MAX_SAFE_INTEGER + 1]) {
+      assert.throws(() => createCentralPayments(direct, admin, { ...body, lines: [{ payoutId: "pay-1", amount }] }), { code: "INVALID_AMOUNT" });
+      assert.deepEqual(direct, directBefore);
+    }
+    await store.transaction((s) => { s.clients.find((item) => item.id === body.clientId)!.active = false; });
+    const inactiveClient = await store.read();
+    assert.equal((await post("/api/pagos/central", { ...body, lines: [body.lines[0]] })).json().error.code, "CLIENT_INACTIVE");
+    assert.deepEqual(await store.read(), inactiveClient);
+    await store.transaction((s) => { s.clients.find((item) => item.id === body.clientId)!.active = true; s.collectors[0].active = false; });
+    const inactiveCollector = await store.read();
+    assert.equal((await post("/api/pagos/central", { ...body, lines: [body.lines[0]] })).json().error.code, "COLLECTOR_INACTIVE");
+    assert.deepEqual(await store.read(), inactiveCollector);
+  } finally { await app.close(); }
+});
+
+test("partial central payment replays after a later balance commit and rejects changed payload without writes", async () => {
+  const { app, store, post, adminToken } = await setup(new MemoryStore(paymentFixture()));
+  try {
+    assert.equal((await post("/api/entregas", { collectorId: "col-1", amount: 200000 })).statusCode, 200);
+    const body = { clientId: "cli-2", collectorId: "col-1", lines: [{ payoutId: "pay-1", amount: 50000 }] };
+    const key = randomUUID();
+    const first = await post("/api/pagos/central", body, adminToken, key);
+    assert.equal(first.statusCode, 200, first.body);
+    let state = await store.read();
+    assert.equal(state.payouts.find((item) => item.id === "pay-1")?.paid, 50000);
+    assert.equal(state.payouts.find((item) => item.id === "pay-1")?.status, "partial");
+    const later = await post("/api/pagos", { payoutId: "pay-1", amount: 150000 });
+    assert.equal(later.statusCode, 200, later.body);
+    state = await store.read();
+    assert.equal(state.payouts.find((item) => item.id === "pay-1")?.paid, 200000);
+    assert.equal(state.payouts.find((item) => item.id === "pay-1")?.status, "paid");
+    const replay = await post("/api/pagos/central", body, adminToken, key);
+    assert.equal(replay.statusCode, 200, replay.body);
+    assert.deepEqual(replay.json(), first.json());
+    assert.deepEqual(await store.read(), state);
+    const conflict = await post("/api/pagos/central", { ...body, lines: [{ payoutId: "pay-1", amount: 50001 }] }, adminToken, key);
+    assert.equal(conflict.statusCode, 409);
+    assert.equal(conflict.json().error.code, "IDEMPOTENCY_CONFLICT");
+    assert.deepEqual(await store.read(), state);
   } finally { await app.close(); }
 });
 

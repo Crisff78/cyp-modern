@@ -7891,16 +7891,7 @@ type PaymentFormDraft = {
   lines: PaymentDetailLine[];
 };
 
-type PaymentSaveOutcome = {
-  savedLineIds: string[];
-  ticket?: CollectionTicketModel;
-  error?: string;
-};
-
-type PaymentDisplayMetadata = Pick<PaymentFormDraft, "currency" | "paymentForm" | "bank" | "number" | "note"> & {
-  online: boolean;
-  central: boolean;
-};
+type PendingPaymentDraft = PaymentFormDraft & { print: boolean };
 
 function PaymentsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{ snapshot: Snapshot; currentUser: User; onRefresh: () => void }>) {
   const permissions = permissionsFor(currentUser);
@@ -7917,10 +7908,9 @@ function PaymentsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
   const [selectedId, setSelectedId] = useState("");
   const [orderedIds, setOrderedIds] = useState<string[]>([]);
   const [clientSearchOpen, setClientSearchOpen] = useState(false);
-  const [formOpen, setFormOpen] = useState(false);
+  const [formOpen, setFormOpen] = useState(() => Boolean(pendingMovementDraft<PendingPaymentDraft>(currentUser.id, "central-payment")));
   const [paymentToCancel, setPaymentToCancel] = useState<Movement | null>(() => pendingMovementDraft<{ movement: Movement }>(currentUser.id, "cancel-payout")?.movement ?? null);
   const [printTicket, setPrintTicket] = useState<CollectionTicketModel | null>(null);
-  const [metadata, setMetadata] = useState<Record<string, PaymentDisplayMetadata>>({});
   const [flash, setFlash] = useState(false);
   const movementIdsKey = snapshot.movements.filter((item) => item.type === "payout").map((item) => item.id).join("|");
   useEffect(() => {
@@ -7939,7 +7929,7 @@ function PaymentsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
   const visiblePayments = allPayments.filter((movement) => {
     const client = snapshot.clients.find((item) => item.id === movement.clientId);
     const route = snapshot.routes.find((item) => item.id === client?.routeId);
-    const movementDate = movement.createdAt.slice(0, 10);
+    const movementDate = movementBusinessDate(movement.createdAt);
     const clientText = `${client?.code ?? ""} ${client?.identification ?? ""} ${client?.name ?? ""}`.toLowerCase();
     const matchesMode = mode === "Todos"
       || (mode === "por Cliente" && (filterClientId ? movement.clientId === filterClientId : clientText.includes(clientQuery.trim().toLowerCase())))
@@ -7983,66 +7973,28 @@ function PaymentsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
     window.setTimeout(() => setFlash(false), 280);
     onRefresh();
   };
-  const savePayment = async (draft: PaymentFormDraft, shouldPrint: boolean): Promise<PaymentSaveOutcome> => {
-    const client = snapshot.clients.find((item) => item.id === draft.clientId);
-    if (!client) return { savedLineIds: [], error: "Debe escoger un Cliente válido primero." };
-    const savedMovements: Movement[] = [];
-    const savedLineIds: string[] = [];
-    let failure = "";
-    for (const line of draft.lines) {
-      try {
-        const result = await api<{ movement: Movement }>("/pagos", {
-          method: "POST",
-          headers: { "Idempotency-Key": crypto.randomUUID() },
-          body: JSON.stringify({ payoutId: line.payoutId, amount: line.amount }),
-        });
-        if (!result.movement?.id) throw new Error("La API no devolvió el pago registrado.");
-        savedMovements.push(result.movement);
-        savedLineIds.push(line.id);
-        setMetadata((current) => ({
-          ...current,
-          [result.movement.id]: {
-            currency: draft.currency,
-            paymentForm: draft.paymentForm,
-            bank: draft.bank,
-            number: draft.number,
-            note: draft.note,
-            online: true,
-            central: false,
-          },
-        }));
-      } catch (error) {
-        failure = error instanceof Error ? error.message : "No se pudo registrar el pago.";
-        break;
-      }
-    }
-    if (savedLineIds.length) {
-      toast.success(`${savedLineIds.length} pago(s) registrado(s).`);
-      onRefresh();
-    }
-    if (failure) {
-      toast.error(savedLineIds.length ? `Se guardaron ${savedLineIds.length} línea(s); el resto falló: ${failure}` : failure);
-      return { savedLineIds, error: failure };
-    }
-    if (!savedMovements.length) return { savedLineIds, error: "Agregue al menos un pago autorizado." };
-    if (!shouldPrint) return { savedLineIds };
-    const collector = snapshot.collectors.find((item) => item.id === draft.collectorId);
+  const paymentSaved = (draft: PendingPaymentDraft, savedMovements: Movement[]) => {
+    const client = snapshot.clients.find((item) => item.id === savedMovements[0].clientId)!;
+    const collector = snapshot.collectors.find((item) => item.id === savedMovements[0].collectorId);
     const ticket: CollectionTicketModel = {
       id: savedMovements.map((item) => item.id).join("-"),
       receiptNumber: savedMovements.map((item) => item.id).join(", "),
-      date: draft.date,
-      currency: draft.currency,
+      date: movementBusinessDate(savedMovements[0].createdAt),
+      currency: "Peso Dominicano",
       clientName: client.name,
       clientIdentification: client.identification ?? "",
       collectorName: collector?.name ?? "Administración",
-      paymentForm: draft.paymentForm,
-      bank: draft.bank,
-      checkNumber: draft.number,
-      note: draft.note,
-      amount: draft.lines.reduce((sum, line) => sum + line.amount, 0),
-      lines: draft.lines.map((line) => ({ service: line.service, concept: line.concept, amount: line.amount })),
+      paymentForm: "Efectivo",
+      bank: "No Definido",
+      checkNumber: "",
+      note: "",
+      amount: savedMovements.reduce((sum, movement) => sum + movement.amount, 0),
+      lines: savedMovements.map((movement) => ({ service: "Pago autorizado", concept: snapshot.payouts.find((item) => item.id === movement.payoutId)?.concept ?? "Pago autorizado", amount: movement.amount })),
     };
-    return { savedLineIds, ticket };
+    setFormOpen(false);
+    if (draft.print) setPrintTicket(ticket);
+    toast.success(`${savedMovements.length} pago(s) registrado(s).`);
+    onRefresh();
   };
   const findClientForFilter = (client: Client) => {
     setFilterClientId(client.id);
@@ -8086,10 +8038,9 @@ function PaymentsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
             <div className="legacy-mdi-table-wrap"><table className="legacy-mdi-table payments-table"><thead><tr><th>Nro.</th><th>Identif.</th><th>Cliente</th><th>Fecha</th><th>EnL...</th><th>En...</th><th>Importe</th><th>Nota</th></tr></thead><tbody>
               {orderedPayments.length ? orderedPayments.map((movement, index) => {
                 const client = snapshot.clients.find((item) => item.id === movement.clientId);
-                const details = metadata[movement.id];
                 const active = selectedId === movement.id;
                 return <tr key={movement.id} className={active ? "selected-row" : undefined} aria-selected={active} role="button" tabIndex={0} onClick={() => setSelectedId(movement.id)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedId(movement.id))}>
-                  <td>{index + 1}</td><td>{client?.identification ?? ""}</td><td>{client?.name ?? "Cliente sin nombre"}</td><td>{safeDateLabel(movement.createdAt.slice(0, 10))}</td><td><LegacyCheck checked={details?.online ?? Boolean(movement.receiptToken)} /></td><td>{(movement as Movement & { registeredCentrally?: boolean }).registeredCentrally === undefined ? "—" : (movement as Movement & { registeredCentrally?: boolean }).registeredCentrally ? "Sí" : "No"}</td><td className="numeric-cell">{money(movement.amount)}</td><td>{movement.cancellationNote || details?.note || ""}</td>
+                  <td>{index + 1}</td><td>{client?.identification ?? ""}</td><td>{client?.name ?? "Cliente sin nombre"}</td><td>{safeDateLabel(movementBusinessDate(movement.createdAt))}</td><td><LegacyCheck checked={Boolean(movement.receiptToken)} /></td><td>{(movement as Movement & { registeredCentrally?: boolean }).registeredCentrally === undefined ? "—" : (movement as Movement & { registeredCentrally?: boolean }).registeredCentrally ? "Sí" : "No"}</td><td className="numeric-cell">{money(movement.amount)}</td><td>{movement.cancellationNote || ""}</td>
                 </tr>;
               }) : <tr><td colSpan={8} className="payouts-empty-cell">Sin pagos registrados.</td></tr>}
             </tbody></table></div>
@@ -8097,7 +8048,7 @@ function PaymentsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
           </section>
         </div>
       </div>
-      {formOpen && <PaymentDataDialog key="new-payment" snapshot={snapshot} onClose={() => setFormOpen(false)} onSave={savePayment} onPrint={(ticket) => setPrintTicket(ticket)} />}
+      {formOpen && <PaymentDataDialog key="new-payment" actorId={currentUser.id} snapshot={snapshot} onClose={() => setFormOpen(false)} onSaved={paymentSaved} />}
       {clientSearchOpen && <ClientSearchSubmodal clients={snapshot.clients} onClose={() => setClientSearchOpen(false)} onSelect={(client) => { findClientForFilter(client); setClientSearchOpen(false); }} />}
       {paymentToCancel && <MovementCancellationDialog actorId={currentUser.id} movement={paymentToCancel} kind="pagos" onClose={() => setPaymentToCancel(null)} onSaved={() => { setPaymentToCancel(null); setSelectedId(""); onRefresh(); }} />}
       {printTicket && <CollectionReceiptPrintDialog receipts={[printTicket]} onClose={() => setPrintTicket(null)} />}
@@ -8105,9 +8056,11 @@ function PaymentsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
   );
 }
 
-function PaymentDataDialog({ snapshot, onClose, onSave, onPrint }: Readonly<{ snapshot: Snapshot; onClose: () => void; onSave: (draft: PaymentFormDraft, shouldPrint: boolean) => Promise<PaymentSaveOutcome>; onPrint: (ticket: CollectionTicketModel) => void }>) {
-  const [draft, setDraft] = useState<PaymentFormDraft>({
-    date: localSystemDate(), currency: CURRENCIES[1] ?? "Peso Dominicano", clientId: "", clientCode: "",
+function PaymentDataDialog({ actorId, snapshot, onClose, onSaved }: Readonly<{ actorId: string; snapshot: Snapshot; onClose: () => void; onSaved: (draft: PendingPaymentDraft, movements: Movement[]) => void }>) {
+  const request = useMovementRequest(actorId, "central-payment");
+  const pending = pendingMovementDraft<PendingPaymentDraft>(actorId, "central-payment");
+  const [draft, setDraft] = useState<PaymentFormDraft>(pending ?? {
+    date: snapshot.businessDate, currency: "Peso Dominicano", clientId: "", clientCode: "",
     collectorId: snapshot.collectors[0]?.id ?? "", paymentForm: "Efectivo", bank: "No Definido", number: "", note: "", lines: [],
   });
   const [clientSearchOpen, setClientSearchOpen] = useState(false);
@@ -8117,28 +8070,41 @@ function PaymentDataDialog({ snapshot, onClose, onSave, onPrint }: Readonly<{ sn
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [clientRequiredOpen, setClientRequiredOpen] = useState(false);
   const [saveError, setSaveError] = useState("");
-  const [busy, setBusy] = useState(false);
+  const busy = request.busy;
   const client = snapshot.clients.find((item) => item.id === draft.clientId);
   const selectedLine = draft.lines.find((line) => line.id === selectedLineId) ?? null;
   const total = draft.lines.reduce((sum, line) => sum + line.amount, 0);
   const banks = ["No Definido", "BANCO DE RESERVAS", "BANCO POPULAR", "BANCO HIPOTECARIO DOMINICANO", "BANCO LEON", "GERENCIAL FIDUCIARIO", "BANCO NACIONAL", "BANCO METROPOLITANO", "SCOTIA BANK", "CITY BANK", "BANCO DE OSAKE", "BANCO ADEMI", "BANCO", "BANCO DE COMERCIO", "BANCO GLOBAL"];
-  const update = <K extends keyof PaymentFormDraft>(field: K, value: PaymentFormDraft[K]) => setDraft((current) => ({ ...current, [field]: value }));
-  const chooseClient = (next: Client) => {
-    const route = snapshot.routes.find((item) => item.id === next.routeId);
-    setDraft((current) => ({ ...current, clientId: next.id, clientCode: next.code, collectorId: route?.collectorId ?? current.collectorId }));
+  const clearSelection = () => { setSelectedLineId(""); setPayoutPickerOpen(false); setEditingLine(null); setConfirmDeleteOpen(false); setSaveError(""); };
+  const close = () => { if (!request.locked) { request.clear(); onClose(); } };
+  const update = <K extends keyof PaymentFormDraft>(field: K, value: PaymentFormDraft[K]) => {
+    if (request.locked) return;
+    if (field === "collectorId" && value !== draft.collectorId) clearSelection();
+    setDraft((current) => ({ ...current, [field]: value, ...(field === "collectorId" && value !== current.collectorId ? { lines: [] } : {}) }));
+  };
+  const selectClient = (next: Client | undefined, code: string) => {
+    if (request.locked) return;
+    const route = snapshot.routes.find((item) => item.id === next?.routeId);
+    const nextCollector = route?.collectorId ?? "";
+    if (next?.id !== draft.clientId || nextCollector !== draft.collectorId) clearSelection();
+    setDraft((current) => ({ ...current, clientId: next?.id ?? "", clientCode: code, collectorId: nextCollector,
+      lines: next?.id === current.clientId && nextCollector === current.collectorId ? current.lines : [] }));
     setClientSearchOpen(false);
-    setSaveError("");
+  };
+  const chooseClient = (next: Client) => {
+    selectClient(next, next.code);
   };
   const resolveClientCode = (value: string) => {
     const normalized = value.trim().toLowerCase();
     const next = snapshot.clients.find((item) => item.code.toLowerCase() === normalized || item.identification?.toLowerCase() === normalized);
-    setDraft((current) => ({ ...current, clientCode: value, clientId: next?.id ?? "" }));
+    selectClient(next, value);
   };
   const eligiblePayouts = snapshot.payouts.filter((payout) => {
     const alreadyAdded = draft.lines.filter((line) => line.payoutId === payout.id).reduce((sum, line) => sum + line.amount, 0);
     return payout.clientId === draft.clientId && payout.collectorId === draft.collectorId && payout.status !== "cancelled" && payout.amount - payout.paid - alreadyAdded > 0;
   });
   const addPayoutLine = (payout: Payout) => {
+    if (request.locked || payout.clientId !== draft.clientId || payout.collectorId !== draft.collectorId || draft.lines.some((line) => line.payoutId === payout.id)) return;
     const alreadyAdded = draft.lines.filter((line) => line.payoutId === payout.id).reduce((sum, line) => sum + line.amount, 0);
     const pending = Math.max(0, payout.amount - payout.paid - alreadyAdded);
     if (pending <= 0) return;
@@ -8149,42 +8115,41 @@ function PaymentDataDialog({ snapshot, onClose, onSave, onPrint }: Readonly<{ sn
     setSaveError("");
   };
   const requestAddLine = () => {
+    if (request.locked) return;
     if (!client) { setClientRequiredOpen(true); return; }
     if (!eligiblePayouts.length) { toast.info("El cliente no tiene pagos autorizados pendientes."); return; }
     setPayoutPickerOpen(true);
   };
   const submit = async (event: FormEvent | ReactMouseEvent<HTMLButtonElement>, shouldPrint = false) => {
     event.preventDefault();
+    if (request.busy) return;
     setSaveError("");
-    if (!client) { setClientRequiredOpen(true); return; }
-    if (!draft.lines.length) { setSaveError("Agregue al menos un pago autorizado."); return; }
-    if (draft.lines.some((line) => !Number.isFinite(line.amount) || line.amount <= 0)) { setSaveError("El importe de cada pago debe ser mayor a cero."); return; }
-    setBusy(true);
-    try {
-      const result = await onSave({ ...draft, lines: draft.lines.map((line) => ({ ...line })) }, shouldPrint);
-      if (result.savedLineIds.length) {
-        const savedSet = new Set(result.savedLineIds);
-        const remaining = draft.lines.filter((line) => !savedSet.has(line.id));
-        setDraft((current) => ({ ...current, lines: current.lines.filter((line) => !savedSet.has(line.id)) }));
-        if (result.ticket) onPrint(result.ticket);
-        if (!remaining.length && !result.error) onClose();
-      }
-      if (result.error) setSaveError(result.error);
-      else if (!result.savedLineIds.length) setSaveError("No se registró ningún pago.");
-    } catch (error) {
-      setSaveError(error instanceof Error ? error.message : "No se pudo registrar el pago.");
-    } finally {
-      setBusy(false);
+    // An uncertain retry replays the frozen request, even if refreshed balances changed.
+    const submitted: PendingPaymentDraft = pending ?? { ...draft, date: snapshot.businessDate, lines: draft.lines.map((line) => ({ ...line })), print: shouldPrint };
+    if (!request.uncertain) {
+      if (!client || client.active === false) { setClientRequiredOpen(true); return; }
+      if (!draft.lines.length || draft.lines.length > 100 || new Set(draft.lines.map((line) => line.payoutId)).size !== draft.lines.length) { setSaveError("Agregue entre 1 y 100 pagos autorizados, sin repetirlos."); return; }
+      const invalid = draft.lines.some((line) => {
+        const payout = snapshot.payouts.find((item) => item.id === line.payoutId);
+        return !payout || payout.clientId !== draft.clientId || payout.collectorId !== draft.collectorId || payout.status === "cancelled" || !Number.isSafeInteger(line.amount) || line.amount <= 0 || line.amount > payout.amount - payout.paid;
+      });
+      if (invalid) { setSaveError("Revise las partidas: deben pertenecer al cliente y cobrador seleccionados y respetar su saldo pendiente."); return; }
     }
+    try {
+      const result = await request.run<CentralCollectionResult>("/pagos/central", { clientId: submitted.clientId, collectorId: submitted.collectorId, lines: submitted.lines.map((line) => ({ payoutId: line.payoutId, amount: line.amount })) }, submitted, (data) =>
+        Array.isArray(data?.movements) && Array.isArray(data.receipts) && data.movements.length === submitted.lines.length && new Set(data.movements.map((movement) => movement.id)).size === submitted.lines.length && new Set(data.movements.map((movement) => movement.payoutId)).size === submitted.lines.length && data.movements.every((movement) => Boolean(movement.id && movement.receiptToken) && movement.type === "payout" && movement.clientId === submitted.clientId && movement.collectorId === submitted.collectorId && Number.isFinite(Date.parse(movement.createdAt)) && submitted.lines.some((line) => line.payoutId === movement.payoutId && line.amount === movement.amount) && data.receipts.some((receipt) => receipt.movementId === movement.id && receipt.token === movement.receiptToken)));
+      onSaved(submitted, result.movements);
+    } catch { /* The request manager retains the exact attempt and displays its error. */ }
   };
   return (
-    <LegacyDialog title="Datos del Pago..." onClose={onClose} className="payment-data-dialog">
+    <LegacyDialog title="Datos del Pago..." onClose={close} className="payment-data-dialog">
       <form className="collection-receipt-content payment-data-content" onSubmit={(event) => void submit(event)}>
+        <fieldset disabled={request.locked} style={{ border: 0, padding: 0, margin: 0, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", gap: 8, flex: "1 1 auto" }}>
         <div className="collection-receipt-fields">
           <div className="collection-receipt-row collection-receipt-meta-row">
             <label>Doc:<input type="number" value="-1" readOnly disabled aria-label="Documento" /></label>
-            <label>Fecha:<input type="date" value={draft.date} onChange={(event) => update("date", event.target.value)} /></label>
-            <label>Moneda:<select value={draft.currency} onChange={(event) => update("currency", event.target.value)}>{CURRENCIES.map((option) => <option key={option}>{option}</option>)}</select></label>
+            <label>Fecha:<input type="date" value={pending?.date ?? snapshot.businessDate} readOnly title="Fecha de la jornada; el comprobante usa la fecha registrada por el servidor" /></label>
+            <label>Moneda:<select value="Peso Dominicano" disabled title="Esta caja opera en pesos dominicanos">{CURRENCIES.map((option) => <option key={option}>{option}</option>)}</select></label>
           </div>
           <div className="collection-receipt-row collection-receipt-client-row">
             <label htmlFor="payment-client-code">Cliente:</label>
@@ -8193,17 +8158,19 @@ function PaymentDataDialog({ snapshot, onClose, onSave, onPrint }: Readonly<{ sn
             <input value={client?.name ?? ""} readOnly disabled aria-label="Nombre del cliente" />
           </div>
           <div className="collection-receipt-row collection-receipt-labeled-row"><label htmlFor="payment-collector">Cobrad.:</label><select id="payment-collector" value={draft.collectorId} onChange={(event) => update("collectorId", event.target.value)}><option value="">No definido</option>{snapshot.collectors.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div>
-          <div className="collection-receipt-row collection-receipt-labeled-row"><label htmlFor="payment-form">Forma:</label><select id="payment-form" value={draft.paymentForm} onChange={(event) => update("paymentForm", event.target.value)}>{["Efectivo", "Cheque", "Depósito", "Mixto", "Tarjeta"].map((item) => <option key={item}>{item}</option>)}</select></div>
-          <div className="collection-receipt-row collection-receipt-labeled-row"><label htmlFor="payment-bank">Banco:</label><select id="payment-bank" value={draft.bank} onChange={(event) => update("bank", event.target.value)}>{banks.map((item) => <option key={item}>{item}</option>)}</select></div>
-          <div className="collection-receipt-row collection-receipt-labeled-row"><label htmlFor="payment-number">Número:</label><input id="payment-number" value={draft.number} onChange={(event) => update("number", event.target.value)} /></div>
-          <div className="collection-receipt-row collection-receipt-labeled-row"><label htmlFor="payment-note">Nota:</label><input id="payment-note" value={draft.note} onChange={(event) => update("note", event.target.value)} /></div>
+          <div className="collection-receipt-row collection-receipt-labeled-row"><label htmlFor="payment-form">Forma:</label><select id="payment-form" value="Efectivo" disabled>{["Efectivo", "Cheque", "Depósito", "Mixto", "Tarjeta"].map((item) => <option key={item}>{item}</option>)}</select></div>
+          <div className="collection-receipt-row collection-receipt-labeled-row"><label htmlFor="payment-bank">Banco:</label><select id="payment-bank" value="No Definido" disabled>{banks.map((item) => <option key={item}>{item}</option>)}</select></div>
+          <div className="collection-receipt-row collection-receipt-labeled-row"><label htmlFor="payment-number">Número:</label><input id="payment-number" value="" disabled /></div>
+          <div className="collection-receipt-row collection-receipt-labeled-row"><label htmlFor="payment-note">Nota:</label><input id="payment-note" value="" disabled /></div>
         </div>
         <section className="collection-receipt-detail" aria-label="Detalle del pago">
           <div className="collection-receipt-detail-toolbar"><button type="button" disabled={busy} onClick={requestAddLine}>Agregar</button><button type="button" disabled={!selectedLine || busy} onClick={() => selectedLine && setEditingLine(selectedLine)}>Modificar</button><button type="button" disabled={!selectedLine || busy} onClick={() => setConfirmDeleteOpen(true)}>Borrar</button><button type="button" disabled={busy} onClick={() => { setSelectedLineId(""); setSaveError(""); toast.info("Detalle actualizado."); }}>Refrescar</button></div>
           <div className="collection-receipt-table-wrap"><table className="collection-receipt-table"><thead><tr><th>Nro.</th><th>Servicio</th><th>Concepto</th><th>Importe</th></tr></thead><tbody>{draft.lines.length ? draft.lines.map((line, index) => <tr key={line.id} className={selectedLineId === line.id ? "selected-row" : undefined} aria-selected={selectedLineId === line.id} role="button" tabIndex={0} onClick={() => setSelectedLineId(line.id)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedLineId(line.id))}><td>{index + 1}</td><td>{line.service}</td><td>{line.concept}</td><td className="numeric-cell">{money(line.amount)}</td></tr>) : <tr><td colSpan={4} className="collection-receipt-empty">Sin pagos agregados.</td></tr>}</tbody></table></div>
         </section>
-        {saveError && <div className="collection-receipt-error" role="alert">{saveError}</div>}
-        <div className="collection-receipt-footer"><label className="collection-receipt-total">Total:<input value={money(total)} readOnly disabled aria-label="Total del pago" /></label><div className="collection-receipt-footer-actions"><button type="button" disabled={busy} onClick={(event) => void submit(event)}>Guardar</button><button type="button" disabled={busy} onClick={(event) => void submit(event, true)}>Guardar e Imp.</button><button type="button" disabled={busy} onClick={onClose}>Cancelar</button></div></div>
+        </fieldset>
+        {(saveError || request.error) && <div className="collection-receipt-error" role="alert">{saveError || request.error}</div>}
+        <p role="status">Esta caja registra pagos en DOP y efectivo, con la fecha del servidor.{request.uncertain ? " El resultado aún no está confirmado; reintenta la misma solicitud para recuperarlo sin duplicar pagos." : ""}</p>
+        <div className="collection-receipt-footer"><label className="collection-receipt-total">Total:<input value={money(total)} readOnly disabled aria-label="Total del pago" /></label><div className="collection-receipt-footer-actions"><button type="button" disabled={busy} onClick={(event) => void submit(event)}>{busy ? "Guardando…" : request.uncertain ? "Reintentar" : "Guardar"}</button><button type="button" disabled={request.locked} onClick={(event) => void submit(event, true)}>Guardar e Imp.</button><button type="button" disabled={request.locked} onClick={close}>Cancelar</button></div></div>
       </form>
       {clientSearchOpen && <ClientSearchSubmodal clients={snapshot.clients} onClose={() => setClientSearchOpen(false)} onSelect={chooseClient} />}
       {payoutPickerOpen && <PaymentPayoutPickerDialog payouts={eligiblePayouts} onClose={() => setPayoutPickerOpen(false)} onSelect={addPayoutLine} />}

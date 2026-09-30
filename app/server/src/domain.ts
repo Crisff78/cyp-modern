@@ -851,6 +851,40 @@ export function createCentralCollections(
   return movements;
 }
 
+export function createCentralPayments(
+  state: State,
+  user: User,
+  input: { clientId: string; collectorId: string; lines: Array<{ payoutId: string; amount: number }> },
+  now = new Date(),
+) {
+  assertAdmin(user);
+  const client = state.clients.find((item) => item.id === input.clientId);
+  if (!client) throw new DomainError("NOT_FOUND", "Cliente no encontrado.", 404);
+  if (client.active === false)
+    throw new DomainError("CLIENT_INACTIVE", "El cliente debe estar activo para registrar el pago.", 409);
+  const collector = state.collectors.find((item) => item.id === input.collectorId);
+  if (!collector) throw new DomainError("NOT_FOUND", "Cobrador no encontrado.", 404);
+  if (collector.active === false)
+    throw new DomainError("COLLECTOR_INACTIVE", "El cobrador debe estar activo para registrar el pago.", 409);
+  if (!input.lines.length || input.lines.length > 100 || new Set(input.lines.map((line) => line.payoutId)).size !== input.lines.length)
+    throw new DomainError("INVALID_PAYMENT_LINES", "Selecciona entre 1 y 100 descargos, sin repetirlos.", 422);
+  for (const line of input.lines) {
+    if (!Number.isSafeInteger(line.amount) || line.amount <= 0 || line.amount > 1_000_000_000)
+      throw new DomainError("INVALID_AMOUNT", "El importe debe ser un entero positivo en centavos.", 422);
+    const payout = state.payouts.find((item) => item.id === line.payoutId);
+    if (!payout || payout.clientId !== client.id)
+      throw new DomainError("PAYOUT_CLIENT_MISMATCH", "Todos los descargos deben pertenecer al cliente seleccionado.", 422);
+    if (payout.collectorId !== collector.id)
+      throw new DomainError("PAYOUT_COLLECTOR_MISMATCH", "Todos los descargos deben corresponder al cobrador seleccionado.", 422);
+  }
+  // Publish the complete payment only after every line passes the ledger guards.
+  const draft = structuredClone(state);
+  const movements = input.lines.map((line) => postMovement(draft, user, "payout", line, now));
+  state.payouts = draft.payouts;
+  state.movements = draft.movements;
+  return movements;
+}
+
 export function cancelMovement(
   state: State,
   user: User,
