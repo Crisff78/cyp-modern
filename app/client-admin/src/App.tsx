@@ -785,7 +785,7 @@ function buildCompactReportTable(page: ReportPageId, snapshot: Snapshot, filters
       date,
       overdueDays: dateDifferenceInDays(date, snapshot.businessDate),
       clientCode: client?.code ?? "",
-      identification: client?.identification || client?.code || "",
+      identification: client?.identification ?? "",
       clientName: client?.name ?? "Cliente sin nombre",
       routeId: client?.routeId ?? "",
       routeName: route?.name ?? "Sin ruta",
@@ -929,7 +929,7 @@ function buildCompactReportTable(page: ReportPageId, snapshot: Snapshot, filters
     return {
       id: movement.id,
       clientCode: client?.code ?? "",
-      identification: client?.identification || client?.code || "",
+      identification: client?.identification ?? "",
       clientName: client?.name ?? "Cliente sin nombre",
       service: charge?.service ?? "No definido",
       concept: charge?.concept ?? "",
@@ -1183,7 +1183,7 @@ function PendingClientChargesReport({ snapshot, onRefresh }: Readonly<{ snapshot
       id: charge.id,
       date,
       overdueDays: dateDifferenceInDays(date, snapshot.businessDate),
-      identification: client?.identification || client?.code || "",
+      identification: client?.identification ?? "",
       client: client?.name ?? "Cliente sin nombre",
       amount: charge.amount,
       received: charge.collected,
@@ -2160,15 +2160,15 @@ type ClientFinanceTab = "Cargos" | "Cargos Rec." | "Cobros" | "Descargos" | "Des
 
 const clientFinanceTabs: ClientFinanceTab[] = ["Cargos", "Cargos Rec.", "Cobros", "Descargos", "Descargos Rec.", "Pagos"];
 
-const clientRecordFromSnapshot = (client: Client, routes: Snapshot["routes"]): ClientLegacyRecord => ({
+const clientRecordFromSnapshot = (client: Client): ClientLegacyRecord => ({
   id: client.id,
   code: client.code,
-  identification: client.identification || client.id,
+  identification: client.identification ?? "",
   name: client.name,
   alias: client.alias ?? "",
   address: client.address,
-  location: client.sector ?? routes.find((route) => route.id === client.routeId)?.sector ?? "",
-  zone: client.sector ?? routes.find((route) => route.id === client.routeId)?.sector ?? "No Definida",
+  location: client.sector ?? "",
+  zone: client.sector || "No Definida",
   routeId: client.routeId,
   phone: client.phone,
   cellular: client.cellular ?? "",
@@ -2179,7 +2179,7 @@ const clientRecordFromSnapshot = (client: Client, routes: Snapshot["routes"]): C
   lng: client.lng,
 });
 
-const defaultClientRecords = (snapshot: Snapshot): ClientLegacyRecord[] => snapshot.clients.map((client) => clientRecordFromSnapshot(client, snapshot.routes));
+const defaultClientRecords = (snapshot: Snapshot): ClientLegacyRecord[] => snapshot.clients.map((client) => clientRecordFromSnapshot(client));
 
 const nextClientCode = (clients: readonly ClientLegacyRecord[]) => {
   const numericCodes = clients
@@ -2215,17 +2215,21 @@ function ClientDataDialog({ client, zones, routes, defaultCode = "", onClose, on
       setError("El campo Nombre no puede estar vacío");
       return;
     }
+    if (!client && !draft.identification.trim()) {
+      setError("Indica la cédula o el pasaporte del cliente.");
+      return;
+    }
     await onSave(draft);
   };
   return (
     <LegacyDialog title="Datos del Cliente..." onClose={onClose} className="client-form-dialog">
       <form className="client-form" onSubmit={submit}>
         <label className="client-form-row"><span>Código:</span><input autoFocus value={draft.code} onChange={(event) => update("code", event.target.value)} /></label>
-        <label className="client-form-row"><span>Identificación:</span><span className="client-ident-field"><input value={draft.identification} onChange={(event) => update("identification", event.target.value)} /><button type="button">G</button></span></label>
+        <label className="client-form-row"><span>Cédula / pasaporte:</span><input required={!client} maxLength={80} placeholder="Número del documento" value={draft.identification} onChange={(event) => update("identification", event.target.value)} /></label>
         <label className="client-form-row"><span>Cliente:</span><input value={draft.name} onChange={(event) => update("name", event.target.value)} /></label>
         <label className="client-form-row"><span>Conocido por:</span><input value={draft.alias} onChange={(event) => update("alias", event.target.value)} /></label>
         <label className="client-form-row"><span>Dirección:</span><input value={draft.address} onChange={(event) => update("address", event.target.value)} /></label>
-        <label className="client-form-row"><span>Ubicación:</span><input value={draft.location} onChange={(event) => update("location", event.target.value)} /></label>
+        <label className="client-form-row"><span>Ubicación:</span><input placeholder="No definida" value={draft.location} onChange={(event) => update("location", event.target.value)} /></label>
         <label className="client-form-row"><span>Zona:</span><select value={draft.zone} onChange={(event) => update("zone", event.target.value)}>{zoneOptions.map((zone) => <option key={zone}>{zone}</option>)}</select></label>
         <label className="client-form-row"><span>Ruta:</span><select value={draft.routeId} onChange={(event) => update("routeId", event.target.value)}>{routes.map((route) => <option key={route.id} value={route.id}>{route.name}</option>)}</select></label>
         <div className="client-contact-row">
@@ -2281,8 +2285,10 @@ function ClientFinancialDialog({ client, snapshot, onClose }: Readonly<{ client:
 type ClientMapStyle = "Hybrid" | "Roadmap" | "Satellite" | "Terrain";
 
 function ClientMapDialog({ client, onClose, onSave }: Readonly<{ client: ClientLegacyRecord; onClose: () => void; onSave: (lat: number, lng: number) => Promise<boolean> }>) {
-  const [latitude, setLatitude] = useState(client.lat === undefined ? "" : String(client.lat));
-  const [longitude, setLongitude] = useState(client.lng === undefined ? "" : String(client.lng));
+  const hasStoredLocation = validLocation(client.lat, client.lng);
+  const [latitude, setLatitude] = useState(hasStoredLocation ? String(client.lat) : "");
+  const [longitude, setLongitude] = useState(hasStoredLocation ? String(client.lng) : "");
+  const [mapPicking, setMapPicking] = useState(false);
   const [locating, setLocating] = useState(false);
   const [locationError, setLocationError] = useState("");
   const [locationDetail, setLocationDetail] = useState("");
@@ -2316,12 +2322,13 @@ function ClientMapDialog({ client, onClose, onSave }: Readonly<{ client: ClientL
     <LegacyDialog title="Ubicación del Cliente..." onClose={onClose} className="client-map-dialog">
       <div className="client-map-view client-location-real">
         <p><strong>{client.name}</strong>. Introduce coordenadas verificadas o usa tu GPS si estás en la ubicación del cliente.</p>
+        <p role="status">Ubicación: <strong>{validCoordinates ? "Punto indicado" : "No definida"}</strong></p>
         {/PRUEBA|SINT[ÉE]TIC|DEMO/i.test(client.note) && <p className="location-feedback">DATOS DE PRUEBA: revisa estas coordenadas antes de usarlas como ubicación real.</p>}
         <div className="client-map-coordinates"><label>Latitud:<input inputMode="decimal" value={latitude} onChange={(event) => setLatitude(event.target.value)} /></label><label>Longitud:<input inputMode="decimal" value={longitude} onChange={(event) => setLongitude(event.target.value)} /></label></div>
         {locationError && <p role="alert">{locationError}</p>}
         {locationDetail && <p role="status">{locationDetail}</p>}
-        <GeoMap points={validCoordinates ? [{ id: client.id, lat: Number(latitude), lng: Number(longitude), label: client.name }] : []} onPick={(lat, lng) => { setLatitude(lat.toFixed(6)); setLongitude(lng.toFixed(6)); setLocationDetail("Punto seleccionado en el mapa. Guarda para confirmar la ubicación."); }} />
-        <p>También puedes tocar el mapa para seleccionar el punto.</p>
+        {(validCoordinates || mapPicking) && <GeoMap points={validCoordinates ? [{ id: client.id, lat: Number(latitude), lng: Number(longitude), label: client.name }] : []} onPick={(lat, lng) => { setLatitude(lat.toFixed(6)); setLongitude(lng.toFixed(6)); setLocationDetail("Punto seleccionado en el mapa. Guarda para confirmar la ubicación."); }} />}
+        {(validCoordinates || mapPicking) ? <p>También puedes tocar el mapa para seleccionar el punto.</p> : <button type="button" onClick={() => setMapPicking(true)}>Seleccionar en mapa</button>}
         <div className="client-map-actions"><button type="button" onClick={locate} disabled={locating || saving}>{locating ? "Obteniendo GPS…" : "Usar mi ubicación GPS"}</button>{validCoordinates && <a href={`https://www.openstreetmap.org/?mlat=${encodeURIComponent(latitude)}&mlon=${encodeURIComponent(longitude)}#map=17/${encodeURIComponent(latitude)}/${encodeURIComponent(longitude)}`} target="_blank" rel="noopener noreferrer">Ver punto en mapa</a>}<button type="button" onClick={() => void save(true)} disabled={saving || locating}>Guardar y cerrar</button><button type="button" className="primary" onClick={() => void save(false)} disabled={saving || locating}>{saving ? "Guardando…" : "Guardar"}</button><button type="button" onClick={onClose}>Cerrar</button></div>
       </div>
     </LegacyDialog>
@@ -2473,7 +2480,7 @@ function ClientsLegacyView({ snapshot, onRefresh }: Readonly<{ snapshot: Snapsho
       const saved = await remittancesApi<Client>(isEdit ? `/clientes/${encodeURIComponent(selectedClient.id)}` : "/clientes", {
         method: "POST", body: JSON.stringify(clientPayload(draft, isEdit && selectedClient.lat !== undefined && selectedClient.lng !== undefined ? { lat: selectedClient.lat, lng: selectedClient.lng } : undefined)),
       });
-      const record = { ...clientRecordFromSnapshot(saved, snapshot.routes), ...draft, id: saved.id, lat: saved.lat, lng: saved.lng, active: isEdit ? selectedClient.active : true };
+      const record = { ...clientRecordFromSnapshot(saved), ...draft, id: saved.id, lat: saved.lat, lng: saved.lng, active: isEdit ? selectedClient.active : true };
       setClientsData((current) => isEdit ? current.map((client) => client.id === record.id ? record : client) : [...current, record]);
       setSelectedClientId(record.id);
       setFormMode(null);
@@ -2518,7 +2525,7 @@ function ClientsLegacyView({ snapshot, onRefresh }: Readonly<{ snapshot: Snapsho
           <label className="client-radio-line"><input type="radio" name="client-filter" checked={filterMode === "route"} onChange={() => setFilterMode("route")} /> <span>por Ruta:</span></label><select value={routeFilter} disabled={filterMode !== "route"} onChange={(event) => setRouteFilter(event.target.value)}>{snapshot.routes.map((route) => <option key={route.id} value={route.id}>{route.name}</option>)}</select>
           <label>Estado:<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option>Activo</option><option>Inactivo</option><option>Todos</option></select></label>
         </aside>}
-        <div className="clients-grid-panel"><div className="legacy-mdi-table-wrap"><table className="legacy-mdi-table clients-grid"><thead><tr><th>Código</th><th>Identificación</th><th>Cliente</th><th>Zona</th><th>Ruta</th><th>Teléfono</th><th>Celular</th><th>Activo</th></tr></thead><tbody>{visibleClients.map((client) => { const isSelected = selectedClientId === client.id; return <tr key={client.id} className={isSelected ? "selected-row" : ""} role="button" tabIndex={0} onClick={() => setSelectedClientId(client.id)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedClientId(client.id))}><td><span className={`mdi-row-select ${isSelected ? "selected" : ""}`}>{client.code}</span></td><td>{client.identification}</td><td>{client.name}</td><td>{client.zone}</td><td>{snapshot.routes.find((route) => route.id === client.routeId)?.name ?? ""}</td><td>{client.phone}</td><td>{client.cellular}</td><td><LegacyCheck checked={client.active} /></td></tr>; })}</tbody></table></div><div className="legacy-footerbar"><span>Cantidad</span><strong>{visibleClients.length}</strong></div></div>
+        <div className="clients-grid-panel"><div className="legacy-mdi-table-wrap"><table className="legacy-mdi-table clients-grid"><thead><tr><th>Código</th><th>Identificación</th><th>Cliente</th><th>Zona</th><th>Ruta</th><th>Teléfono</th><th>Celular</th><th>Activo</th></tr></thead><tbody>{visibleClients.map((client) => { const isSelected = selectedClientId === client.id; return <tr key={client.id} className={isSelected ? "selected-row" : ""} role="button" tabIndex={0} onClick={() => setSelectedClientId(client.id)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedClientId(client.id))}><td><span className={`mdi-row-select ${isSelected ? "selected" : ""}`}>{client.code}</span></td><td>{client.identification || "No registrada"}</td><td>{client.name}</td><td>{client.zone}</td><td>{snapshot.routes.find((route) => route.id === client.routeId)?.name ?? ""}</td><td>{client.phone}</td><td>{client.cellular}</td><td><LegacyCheck checked={client.active} /></td></tr>; })}</tbody></table></div><div className="legacy-footerbar"><span>Cantidad</span><strong>{visibleClients.length}</strong></div></div>
       </div>
       {formMode && <ClientDataDialog client={formMode === "edit" ? selectedClient : undefined} zones={zones} routes={snapshot.routes} defaultCode={formMode === "new" ? nextClientCode(clientsData) : ""} onClose={() => setFormMode(null)} onSave={saveClient} />}
       {confirmDelete && <LegacyConfirmDialog message={selectedClient?.active ? "¿Inactivar cliente? Se conserva su historial." : "¿Activar cliente?"} onYes={() => void inactivateClient()} onNo={() => setConfirmDelete(false)} />}
@@ -6013,7 +6020,7 @@ function ChargesOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{
                   const pending = Math.max(0, charge.amount - charge.collected);
                   const isSelected = selectedCharge?.id === charge.id;
                   return <tr key={charge.id} className={isSelected ? "selected-row" : undefined} aria-selected={isSelected} role="button" tabIndex={0} onPointerDown={() => setSelectedCharge(charge)} onClick={() => setSelectedCharge(charge)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedCharge(charge))}>
-                    <td>{index + 1}</td><td>{safeDateLabel(charge.dueDate)}</td><td>{client?.code ?? ""}</td><td>{client?.identification || client?.id || ""}</td><td>{client?.name ?? "Cliente sin nombre"}</td><td>{abbreviation(charge.service)}</td><td>{charge.service}</td><td>{money(charge.amount)}</td><td>{money(charge.collected)}</td><td>{money(pending)}</td><td><LegacyCheck checked={charge.status !== "cancelled"} /></td>
+                    <td>{index + 1}</td><td>{safeDateLabel(charge.dueDate)}</td><td>{client?.code ?? ""}</td><td>{client?.identification ?? ""}</td><td>{client?.name ?? "Cliente sin nombre"}</td><td>{abbreviation(charge.service)}</td><td>{charge.service}</td><td>{money(charge.amount)}</td><td>{money(charge.collected)}</td><td>{money(pending)}</td><td><LegacyCheck checked={charge.status !== "cancelled"} /></td>
                   </tr>;
                 })}
               </tbody>
@@ -6405,7 +6412,7 @@ function RecurringChargesOperationalView({ snapshot, currentUser, onRefresh }: R
                 const client = clientById(record.clientId);
                 const isSelected = selectedRow?.id === record.id;
                 return <tr key={record.id} className={isSelected ? "selected-row" : undefined} aria-selected={isSelected} role="button" tabIndex={0} onClick={() => setSelectedRow(record)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedRow(record))}>
-                  <td>{index + 1}</td><td>{safeDateLabel(record.startDate)}</td><td>{record.frequency}</td><td>{client?.identification || client?.code || ""}</td><td>{client?.name ?? "Cliente sin nombre"}</td><td>{record.service}</td><td className="text-right">{money(record.amount)}</td><td><LegacyCheck checked={record.active} /></td><td>{safeDateLabel(record.registeredAt)}</td>
+                  <td>{index + 1}</td><td>{safeDateLabel(record.startDate)}</td><td>{record.frequency}</td><td>{client?.identification ?? ""}</td><td>{client?.name ?? "Cliente sin nombre"}</td><td>{record.service}</td><td className="text-right">{money(record.amount)}</td><td><LegacyCheck checked={record.active} /></td><td>{safeDateLabel(record.registeredAt)}</td>
                 </tr>;
               }) : <tr><td className="recurring-charges-empty-cell" colSpan={9}>Sin cargos recurrentes.</td></tr>}</tbody>
             </table>
@@ -6676,7 +6683,7 @@ function LegacyOperationView({
       return [{
         id: String(row.__id ?? movement.id ?? index),
         clientName: client.name,
-        identification: client.identification || client.code,
+        identification: client.identification ?? "",
         latitude: client.lat,
         longitude: client.lng,
         amount: Number(row.__amount ?? movement.amount ?? 0),
@@ -6758,7 +6765,7 @@ function LegacyOperationView({
                     const collector = snapshot.collectors.find((item) => item.id === movement.collectorId);
                     const isSelected = selectedRow?.__id === row.__id;
                     return <tr key={String(row.__id ?? index)} className={isSelected ? "selected-row" : undefined} aria-selected={isSelected} role="button" tabIndex={0} onClick={() => setSelectedRow(row)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedRow(row))}>
-                      <td>{index + 1}</td><td>{client?.identification || client?.code || ""}</td><td>{client?.name ?? "Cliente sin nombre"}</td><td>{String(row.date ?? "")}</td><td>{collector?.name ?? String(row.line ?? "")}</td><td>{(movement as Movement & { registeredCentrally?: boolean }).registeredCentrally === undefined ? "—" : (movement as Movement & { registeredCentrally?: boolean }).registeredCentrally ? "Sí" : "No"}</td><td>{String(row.receipt ?? "")}</td><td>{String(row.amount ?? money(Number(row.__amount ?? 0)))}</td><td><LegacyCheck checked={!movement.cancelledAt} /></td><td>{String(row.registry ?? "")}</td>
+                      <td>{index + 1}</td><td>{client?.identification ?? ""}</td><td>{client?.name ?? "Cliente sin nombre"}</td><td>{String(row.date ?? "")}</td><td>{collector?.name ?? String(row.line ?? "")}</td><td>{(movement as Movement & { registeredCentrally?: boolean }).registeredCentrally === undefined ? "—" : (movement as Movement & { registeredCentrally?: boolean }).registeredCentrally ? "Sí" : "No"}</td><td>{String(row.receipt ?? "")}</td><td>{String(row.amount ?? money(Number(row.__amount ?? 0)))}</td><td><LegacyCheck checked={!movement.cancelledAt} /></td><td>{String(row.registry ?? "")}</td>
                     </tr>;
                   }) : <tr><td className="collections-empty-cell" colSpan={10}>Sin cobros registrados.</td></tr>}</tbody>
                 </table>
@@ -7848,7 +7855,7 @@ function PayoutsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{
                 const client = snapshot.clients.find((item) => item.id === payout.clientId);
                 const selected = payout.id === selectedPayout?.id;
                 return <tr key={payout.id} className={selected ? "selected-row" : undefined} aria-selected={selected} role="button" tabIndex={0} onClick={() => setSelectedId(payout.id)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedId(payout.id))}>
-                  <td>{index + 1}</td><td>{client?.identification || client?.code || ""}</td><td>{client?.name ?? "Cliente sin nombre"}</td><td>{safeDateLabel(payout.date)}</td><td>{payout.currency}</td><td>{payout.service}</td><td>{money(payout.amount)}</td><td><LegacyCheck checked={payout.status !== "cancelled"} /></td>
+                  <td>{index + 1}</td><td>{client?.identification ?? ""}</td><td>{client?.name ?? "Cliente sin nombre"}</td><td>{safeDateLabel(payout.date)}</td><td>{payout.currency}</td><td>{payout.service}</td><td>{money(payout.amount)}</td><td><LegacyCheck checked={payout.status !== "cancelled"} /></td>
                 </tr>;
               }) : <tr><td colSpan={8} className="payouts-empty-cell">Sin descargos registrados.</td></tr>}
             </tbody></table></div>
@@ -8026,7 +8033,7 @@ function PaymentsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
       date: draft.date,
       currency: draft.currency,
       clientName: client.name,
-      clientIdentification: client.identification || client.code,
+      clientIdentification: client.identification ?? "",
       collectorName: collector?.name ?? "Administración",
       paymentForm: draft.paymentForm,
       bank: draft.bank,
@@ -8082,7 +8089,7 @@ function PaymentsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
                 const details = metadata[movement.id];
                 const active = selectedId === movement.id;
                 return <tr key={movement.id} className={active ? "selected-row" : undefined} aria-selected={active} role="button" tabIndex={0} onClick={() => setSelectedId(movement.id)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedId(movement.id))}>
-                  <td>{index + 1}</td><td>{client?.identification || client?.code || ""}</td><td>{client?.name ?? "Cliente sin nombre"}</td><td>{safeDateLabel(movement.createdAt.slice(0, 10))}</td><td><LegacyCheck checked={details?.online ?? Boolean(movement.receiptToken)} /></td><td>{(movement as Movement & { registeredCentrally?: boolean }).registeredCentrally === undefined ? "—" : (movement as Movement & { registeredCentrally?: boolean }).registeredCentrally ? "Sí" : "No"}</td><td className="numeric-cell">{money(movement.amount)}</td><td>{movement.cancellationNote || details?.note || ""}</td>
+                  <td>{index + 1}</td><td>{client?.identification ?? ""}</td><td>{client?.name ?? "Cliente sin nombre"}</td><td>{safeDateLabel(movement.createdAt.slice(0, 10))}</td><td><LegacyCheck checked={details?.online ?? Boolean(movement.receiptToken)} /></td><td>{(movement as Movement & { registeredCentrally?: boolean }).registeredCentrally === undefined ? "—" : (movement as Movement & { registeredCentrally?: boolean }).registeredCentrally ? "Sí" : "No"}</td><td className="numeric-cell">{money(movement.amount)}</td><td>{movement.cancellationNote || details?.note || ""}</td>
                 </tr>;
               }) : <tr><td colSpan={8} className="payouts-empty-cell">Sin pagos registrados.</td></tr>}
             </tbody></table></div>
@@ -8718,7 +8725,7 @@ function collectionTicketFromRow(row: TableRow, index: number, snapshot: Snapsho
     date: movement ? movementBusinessDate(movement.createdAt) : String(row.__date ?? row.date ?? localSystemDate()),
     currency: String(row.currency ?? "Peso Dominicano"),
     clientName: client?.name ?? "Cliente sin nombre",
-    clientIdentification: client?.identification || client?.code || "",
+    clientIdentification: client?.identification ?? "",
     collectorName: collector?.name ?? "",
     paymentForm: String(row.forma ?? "Efectivo"),
     bank: String(row.banco ?? "No Definido"),

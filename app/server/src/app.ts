@@ -101,6 +101,10 @@ const clientBody = z.object({
 }).strict().refine((body) => (body.lat === undefined) === (body.lng === undefined), {
   message: "Latitud y longitud deben enviarse juntas.",
 });
+const newClientBody = clientBody.refine((body) => body.identification.length > 0, {
+  path: ["identification"],
+  message: "Indica la cédula o el pasaporte del cliente.",
+});
 const clientMachineBody = z.object({
   number: z.number().int().positive(),
   entry: z.string().trim().max(100).default(""),
@@ -740,7 +744,7 @@ export async function buildApp(config: Config) {
     );
     describe("get", path, `Consultar ${type}`);
   }
-  mutate("/api/clientes", "Crear cliente", clientBody, (s, u, b) => {
+  mutate("/api/clientes", "Crear cliente", newClientBody, (s, u, b) => {
     assertAdmin(u);
     if (!s.routes.some((route) => route.id === b.routeId))
       throw new DomainError("ROUTE_NOT_FOUND", "Selecciona una ruta válida.", 404);

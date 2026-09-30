@@ -27,6 +27,13 @@ de Envíos de Dinero y del cobrador conservan sus mejoras actuales.
 - Las acciones que antes eran únicamente simulaciones locales no se presentan
   como operaciones persistentes. Las relaciones se muestran con datos reales.
 - La API sigue siendo la autoridad sobre permisos, importes y estados.
+- Clientes conserva el código interno separado del campo "Cédula / pasaporte".
+  Las altas nuevas requieren un documento escrito por el usuario. Los registros
+  anteriores sin documento siguen editables; las columnas de identificación no
+  sustituyen un documento faltante por el UUID ni por el código interno.
+- Una ubicación sin coordenadas muestra "No definida". El mapa de selección se
+  abre por una acción explícita; una vista general del mapa no se guarda como
+  ubicación del cliente. Se conservan las coordenadas que ya estaban registradas.
 
 ## Límites del modelo actual
 
