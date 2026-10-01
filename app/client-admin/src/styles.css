@@ -4679,7 +4679,7 @@ table {
 .legacy-filter-panel,
 .legacy-grid-panel,
 .legacy-detail-panel {
-  background: white;
+  background: #f8fafc;
   border: 1px solid var(--border);
   border-radius: 11px;
   box-shadow: var(--shadow);
@@ -6502,7 +6502,7 @@ table {
   min-height: 0;
   overflow: hidden;
   border: 1px solid #9ca3af;
-  background: #e8e8e0;
+  background: #f8fafc;
   color: #1f2937;
   font-size: 11px;
 }
@@ -6534,8 +6534,8 @@ table {
   box-sizing: border-box;
   height: 25px;
   border: 1px solid #94a3b8;
-  border-radius: 2px;
-  padding: 2px 5px;
+  border-radius: 3px;
+  padding: 3px 6px;
   background: #fff;
   color: #1e293b;
   font-size: 11px;
@@ -6565,8 +6565,8 @@ table {
 .collector-monitor-table .monitor-collector-name-column { width: 340px; }
 .collector-monitor-table col:not(.monitor-collector-name-column) { width: 110px; }
 .collector-monitor-table th,
-.collector-monitor-table td { height: 25px; padding: 3px 6px; overflow: hidden; border: 1px solid #9ca3af; text-overflow: ellipsis; white-space: nowrap; }
-.collector-monitor-table th { position: sticky; top: 0; z-index: 1; background: #d1d5db; color: #1f2937; font-weight: 700; text-align: left; }
+.collector-monitor-table td { height: 25px; padding: 3px 6px; overflow: hidden; border: 1px solid #cbd5e1; text-overflow: ellipsis; white-space: nowrap; }
+.collector-monitor-table th { position: sticky; top: 0; z-index: 1; background: #e2e8f0; color: #334155; font-weight: 700; text-align: left; }
 .collector-monitor-table td:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
 .collector-monitor-table tbody tr { cursor: pointer; }
 .collector-monitor-table tbody tr:hover td { background: #eff6ff; }
@@ -6619,16 +6619,16 @@ table {
 .map-viewer-error { position: absolute; right: 8px; bottom: 8px; padding: 6px 9px; border: 1px solid #fecdd3; border-radius: 4px; background: #fff1f2; color: #be123c; font-size: 12px; }
 
 /* Compact MDI ledger for daily settlements and cash reconciliation. */
-.daily-settlements-mdi { display: flex; flex: 1 1 auto; flex-direction: column; width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; border: 1px solid #9ca3af; background: #e8e8e0; color: #1f2937; font-size: 11px; }
+.daily-settlements-mdi { display: flex; flex: 1 1 auto; flex-direction: column; width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; border: 1px solid #9ca3af; background: #f8fafc; color: #1f2937; font-size: 11px; }
 .daily-settlements-mdi > .legacy-mdi-toolbar { flex: 0 0 auto; min-height: 31px; border: 0; border-bottom: 1px solid #9ca3af; border-radius: 0; background: #e5e7eb; }
 .settlement-generate-icon { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 17px; height: 17px; }
 .settlement-generate-icon svg:last-child { position: absolute; right: -2px; bottom: -1px; stroke-width: 3; }
 .daily-settlements-workspace { display: flex; flex: 1 1 auto; min-width: 0; min-height: 0; overflow: hidden; border-top: 1px solid #cbd5e1; }
-.daily-settlements-filter { display: flex; flex: 0 0 220px; flex-direction: column; gap: 9px; min-width: 220px; padding: 7px; overflow-y: auto; border-right: 1px solid #9ca3af; background: #e8e8e0; }
-.daily-settlements-filter h2 { margin: -7px -7px 2px; padding: 6px 8px; background: #065f46; color: #fff; font-size: 11px; font-weight: 800; }
+.daily-settlements-filter { display: flex; flex: 0 0 220px; flex-direction: column; gap: 9px; min-width: 220px; padding: 7px; overflow-y: auto; border-right: 1px solid #9ca3af; background: #f8fafc; }
+.daily-settlements-filter h2 { margin: -7px -7px 2px; padding: 6px 8px; background: linear-gradient(180deg, #0f766e 0%, #065f46 100%); color: #fff; font-size: 11px; font-weight: 800; border-bottom: 1px solid #064e3b; }
 .daily-settlements-filter label { display: flex; flex-direction: column; gap: 3px; color: #334155; font-size: 11px; font-weight: 700; white-space: nowrap; }
 .daily-settlements-filter input,
-.daily-settlements-filter select { box-sizing: border-box; width: 100%; height: 25px; border: 1px solid #9ca3af; border-radius: 2px; padding: 2px 5px; background: #fff; color: #1f2937; font-size: 11px; }
+.daily-settlements-filter select { box-sizing: border-box; width: 100%; height: 28px; border: 1px solid #94a3b8; border-radius: 3px; padding: 3px 6px; background: #fff; color: #1e293b; font-size: 11px; }
 .daily-settlements-grid-panel { display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: #fff; }
 .daily-settlements-grid-scroll { flex: 1 1 auto; min-width: 0; min-height: 0; overflow: auto; background: #fff; }
 .daily-settlements-grid { width: 100%; min-width: 1240px; border-collapse: collapse; table-layout: fixed; background: #fff; font-size: 10px; }
@@ -6638,8 +6638,8 @@ table {
 .daily-settlements-grid .settlement-check-column { width: 335px; }
 .daily-settlements-grid .settlement-balance-column { width: 125px; }
 .daily-settlements-grid th,
-.daily-settlements-grid td { border: 1px solid #a3aab4; }
-.daily-settlements-grid th { position: sticky; top: 0; z-index: 2; height: 25px; padding: 4px 6px; background: #d1d5db; color: #1f2937; font-size: 11px; font-weight: 800; text-align: left; white-space: nowrap; }
+.daily-settlements-grid td { border: 1px solid #cbd5e1; }
+.daily-settlements-grid th { position: sticky; top: 0; z-index: 2; height: 25px; padding: 4px 6px; background: #e2e8f0; color: #334155; font-size: 11px; font-weight: 800; text-align: left; white-space: nowrap; }
 .daily-settlements-grid td { padding: 4px 5px; vertical-align: top; }
 .daily-settlements-grid tbody tr { cursor: pointer; }
 .daily-settlements-grid tbody tr:hover td { background: #eff6ff; }
@@ -6648,8 +6648,8 @@ table {
 .settlement-date-cell { padding-top: 8px !important; font-weight: 700; white-space: nowrap; }
 .settlement-breakdown-cell { width: 100%; max-width: 330px; min-width: 0; color: #334155; font-size: 9px; font-variant-numeric: tabular-nums; text-align: right; }
 .settlement-breakdown-cell > div:not(.settlement-breakdown-gap) { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; min-height: 15px; align-items: center; }
-.settlement-breakdown-cell span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.settlement-breakdown-cell strong { color: #111827; font-weight: 700; white-space: nowrap; }
+.settlement-breakdown-cell span { overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+.settlement-breakdown-cell strong { color: #111827; font-weight: 700; text-align: right; white-space: nowrap; }
 .settlement-breakdown-gap { height: 5px; }
 .settlement-breakdown-cell hr { width: 100%; margin: 2px 0; border: 0; border-top: 1px solid #cbd5e1; }
 .settlement-breakdown-balance strong { color: #065f46; }
@@ -6687,7 +6687,8 @@ table {
 .settlement-denomination-scroll th { position: sticky; top: 0; background: #e2e8f0; }
 .settlement-denomination-scroll td:first-child { text-align: left; }
 .settlement-denomination-scroll input { width: 85px; height: 23px; border: 1px solid #9ca3af; padding: 2px 4px; text-align: right; }
-.settlement-denomination-total { padding: 5px 7px; border: 1px solid #cbd5e1; background: #f8fafc; text-align: right; }
+.settlement-denomination-total { display: grid; grid-template-columns: auto minmax(0, 150px); align-items: center; justify-content: end; gap: 8px; padding: 5px 7px; border: 1px solid #cbd5e1; background: #f8fafc; text-align: right; font-weight: 700; }
+.settlement-denomination-total input { box-sizing: border-box; width: 100%; height: 25px; border: 1px solid #cbd5e1; border-radius: 2px; padding: 3px 6px; background: #e2e8f0; color: #334155; text-align: right; }
 .settlement-confirm-content { display: grid; justify-items: center; gap: 8px; padding: 3px; text-align: center; }
 .settlement-confirm-content > svg { color: #d97706; }
 .settlement-alert-dialog .settlement-confirm-content > svg { color: #dc2626; }
@@ -9013,14 +9014,14 @@ table {
   padding: 0 11px 11px;
   border: 1px solid #cbd5e1;
   border-radius: 7px;
-  background: #fff;
+  background: #f8fafc;
   box-shadow: none;
 }
 .charges-filter-panel > h2 {
   flex: 0 0 auto;
   margin: 0 -11px 2px;
   padding: 7px 11px;
-  background: #1d4ed8;
+  background: linear-gradient(180deg, #0f766e 0%, #065f46 100%);
   color: #fff;
   font-size: 12px;
   line-height: 1.25;
@@ -9227,7 +9228,7 @@ table {
   padding: 0 11px 11px;
   border: 1px solid #cbd5e1;
   border-radius: 7px;
-  background: #fff;
+  background: #f8fafc;
   box-shadow: none;
 }
 .recurring-charges-view .recurring-charge-filter-panel > .pending-charges-filter-heading {
@@ -9237,7 +9238,7 @@ table {
   padding: 7px 11px;
   border: 0;
   border-radius: 0;
-  background: #1d4ed8;
+  background: linear-gradient(180deg, #0f766e 0%, #065f46 100%);
   color: #fff;
   font-size: 12px;
   line-height: 1.25;
@@ -9367,7 +9368,7 @@ table {
 .collections-legacy-view .charges-filter-panel > h2 {
   margin: 0 -8px 2px;
   padding: 7px 9px;
-  background: #1d4ed8;
+  background: linear-gradient(180deg, #0f766e 0%, #065f46 100%);
   color: #fff;
   font-size: 12px;
 }
@@ -9433,7 +9434,7 @@ table {
   flex: 1 1 auto;
   min-height: 0;
   padding: 0;
-  background: #e8e8e0;
+  background: #f8fafc;
 }
 .collection-receipt-content {
   display: flex;
@@ -9443,7 +9444,7 @@ table {
   min-width: 0;
   min-height: 0;
   padding: 10px;
-  background: #e8e8e0;
+  background: #f8fafc;
   color: #111827;
   font-size: 12px;
 }
@@ -10114,13 +10115,13 @@ table {
   border: 0;
   border-right: 1px solid #9ca3af;
   border-radius: 0;
-  background: #e8e8e0;
+  background: #f8fafc;
   box-shadow: none;
 }
 .deposit-filter-panel > h2 {
   margin: 0 -9px 2px;
   padding: 7px 9px;
-  background: #1d4ed8;
+  background: linear-gradient(180deg, #0f766e 0%, #065f46 100%);
   color: #fff;
   font-size: 12px;
   line-height: 1.2;
@@ -10168,7 +10169,7 @@ table {
   overflow: hidden;
   border: 0;
   border-radius: 0;
-  background: #e8e8e0;
+  background: #f8fafc;
   box-shadow: none;
 }
 .deposit-detail-panel > h2 {
@@ -10337,14 +10338,14 @@ table {
   border: 0;
   border-right: 1px solid #9ca3af;
   border-radius: 0;
-  background: #f1f5f9;
+  background: #f8fafc;
   box-shadow: none;
 }
 .payouts-filter-panel > h2 {
   flex: 0 0 auto;
   margin: 0 -8px 2px;
   padding: 7px 9px;
-  background: #047857;
+  background: linear-gradient(180deg, #0f766e 0%, #065f46 100%);
   color: #fff;
   font-size: 12px;
   line-height: 1.2;
@@ -10372,7 +10373,7 @@ table {
   min-height: 27px;
   margin: 0;
   border: 1px solid #94a3b8;
-  border-radius: 2px;
+  border-radius: 3px;
   padding: 3px 6px;
   background: #fff;
   color: #1e293b;
@@ -10498,14 +10499,14 @@ table {
   border: 0;
   border-right: 1px solid #9ca3af;
   border-radius: 0;
-  background: #f1f5f9;
+  background: #f8fafc;
   box-shadow: none;
 }
 .payments-filter-panel > h2 {
   flex: 0 0 auto;
   margin: 0 -8px 2px;
   padding: 7px 9px;
-  background: #047857;
+  background: linear-gradient(180deg, #0f766e 0%, #065f46 100%);
   color: #fff;
   font-size: 12px;
   line-height: 1.2;
@@ -10529,7 +10530,7 @@ table {
   min-height: 27px;
   margin: 0;
   border: 1px solid #94a3b8;
-  border-radius: 2px;
+  border-radius: 3px;
   padding: 3px 6px;
   background: #fff;
   color: #1e293b;
@@ -10642,14 +10643,14 @@ table {
   border: 0;
   border-right: 1px solid #9ca3af;
   border-radius: 0;
-  background: #e8e8e0;
+  background: #f8fafc;
   box-shadow: none;
 }
 .cash-deliveries-filter-panel > h2 {
   flex: 0 0 auto;
   margin: 0 -8px 2px;
   padding: 7px 9px;
-  background: #047857;
+  background: linear-gradient(180deg, #0f766e 0%, #065f46 100%);
   color: #fff;
   font-size: 12px;
   line-height: 1.2;
@@ -10680,7 +10681,7 @@ table {
   min-height: 27px;
   margin: 0;
   border: 1px solid #94a3b8;
-  border-radius: 2px;
+  border-radius: 3px;
   padding: 3px 6px;
   background: #fff;
   color: #1e293b;
@@ -10735,7 +10736,7 @@ table {
   min-height: 0;
   overflow: hidden;
   border: 1px solid #94a3b8;
-  background: #e8e8e0;
+  background: #f8fafc;
   color: #1e293b;
   font-size: 12px;
 }
@@ -10749,7 +10750,7 @@ table {
   gap: 10px;
   padding: 7px;
   border-right: 1px solid #94a3b8;
-  background: #e8e8e0;
+  background: #f8fafc;
 }
 
 .pending-charges-filter-heading {
@@ -10757,8 +10758,8 @@ table {
   display: flex;
   align-items: center;
   padding: 0 8px;
-  border: 1px solid #065f46;
-  background: linear-gradient(180deg, #047857 0%, #065f46 100%);
+  border: 1px solid #064e3b;
+  background: linear-gradient(180deg, #0f766e 0%, #065f46 100%);
   color: #fff;
   font-size: 11px;
   font-weight: 800;
@@ -10784,10 +10785,10 @@ table {
 .pending-charges-filter-fields select {
   width: 100%;
   min-width: 0;
-  height: 26px;
+  height: 28px;
   border: 1px solid #94a3b8;
-  border-radius: 2px;
-  padding: 2px 5px;
+  border-radius: 3px;
+  padding: 3px 6px;
   background: #fff;
   color: #1e293b;
   font-size: 11px;
@@ -10828,7 +10829,7 @@ table {
   line-height: 1px;
 }
 
-.pending-charges-separator span { padding: 0 7px; background: #e8e8e0; }
+.pending-charges-separator span { padding: 0 7px; background: #f8fafc; }
 
 .pending-charges-filter-actions button,
 .pending-charges-export-actions button {
@@ -10896,10 +10897,10 @@ table {
   font-weight: 800;
 }
 
-.pending-charges-grid tbody tr:hover td { background: #f0fdf4; }
+.pending-charges-grid tbody tr:hover td { background: #ecfdf5; }
 .pending-charges-grid .pending-charges-number { text-align: right; font-variant-numeric: tabular-nums; }
 .pending-charges-grid .pending-charges-empty { height: 90px; color: #64748b; text-align: center; }
-.pending-charges-grid tfoot { position: sticky; bottom: 0; background: #f1f5f9; font-weight: 800; }
+.pending-charges-grid tfoot { position: sticky; bottom: 0; background: #f8fafc; font-weight: 800; }
 .pending-charges-grid tfoot th { text-align: right; }
 
 .pending-charges-export-dialog { width: min(420px, calc(100vw - 32px)); }
