@@ -29,6 +29,7 @@ import {
   hashPassword,
   importCharges,
   importPayouts,
+  MAX_MONEY_AMOUNT,
   postMovement,
   preview,
   publicAccount,
@@ -58,7 +59,7 @@ type Config = {
   adminEmail?: string;
   adminPassword?: string;
 };
-const money = z.number().int().positive().max(1_000_000_000);
+const money = z.number().int().positive().max(MAX_MONEY_AMOUNT);
 const id = z.string().min(1).max(80),
   text = z.string().trim().min(1).max(160),
   date = z.iso.date();

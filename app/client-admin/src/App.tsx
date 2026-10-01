@@ -93,6 +93,7 @@ import AccountModal, { type AccountOperation } from "./Users";
 import RemittancesWorkspace from "../../shared/remittances/RemittancesWorkspace";
 import { remittancesApi } from "./remittancesApi";
 import { hasUnresolvedMovementRequest, pendingMovementDraft, useMovementRequest } from "./useMovementRequest";
+import { useChargeImportRequest } from "./useChargeImportRequest";
 import { decimalCents, formatMoney } from "../../shared/remittances/output";
 import { GeoMap, type GeoPoint } from "./GeoMap";
 import { MonitorGeoMap } from "./MonitorGeoMap";
@@ -3892,36 +3893,63 @@ function LegacyCodifierView({ page, snapshot, onRefresh, onAccount }: Readonly<{
   const [systemCfg, setSystemCfg] = useState<Record<string, string | number | boolean>>(SYSTEM_CONFIG_DEFAULTS);
   const [savedCfg, setSavedCfg] = useState<Record<string, string | number | boolean>>(SYSTEM_CONFIG_DEFAULTS);
   const [cfgBusy, setCfgBusy] = useState(false);
+  const cfgSaving = useRef(false);
+  const cfgGeneration = useRef(0);
+  const [cfgLoadState, setCfgLoadState] = useState<"loading" | "ready" | "error">("loading");
+  const [cfgLoadError, setCfgLoadError] = useState("");
+  const [cfgLoadAttempt, setCfgLoadAttempt] = useState(0);
   useEffect(() => {
     if (page !== "generalConfig") return;
     let active = true;
+    cfgGeneration.current += 1;
+    cfgSaving.current = false;
+    setCfgBusy(false);
+    setCfgLoadState("loading");
+    setCfgLoadError("");
     api<{ config: Record<string, string | number | boolean> }>("/configuracion")
       .then((data) => {
         if (!active) return;
-        const merged = { ...SYSTEM_CONFIG_DEFAULTS, ...(data.config ?? {}) };
+        if (!data.config || typeof data.config !== "object" || Array.isArray(data.config))
+          throw new Error("El servidor no devolvió una configuración válida. Vuelve a cargarla.");
+        const merged = { ...SYSTEM_CONFIG_DEFAULTS, ...data.config };
         setSystemCfg(merged);
         setSavedCfg(merged);
+        setCfgLoadState("ready");
       })
-      .catch(() => undefined);
+      .catch((error: unknown) => {
+        if (!active) return;
+        setCfgLoadState("error");
+        setCfgLoadError(error instanceof Error ? error.message : "No se pudo cargar la configuración.");
+      });
     return () => {
       active = false;
+      cfgGeneration.current += 1;
     };
-  }, [page]);
+  }, [page, cfgLoadAttempt]);
   const saveSystemCfg = async () => {
+    if (cfgLoadState !== "ready" || cfgSaving.current) return;
+    cfgSaving.current = true;
     setCfgBusy(true);
+    const generation = cfgGeneration.current;
+    const config = { ...systemCfg };
     try {
       await api("/configuracion", {
         method: "POST",
-        body: JSON.stringify({ config: systemCfg }),
+        body: JSON.stringify({ config }),
       });
-      setSavedCfg(systemCfg);
+      if (generation !== cfgGeneration.current) return;
+      setSavedCfg(config);
       toast.success("Configuración guardada");
     } catch (error) {
+      if (generation !== cfgGeneration.current) return;
       toast.error(
         error instanceof Error ? error.message : "No se pudo guardar la configuración.",
       );
     } finally {
-      setCfgBusy(false);
+      if (generation === cfgGeneration.current) {
+        cfgSaving.current = false;
+        setCfgBusy(false);
+      }
     }
   };
   const services = Array.from(new Set([...snapshot.charges.map((charge) => charge.service), ...snapshot.payouts.map((payout) => payout.concept)]));
@@ -3943,9 +3971,11 @@ function LegacyCodifierView({ page, snapshot, onRefresh, onAccount }: Readonly<{
   if (page === "generalConfig") {
     const tabs = ["General", "Clientes", "Cargos y Descargos", "Cobros y Pagos", "Interfaz", "GPS"];
     const tmServiceOptions = ["No definido", "Serv", "Serv. pago de tarifa electrica", "Serv. ventas de recargas", "Serv. de Transporte Terrestre", "Remesas del Exterior", "Donaciones de Dinero", "Venta de medicina natural", "MANEJO DE MAQUINITAS", "PRESTAMOS PERSONALES", "TELEFONOS INTELIGENTES", "prestamos empresariales", "Bicicleta", "Alambre THHN 10 BLANCO"];
-    const CheckLine = ({ label, checked, disabled = false, onChange }: Readonly<{ label: string; checked: boolean; disabled?: boolean; onChange: (value: boolean) => void }>) => <label className={`legacy-check-line ${disabled ? "disabled" : ""}`}><input type="checkbox" checked={checked} disabled={disabled} onChange={(event) => onChange(event.target.checked)} /><span>{label}</span></label>;
+    const cfgLocked = cfgBusy || cfgLoadState !== "ready";
+    const CheckLine = ({ label, checked, disabled = false, onChange }: Readonly<{ label: string; checked: boolean; disabled?: boolean; onChange: (value: boolean) => void }>) => <label className={`legacy-check-line ${disabled || cfgLocked ? "disabled" : ""}`}><input type="checkbox" checked={checked} disabled={disabled || cfgLocked} onChange={(event) => onChange(event.target.checked)} /><span>{label}</span></label>;
     const fld = (key: string) => ({
       value: String(systemCfg[key] ?? ""),
+      disabled: cfgLocked,
       onChange: (event: { target: { value: string } }) =>
         setSystemCfg((current) => ({ ...current, [key]: event.target.value })),
     });
@@ -4070,7 +4100,9 @@ function LegacyCodifierView({ page, snapshot, onRefresh, onAccount }: Readonly<{
           )}
         </div>
         <aside className="legacy-config-actions">
-          <button type="button" className="ok-button" disabled={cfgBusy} onClick={() => void saveSystemCfg()}>{cfgBusy ? "Guardando..." : "oK"}</button>
+          {cfgLoadState === "loading" && <p role="status">Cargando configuración...</p>}
+          {cfgLoadState === "error" && <><p role="alert">{cfgLoadError}</p><button type="button" onClick={() => setCfgLoadAttempt((attempt) => attempt + 1)}>Reintentar carga</button></>}
+          <button type="button" className="ok-button" disabled={cfgLocked} onClick={() => void saveSystemCfg()}>{cfgBusy ? "Guardando..." : "oK"}</button>
           <button type="button" disabled={cfgBusy} onClick={() => setSystemCfg(savedCfg)}>Cancelar</button>
         </aside>
       </div>
@@ -5764,32 +5796,39 @@ function CargoDialog({
   );
 }
 
-function CargoUploadDialog({ onClose, onUpload }: Readonly<{ onClose: () => void; onUpload: (file: File) => Promise<boolean> }>) {
+function CargoUploadDialog({ onClose, onUpload, request }: Readonly<{ onClose: () => void; onUpload: (file: File | null) => Promise<boolean>; request: ReturnType<typeof useChargeImportRequest> }>) {
   const fileInput = useRef<HTMLInputElement>(null);
+  const submitting = useRef(false);
   const [file, setFile] = useState<File | null>(null);
   const [errorOpen, setErrorOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [checkingFile, setCheckingFile] = useState(false);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!file) {
-      setCheckingFile(true);
-      await new Promise((resolve) => window.setTimeout(resolve, 450));
-      setCheckingFile(false);
-      setErrorOpen(true);
-      return;
-    }
-    setUploading(true);
-    try { if (await onUpload(file)) onClose(); } finally { setUploading(false); }
+    if (submitting.current || request.busy) return;
+    submitting.current = true;
+    try {
+      if (!file && !request.attempt) {
+        setCheckingFile(true);
+        await new Promise((resolve) => window.setTimeout(resolve, 450));
+        setErrorOpen(true);
+        return;
+      }
+      setUploading(true);
+      if (await onUpload(file)) onClose();
+    } finally { setUploading(false); setCheckingFile(false); submitting.current = false; }
   };
+  const close = () => { if (!submitting.current && !request.busy) onClose(); };
   return (
     <>
-      <LegacyDialog title="Subir" onClose={onClose} className="cargo-upload-dialog">
+      <LegacyDialog title="Subir" onClose={close} className="cargo-upload-dialog">
         <form className="cargo-upload-form" onSubmit={(event) => void submit(event)}>
-          <input ref={fileInput} className="sr-only" type="file" accept=".csv,text/csv,text/plain" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
-          <button type="button" onClick={() => fileInput.current?.click()}>Elegir archivo</button>
-          <span className="cargo-upload-filename">{file?.name ?? "No se ha seleccionado ningun archivo"}</span>
-          <div className="legacy-dialog-actions centered"><button type="submit" disabled={uploading || checkingFile}>{checkingFile ? "Validando…" : uploading ? "Subiendo…" : "Subir"}</button><button type="button" onClick={onClose}>Cancelar</button></div>
+          <input ref={fileInput} className="sr-only" type="file" accept=".csv,text/csv,text/plain" disabled={request.locked || uploading} onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
+          <button type="button" disabled={request.locked || uploading} onClick={() => fileInput.current?.click()}>Elegir archivo</button>
+          <span className="cargo-upload-filename">{request.attempt?.fileName ?? file?.name ?? "No se ha seleccionado ningun archivo"}</span>
+          {request.error && <p role="alert">{request.error}</p>}
+          {request.uncertain && <p>El resultado todavía no está confirmado. Reintenta este envío antes de elegir otro archivo.</p>}
+          <div className="legacy-dialog-actions centered"><button type="submit" disabled={uploading || checkingFile || request.busy}>{checkingFile ? "Validando…" : uploading || request.busy ? "Subiendo…" : request.uncertain ? "Reintentar" : "Subir"}</button><button type="button" disabled={uploading || request.busy || checkingFile} onClick={close}>Cancelar</button></div>
         </form>
       </LegacyDialog>
       {errorOpen && <LegacyAlertDialog title="Upload Error" message="Seleccione el archivo" onClose={() => setErrorOpen(false)} />}
@@ -5814,6 +5853,7 @@ function ChargeCancelReasonDialog({ onClose, onConfirm, busy }: Readonly<{ onClo
 }
 
 function ChargesOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{ snapshot: Snapshot; currentUser: User; onRefresh: () => Promise<void> }>) {
+  const importRequest = useChargeImportRequest(currentUser.id);
   const [charges, setCharges] = useState<LocalCharge[]>(() => snapshot.charges.map(asLocalCharge));
   const [mode, setMode] = useState("Todos");
   const [clientQuery, setClientQuery] = useState("");
@@ -5826,7 +5866,7 @@ function ChargesOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{
   const [selectedCharge, setSelectedCharge] = useState<LocalCharge | null>(null);
   const [filtersVisible, setFiltersVisible] = useState(true);
   const [dialogMode, setDialogMode] = useState<"new" | "edit" | null>(null);
-  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(() => Boolean(importRequest.attempt));
   const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
   const [cancelReasonOpen, setCancelReasonOpen] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -5945,22 +5985,18 @@ function ChargesOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{
       setCancelling(false);
     }
   };
-  const uploadCharges = async (file: File) => {
+  const uploadCharges = async (file: File | null) => {
     try {
-      const parsed = parseImportCsv(await file.text(), "charges");
-      const filas = parsed.filas.map((row) => ({ ...row, importe: Math.round(Number(row.importe) * 100) }));
-      if (!filas.length) {
+      const filas = importRequest.attempt ? undefined : file ? parseImportCsv(await file.text(), "charges").filas : [];
+      if (!importRequest.attempt && !filas?.length) {
         setAlertMessage("El archivo no contiene filas válidas.");
         return false;
       }
-      const result = await api<{ creados: number; errores: { fila: number; mensaje: string }[] }>("/cargos/importar", {
-        method: "POST",
-        headers: { "Idempotency-Key": crypto.randomUUID() },
-        body: JSON.stringify({ filas }),
-      });
+      const result = await importRequest.run(filas ? { filas } : undefined, file?.name);
       toast.success(`Importación: ${result.creados} cargo(s) creado(s), ${result.errores.length} con error.`);
       result.errores.slice(0, 5).forEach((error) => toast.error(`Fila ${error.fila}: ${error.mensaje}`));
-      await onRefresh();
+      try { await onRefresh(); }
+      catch { toast.error("La importación está confirmada. No repitas el envío; usa Refrescar para actualizar el listado."); }
       return true;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo importar el archivo.");
@@ -6031,7 +6067,7 @@ function ChargesOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{
         </section>
       </div>
       {dialogMode && <CargoDialog charge={dialogMode === "edit" ? selectedCharge ?? undefined : undefined} clients={snapshot.clients} businessDate={snapshot.businessDate} onClose={() => setDialogMode(null)} onSave={saveCharge} onLoadClients={loadClients} />}
-      {uploadOpen && <CargoUploadDialog onClose={() => setUploadOpen(false)} onUpload={uploadCharges} />}
+      {uploadOpen && <CargoUploadDialog onClose={() => setUploadOpen(false)} onUpload={uploadCharges} request={importRequest} />}
       {clientSearchOpen && <ClientSearchSubmodal clients={clientDirectory} onClose={() => setClientSearchOpen(false)} onSelect={(client) => { setClientQuery(client.code); setClientSearchOpen(false); }} />}
       {confirmCancelOpen && <LegacyConfirmDialog message="¿Está seguro que desea cancelar el Cargo?" onYes={() => { setConfirmCancelOpen(false); setCancelReasonOpen(true); }} onNo={() => setConfirmCancelOpen(false)} />}
       {cancelReasonOpen && <ChargeCancelReasonDialog onClose={() => setCancelReasonOpen(false)} onConfirm={cancelSelected} busy={cancelling} />}
@@ -6573,17 +6609,12 @@ function LegacyOperationView({
     onRefresh();
   };
   const onImportFile = async (file: File) => {
-    const text = await file.text();
-    const { filas } = parseImportCsv(
-      text,
-      spec.entity === "payouts" ? "payouts" : "charges",
-    );
-    setImportFilas(filas.length ? filas : null);
-    toast.success(
-      filas.length
-        ? `${filas.length} fila(s) lista(s) para importar.`
-        : "El archivo no contiene filas válidas.",
-    );
+    setImportFilas(null);
+    try {
+      const { filas } = parseImportCsv(await file.text(), spec.entity === "payouts" ? "payouts" : "charges");
+      setImportFilas(filas.length ? filas : null);
+      toast.success(filas.length ? `${filas.length} fila(s) lista(s) para importar.` : "El archivo no contiene filas válidas.");
+    } catch (error) { toast.error(error instanceof Error ? error.message : "No se pudo leer el archivo."); }
   };
   const runImport = async () => {
     if (!importFilas?.length || !spec.entity) return;

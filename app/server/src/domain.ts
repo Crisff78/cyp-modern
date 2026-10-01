@@ -541,13 +541,14 @@ export function clientStatement(state: State, user: User, clientId: string) {
 
 export type ImportRowError = { fila: number; mensaje: string };
 
+export const MAX_MONEY_AMOUNT = 1_000_000_000;
 const MAX_IMPORT_ROWS = 1000;
 
 function assertImportAmount(amount: number) {
-  if (!Number.isInteger(amount) || amount <= 0)
+  if (!Number.isSafeInteger(amount) || amount <= 0 || amount > MAX_MONEY_AMOUNT)
     throw new DomainError(
       "IMPORT_INVALID_AMOUNT",
-      "El importe debe ser un entero positivo en centavos.",
+      `El importe debe ser un entero seguro de 1 a ${MAX_MONEY_AMOUNT} centavos.`,
       422,
     );
 }

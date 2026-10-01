@@ -58,6 +58,7 @@ import { isMockToken } from "./mock";
 import { GeoMap } from "../../client-admin/src/GeoMap";
 import { locationUnavailable, locationError, validLocation } from "../../shared/geolocation";
 import { transformRouteToMap } from "./services/mapAdapter";
+import { businessDay as localDay, timeLabel } from "./services/dates";
 import type {
   Charge,
   Client,
@@ -87,14 +88,6 @@ const getView = (): View => {
   const view = new URLSearchParams(location.search).get("view");
   return tabs.some((tab) => tab.id === view) ? (view as View) : "route";
 };
-const localDay = (value: string) =>
-  new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Santo_Domingo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date(value));
-
 export function App() {
   const [user, setUser] = useState<User | null>(null);
   const currentUser = useRef<User | null>(user);
@@ -308,7 +301,7 @@ export function App() {
             if (trackingRef.current !== null) {
               setTracking(true);
               setTrackingBusy(false);
-              setTrackingDetail(`Ubicación enviada ${new Date().toLocaleTimeString("es-DO")} · precisión aproximada ${Math.round(position.coords.accuracy)} m`);
+              setTrackingDetail(`Ubicación enviada ${timeLabel(new Date())} · precisión aproximada ${Math.round(position.coords.accuracy)} m`);
             }
           })
           .catch((err) => {
