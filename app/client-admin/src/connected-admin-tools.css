@@ -1,0 +1,29 @@
+.connected-admin-tools{min-width:0;min-height:0}
+.connected-admin-tools .legacy-mdi-toolbar{flex:0 0 auto;flex-wrap:wrap}
+.connected-admin-tools .mdi-toolbar-extra{display:inline-flex;align-items:center;gap:4px}
+.connected-admin-tools.pcp-mdi-view .mdi-toolbar-extra{margin-left:auto}
+.connected-admin-tools .pcp-stations-button{display:inline-flex;align-items:center;gap:4px;min-width:96px;white-space:nowrap}
+.connected-admin-tools .legacy-admin-grid-panel{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.connected-admin-tools .legacy-admin-grid-panel>.legacy-mdi-table-wrap{flex:1;min-height:0}
+.connected-admin-tools .legacy-admin-search{display:inline-flex;align-items:center;gap:5px;margin-left:6px;font-size:12px}
+.connected-admin-tools .legacy-admin-search input{width:160px;height:24px;min-width:0;padding:0 6px;border:1px solid #9ca3af;border-radius:3px;background:#fff;color:#111827;font-size:12px}
+.connected-admin-tools .legacy-admin-filters{overflow:auto}
+.connected-admin-tools .legacy-admin-filters label:not(.pcp-radio-line):not(.session-radio-line){display:grid;gap:4px}
+.connected-admin-tools .legacy-admin-filters input:not([type=radio]),.connected-admin-tools .legacy-admin-filters select{width:100%;min-width:0;height:26px;padding:0 6px;border:1px solid #9ca3af;border-radius:3px;background:#fff;color:#111827;font-size:12px}
+.connected-admin-tools .legacy-admin-filters .legacy-admin-search{margin:0}
+.connected-admin-tools .legacy-admin-filters button,.legacy-admin-dialog .legacy-relation-footer button{height:27px;padding:3px 12px;border:1px solid #94a3b8;border-radius:3px;background:linear-gradient(#fff,#e2e8f0);color:#1f2937;font-size:12px}
+.connected-admin-tools button:disabled,.legacy-admin-dialog button:disabled{opacity:.5;cursor:default}
+.connected-admin-tools .legacy-admin-empty{padding:12px;text-align:center;color:#64748b}
+.connected-admin-tools .legacy-admin-trace-cell{min-width:280px;white-space:normal;overflow-wrap:anywhere}
+.legacy-admin-feedback,.legacy-admin-note{flex:0 0 auto;margin:0;padding:4px 8px;font-size:12px;line-height:1.4}
+.legacy-admin-feedback.error{color:#b91c1c}
+.legacy-admin-feedback.success{color:#047857}
+.legacy-admin-note{color:#64748b}
+.legacy-admin-dialog{max-width:calc(100vw - 32px);max-height:calc(100dvh - 48px)}
+.legacy-admin-dialog .legacy-dialog-body{min-height:0;overflow:auto}
+.legacy-admin-dialog .station-internal-id{display:block;max-width:190px;overflow:hidden;padding:2px 4px;text-overflow:ellipsis;white-space:nowrap}
+.legacy-admin-dialog label.legacy-admin-checkbox{display:inline-flex;align-items:center;gap:6px;min-height:26px}
+.legacy-admin-dialog .legacy-admin-checkbox input[type=checkbox]{width:14px;height:14px;min-width:14px;margin:0}
+.legacy-admin-dialog textarea{width:100%;min-width:0;padding:5px 7px;border:1px solid #9ca3af;border-radius:3px;background:#fff;color:#111827;font:inherit;font-size:12px;resize:vertical}
+.legacy-admin-dialog .legacy-admin-relations{flex:1;min-height:0}
+.legacy-admin-dialog .legacy-relation-footer{flex:0 0 auto}

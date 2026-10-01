@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: cyp-modern-demo
+    runtime: node
+    plan: free
+    region: virginia
+    buildCommand: mkdir -p .corepack-bin && corepack enable --install-directory .corepack-bin pnpm && export PATH="$PWD/.corepack-bin:$PATH" && corepack pnpm install --frozen-lockfile --prod=false && corepack pnpm build
+    startCommand: corepack pnpm --filter @cyp/server db:migrate --apply && node app/server/dist/index.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 24.21.0
+      - key: SKIP_INSTALL_DEPS
+        value: "true"
+      - key: DEMO_MODE
+        value: "true"
+      - key: CYP_PUBLIC_DEMO
+        value: "true"
+      - key: VITE_COLLECTOR_URL
+        value: /collector/
+      - key: VITE_PUBLIC_DEMO
+        value: "true"
+      - key: HOST
+        value: 0.0.0.0
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DEMO_ACCESS_CODE
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false

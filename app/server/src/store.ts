@@ -4,6 +4,7 @@ import { dirname } from "node:path";
 import pg from "pg";
 import { DomainError, emptyState, type State } from "./domain.js";
 import { readRemittances, saveRemittances } from "./remittance-store.js";
+import { readAdminTools, saveAdminTools } from "./admin-tools-store.js";
 import { readCatalogs, saveCatalogMasters, saveRecurringCharges } from "./catalog-store.js";
 pg.types.setTypeParser(20, Number);
 export interface Store {
@@ -148,6 +149,7 @@ async function readState(client: pg.PoolClient): Promise<State> {
       `SELECT id,collector_id AS "collectorId",client_id AS "clientId",charge_id AS "chargeId",
         NULL::text AS "payoutId",'collection' AS type,amount,collected_at AS "createdAt",
         receipt_token AS "receiptToken",receipt_revoked AS "receiptRevoked",actor_id AS "actorId",
+        registered_centrally AS "registeredCentrally",
         NULL::timestamptz AS "acceptedAt",NULL::text AS "acceptedBy",
         NULL::timestamptz AS "cancelledAt",NULL::text AS "cancelledBy",
         NULL::jsonb AS "denominations"
@@ -156,6 +158,7 @@ async function readState(client: pg.PoolClient): Promise<State> {
        SELECT id,collector_id AS "collectorId",client_id AS "clientId",NULL::text AS "chargeId",
         payout_id AS "payoutId",'payout' AS type,amount,paid_at AS "createdAt",
         receipt_token AS "receiptToken",receipt_revoked AS "receiptRevoked",actor_id AS "actorId",
+        registered_centrally AS "registeredCentrally",
         NULL::timestamptz AS "acceptedAt",NULL::text AS "acceptedBy",
         NULL::timestamptz AS "cancelledAt",NULL::text AS "cancelledBy",
         NULL::jsonb AS "denominations"
@@ -164,6 +167,7 @@ async function readState(client: pg.PoolClient): Promise<State> {
        SELECT id,collector_id AS "collectorId",NULL::text AS "clientId",NULL::text AS "chargeId",
         NULL::text AS "payoutId",type,amount,handed_over_at AS "createdAt",
         NULL::text AS "receiptToken",NULL::boolean AS "receiptRevoked",actor_id AS "actorId",
+        NULL::boolean AS "registeredCentrally",
         accepted_at AS "acceptedAt",accepted_by AS "acceptedBy",
         cancelled_at AS "cancelledAt",cancelled_by AS "cancelledBy",
         denominations AS "denominations"
@@ -211,6 +215,19 @@ async function readState(client: pg.PoolClient): Promise<State> {
       m.cancelledBy = ev.actorId;
     }
   }
+  state.movementCancellations = (
+    await client.query(
+      `SELECT id,movement_id AS "movementId",movement_type AS "movementType",reason,
+       actor_id AS "actorId",created_at AS "createdAt" FROM movement_cancellations ORDER BY created_at,id`,
+    )
+  ).rows.map(clean);
+  for (const event of state.movementCancellations) {
+    const movement = state.movements.find((item) => item.id === event.movementId && item.type === event.movementType);
+    if (!movement) throw new DomainError("MOVEMENT_CANCELLATION_ORPHAN", "La anulación no tiene un movimiento válido.", 409);
+    movement.cancelledAt = event.createdAt;
+    movement.cancelledBy = event.actorId;
+    movement.cancellationNote = event.reason;
+  }
   state.idempotency = (
     await client.query(
       `SELECT id,fingerprint,response,created_at AS "createdAt" FROM idempotency ORDER BY created_at,id`,
@@ -218,12 +235,14 @@ async function readState(client: pg.PoolClient): Promise<State> {
   ).rows.map(clean);
   state.remittances = await readRemittances(client);
   await readCatalogs(client, state);
+  state.adminTools = await readAdminTools(client);
   return state;
 }
 async function saveState(client: pg.PoolClient, state: State, before: State) {
   for (const userId of new Set([
     ...state.movements.map((m) => m.actorId),
     ...state.depositEvents.map((event) => event.actorId),
+    ...state.movementCancellations.map((event) => event.actorId),
     ...state.settlements.map((s) => s.actorId),
     ...state.remittances.transfers.flatMap((t) => [t.sendingUserId, t.registeredBy]),
     ...state.remittances.cashSessions.flatMap((c) => [c.operatorId, c.openedBy]),
@@ -420,11 +439,19 @@ async function saveState(client: pg.PoolClient, state: State, before: State) {
   }
   for (const movement of state.movements) {
     const prev = before.movements.find((m) => m.id === movement.id);
-    if (prev && JSON.stringify(prev) === JSON.stringify(movement)) continue;
+    if (prev) {
+      // Lifecycle fields are projections of append-only events. Only explicit
+      // receipt revocation may update the original receipted ledger rows.
+      if (prev.receiptRevoked !== movement.receiptRevoked && (movement.type === "collection" || movement.type === "payout")) {
+        const table = movement.type === "collection" ? "collections" : "payments";
+        await client.query(`UPDATE ${table} SET receipt_revoked=$2 WHERE id=$1`, [movement.id, movement.receiptRevoked ?? false]);
+      }
+      continue;
+    }
     if (movement.type === "collection")
       await client.query(
-        `INSERT INTO collections(id,collector_id,client_id,charge_id,amount,collected_at,receipt_token,receipt_revoked,actor_id)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
+        `INSERT INTO collections(id,collector_id,client_id,charge_id,amount,collected_at,receipt_token,receipt_revoked,actor_id,registered_centrally)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
          ON CONFLICT(id) DO UPDATE SET receipt_revoked=EXCLUDED.receipt_revoked`,
         [
           movement.id,
@@ -436,12 +463,13 @@ async function saveState(client: pg.PoolClient, state: State, before: State) {
           movement.receiptToken,
           movement.receiptRevoked ?? false,
           movement.actorId,
+          movement.registeredCentrally ?? null,
         ],
       );
     else if (movement.type === "payout")
       await client.query(
-        `INSERT INTO payments(id,collector_id,client_id,payout_id,amount,paid_at,receipt_token,receipt_revoked,actor_id)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
+        `INSERT INTO payments(id,collector_id,client_id,payout_id,amount,paid_at,receipt_token,receipt_revoked,actor_id,registered_centrally)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
          ON CONFLICT(id) DO UPDATE SET receipt_revoked=EXCLUDED.receipt_revoked`,
         [
           movement.id,
@@ -453,6 +481,7 @@ async function saveState(client: pg.PoolClient, state: State, before: State) {
           movement.receiptToken,
           movement.receiptRevoked ?? false,
           movement.actorId,
+          movement.registeredCentrally ?? null,
         ],
       );
     else
@@ -535,6 +564,14 @@ async function saveState(client: pg.PoolClient, state: State, before: State) {
     );
   }
   await saveRemittances(client, state.remittances, before.remittances);
+  for (const event of state.movementCancellations) {
+    if (before.movementCancellations.some((item) => item.id === event.id)) continue;
+    await client.query(
+      `INSERT INTO movement_cancellations(id,movement_id,movement_type,reason,actor_id,created_at)
+       VALUES($1,$2,$3,$4,$5,$6)`,
+      [event.id, event.movementId, event.movementType, event.reason, event.actorId, event.createdAt],
+    );
+  }
   for (const row of state.idempotency) {
     const prev = before.idempotency.find((r) => r.id === row.id);
     if (prev && JSON.stringify(prev) === JSON.stringify(row)) continue;
@@ -544,6 +581,7 @@ async function saveState(client: pg.PoolClient, state: State, before: State) {
       [row.id, row.fingerprint, JSON.stringify(row.response), row.createdAt],
     );
   }
+  await saveAdminTools(client, state, before);
 }
 export class PostgresStore implements Store {
   private pool: pg.Pool;

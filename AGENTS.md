@@ -40,34 +40,46 @@ proyecto separado de Hermes-BI.
 
 ## Current state
 
-**Last updated:** 2026-09-28 por Codex.
+**Last updated:** 2026-09-29 por Codex.
 
 ### Done so far
 
-- En la rama local `codex/integrate-envios` se integraron las migraciones 012/013,
-  la API, las pantallas de envíos/recibos/caja/reportes y la semilla ficticia de
-  revisión con los cambios recientes de `origin/main`.
-- La integración conserva el mapa conectado y los ajustes visuales recientes de
-  Cargos Recurrentes. El contrato externo de CobranzaMapas sigue pendiente.
-- Verificación del código integrado: TypeScript correcto en los tres paquetes;
-  34 pruebas de servidor aprobadas y dos de PostgreSQL omitidas en este worktree
-  sin base de pruebas; tres builds aprobados. Vite advierte por tamaño de bundle.
-- La instalación local definitiva respondió HTTP 200 en API 3001 y portales
-  5173/5174 en la última revisión. Esta observación no acredita el enlace público.
+- PR #1 fusionado en `main` (`666e100`). Rama `codex/public-browser-demo` con
+  `ba2b077` subida bajo excepción puntual autorizada; PR #2 abierto en borrador,
+  CI de ese commit aprobado. Los cambios nuevos completan esta misma rama.
+- Alta central atómica; anulación de cobros, pagos y entregas con motivo,
+  jornada actual abierta y reglas de saldo; archivo de descargos recurrentes.
+  Estaciones/grupos/PCPs con asociaciones, sesiones reales revocables, trazas
+  sin cuerpos y solicitudes administrativas sin efecto contable. Migraciones 014/015.
+- Demo con API y ambos portales bajo un dominio, acceso por invitación y cookies
+  seguras. Base dedicada `cyp_demo`, validada antes de migrar. No copia datos locales.
+- Alojamiento elegido por Rardiel: gratuito para pruebas. Render web y Neon
+  PostgreSQL, con variables privadas fuera de Git. Base Neon creada, servicio web
+  y comprobación pública aún pendientes. Ver `docs/DEMO-PUBLICA.md`.
+- TypeScript y builds de los tres paquetes aprobados. Servidor: 51 pruebas
+  aprobadas, cuatro casos PostgreSQL comprobados
+  aparte con éxito en un cluster temporal aislado. Migraciones 001–015 aprobadas.
+  Vite conserva advertencia por tamaño de bundle.
+- Instalación definitiva local 3001/5173/5174 sin modificar en esta ampliación.
 
 ### Next step
 
-1. Revisar el diff público, ejecutar CI y compartir la rama mediante el flujo de
-   revisión del repositorio. No añadir estado local, respaldos ni datos reales.
-2. Resolver por el canal de aprobación del entorno el arranque de la API aislada
-   de revisión; después comprobar la invitación y crear el túnel de Cloudflare.
-3. Hacer la prueba de GPS con un dispositivo físico por HTTPS y comprobar la
-   ubicación recibida en el mapa.
+1. Subir la ampliación probada a PR #2 tras resolver el rechazo del filtro de
+   privacidad de hermes-laptop, y revisar CI. No incluir estado local ni credenciales.
+2. Con la autorización pendiente para transferir la conexión Neon a la variable
+   secreta de Render, crear servicio gratuito desde la rama revisada. Comprobar
+   dominio HTTPS, invitación, login, ambos portales y flujos antes de compartir.
+3. El GPS físico lo probará Rardiel y está excluido del cierre solicitado.
 
 ### Blockers
 
-- La revisión automática volvió a rechazar el arranque de la API aislada en
-  3012 después de `/approve`; el gateway de revisión no está sano y no hay túnel.
+- No hay URL pública verificada todavía. Está pendiente confirmar el traslado
+  privado de `DATABASE_URL` entre Neon y Render y completar el deploy.
+- La evaluación de subir la ampliación fue rechazada antes de red:
+  `privacy_scrubbed_no_evaluation`. No reintentar cambiando el texto. La excepción
+  recibida cubrió `ba2b077`, que ya está subido; esta ampliación aún no.
+- El plan gratuito duerme por inactividad y mantiene cuotas; los datos de la
+  demo son compartidos. No equivale a una instalación operativa para dinero real.
 - La integración externa de CobranzaMapas no tiene origen ni sesión verificados.
-- Las dos pruebas de PostgreSQL omitidas y el GPS físico requieren comprobación
-  en sus entornos correspondientes.
+- El túnel local anterior conserva rechazos automáticos; no se reintenta ni se
+  cambia su lanzador. El despliegue alojado es la alternativa elegida por el usuario.

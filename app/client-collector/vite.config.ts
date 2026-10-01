@@ -4,6 +4,7 @@ import tailwindcss from "@tailwindcss/vite";
 
 const proxy = { "/api": "http://127.0.0.1:3001" };
 export default defineConfig({
+  base: process.env.CYP_PUBLIC_DEMO === "true" ? "/collector/" : "/",
   resolve: { dedupe: ["react", "react-dom"] },
   plugins: [react(), tailwindcss()],
   server: { host: "127.0.0.1", port: 5174, strictPort: true, proxy },

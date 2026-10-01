@@ -17,7 +17,7 @@ import { FileStore, MemoryStore, PostgresStore, type Store } from "../src/store.
 const admin: User = { id: "admin", name: "Admin", role: "admin" },
   collector: User = {
     id: "collector",
-    name: "Ana",
+    name: "Cobrador",
     role: "collector",
     collectorId: "col-1",
   };
@@ -487,6 +487,97 @@ test("file adapter persists and failed transactions never leak changes", async (
   await reopened.close();
 });
 
+test("client creation: missing or blank documents are rejected without persisting", async () => {
+  const { app, post, store } = await setup();
+  try {
+    const before = (await store.read()).clients;
+    for (const document of [{}, { identification: "   " }]) {
+      const response = await post("/api/clientes", {
+        name: "Cliente ficticio sin documento",
+        code: "CLIENTE-PRUEBA-SIN-DOCUMENTO",
+        routeId: "route-1",
+        ...document,
+      });
+      assert.equal(response.statusCode, 400);
+      assert.equal(response.json().error.code, "VALIDATION");
+      assert.match(response.json().error.message, /identification/);
+      assert.deepEqual((await store.read()).clients, before);
+    }
+  } finally {
+    await app.close();
+  }
+});
+
+test("client creation: entered document and internal identifiers stay separate without a location", async () => {
+  const { app, post, store } = await setup();
+  try {
+    const response = await post("/api/clientes", {
+      name: "Cliente ficticio con documento",
+      code: "CLIENTE-PRUEBA-DOC-001",
+      identification: "  PASAPORTE-PRUEBA  ",
+      routeId: "route-1",
+    });
+    assert.equal(response.statusCode, 200);
+    const created = response.json();
+    assert.match(created.id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+    assert.equal(created.code, "CLIENTE-PRUEBA-DOC-001");
+    assert.equal(created.identification, "PASAPORTE-PRUEBA");
+    assert.notEqual(created.id, created.code);
+    assert.notEqual(created.id, created.identification);
+    assert.equal(Object.hasOwn(created, "lat"), false);
+    assert.equal(Object.hasOwn(created, "lng"), false);
+    const persisted = (await store.read()).clients.find((client) => client.id === created.id);
+    assert.deepEqual(persisted, created);
+  } finally {
+    await app.close();
+  }
+});
+
+test("client editing: legacy missing documents remain editable and omitted coordinates are preserved", async () => {
+  const state = seed();
+  const legacy = state.clients[0], located = state.clients[1];
+  legacy.name = "Cliente heredado ficticio";
+  legacy.identification = "";
+  located.name = "Cliente ubicado ficticio";
+  located.identification = "PASAPORTE-PRUEBA-LEGADO";
+  located.lat = 18.41;
+  located.lng = -69.72;
+  const { app, post, store } = await setup(new MemoryStore(state));
+  try {
+    const legacyResponse = await post(`/api/clientes/${legacy.id}`, {
+      name: "Cliente heredado ficticio editado",
+      code: legacy.code,
+      phone: legacy.phone,
+      address: legacy.address,
+      routeId: legacy.routeId,
+    });
+    assert.equal(legacyResponse.statusCode, 200);
+    assert.equal(legacyResponse.json().identification, "");
+    const legacyPersisted = (await store.read()).clients.find((client) => client.id === legacy.id);
+    assert.equal(legacyPersisted?.name, "Cliente heredado ficticio editado");
+    assert.equal(legacyPersisted?.identification, "");
+
+    const locatedResponse = await post(`/api/clientes/${located.id}`, {
+      name: "Cliente ubicado ficticio editado",
+      code: located.code,
+      phone: located.phone,
+      address: located.address,
+      routeId: located.routeId,
+      identification: located.identification,
+    });
+    assert.equal(locatedResponse.statusCode, 200);
+    assert.equal(locatedResponse.json().lat, located.lat);
+    assert.equal(locatedResponse.json().lng, located.lng);
+    const locatedPersisted = (await store.read()).clients.find((client) => client.id === located.id);
+    assert.equal(locatedPersisted?.name, "Cliente ubicado ficticio editado");
+    assert.equal(locatedPersisted?.lat, located.lat);
+    assert.equal(locatedPersisted?.lng, located.lng);
+    assert.equal(locatedPersisted?.identification, located.identification);
+  } finally {
+    await app.close();
+  }
+});
+
 test("monitoring map-data returns collector location, stops and decimal money", async () => {
   const state = seed();
   const routeClients = state.clients.filter((client) => client.routeId === "route-1");
@@ -504,7 +595,7 @@ test("monitoring map-data returns collector location, stops and decimal money", 
     assert.equal(response.statusCode, 200);
     const body = response.json();
     assert.equal(body.collector.id, "col-1");
-    assert.equal(body.collector.name, "Ana Martínez");
+    assert.equal(body.collector.name, "Cobrador");
     assert.equal(body.collector.collection_limit, 25000);
     assert.equal(body.collector.payout_limit, 10000);
     assert.equal(body.collector.lat, state.collectors[0].lat);
@@ -557,7 +648,7 @@ test("OpenAPI includes typed financial requests and bearer security", async () =
 });
 test("account provisioning: create, login, scope, password rotation and disable", async () => {
   const { app, post, store } = await setup();
-  const collectorEmail = "ana@example.com",
+  const collectorEmail = "cobrador@example.com",
     bossEmail = "jefe@example.com",
     strong = "ClaveDePrueba-2026!";
   const login = async (email: string, password: string) =>
@@ -571,7 +662,7 @@ test("account provisioning: create, login, scope, password rotation and disable"
     assert.equal(
       (
         await post("/api/usuarios", {
-          name: "Ana Martínez",
+          name: "Cobrador",
           email: collectorEmail,
           role: "collector",
           password: strong,
@@ -595,7 +686,7 @@ test("account provisioning: create, login, scope, password rotation and disable"
     assert.equal(
       (
         await post("/api/usuarios", {
-          name: "Ana Martínez",
+          name: "Cobrador",
           email: collectorEmail,
           role: "collector",
           collectorId: "col-1",
@@ -606,7 +697,7 @@ test("account provisioning: create, login, scope, password rotation and disable"
     );
     const created = (
       await post("/api/usuarios", {
-        name: "Ana Martínez",
+        name: "Cobrador",
         email: collectorEmail,
         role: "collector",
         collectorId: "col-1",
@@ -619,7 +710,7 @@ test("account provisioning: create, login, scope, password rotation and disable"
     assert.equal(
       (
         await post("/api/usuarios", {
-          name: "Ana Martínez",
+          name: "Cobrador",
           email: collectorEmail.toUpperCase(),
           role: "collector",
           collectorId: "col-1",

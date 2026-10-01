@@ -4,6 +4,9 @@ Un backend REST, un portal administrativo y una PWA para cobradores. Incluye cob
 
 El repositorio contiene código, migraciones de PostgreSQL y ejemplos ficticios. La base local de trabajo y los datos de clientes no forman parte de GitHub. El esquema moderno no es una extracción directa del respaldo legado.
 
+La [demo pública en navegador](docs/DEMO-PUBLICA.md) usa un despliegue separado
+con una base exclusiva de datos ficticios. No requiere descargar el proyecto.
+
 ## Inicio rápido en Windows con PostgreSQL
 
 Requisitos: Node.js 22.12+, Corepack y PostgreSQL local. En PowerShell:
@@ -35,10 +38,10 @@ Para empezar una demo nueva, usa una base PostgreSQL dedicada vacía y ejecuta `
 ## Recorrido de demostración
 
 1. Entrar como administración y revisar tablero, clientes, mapa, filtros y búsqueda con Ctrl/Cmd+K.
-2. Entrar como Ana en el portal cobrador. Abrir Colmado La Esquina y cobrar RD$ 4,500.00; revisar recibo, copia de enlace e impresión.
+2. Entrar como Cobrador en el portal cobrador. Abrir Colmado La Esquina y cobrar RD$ 4,500.00; revisar recibo, copia de enlace e impresión.
 3. En Pagos, entregar la remesa autorizada de RD$ 2,000.00 a María. La demo incluye ese anticipo inicial de oficina.
-4. En Cuadre administrativo, confirmar depósito de RD$ 4,500.00 para Ana. La fórmula resulta `(4,500 - 4,500) + (2,000 - 2,000) = 0`.
-5. Cerrar la jornada. Intentar un nuevo cobro de Ana devuelve `DAY_CLOSED`. Los demás cobradores mantienen sus jornadas independientes.
+4. En Cuadre administrativo, confirmar depósito de RD$ 4,500.00 para Cobrador. La fórmula resulta `(4,500 - 4,500) + (2,000 - 2,000) = 0`.
+5. Cerrar la jornada. Intentar un nuevo cobro de Cobrador devuelve `DAY_CLOSED`. Los demás cobradores mantienen sus jornadas independientes.
 
 Un recibo es operacional, no fiscal. Descargar ESC/POS produce bytes para un puente/controlador local compatible; no instala ni conecta una impresora. La impresión web abre el diálogo del navegador. El tamaño, corte y caracteres deben verificarse con la impresora física.
 

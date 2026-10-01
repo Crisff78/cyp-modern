@@ -52,9 +52,4 @@ export const money = (amount: number) =>
   `RD$ ${new Intl.NumberFormat("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount / 100)}`;
 export const shortMoney = (amount: number) =>
   `RD$ ${new Intl.NumberFormat("es-DO", { maximumFractionDigits: 0 }).format(amount / 100)}`;
-export const dateLabel = (date: string) =>
-  new Intl.DateTimeFormat("es-DO", {
-    day: "numeric",
-    month: "long",
-    ...(date.includes("T") ? { hour: "2-digit", minute: "2-digit" } : {}),
-  }).format(new Date(date.includes("T") ? date : `${date}T12:00:00`));
+export { dateLabel } from "./services/dates";

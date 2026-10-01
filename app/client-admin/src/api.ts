@@ -1,4 +1,5 @@
 import { isMockToken, mockApi } from "./mock";
+import { createStrictApi, StrictApiError } from "../../shared/remittances/strictApi";
 
 const TOKEN_KEY = "cyp-admin-token";
 export const getToken = () => localStorage.getItem(TOKEN_KEY);
@@ -12,10 +13,19 @@ export class ApiError extends Error {
   constructor(
     message: string,
     public status: number,
+    public uncertain?: boolean,
+    public code?: string,
   ) {
     super(message);
   }
 }
+const strictMutationApi = createStrictApi(getToken, () => isMockToken(getToken()));
+const strictMutationPaths = new Set([
+  "/configuracion",
+  "/depositos",
+  "/cargos/importar",
+  "/descargos/importar",
+]);
 export async function api<T>(
   path: string,
   options: RequestInit = {},
@@ -23,6 +33,17 @@ export async function api<T>(
   const token = getToken();
   if (isMockToken(token)) return mockApi<T>(path, options);
   if (path.startsWith("/mock/")) throw new ApiError("Esta acción todavía no está disponible en la versión conectada. No se guardaron cambios.", 501);
+  if (options.method?.toUpperCase() === "POST" && (
+    strictMutationPaths.has(path) || /^\/depositos\/[^/]+\/(aceptar|cancelar)$/.test(path)
+  )) {
+    try {
+      return await strictMutationApi<T>(path, options);
+    } catch (error) {
+      if (error instanceof StrictApiError)
+        throw new ApiError(error.message, error.status, error.uncertain, error.code);
+      throw error;
+    }
+  }
   const request = () =>
     fetch(`/api${path}`, {
       ...options,

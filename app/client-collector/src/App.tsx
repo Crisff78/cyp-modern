@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -57,6 +58,7 @@ import { isMockToken } from "./mock";
 import { GeoMap } from "../../client-admin/src/GeoMap";
 import { locationUnavailable, locationError, validLocation } from "../../shared/geolocation";
 import { transformRouteToMap } from "./services/mapAdapter";
+import { businessDay as localDay, timeLabel } from "./services/dates";
 import type {
   Charge,
   Client,
@@ -86,14 +88,6 @@ const getView = (): View => {
   const view = new URLSearchParams(location.search).get("view");
   return tabs.some((tab) => tab.id === view) ? (view as View) : "route";
 };
-const localDay = (value: string) =>
-  new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Santo_Domingo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date(value));
-
 export function App() {
   const [user, setUser] = useState<User | null>(null);
   const currentUser = useRef<User | null>(user);
@@ -105,6 +99,9 @@ export function App() {
   const [error, setError] = useState("");
   const [online, setOnline] = useState(navigator.onLine);
   const [view, setView] = useState<View>(getView);
+  const viewPanel = useRef<HTMLElement | null>(null);
+  const viewAnimation = useRef<Animation | null>(null);
+  const pendingViewMotion = useRef<{ direction: number; from?: Keyframe } | null>(null);
   const [receiptToken, setReceiptToken] = useState<string | null>(() =>
     new URLSearchParams(location.search).get("receipt"),
   );
@@ -116,6 +113,30 @@ export function App() {
   const trackingRef = useRef<number | null>(null);
   const lastLocationSent = useRef(0);
   const [trackingDetail, setTrackingDetail] = useState("");
+
+  useLayoutEffect(() => {
+    const motion = pendingViewMotion.current;
+    pendingViewMotion.current = null;
+    const panel = viewPanel.current;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    if (!motion || !panel?.animate || reducedMotion.matches) return;
+
+    const animation = panel.animate(
+      [
+        motion.from ?? { opacity: 0.55, transform: `translateX(${motion.direction * 8}px)` },
+        { opacity: 1, transform: "translateX(0)" },
+      ],
+      { id: "collector-tab-transition", duration: 180, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
+    );
+    viewAnimation.current = animation;
+    const stopMotion = () => animation.cancel();
+    reducedMotion.addEventListener("change", stopMotion);
+    return () => {
+      animation.cancel();
+      viewAnimation.current = null;
+      reducedMotion.removeEventListener("change", stopMotion);
+    };
+  }, [view]);
 
   useEffect(() => {
     const on = () => setOnline(true);
@@ -213,7 +234,17 @@ export function App() {
     [],
   );
 
-  function navigate(next: View) {
+  function navigate(next: View, pointerInitiated = false) {
+    if (next === view && !receiptToken) return;
+    const interrupted = viewAnimation.current?.playState === "running" && viewPanel.current
+      ? getComputedStyle(viewPanel.current)
+      : null;
+    pendingViewMotion.current = pointerInitiated && next !== view && snapshot
+      ? {
+          direction: Math.sign(tabs.findIndex((tab) => tab.id === next) - tabs.findIndex((tab) => tab.id === view)),
+          from: interrupted ? { opacity: interrupted.opacity, transform: interrupted.transform } : undefined,
+        }
+      : null;
     setView(next);
     setReceiptToken(null);
     history.pushState(
@@ -270,7 +301,7 @@ export function App() {
             if (trackingRef.current !== null) {
               setTracking(true);
               setTrackingBusy(false);
-              setTrackingDetail(`Ubicación enviada ${new Date().toLocaleTimeString("es-DO")} · precisión aproximada ${Math.round(position.coords.accuracy)} m`);
+              setTrackingDetail(`Ubicación enviada ${timeLabel(new Date())} · precisión aproximada ${Math.round(position.coords.accuracy)} m`);
             }
           })
           .catch((err) => {
@@ -300,6 +331,11 @@ export function App() {
     } else setInstallHelp(true);
   }
   function logout() {
+    const token = getToken();
+    // Capture authorization before cleaning up the local session and GPS watcher.
+    const remote = token && !isMockToken(token)
+      ? remittancesApi<{ id: string; closed: boolean }>("/auth/logout", { method: "POST", body: "{}" })
+      : null;
     currentUser.current = null;
     stopTracking();
     setToken(null);
@@ -307,6 +343,9 @@ export function App() {
     setSnapshot(null);
     setOperation(null);
     navigate("route");
+    if (remote) void remote.then((result) => {
+      if (!result?.closed || !result.id) throw new Error("Cierre remoto no confirmado.");
+    }).catch(() => toast.warning("La sesión se cerró en este dispositivo. No pudimos confirmar su cierre en el servidor; podría seguir activa hasta vencer."));
   }
   if (receiptToken)
     return (
@@ -356,7 +395,7 @@ export function App() {
             href={APP_BASE_URL}
             onClick={(event) => {
               event.preventDefault();
-              navigate("route");
+              navigate("route", event.detail > 0);
             }}
             aria-label="CyP, ir a mi ruta"
           >
@@ -381,7 +420,7 @@ export function App() {
             <button
               className="avatar"
               aria-label="Ver mi bolsillo y perfil"
-              onClick={() => navigate("pocket")}
+              onClick={(event) => navigate("pocket", event.detail > 0)}
             >
               {collector?.initials ??
                 user.name
@@ -392,7 +431,7 @@ export function App() {
             </button>
           </div>
         </div>
-        <button className="cash-pill" onClick={() => navigate("pocket")}>
+        <button className="cash-pill" onClick={(event) => navigate("pocket", event.detail > 0)}>
           <span className="cash-pill-icon">
             <Wallet size={17} />
           </span>
@@ -413,7 +452,7 @@ export function App() {
           </span>
         </div>
       )}
-      <main id="main" className="main-content">
+      <main id="main" className="main-content" ref={viewPanel}>
         {error && (
           <div className="error-banner" role="alert">
             <CircleAlert size={19} />
@@ -505,7 +544,7 @@ export function App() {
             className={view === id ? "active" : ""}
             aria-label={name}
             aria-current={view === id ? "page" : undefined}
-            onClick={() => navigate(id)}
+            onClick={(event) => navigate(id, event.detail > 0)}
           >
             <span>
               <Icon size={23} />
@@ -957,7 +996,7 @@ function RouteView({
           <p>RUTA ASIGNADA</p>
           <h2>{routeName}</h2>
           <span>
-            {sector || "Tu zona de trabajo"} · {snapshot.clients.length}{" "}
+            {sector || "Tu zona de trabajo"} · {snapshot.clients.filter((client) => client.active !== false).length}{" "}
             clientes
           </span>
         </div>
@@ -1101,7 +1140,7 @@ function RouteView({
       )}
       <div className="section-heading">
         <h2>
-          Mis paradas <span>{snapshot.clients.length}</span>
+          Mis paradas <span>{list.length}</span>
         </h2>
         <span>Orden de ruta</span>
       </div>
@@ -1606,9 +1645,11 @@ function PocketView({
                   : "Compartir mi ubicación"}
             </strong>
             <small>
-              {tracking
-                ? "Activa mientras esta aplicación esté abierta"
-                : "Activa el permiso solo cuando lo necesites"}
+              {import.meta.env.VITE_PUBLIC_DEMO === "true"
+                ? "La última ubicación queda guardada y visible para administradores de esta demo"
+                : tracking
+                  ? "Activa mientras esta aplicación esté abierta"
+                  : "Activa el permiso solo cuando lo necesites"}
             </small>
           </span>
           <span

@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { Modal } from "./components";
+import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { KeyRound, ShieldCheck, Users, Wallet } from "lucide-react";
+import { LegacyToolbar, LegacyDialog, LegacyCheck, LegacyDenseTable } from "./LegacyConnectedUi";
 import { remittancesApi } from "./remittancesApi";
 import { decimalCents, formatMoney } from "../../shared/remittances/output";
 import type { Snapshot } from "./types";
@@ -25,6 +26,18 @@ const active = (row: RecordRow) => row.active !== false && row.status !== "disab
 export function ConnectedCatalog({ page, snapshot, onRefresh }: { page: CatalogPage; snapshot: Snapshot; onRefresh: () => void }) {
   const definition = definitions[page];
   const [records, setRecords] = useState<RecordRow[]>([]);
+  const [selectedId, setSelectedId] = useState("");
+  const [filtersVisible, setFiltersVisible] = useState(true);
+  const [filterMode, setFilterMode] = useState<"all" | "client">("all");
+  const [filterClientId, setFilterClientId] = useState("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [relation, setRelation] = useState<"zones" | "limits" | "routes" | "balances" | "clients" | "permissions" | null>(null);
+  const [relationRow, setRelationRow] = useState<RecordRow | null>(null);
+  const [clientPicker, setClientPicker] = useState<"form" | "filter" | null>(null);
+  const [clientQuery, setClientQuery] = useState("");
+  const [pickedClientId, setPickedClientId] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -62,6 +75,7 @@ export function ConnectedCatalog({ page, snapshot, onRefresh }: { page: CatalogP
     { key: "day1", label: "Primer día", type: "number" }, { key: "day2", label: "Segundo día", type: "number" }, { key: "amount", label: "Importe (DOP)", type: "money", required: true }, { key: "note", label: "Nota" },
   ];
   const open = (record: RecordRow | "new") => {
+    if (busy) return;
     const next: Draft = { role: "collector", frequency: "Mensual", startDate: snapshot.businessDate, day1: "1", day2: "15", active: true };
     for (const field of fields) next[field.key] = field.type === "money" ? moneyString(record === "new" ? page === "collectors" ? 1_000_000 : 0 : record[field.key]) : field.type === "boolean" ? Boolean(record !== "new" && record[field.key]) : String(record === "new" ? next[field.key] ?? "" : record[field.key] ?? "");
     if (next.frequency === "Semestal") next.frequency = "Semestral";
@@ -107,19 +121,217 @@ export function ConnectedCatalog({ page, snapshot, onRefresh }: { page: CatalogP
   const changePassword = async (event: FormEvent) => {
     event.preventDefault(); if (!passwordTarget || busy) return;
     if (String(draft.password ?? "").length < 12) { setFormError("La contraseña necesita al menos 12 caracteres."); return; }
+    if (draft.password !== draft.confirmation) { setFormError("La confirmación no coincide con la clave."); return; }
     setBusy(true); setFormError("");
     try { await remittancesApi(`/usuarios/${encodeURIComponent(passwordTarget.id)}/clave`, { method: "POST", body: JSON.stringify({ password: draft.password }) }); setDraft({}); await complete("Contraseña actualizada correctamente."); }
     catch (failure) { setFormError(failure instanceof Error ? failure.message : "No se pudo cambiar la contraseña."); }
     finally { setBusy(false); }
   };
-  const visible = records.filter((row) => String(row[definition.label] ?? "").toLowerCase().includes(query.toLowerCase()));
-  return <section className="connected-catalog" aria-label={definition.title}>
-    <div className="connected-catalog-toolbar"><button type="button" onClick={() => open("new")}>Agregar</button><button type="button" onClick={() => void refresh()} disabled={loading}>{loading ? "Cargando…" : "Refrescar"}</button><label>Buscar<input value={query} onChange={(event) => setQuery(event.target.value)} /></label></div>
-    {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}
-    {page === "recurringCharges" && <p className="location-feedback">Catálogo de plantillas guardadas. La generación automática por calendario todavía no está disponible.</p>}
-    <div className="connected-catalog-scroll"><table className="legacy-mdi-table"><thead><tr><th>{definition.title}</th><th>Detalle</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>{visible.map((row) => <tr key={row.id}><td>{String(row[definition.label] || row.service || row.id)}</td><td>{page === "users" ? `${row.email} · ${row.role === "admin" ? "Administrador" : "Cobrador"}` : page === "recurringCharges" ? `${snapshot.clients.find((client) => client.id === row.clientId)?.name ?? "Cliente no asignado"} · ${formatMoney(Number(row.amount ?? 0), "DOP")}` : String(row.sector ?? row.cellular ?? row.caption ?? "")}</td><td>{active(row) ? "Activo" : "Inactivo"}</td><td><div className="connected-row-actions"><button type="button" onClick={() => open(row)}>Modificar</button><button type="button" onClick={() => { setToggleTarget(row); setFormError(""); }}>{active(row) ? "Inactivar" : "Activar"}</button>{page === "users" && <button type="button" onClick={() => { setPasswordTarget(row); setDraft({ password: "" }); setFormError(""); }}>Cambiar clave</button>}</div></td></tr>)}</tbody></table>{!loading && !visible.length && <p>No hay registros para mostrar.</p>}</div>
-    <Modal className="connected-catalog-dialog" overlayClassName="connected-catalog-overlay" open={Boolean(editing)} title={`${editing === "new" ? "Agregar" : "Modificar"} · ${definition.title}`} onClose={() => { if (!busy) setEditing(null); }}><form className="connected-catalog-form" onSubmit={submit}>{fields.map((field) => <label key={field.key}>{field.label}{field.type === "boolean" ? <input type="checkbox" checked={Boolean(draft[field.key])} onChange={(event) => setDraft({ ...draft, [field.key]: event.target.checked })} /> : field.options ? <select required={field.required} value={String(draft[field.key] ?? "")} onChange={(event) => setDraft({ ...draft, [field.key]: event.target.value })}><option value="">Selecciona…</option>{field.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select> : <input required={field.required} type={field.type === "date" || field.type === "password" ? field.type : "text"} inputMode={field.type === "money" ? "decimal" : field.type === "number" ? "numeric" : undefined} autoComplete={field.type === "password" ? "new-password" : "off"} value={String(draft[field.key] ?? "")} onChange={(event) => setDraft({ ...draft, [field.key]: event.target.value })} />}</label>)}{formError && <p role="alert">{formError}</p>}<div className="connected-row-actions"><button type="button" disabled={busy} onClick={() => setEditing(null)}>Cancelar</button><button type="submit" disabled={busy}>{busy ? "Guardando…" : "Guardar"}</button></div></form></Modal>
-    <Modal className="connected-catalog-dialog" overlayClassName="connected-catalog-overlay" open={Boolean(toggleTarget)} title="Confirmar cambio de estado" onClose={() => { if (!busy) setToggleTarget(null); }}><p>{toggleTarget && `${active(toggleTarget) ? "Inactivar" : "Activar"} ${String(toggleTarget[definition.label] ?? "este registro")}?`}</p><p>El historial se conserva.</p>{formError && <p role="alert">{formError}</p>}<div className="connected-row-actions"><button type="button" disabled={busy} onClick={() => setToggleTarget(null)}>Cancelar</button><button type="button" disabled={busy} onClick={() => void toggle()}>{busy ? "Guardando…" : "Confirmar"}</button></div></Modal>
-    <Modal className="connected-catalog-dialog" overlayClassName="connected-catalog-overlay" open={Boolean(passwordTarget)} title="Cambiar contraseña" onClose={() => { if (!busy) setPasswordTarget(null); }}><form className="connected-catalog-form" onSubmit={changePassword}><label>Nueva contraseña (mínimo 12 caracteres)<input type="password" autoComplete="new-password" value={String(draft.password ?? "")} onChange={(event) => setDraft({ password: event.target.value })} /></label>{formError && <p role="alert">{formError}</p>}<button type="submit" disabled={busy}>{busy ? "Guardando…" : "Guardar contraseña"}</button></form></Modal>
+  const text = (row: RecordRow, key: string) => String(row[key] ?? "");
+  const clientOf = (row: RecordRow) => snapshot.clients.find((client) => client.id === row.clientId);
+  const currencyOf = (row: RecordRow) => !row.currency || row.currency === "Peso Dominicano" ? "DOP" : String(row.currency);
+  const dateOf = (input: unknown) => {
+    if (!input) return "";
+    const value = String(input);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+    const date = new Date(value);
+    return Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat("en-CA", { timeZone: "America/Santo_Domingo", year: "numeric", month: "2-digit", day: "2-digit" }).format(date) : "";
+  };
+  const invalidRange = Boolean(from && to && from > to);
+  const visible = records.filter((row) => {
+    const client = clientOf(row);
+    const matchesQuery = [text(row, definition.label), text(row, "number"), text(row, "email"), client?.code, client?.name].join(" ").toLocaleLowerCase().includes(query.toLocaleLowerCase());
+    return matchesQuery && (page !== "recurringCharges" || (!invalidRange &&
+      (filterMode === "all" || !filterClientId || row.clientId === filterClientId) &&
+      (!from || text(row, "startDate") >= from) && (!to || text(row, "startDate") <= to) &&
+      (statusFilter === "all" || active(row) === (statusFilter === "active"))));
+  });
+  const selected = visible.find((row) => row.id === selectedId) ?? visible[0];
+  const moveSelected = (direction: "first" | "up" | "down" | "last") => {
+    if (!selected || busy) return;
+    const index = visible.findIndex((row) => row.id === selected.id);
+    const next = direction === "first" ? 0 : direction === "last" ? visible.length - 1 : direction === "up" ? Math.max(0, index - 1) : Math.min(visible.length - 1, index + 1);
+    setSelectedId(visible[next].id);
+  };
+  const openRelation = (kind: NonNullable<typeof relation>) => {
+    if (!selected || busy) return;
+    setRelationRow(selected); setRelation(kind);
+  };
+  const openPicker = (target: "form" | "filter") => {
+    if (busy) return;
+    setClientPicker(target); setClientQuery("");
+    setPickedClientId(target === "form" ? String(draft.clientId ?? "") : filterClientId);
+  };
+  const pickClient = () => {
+    if (!pickedClientId) return;
+    if (clientPicker === "form") setDraft((current) => ({ ...current, clientId: pickedClientId }));
+    else setFilterClientId(pickedClientId);
+    setClientPicker(null);
+  };
+  const headers: Record<CatalogPage, string[]> = {
+    collectors: ["Cod.", "Cobrador", "Celular", "Cuenta", "Act."],
+    routes: ["Nro.", "Ruta", "Desde", "Hasta", "Activo"],
+    zones: ["Nro", "Zona", "Desde", "Hasta", "Act."],
+    servicesProducts: ["Nro.", "Servicio", "Abrev", "Caption", "Ob. Cob.", "Activo"],
+    delayReasons: ["Nro.", "Motivo", "Activo"],
+    users: ["Usuario", "Cuenta", "Rol", "Act."],
+    recurringCharges: ["Nro.", "Fecha", "Frecuencia", "Identif.", "Cliente", "Servicio", "Importe", "Activo", "Fecha de Registro"],
+  };
+  const gridClasses: Record<CatalogPage, string> = {
+    collectors: "collectors-grid", routes: "routes-grid", zones: "zones-grid", servicesProducts: "services-products-grid",
+    delayReasons: "delay-reasons-grid", users: "users-grid", recurringCharges: "recurring-charges-table",
+  };
+  const rowCells = (row: RecordRow, index: number): ReactNode[] => {
+    const marker = (label: ReactNode) => <span className={"mdi-row-select " + (selected?.id === row.id ? "selected" : "")}>{label}</span>;
+    const check = <LegacyCheck checked={active(row)} />;
+    switch (page) {
+      case "collectors": return [marker(text(row, "ident") || "—"), text(row, "name"), text(row, "cellular"), text(row, "accountId"), check];
+      case "routes": case "zones": return [marker(text(row, "number") || index + 1), text(row, "name"), text(row, "from"), text(row, "to"), check];
+      case "servicesProducts": return [marker(index + 1), text(row, "service"), text(row, "abbr"), text(row, "caption"), <LegacyCheck checked={Boolean(row.obligated)} />, check];
+      case "delayReasons": return [marker(index + 1), text(row, "reason"), check];
+      case "users": return [marker(text(row, "name")), text(row, "email"), row.role === "admin" ? "Administrador" : "Cobrador", check];
+      case "recurringCharges": {
+        const client = clientOf(row);
+        return [marker(index + 1), dateOf(row.startDate), text(row, "frequency"), client?.identification ?? "", client?.name ?? "Sin cliente asignado", text(row, "service"), formatMoney(Number(row.amount ?? 0), currencyOf(row)), check, dateOf(row.registeredAt)];
+      }
+    }
+  };
+  const totals = new Map<string, number>();
+  if (page === "recurringCharges") for (const row of visible) totals.set(currencyOf(row), (totals.get(currencyOf(row)) ?? 0) + Number(row.amount ?? 0));
+
+  const control = (key: string, label?: string, className?: string): ReactNode => {
+    const field = fields.find((item) => item.key === key);
+    if (!field) return null;
+    const common = { "aria-label": label ?? field.label, disabled: busy, required: field.required, className };
+    if (field.type === "boolean") return <input {...common} type="checkbox" checked={Boolean(draft[key])} onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.checked }))} />;
+    if (field.options) return <select {...common} value={String(draft[key] ?? "")} onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))}><option value="">Selecciona…</option>{field.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>;
+    return <input {...common} type={field.type === "date" || field.type === "password" ? field.type : "text"} inputMode={field.type === "money" ? "decimal" : field.type === "number" ? "numeric" : undefined} autoComplete={field.type === "password" ? "new-password" : "off"} value={String(draft[key] ?? "")} onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))} />;
+  };
+  const formTitles: Record<CatalogPage, string> = {
+    collectors: "Datos de Cobrador...", routes: "Datos de Ruta...", zones: "Datos de la Zona...",
+    servicesProducts: "Datos del Servicio o Producto (Bien)...", delayReasons: "Motivo de atraso...",
+    users: "Datos de Usuario...", recurringCharges: "Datos del Cargo Recurrente...",
+  };
+  const dialogClasses: Record<CatalogPage, string> = {
+    collectors: "collector-form-dialog", routes: "route-data-dialog", zones: "zone-form-dialog",
+    servicesProducts: "service-product-dialog", delayReasons: "legacy-select-dialog",
+    users: "legacy-user-dialog", recurringCharges: "recurring-charge-dialog",
+  };
+  const formClasses: Record<CatalogPage, string> = {
+    collectors: "legacy-dialog-form", routes: "legacy-dialog-form legacy-route-form", zones: "zone-form",
+    servicesProducts: "legacy-dialog-form service-product-form", delayReasons: "legacy-dialog-form",
+    users: "legacy-user-form", recurringCharges: "recurring-charge-form",
+  };
+  const formContent = (): ReactNode => {
+    if (page === "collectors") return <>
+      <label>Cobrador:{control("name")}</label>
+      <div className="legacy-dialog-row two-cols"><label>Ident.:{control("ident")}</label><label>Celular:{control("cellular")}</label></div>
+      <label>Cuenta:{control("accountId")}</label>
+      <fieldset className="legacy-config-fieldset"><legend>Límites en DOP</legend><div className="legacy-dialog-row two-cols"><label>Cobro:{control("collectionLimit")}</label><label>Pago:{control("payoutLimit")}</label></div></fieldset>
+    </>;
+    if (page === "routes") return <>
+      <div className="route-form-row route-code-row"><span className="route-form-label">Ruta:</span>{control("number", "Número de ruta", "route-code-input")}{control("name", "Nombre de ruta", "route-name-input")}</div>
+      <label className="route-form-row"><span className="route-form-label">Desde:</span>{control("from")}</label>
+      <label className="route-form-row"><span className="route-form-label">Hasta:</span>{control("to")}</label>
+      <label className="route-form-row"><span className="route-form-label">Sector:</span>{control("sector")}</label>
+      <label className="route-form-row"><span className="route-form-label">Cobrador:</span>{control("collectorId")}</label>
+    </>;
+    if (page === "zones") return <>
+      <div className="zone-form-row zone-code-row"><span>Zona:</span>{control("number", "Número de zona")}{control("name", "Nombre de zona")}</div>
+      <label className="zone-form-row"><span>Desde:</span>{control("from")}</label>
+      <label className="zone-form-row"><span>Hasta:</span>{control("to")}</label>
+      <label className="zone-form-row"><span>Sector:</span>{control("sector")}</label>
+    </>;
+    if (page === "servicesProducts") return <>
+      <label className="service-form-row"><span className="service-form-label">Bien:</span>{control("service")}</label>
+      <div className="service-form-row service-two-cols"><label><span>Caption:</span>{control("caption")}</label><label><span>Abrev:</span>{control("abbr")}</label></div>
+      <label className="legacy-check-line service-obligated-line">{control("obligated")}<span>Obligado cobrar</span></label>
+      <label className="legacy-check-line service-obligated-line">{control("fixedAmount")}<span>Usa importe fijo</span></label>
+    </>;
+    if (page === "delayReasons") return <label>Motivo:{control("reason")}</label>;
+    if (page === "users") return <>
+      <label className="legacy-form-row"><span>Nombre:</span>{control("name")}</label>
+      <div className="legacy-form-row user-role-row"><label><span>Usuario / correo:</span>{control("email")}</label><label><span>Rol:</span>{control("role")}</label></div>
+      {draft.role === "collector" && <label className="legacy-form-row"><span>Cobrador:</span>{control("collectorId")}</label>}
+      {editing === "new" && <label className="legacy-form-row"><span>Clave inicial:</span>{control("password")}</label>}
+      {editing === "new" && <small>Mínimo 12 caracteres.</small>}
+    </>;
+    const client = snapshot.clients.find((item) => item.id === draft.clientId);
+    return <>
+      <div className="recurring-charge-row recurring-charge-client-row"><span>Cliente:</span><input aria-label="Código del cliente" value={client?.code ?? ""} readOnly /><input aria-label="Nombre del cliente" value={client?.name ?? ""} readOnly placeholder="Seleccione un cliente" /><button type="button" disabled={busy} onClick={() => openPicker("form")} aria-label="Buscar cliente">[...]</button></div>
+      <div className="recurring-charge-row recurring-charge-date-row"><span>F. Inicial:</span>{control("startDate")}<span>F. final:</span>{control("endDate")}</div>
+      <div className="recurring-charge-row recurring-charge-frequency-row"><span>Frecuencia:</span>{control("frequency")}<span>Día1:</span>{control("day1", undefined, "recurring-charge-day")}<span>Día2:</span>{control("day2", undefined, "recurring-charge-day")}</div>
+      <label className="recurring-charge-row recurring-charge-labeled-row"><span>Moneda:</span><input value="Peso Dominicano (DOP)" readOnly /></label>
+      <label className="recurring-charge-row recurring-charge-labeled-row"><span>Servicio:</span>{control("service")}</label>
+      <label className="recurring-charge-row recurring-charge-labeled-row"><span>Concepto:</span>{control("concept")}</label>
+      <label className="recurring-charge-checkbox" title="La marca guardada se conserva; el catálogo no calcula un importe de concepto."><input type="checkbox" checked={Boolean(editing && editing !== "new" && editing.useConceptAmount)} disabled />Usar Importe de Concepto</label>
+      <label className="recurring-charge-row recurring-charge-labeled-row"><span>Importe:</span>{control("amount")}</label>
+      <label className="recurring-charge-row recurring-charge-labeled-row"><span>Nota:</span>{control("note")}</label>
+    </>;
+  };
+  const relatedRoutes = snapshot.routes.filter((row) => row.collectorId === relationRow?.id);
+  const relatedZones = Array.from(new Map(relatedRoutes.map((route) => {
+    const zone = snapshot.zones?.find((item) => item.id === route.zoneId);
+    return [zone?.id ?? route.sector, { name: zone?.name ?? route.sector }];
+  })).values());
+  const relatedClients = snapshot.clients.filter((row) => row.routeId === relationRow?.id);
+  const collector = snapshot.collectors.find((row) => row.id === relationRow?.id);
+  const relationTitles = { zones: "Zonas del Cobrador...", limits: "Límites del Cobrador...", routes: "Rutas del Cobrador...", balances: "Balances de Efectivo del Cobrador", clients: "Clientes de la Ruta...", permissions: "Permisos del Usuario..." };
+  const relationContent = (): ReactNode => {
+    if (!relationRow) return null;
+    if (relation === "zones") return <><LegacyDenseTable columns={["Nro.", "Zona"]} rows={relatedZones.map((row, index) => [index + 1, row.name])} /><p className="catalog-scope-note">Zonas de sus rutas actuales. Las asignaciones se administran desde Rutas.</p></>;
+    if (relation === "routes") return <><LegacyDenseTable columns={["Nro.", "Ruta", "Zona"]} rows={relatedRoutes.map((row, index) => [index + 1, row.name, row.sector])} /><p className="catalog-scope-note">El cobrador responsable se modifica desde Rutas.</p></>;
+    if (relation === "clients") return <><LegacyDenseTable columns={["Nro.", "Código", "Cliente", "Teléfono"]} rows={relatedClients.map((row, index) => [index + 1, row.code, row.name, row.phone ?? ""])} /><p className="catalog-scope-note">La asignación de cada cliente se modifica desde Clientes.</p></>;
+    if (relation === "limits") return <><LegacyDenseTable columns={["Moneda", "Abrev.", "Límite de Cobro", "Límite de Pago"]} rows={[["Peso Dominicano", "DOP", formatMoney(Number(relationRow.collectionLimit ?? 0), "DOP"), formatMoney(Number(relationRow.payoutLimit ?? 0), "DOP")]]} /><div className="legacy-relation-toolbar"><button type="button" disabled={busy} onClick={() => { setRelation(null); open(relationRow); }}>Modificar límites</button></div></>;
+    if (relation === "balances") return <><LegacyDenseTable columns={["Jornada", "Moneda", "Efectivo actual"]} rows={collector ? [[snapshot.businessDate, "DOP", formatMoney(collector.cashInHand, "DOP")]] : []} /><p className="catalog-scope-note">Saldo actual registrado. El detalle de cada jornada se consulta en Cuadres Diarios.</p></>;
+    return <><LegacyDenseTable columns={["Usuario", "Rol"]} rows={[[text(relationRow, "name"), relationRow.role === "admin" ? "Administrador" : "Cobrador"]]} /><p className="catalog-scope-note">Los permisos se aplican por rol. El servidor no ofrece permisos individuales por pantalla.</p></>;
+  };
+  const clientOptions = snapshot.clients.filter((row) => [row.code, row.identification, row.name].join(" ").toLocaleLowerCase().includes(clientQuery.toLocaleLowerCase()));
+  return <section className={"catalog-legacy legacy-mdi-view " + (page === "recurringCharges" ? "charges-view recurring-charges-view" : "")} aria-label={definition.title} aria-busy={loading}>
+    <LegacyToolbar
+      onToggleFilters={page === "recurringCharges" ? () => setFiltersVisible((current) => !current) : undefined}
+      filtersVisible={filtersVisible}
+      onFirst={() => moveSelected("first")} onPrevious={() => moveSelected("up")} onNext={() => moveSelected("down")} onLast={() => moveSelected("last")}
+      onNew={() => open("new")} onEdit={() => selected && open(selected)}
+      onDelete={() => { if (selected && !busy) { setToggleTarget(selected); setFormError(""); } }}
+      deleteIcon="x" deleteTitle={selected && !active(selected) ? "Reactivar" : "Inactivar"}
+      disableNew={loading || busy} disableEdit={!selected || loading || busy} disableDelete={!selected || loading || busy}
+      onRefresh={() => { if (!loading && !busy) void refresh(); }}
+      extra={<>
+        {page === "collectors" && <><button type="button" title="Zonas del Cobrador" aria-label="Zonas del Cobrador" disabled={!selected || busy} onClick={() => openRelation("zones")}>Z</button><button type="button" title="Límites del Cobrador" aria-label="Límites del Cobrador" disabled={!selected || busy} onClick={() => openRelation("limits")}>L</button><button type="button" title="Rutas del Cobrador" aria-label="Rutas del Cobrador" disabled={!selected || busy} onClick={() => openRelation("routes")}>R</button><button type="button" title="Balances de Efectivo" aria-label="Balances de Efectivo" disabled={!selected || busy} onClick={() => openRelation("balances")}><Wallet size={15} /></button></>}
+        {page === "routes" && <button type="button" title="Clientes de la Ruta" aria-label="Clientes de la Ruta" disabled={!selected || busy} onClick={() => openRelation("clients")}><Users size={15} /></button>}
+        {page === "users" && <><button type="button" title="Cambiar Clave" aria-label="Cambiar Clave" disabled={!selected || busy} onClick={() => { if (selected) { setPasswordTarget(selected); setDraft({ password: "", confirmation: "" }); setFormError(""); } }}><KeyRound size={15} /></button><button type="button" title="Permisos" aria-label="Permisos" disabled={!selected || busy} onClick={() => openRelation("permissions")}><ShieldCheck size={15} /></button></>}
+        {page !== "recurringCharges" && <label className="catalog-toolbar-search">Buscar:<input aria-label={"Buscar en " + definition.title} value={query} onChange={(event) => setQuery(event.target.value)} /></label>}
+      </>}
+    />
+    {error && <p className="catalog-feedback" role="alert">{error}</p>}{message && <p className="catalog-feedback" role="status">{message}</p>}
+    {loading && <p className="catalog-feedback" role="status">Cargando…</p>}
+    <div className={page === "recurringCharges" ? "charges-layout recurring-charges-legacy-layout" : "catalog-grid-workspace"}>
+      {page === "recurringCharges" && filtersVisible && <aside className="legacy-filter-panel charges-filter-panel recurring-charge-filter-panel" aria-label="Panel de filtro de cargos recurrentes">
+        <div className="pending-charges-filter-heading">Panel de Filtro</div>
+        <label className="charges-radio-row"><input type="radio" name="connected-recurring-filter" checked={filterMode === "all"} onChange={() => setFilterMode("all")} />Todos</label>
+        <div className="charges-filter-group"><label className="charges-radio-row"><input type="radio" name="connected-recurring-filter" checked={filterMode === "client"} onChange={() => setFilterMode("client")} />por Cliente:</label><div className="legacy-lookup-field charges-filter-control"><input aria-label="Cliente del filtro" value={snapshot.clients.find((client) => client.id === filterClientId)?.name ?? ""} disabled={filterMode !== "client"} readOnly /><button type="button" disabled={filterMode !== "client"} onClick={() => openPicker("filter")} aria-label="Seleccionar cliente">...</button></div></div>
+        <label className="field compact-field">Fecha Inicial:<input type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></label>
+        <label className="field compact-field">Fecha final:<input type="date" value={to} onChange={(event) => setTo(event.target.value)} /></label>
+        <label className="field compact-field">Estado:<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">Todos</option><option value="active">Activo</option><option value="inactive">Inactivo</option></select></label>
+        <label className="field compact-field">Buscar:<input value={query} onChange={(event) => setQuery(event.target.value)} /></label>
+        {invalidRange && <p role="alert">La fecha inicial debe ser anterior o igual a la final.</p>}
+      </aside>}
+      <div className={page === "recurringCharges" ? "charges-grid-panel" : "catalog-grid-panel"}>
+        <div className="legacy-mdi-table-wrap"><table className={"legacy-mdi-table " + gridClasses[page]}><thead><tr>{headers[page].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>
+          {visible.map((row, index) => <tr key={row.id} className={selected?.id === row.id ? "selected-row" : ""} aria-selected={selected?.id === row.id} tabIndex={0} onClick={() => setSelectedId(row.id)} onDoubleClick={() => open(row)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedId(row.id); } }}>{rowCells(row, index).map((cell, cellIndex) => <td key={cellIndex}>{cell}</td>)}</tr>)}
+          {!loading && !visible.length && <tr><td colSpan={headers[page].length}>No hay registros para estos filtros.</td></tr>}
+        </tbody></table></div>
+        {page === "recurringCharges" && <div className="legacy-footerbar"><span>Cantidad: <strong>{visible.length}</strong></span>{Array.from(totals, ([currency, amount]) => <span key={currency}>Total {currency}: <strong>{formatMoney(amount, currency)}</strong></span>)}<span title="La API no vincula cobros a estas plantillas">Recib.: <strong>—</strong></span><span title="La API no calcula saldos de plantillas">Pend.: <strong>—</strong></span></div>}
+      </div>
+    </div>
+    {page === "recurringCharges" && <p className="catalog-scope-note">Plantillas guardadas. La generación por calendario todavía no está disponible; recibido y pendiente no se calculan para plantillas.</p>}
+    {editing && <LegacyDialog title={formTitles[page]} className={dialogClasses[page] + " catalog-legacy-dialog"} onClose={() => { if (!busy) setEditing(null); }}>
+      <form className={formClasses[page]} onSubmit={submit}>{formContent()}{formError && <p role="alert">{formError}</p>}<div className="legacy-dialog-actions centered"><button type="submit" disabled={busy}>{busy ? "Guardando…" : "oK"}</button><button type="button" disabled={busy} onClick={() => setEditing(null)}>Cancelar</button></div></form>
+    </LegacyDialog>}
+    {toggleTarget && <LegacyDialog title="Confirmar" className="legacy-confirm-dialog catalog-legacy-dialog" onClose={() => { if (!busy) setToggleTarget(null); }}><div className="legacy-confirm-content"><span className="legacy-question-icon">?</span><p>¿{active(toggleTarget) ? "Inactivar" : "Reactivar"} {text(toggleTarget, definition.label)}?</p></div><p className="catalog-scope-note">El historial se conserva.</p>{formError && <p role="alert">{formError}</p>}<div className="legacy-dialog-actions centered"><button type="button" disabled={busy} onClick={() => void toggle()}>{busy ? "Guardando…" : "Sí"}</button><button type="button" disabled={busy} onClick={() => setToggleTarget(null)}>No</button></div></LegacyDialog>}
+    {passwordTarget && <LegacyDialog title="Cambiar clave de usuario..." className="legacy-password-dialog catalog-legacy-dialog" onClose={() => { if (!busy) setPasswordTarget(null); }}><form className="legacy-user-form" onSubmit={changePassword}><label className="legacy-form-row"><span>Clave:</span><input autoFocus type="password" disabled={busy} required minLength={12} autoComplete="new-password" value={String(draft.password ?? "")} onChange={(event) => setDraft((current) => ({ ...current, password: event.target.value }))} /></label><label className="legacy-form-row"><span>Confirmación:</span><input type="password" disabled={busy} required autoComplete="new-password" value={String(draft.confirmation ?? "")} onChange={(event) => setDraft((current) => ({ ...current, confirmation: event.target.value }))} /></label><small>Mínimo 12 caracteres.</small>{formError && <p role="alert">{formError}</p>}<div className="legacy-dialog-actions centered"><button type="submit" disabled={busy}>{busy ? "Guardando…" : "oK"}</button><button type="button" disabled={busy} onClick={() => setPasswordTarget(null)}>Cancelar</button></div></form></LegacyDialog>}
+    {relation && relationRow && <LegacyDialog title={relationTitles[relation]} className="catalog-relation-dialog" onClose={() => setRelation(null)}><div className="legacy-relation-manager">{relationContent()}<div className="legacy-relation-footer"><span>{text(relationRow, "name")}</span><button type="button" onClick={() => setRelation(null)}>Cerrar</button></div></div></LegacyDialog>}
+    {clientPicker && <LegacyDialog title="Buscar Cliente..." className="catalog-client-picker" onClose={() => setClientPicker(null)}><div className="legacy-dialog-form"><label>Buscar:<input autoFocus value={clientQuery} onChange={(event) => setClientQuery(event.target.value)} /></label><div className="legacy-mdi-table-wrap"><table className="legacy-mdi-table"><thead><tr><th>Código</th><th>Cliente</th><th>Identificación</th></tr></thead><tbody>{clientOptions.map((client) => <tr key={client.id} className={pickedClientId === client.id ? "selected-row" : ""} tabIndex={0} aria-selected={pickedClientId === client.id} onClick={() => setPickedClientId(client.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setPickedClientId(client.id); } }}><td>{client.code}</td><td>{client.name}</td><td>{client.identification}</td></tr>)}</tbody></table></div><div className="legacy-dialog-actions centered"><button type="button" disabled={!pickedClientId} onClick={pickClient}>oK</button><button type="button" onClick={() => setClientPicker(null)}>Cancelar</button></div></div></LegacyDialog>}
   </section>;
 }

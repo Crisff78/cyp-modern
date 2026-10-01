@@ -17,15 +17,19 @@ import {
   assertCollectorAccess,
   businessDate,
   cancelDeposit,
+  cancelMovement,
   clientStatement,
   closeDay,
   createRecurringPayout,
+  createCentralCollections,
+  createCentralPayments,
   collectorForClient,
   DomainError,
   findAccount,
   hashPassword,
   importCharges,
   importPayouts,
+  MAX_MONEY_AMOUNT,
   postMovement,
   preview,
   publicAccount,
@@ -40,17 +44,22 @@ import {
 import type { Store } from "./store.js";
 import { registerRemittanceRoutes } from "./remittance-routes.js";
 import { registerCatalogRoutes } from "./catalog-routes.js";
+import { registerDemoAccess, type DemoAccessConfig } from "./demo-access.js";
+import { assertAuthSession, createAuthSession, recordMutationTrace, revokeUserSessions } from "./admin-tools.js";
+import { registerAdminToolsRoutes } from "./admin-tools-routes.js";
 
 type Config = {
   store: Store;
   secret: string;
   demo: boolean;
+  publicWeb?: boolean;
+  demoAccess?: DemoAccessConfig;
   origins: string[];
   collectorUrl: string;
   adminEmail?: string;
   adminPassword?: string;
 };
-const money = z.number().int().positive().max(1_000_000_000);
+const money = z.number().int().positive().max(MAX_MONEY_AMOUNT);
 const id = z.string().min(1).max(80),
   text = z.string().trim().min(1).max(160),
   date = z.iso.date();
@@ -94,6 +103,10 @@ const clientBody = z.object({
 }).strict().refine((body) => (body.lat === undefined) === (body.lng === undefined), {
   message: "Latitud y longitud deben enviarse juntas.",
 });
+const newClientBody = clientBody.refine((body) => body.identification.length > 0, {
+  path: ["identification"],
+  message: "Indica la cédula o el pasaporte del cliente.",
+});
 const clientMachineBody = z.object({
   number: z.number().int().positive(),
   entry: z.string().trim().max(100).default(""),
@@ -133,9 +146,24 @@ export async function buildApp(config: Config) {
     origin: config.origins,
     methods: ["GET", "POST"],
   });
-  await app.register(helmet, { referrerPolicy: { policy: "no-referrer" } });
+  await app.register(helmet, {
+    referrerPolicy: { policy: "no-referrer" },
+    ...(config.publicWeb
+      ? {
+          contentSecurityPolicy: {
+            directives: {
+              imgSrc: ["'self'", "data:", "https://tile.openstreetmap.org"],
+              styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+              fontSrc: ["'self'", "data:", "https://fonts.gstatic.com"],
+              connectSrc: ["'self'"],
+            },
+          },
+        }
+      : {}),
+  });
   await app.register(jwt, { secret: config.secret });
   await app.register(rateLimit, { max: 120, timeWindow: "1 minute" });
+  if (config.demoAccess) await registerDemoAccess(app, config.demoAccess);
   app.addHook("onSend", async (_req, reply, payload) => {
     reply.header("Cache-Control", "no-store");
     return payload;
@@ -182,6 +210,9 @@ export async function buildApp(config: Config) {
   });
   app.addHook("preHandler", async (req) => {
     const path = req.url.split("?")[0];
+    if (config.publicWeb && config.demoAccess && req.routeOptions.url === "/demo-access") return;
+    if (config.publicWeb && config.demoAccess && req.method === "GET" && path === "/demo-access.js") return;
+    if (config.publicWeb && ["/", "/collector", "/*"].includes(req.routeOptions.url ?? "")) return;
     if (
       path === "/api/health" ||
       path === "/api/auth/login" ||
@@ -192,6 +223,7 @@ export async function buildApp(config: Config) {
       return;
     await req.jwtVerify();
     const u = req.user as User & { authVersion?: string };
+    assertAuthSession(await config.store.read(), u, (req.user as User & { sid?: string }).sid);
     const legacyIdentity = config.demo
       ? (u.id === "demo-admin" && u.role === "admin") ||
         (u.id === "demo-collector" &&
@@ -209,6 +241,8 @@ export async function buildApp(config: Config) {
         const collector = (await config.store.read()).collectors.find((c) => c.id === u.collectorId);
         if (!collector || collector.active === false) throw new DomainError("COLLECTOR_INACTIVE", "El cobrador está inactivo.", 403);
       }
+      if (config.demo && u.id === "demo-collector" && u.role === "collector" && u.collectorId === "col-1")
+        u.name = "Cobrador";
       return;
     }
     // Provisioned accounts: the token carries the account's credential
@@ -305,6 +339,7 @@ export async function buildApp(config: Config) {
           .update(JSON.stringify({ path: req.url, body }))
           .digest("hex");
       return config.store.transaction((state) => {
+        assertAuthSession(state, u, (u as User & { sid?: string }).sid);
         const existing = state.idempotency.find((i) => i.id === scope);
         if (existing) {
           if (existing.fingerprint !== fingerprint)
@@ -316,6 +351,7 @@ export async function buildApp(config: Config) {
           return existing.response;
         }
         const response = fn(state, u, body, (req.params ?? {}) as P);
+        recordMutationTrace(state, u, path, req.params, response);
         state.idempotency.push({
           id: scope,
           fingerprint,
@@ -356,7 +392,7 @@ export async function buildApp(config: Config) {
         if (email === "collector@cyp.local" || email === "collector.demo")
           u = {
             id: "demo-collector",
-            name: "Ana Martínez",
+            name: "Cobrador",
             role: "collector",
             collectorId: "col-1",
           };
@@ -396,8 +432,9 @@ export async function buildApp(config: Config) {
         );
       if (u.role === "collector" && !(await config.store.read()).collectors.some((c) => c.id === u!.collectorId && c.active !== false))
         throw new DomainError("COLLECTOR_INACTIVE", "El cobrador está inactivo.", 403);
+      const session = await config.store.transaction((s) => createAuthSession(s, u!));
       return {
-        token: app.jwt.sign({ ...u, authVersion: version }, { expiresIn: "8h" }),
+        token: app.jwt.sign({ ...u, authVersion: version, sid: session.id }, { expiresIn: "8h" }),
         user: u,
       };
     },
@@ -503,7 +540,9 @@ export async function buildApp(config: Config) {
     Object.assign(account, { name: body.name, email, role: body.role });
     if (body.collectorId) account.collectorId = body.collectorId;
     else delete account.collectorId;
-    touch(account); return publicAccount(account);
+    touch(account);
+    revokeUserSessions(state, account.id, actor.id);
+    return publicAccount(account);
   });
   mutate(
     "/api/usuarios/:id/clave",
@@ -526,6 +565,7 @@ export async function buildApp(config: Config) {
       const { salt, passwordHash } = hashPassword(body.password);
       Object.assign(account, { salt, passwordHash });
       touch(account);
+      revokeUserSessions(state, account.id, u.id);
       return { ok: true, credentialVersion: account.credentialVersion };
     },
   );
@@ -552,6 +592,7 @@ export async function buildApp(config: Config) {
         );
       account.status = body.status;
       touch(account);
+      revokeUserSessions(state, account.id, u.id);
       return publicAccount(account);
     },
   );
@@ -705,7 +746,7 @@ export async function buildApp(config: Config) {
     );
     describe("get", path, `Consultar ${type}`);
   }
-  mutate("/api/clientes", "Crear cliente", clientBody, (s, u, b) => {
+  mutate("/api/clientes", "Crear cliente", newClientBody, (s, u, b) => {
     assertAdmin(u);
     if (!s.routes.some((route) => route.id === b.routeId))
       throw new DomainError("ROUTE_NOT_FOUND", "Selecciona una ruta válida.", 404);
@@ -903,6 +944,57 @@ export async function buildApp(config: Config) {
       },
     );
   }
+  mutate(
+    "/api/cobros/central",
+    "Registrar cobros de un cliente desde administración en una sola operación",
+    z.object({
+      clientId: id,
+      collectorId: id,
+      lines: z.array(z.object({ chargeId: id, amount: money }).strict()).min(1).max(100),
+    }).strict(),
+    (s, u, b) => {
+      const movements = createCentralCollections(s, u, b);
+      return {
+        movements,
+        receipts: movements.map((movement) => ({
+          movementId: movement.id,
+          token: movement.receiptToken!,
+          url: `${config.collectorUrl}/?receipt=${movement.receiptToken}`,
+        })),
+      };
+    },
+  );
+  mutate(
+    "/api/pagos/central",
+    "Registrar pagos de un cliente desde administración en una sola operación",
+    z.object({
+      clientId: id,
+      collectorId: id,
+      lines: z.array(z.object({ payoutId: id, amount: money }).strict()).min(1).max(100),
+    }).strict(),
+    (s, u, b) => {
+      const movements = createCentralPayments(s, u, b);
+      return {
+        movements,
+        receipts: movements.map((movement) => ({
+          movementId: movement.id,
+          token: movement.receiptToken!,
+          url: `${config.collectorUrl}/?receipt=${movement.receiptToken}`,
+        })),
+      };
+    },
+  );
+  const movementCancellationBody = z.object({ reason: z.string().trim().min(1).max(500) }).strict();
+  for (const [path, type] of [
+    ["/api/cobros/:id/cancelar", "collection"],
+    ["/api/pagos/:id/cancelar", "payout"],
+    ["/api/entregas/:id/cancelar", "office_delivery"],
+  ] as const) {
+    mutate(path, `Anular ${type} de la jornada actual`, movementCancellationBody, (s, u, b, params) => {
+      const movement = cancelMovement(s, u, params.id, type, b.reason);
+      return { ...movement, receiptToken: undefined };
+    });
+  }
   app.get("/api/configuracion", async (req) => {
     assertAdmin(user(req));
     return { config: (await config.store.read()).systemConfig ?? {} };
@@ -1079,7 +1171,7 @@ export async function buildApp(config: Config) {
       throw new DomainError("NOT_FOUND", "Recibo no disponible.", 404);
     const s = await config.store.read(),
       m = s.movements.find(
-        (m) => m.receiptToken === token && !m.receiptRevoked,
+        (m) => m.receiptToken === token && !m.receiptRevoked && !m.cancelledAt,
       );
     if (!m) throw new DomainError("NOT_FOUND", "Recibo no disponible.", 404);
     return {
@@ -1189,9 +1281,10 @@ export async function buildApp(config: Config) {
     );
   }
   registerCatalogRoutes(app, config.store, user, mutate, describe);
+  registerAdminToolsRoutes(app, config.store, user, mutate, describe);
   registerRemittanceRoutes(app, config.store, user, mutate, describe, config.demo ? [
     { id: "demo-admin", name: "Administración", role: "admin" },
-    { id: "demo-collector", name: "Ana Martínez", role: "collector", collectorId: "col-1" },
+    { id: "demo-collector", name: "Cobrador", role: "collector", collectorId: "col-1" },
   ] : [{ id: "configured-admin", name: "Administración", role: "admin" }]);
   app.get("/api/openapi.json", () => ({
     openapi: "3.1.0",

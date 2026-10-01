@@ -16,7 +16,7 @@ type ReceiptRow = Receipt & { token: string };
 const users: Record<string, User & { password: string }> = {
   "collector.demo": {
     id: "UUID-111",
-    name: "Ana Martínez",
+    name: "Cobrador",
     role: "COLLECTOR",
     collectorId: "col-1",
     password: "Demo-CyP-2026!",
@@ -25,7 +25,7 @@ const users: Record<string, User & { password: string }> = {
   },
   "collector@cyp.local": {
     id: "UUID-111",
-    name: "Ana Martínez",
+    name: "Cobrador",
     role: "COLLECTOR",
     collectorId: "col-1",
     password: "Demo-CyP-2026!",
@@ -107,8 +107,8 @@ const initialSnapshot = (): Snapshot => ({
   collectors: [
     {
       id: "col-1",
-      name: "Ana Martínez",
-      initials: "AM",
+      name: "Cobrador",
+      initials: "CO",
       routeId: "rt-1",
       status: "active",
       cashInHand: 200000,
@@ -249,7 +249,12 @@ function sum(
 function currentUser() {
   const stored = sessionStorage.getItem(MOCK_USER_KEY);
   if (!stored) throw new MockApiError("Inicia sesión para continuar.", 401);
-  return enrichUserRole(JSON.parse(stored) as User);
+  const user = enrichUserRole(JSON.parse(stored) as User);
+  if (user.id === "UUID-111" && user.role === "COLLECTOR" && user.collectorId === "col-1" && user.name !== "Cobrador") {
+    user.name = "Cobrador";
+    sessionStorage.setItem(MOCK_USER_KEY, JSON.stringify(user));
+  }
+  return user;
 }
 
 function setCurrentUser(user: User) {

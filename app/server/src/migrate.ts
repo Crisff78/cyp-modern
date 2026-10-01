@@ -12,6 +12,17 @@ const from = Number(fromArg?.split("=")[1] ?? 1);
 const to = Number(args.find((arg) => arg.startsWith("--to="))?.split("=")[1] ?? 999);
 if (from < 1 || to < from) throw new Error("Rango de migraciones invalido");
 if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required");
+// Validate the target before connecting or applying any migration. The public
+// demo must never migrate a configured operational database by mistake.
+if (process.env.CYP_PUBLIC_DEMO === "true") {
+  let target: URL;
+  try { target = new URL(process.env.DATABASE_URL); }
+  catch { throw new Error("Public demo migrations require a valid PostgreSQL URL."); }
+  if (process.env.DEMO_MODE !== "true" ||
+      !["postgres:", "postgresql:"].includes(target.protocol) ||
+      decodeURIComponent(target.pathname.slice(1)) !== "cyp_demo")
+    throw new Error("Public demo migrations require DEMO_MODE=true and the dedicated cyp_demo database.");
+}
 const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
 let inTransaction = false;
 try {

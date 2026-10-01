@@ -5,6 +5,7 @@ import {
   timingSafeEqual,
 } from "node:crypto";
 import type { RemittanceState } from "./remittances.js";
+import { emptyAdminToolsState, type AdminToolsState } from "./admin-tools.js";
 
 export type Role = "admin" | "collector";
 export type User = {
@@ -147,10 +148,12 @@ export type Movement = {
   receiptToken?: string;
   receiptRevoked?: boolean;
   actorId: string;
+  registeredCentrally?: boolean;
   acceptedAt?: string;
   acceptedBy?: string;
   cancelledAt?: string;
   cancelledBy?: string;
+  cancellationNote?: string;
   denominations?: Array<{ denominacion: number; cantidad: number }>;
 };
 export type Settlement = {
@@ -190,6 +193,14 @@ export type DepositEvent = {
   denominations?: Array<{ denominacion: number; cantidad: number }>;
   createdAt: string;
 };
+export type MovementCancellation = {
+  id: string;
+  movementId: string;
+  movementType: "collection" | "payout" | "office_delivery";
+  reason: string;
+  actorId: string;
+  createdAt: string;
+};
 export type State = {
   remittances: RemittanceState;
   clients: Client[];
@@ -206,9 +217,11 @@ export type State = {
   payoutRecurring: RecurringPayout[];
   movements: Movement[];
   depositEvents: DepositEvent[];
+  movementCancellations: MovementCancellation[];
   settlements: Settlement[];
   idempotency: Idempotency[];
   accounts: Account[];
+  adminTools: AdminToolsState;
   systemConfig?: Record<string, unknown>;
 };
 export class DomainError extends Error {
@@ -243,9 +256,11 @@ export const emptyState = (): State => ({
   payoutRecurring: [],
   movements: [],
   depositEvents: [],
+  movementCancellations: [],
   settlements: [],
   idempotency: [],
   accounts: [],
+  adminTools: emptyAdminToolsState(),
 });
 export const publicAccount = (account: Account): PublicAccount => {
   const { salt: _salt, passwordHash: _hash, ...rest } = account;
@@ -526,13 +541,14 @@ export function clientStatement(state: State, user: User, clientId: string) {
 
 export type ImportRowError = { fila: number; mensaje: string };
 
+export const MAX_MONEY_AMOUNT = 1_000_000_000;
 const MAX_IMPORT_ROWS = 1000;
 
 function assertImportAmount(amount: number) {
-  if (!Number.isInteger(amount) || amount <= 0)
+  if (!Number.isSafeInteger(amount) || amount <= 0 || amount > MAX_MONEY_AMOUNT)
     throw new DomainError(
       "IMPORT_INVALID_AMOUNT",
-      "El importe debe ser un entero positivo en centavos.",
+      `El importe debe ser un entero seguro de 1 a ${MAX_MONEY_AMOUNT} centavos.`,
       422,
     );
 }
@@ -788,6 +804,7 @@ export function postMovement(
       ? {
           receiptToken: randomBytes(24).toString("base64url"),
           receiptRevoked: false,
+          registeredCentrally: user.role === "admin",
         }
       : {}),
   };
@@ -800,6 +817,122 @@ export function postMovement(
     payout.status = payout.paid === payout.amount ? "paid" : "partial";
   }
   state.movements.push(movement);
+  return movement;
+}
+export function createCentralCollections(
+  state: State,
+  user: User,
+  input: { clientId: string; collectorId: string; lines: Array<{ chargeId: string; amount: number }> },
+  now = new Date(),
+) {
+  assertAdmin(user);
+  const client = state.clients.find((item) => item.id === input.clientId);
+  if (!client) throw new DomainError("NOT_FOUND", "Cliente no encontrado.", 404);
+  const route = state.routes.find((item) => item.id === client.routeId);
+  if (client.active === false || !route || route.active === false)
+    throw new DomainError("CLIENT_ROUTE_INACTIVE", "El cliente necesita una ruta activa para registrar el cobro.", 409);
+  if (route.collectorId !== input.collectorId)
+    throw new DomainError("ROUTE_MISMATCH", "El cobrador seleccionado no corresponde a la ruta del cliente.", 422);
+  if (!input.lines.length || input.lines.length > 100 || new Set(input.lines.map((line) => line.chargeId)).size !== input.lines.length)
+    throw new DomainError("INVALID_COLLECTION_LINES", "Selecciona entre 1 y 100 cargos, sin repetirlos.", 422);
+  for (const line of input.lines) {
+    if (!Number.isSafeInteger(line.amount) || line.amount <= 0 || line.amount > 1_000_000_000)
+      throw new DomainError("INVALID_AMOUNT", "El importe debe ser un entero positivo en centavos.", 422);
+    const charge = state.charges.find((item) => item.id === line.chargeId);
+    if (!charge || charge.clientId !== client.id)
+      throw new DomainError("CHARGE_CLIENT_MISMATCH", "Todos los cargos deben pertenecer al cliente seleccionado.", 422);
+    if (charge.currency && !["DOP", "Peso Dominicano"].includes(charge.currency))
+      throw new DomainError("UNSUPPORTED_COLLECTION_CURRENCY", "Los cobros de esta caja se registran únicamente en pesos dominicanos.", 422);
+  }
+  // Validate the complete receipt before publishing any of its movements.
+  const draft = structuredClone(state);
+  const movements = input.lines.map((line) => postMovement(draft, user, "collection", line, now));
+  state.charges = draft.charges;
+  state.movements = draft.movements;
+  return movements;
+}
+
+export function createCentralPayments(
+  state: State,
+  user: User,
+  input: { clientId: string; collectorId: string; lines: Array<{ payoutId: string; amount: number }> },
+  now = new Date(),
+) {
+  assertAdmin(user);
+  const client = state.clients.find((item) => item.id === input.clientId);
+  if (!client) throw new DomainError("NOT_FOUND", "Cliente no encontrado.", 404);
+  if (client.active === false)
+    throw new DomainError("CLIENT_INACTIVE", "El cliente debe estar activo para registrar el pago.", 409);
+  const collector = state.collectors.find((item) => item.id === input.collectorId);
+  if (!collector) throw new DomainError("NOT_FOUND", "Cobrador no encontrado.", 404);
+  if (collector.active === false)
+    throw new DomainError("COLLECTOR_INACTIVE", "El cobrador debe estar activo para registrar el pago.", 409);
+  if (!input.lines.length || input.lines.length > 100 || new Set(input.lines.map((line) => line.payoutId)).size !== input.lines.length)
+    throw new DomainError("INVALID_PAYMENT_LINES", "Selecciona entre 1 y 100 descargos, sin repetirlos.", 422);
+  for (const line of input.lines) {
+    if (!Number.isSafeInteger(line.amount) || line.amount <= 0 || line.amount > 1_000_000_000)
+      throw new DomainError("INVALID_AMOUNT", "El importe debe ser un entero positivo en centavos.", 422);
+    const payout = state.payouts.find((item) => item.id === line.payoutId);
+    if (!payout || payout.clientId !== client.id)
+      throw new DomainError("PAYOUT_CLIENT_MISMATCH", "Todos los descargos deben pertenecer al cliente seleccionado.", 422);
+    if (payout.collectorId !== collector.id)
+      throw new DomainError("PAYOUT_COLLECTOR_MISMATCH", "Todos los descargos deben corresponder al cobrador seleccionado.", 422);
+  }
+  // Publish the complete payment only after every line passes the ledger guards.
+  const draft = structuredClone(state);
+  const movements = input.lines.map((line) => postMovement(draft, user, "payout", line, now));
+  state.payouts = draft.payouts;
+  state.movements = draft.movements;
+  return movements;
+}
+
+export function cancelMovement(
+  state: State,
+  user: User,
+  movementId: string,
+  type: MovementCancellation["movementType"],
+  reason: string,
+  now = new Date(),
+) {
+  assertAdmin(user);
+  const movement = state.movements.find((item) => item.id === movementId && item.type === type);
+  if (!movement) throw new DomainError("MOVEMENT_NOT_FOUND", "El movimiento no existe.", 404);
+  const note = reason.trim();
+  if (!note || note.length > 500)
+    throw new DomainError("CANCELLATION_REASON_REQUIRED", "Escribe un motivo de anulación de hasta 500 caracteres.", 422);
+  if (movement.cancelledAt) return movement;
+  const date = businessDate(new Date(movement.createdAt));
+  if (state.settlements.some((item) => item.collectorId === movement.collectorId && item.date >= date))
+    throw new DomainError("DAY_CLOSED", "La jornada de este movimiento ya está cerrada; no se puede anular.", 409);
+  if (date !== businessDate(now))
+    throw new DomainError("CANCELLATION_DAY_MISMATCH", "Solo puedes anular movimientos de la jornada actual. Los movimientos de otra fecha requieren revisión administrativa.", 409);
+  const collector = state.collectors.find((item) => item.id === movement.collectorId);
+  if (!collector) throw new DomainError("NOT_FOUND", "Cobrador no encontrado.", 404);
+  const balance = preview(state, collector.id);
+  if (type === "collection" && balance.collected - balance.deposited < movement.amount)
+    throw new DomainError("INSUFFICIENT_COLLECTION_CASH", "No se puede anular el cobro porque su efectivo ya fue depositado. Revisa primero los depósitos de esta jornada.", 409);
+  if (type === "office_delivery" && balance.officeDelivered - balance.paidToClients < movement.amount)
+    throw new DomainError("INSUFFICIENT_PAYOUT_CASH", "No se puede anular la entrega porque sus fondos ya se usaron para pagos. Revisa primero los pagos de esta jornada.", 409);
+  if (type === "payout" && balance.officeDelivered - balance.paidToClients + movement.amount > collector.payoutLimit)
+    throw new DomainError("PAYOUT_LIMIT", "Al anular este pago se superaría el límite de efectivo para pagos del cobrador. Revisa primero las entregas de esta jornada.", 409);
+  const charge = type === "collection" ? state.charges.find((item) => item.id === movement.chargeId) : undefined;
+  const payout = type === "payout" ? state.payouts.find((item) => item.id === movement.payoutId) : undefined;
+  if ((type === "collection" && (!charge || charge.status === "cancelled" || charge.collected < movement.amount)) ||
+      (type === "payout" && (!payout || payout.status === "cancelled" || payout.paid < movement.amount)))
+    throw new DomainError("MOVEMENT_BALANCE_MISMATCH", "El saldo del movimiento no coincide con su cargo o autorización. Requiere revisión administrativa.", 409);
+  const createdAt = now.toISOString();
+  state.movementCancellations.push({ id: randomUUID(), movementId, movementType: type, reason: note, actorId: user.id, createdAt });
+  movement.cancelledAt = createdAt;
+  movement.cancelledBy = user.id;
+  movement.cancellationNote = note;
+  if (charge) {
+    charge.collected -= movement.amount;
+    charge.status = charge.collected === 0 ? "pending" : charge.collected === charge.amount ? "paid" : "partial";
+  }
+  if (payout) {
+    payout.paid -= movement.amount;
+    payout.status = payout.paid === 0 ? "pending" : payout.paid === payout.amount ? "paid" : "partial";
+  }
   return movement;
 }
 export function closeDay(
@@ -853,7 +986,7 @@ export function snapshot(state: State, user: User) {
     .filter((m) => allowed(m.collectorId))
     .map(({ actorId, receiptRevoked, ...m }) => ({
       ...m,
-      ...(receiptRevoked ? { receiptToken: undefined } : {}),
+      ...(receiptRevoked || m.cancelledAt ? { receiptToken: undefined } : {}),
     }));
   const collectors = state.collectors
     .filter((c) => allowed(c.id))
@@ -892,10 +1025,10 @@ export function snapshot(state: State, user: User) {
     return {
       label: day.slice(5),
       collected: rows
-        .filter((m) => m.type === "collection")
+        .filter((m) => m.type === "collection" && !m.cancelledAt)
         .reduce((s, m) => s + m.amount, 0),
       paid: rows
-        .filter((m) => m.type === "payout")
+        .filter((m) => m.type === "payout" && !m.cancelledAt)
         .reduce((s, m) => s + m.amount, 0),
     };
   });
