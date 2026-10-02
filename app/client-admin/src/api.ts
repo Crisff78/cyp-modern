@@ -25,6 +25,9 @@ const strictMutationPaths = new Set([
   "/depositos",
   "/cargos/importar",
   "/descargos/importar",
+  "/cargos",
+  "/descargos",
+  "/entregas",
 ]);
 export async function api<T>(
   path: string,
@@ -33,8 +36,11 @@ export async function api<T>(
   const token = getToken();
   if (isMockToken(token)) return mockApi<T>(path, options);
   if (path.startsWith("/mock/")) throw new ApiError("Esta acción todavía no está disponible en la versión conectada. No se guardaron cambios.", 501);
-  if (options.method?.toUpperCase() === "POST" && (
+  const method = options.method?.toUpperCase();
+  if (method === "POST" && (
     strictMutationPaths.has(path) || /^\/depositos\/[^/]+\/(aceptar|cancelar)$/.test(path)
+    || /^\/(cargos|descargos)\/[^/]+$/.test(path)
+    || /^\/clientes\/[^/]+\/tragamonedas(?:\/[^/]+)?$/.test(path)
   )) {
     try {
       return await strictMutationApi<T>(path, options);

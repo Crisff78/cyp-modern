@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { assertAdmin, DomainError, type State, type User, type Zone } from "./domain.js";
+import { assertAdmin, DomainError, ledgerCurrency, supportedLedgerCurrency, type State, type User, type Zone } from "./domain.js";
 import type { Store } from "./store.js";
 import { frequencyCodes } from "./catalog-store.js";
 
@@ -27,7 +27,7 @@ const recurringBody = z.object({
   endDate: z.union([z.iso.date(), z.literal("")]).default(""), frequency: name,
   day1: z.union([z.string().max(40), z.number().int().min(0).max(31)]).default(""),
   day2: z.union([z.string().max(40), z.number().int().min(0).max(31)]).default(""),
-  currency: z.enum(["DOP", "Peso Dominicano"]).default("DOP"), service: name, concept: short.default(""),
+  currency: z.string().trim().min(1).max(40).refine((value) => supportedLedgerCurrency(value) !== undefined, "Selecciona DOP, USD o EUR.").transform(ledgerCurrency).default("DOP"), service: name, concept: short.default(""),
   useConceptAmount: z.boolean().default(false), amount, note: z.string().trim().max(2000).default(""), active: z.boolean(),
 }).strict();
 function requireRow<T extends { id: string }>(rows: T[], rowId: string, label: string): T {

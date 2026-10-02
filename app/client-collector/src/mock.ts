@@ -3,13 +3,16 @@ import {
   type Receipt,
   type Snapshot,
   type User,
-} from "./types";
+} from "./types.ts";
 
 const MOCK_USER_KEY = "cyp-collector-mock-user";
 const today = () => new Date().toISOString().slice(0, 10);
 const now = () => new Date().toISOString();
 const uid = (prefix: string) =>
   `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+// Each offline example has an independent in-memory ledger. Never adopt an
+// attempt belonging to an earlier example after that ledger has been reset.
+export const mockLedgerId = uid("mock-ledger");
 
 type ReceiptRow = Receipt & { token: string };
 
@@ -211,6 +214,7 @@ const initialSnapshot = (): Snapshot => ({
 
 let state = derive(initialSnapshot());
 const receipts: ReceiptRow[] = [];
+const paymentResults = new Map<string, { fingerprint: string; result: { receipt: { token: string } } }>();
 
 function derive(snapshot: Snapshot): Snapshot {
   const collected = sum(snapshot.movements, "collection"),
@@ -321,6 +325,14 @@ export async function mockApi<T>(
       collecting = path === "/cobros",
       user = currentUser(),
       token = uid("receipt");
+    const key = new Headers(options.headers).get("Idempotency-Key");
+    const scope = key ? JSON.stringify([user.id, key]) : null;
+    const fingerprint = JSON.stringify([path, body]);
+    const previous = scope ? paymentResults.get(scope) : undefined;
+    if (previous) {
+      if (previous.fingerprint !== fingerprint) throw new MockApiError("Esta referencia ya se usó para otra operación.", 409);
+      return structuredClone(previous.result) as T;
+    }
     if (collecting) {
       const charge = state.charges.find((item) => item.id === body.chargeId);
       if (!charge) throw new MockApiError("Cargo no encontrado.", 404);
@@ -380,7 +392,9 @@ export async function mockApi<T>(
       });
     }
     state = derive(state);
-    return { receipt: { token } } as T;
+    const result = { receipt: { token } };
+    if (scope) paymentResults.set(scope, { fingerprint, result });
+    return result as T;
   }
   if (path.startsWith("/recibos/")) {
     const token = decodeURIComponent(path.split("/")[2] ?? "");

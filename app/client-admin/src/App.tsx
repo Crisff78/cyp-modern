@@ -93,6 +93,7 @@ import AccountModal, { type AccountOperation } from "./Users";
 import RemittancesWorkspace from "../../shared/remittances/RemittancesWorkspace";
 import { remittancesApi } from "./remittancesApi";
 import { hasUnresolvedMovementRequest, pendingMovementDraft, useMovementRequest } from "./useMovementRequest";
+import { businessDate, businessTimestamp, collectionCash, currencyCode, currencyName, financeMatches, nativeMoney, nativeTotals, obligationReceived, decimalProductCents, centsInput } from "./adminFinance";
 import { useChargeImportRequest } from "./useChargeImportRequest";
 import { decimalCents, formatMoney } from "../../shared/remittances/output";
 import { GeoMap, type GeoPoint } from "./GeoMap";
@@ -584,7 +585,7 @@ function CompactReportLayout({ page, title, snapshot, onRefresh }: Readonly<{ pa
         </div>
       </aside>
       <section className="pending-charges-grid-panel" aria-label={`Resultados de ${title}`}>
-        <div className="pending-charges-grid-scroll"><ReportGrid table={table} /></div>
+        {snapshot.charges.some((item) => item.currencyConflict) && <p role="alert">Hay cargos históricos con moneda pendiente de revisión; sus saldos no se incluyen en este reporte. Los movimientos conservan su moneda original.</p>}<div className="pending-charges-grid-scroll"><ReportGrid table={table} /></div>
       </section>
     </div>
   );
@@ -732,11 +733,13 @@ type PendingClientChargeRow = {
   pending: number;
 };
 
-type ReportCellValue = string | number;
+type ReportCellValue = string | number | bigint;
 type ReportTableModel = {
   columns: readonly string[];
   rows: readonly (readonly ReportCellValue[])[];
   rowKeys?: readonly string[];
+  rowCurrencies?: readonly string[];
+  defaultCurrency?: string;
   totalColumns: readonly number[];
   moneyColumns: readonly number[];
   totalLabelColumn: number;
@@ -757,6 +760,7 @@ type CompactReportFilters = {
 type ChargeReportRow = {
   id: string;
   date: string;
+  currency: string;
   overdueDays: number;
   clientCode: string;
   identification: string;
@@ -780,10 +784,11 @@ function buildCompactReportTable(page: ReportPageId, snapshot: Snapshot, filters
     const client = clientById.get(charge.clientId);
     const route = client ? routeById.get(client.routeId) : undefined;
     const currencyMatches = filters.currency === "No definido" || reportCurrencyKey(charge.currency) === reportCurrencyKey(filters.currency);
-    if (charge.status === "cancelled" || !currencyMatches || (filters.startDate && date < filters.startDate) || (filters.endDate && date > filters.endDate)) return [];
+    if (charge.currencyConflict || charge.status === "cancelled" || !currencyMatches || (filters.startDate && date < filters.startDate) || (filters.endDate && date > filters.endDate)) return [];
     return [{
       id: charge.id,
       date,
+      currency: currencyCode(charge.currency),
       overdueDays: dateDifferenceInDays(date, snapshot.businessDate),
       clientCode: client?.code ?? "",
       identification: client?.identification ?? "",
@@ -805,10 +810,12 @@ function buildCompactReportTable(page: ReportPageId, snapshot: Snapshot, filters
     if ((page === "reportClientChargesByZoneService" || page === "reportCollectionsByService") && filters.service && row.service !== filters.service) return false;
     return true;
   };
-  const table = (columns: readonly string[], rows: readonly (readonly ReportCellValue[])[], totalColumns: readonly number[], labelColumn: number, moneyColumns: readonly number[], rowKeys: readonly string[], emptyMessage: string): ReportTableModel => ({
+  const table = (columns: readonly string[], rows: readonly (readonly ReportCellValue[])[], totalColumns: readonly number[], labelColumn: number, moneyColumns: readonly number[], rowKeys: readonly string[], emptyMessage: string, rowCurrencies: readonly string[] = rows.map(() => currencyCode(filters.currency))): ReportTableModel => ({
     columns,
     rows,
     rowKeys,
+    rowCurrencies,
+    defaultCurrency: currencyCode(filters.currency) || "DOP",
     totalColumns,
     moneyColumns,
     totalLabelColumn: labelColumn,
@@ -825,18 +832,19 @@ function buildCompactReportTable(page: ReportPageId, snapshot: Snapshot, filters
       [5, 6, 7],
       rows.map((row) => row.id),
       "No hay cargos pendientes para los filtros seleccionados.",
+      rows.map((row) => row.currency),
     );
   }
 
   if (page === "reportPendingChargesByRoutes" || page === "reportPendingChargesByZones") {
-    const grouped = new Map<string, { label: string; amount: number; received: number; pending: number }>();
+    const grouped = new Map<string, { label: string; currency: string; amount: bigint; received: bigint; pending: bigint }>();
     for (const row of pendingRows) {
-      const key = page === "reportPendingChargesByRoutes" ? row.routeId || "no-route" : row.zoneName;
+      const key = (page === "reportPendingChargesByRoutes" ? row.routeId || "no-route" : row.zoneName) + "\n" + row.currency;
       const label = page === "reportPendingChargesByRoutes" ? row.routeName : row.zoneName;
-      const group = grouped.get(key) ?? { label, amount: 0, received: 0, pending: 0 };
-      group.amount += row.amount;
-      group.received += row.received;
-      group.pending += row.pending;
+      const group = grouped.get(key) ?? { label, currency: row.currency, amount: 0n, received: 0n, pending: 0n };
+      group.amount += BigInt(row.amount);
+      group.received += BigInt(row.received);
+      group.pending += BigInt(row.pending);
       grouped.set(key, group);
     }
     const groups = [...grouped.entries()].sort((left, right) => left[1].label.localeCompare(right[1].label, "es"));
@@ -848,6 +856,7 @@ function buildCompactReportTable(page: ReportPageId, snapshot: Snapshot, filters
       [1, 2, 3],
       groups.map(([key]) => key),
       "No hay cargos pendientes para los filtros seleccionados.",
+      groups.map(([, group]) => group.currency),
     );
   }
 
@@ -861,6 +870,7 @@ function buildCompactReportTable(page: ReportPageId, snapshot: Snapshot, filters
       [5, 6, 7],
       rows.map((row) => row.id),
       "No hay cargos para los filtros seleccionados.",
+      rows.map((row) => row.currency),
     );
   }
 
@@ -869,7 +879,7 @@ function buildCompactReportTable(page: ReportPageId, snapshot: Snapshot, filters
     const isGeneralSummary = page === "reportCollectionsGeneralSummary";
     const relevantType = isGeneralSummary || movement.type === "collection";
     if (!relevantType || movement.cancelledAt) return false;
-    const date = movement.createdAt.slice(0, 10);
+    const date = businessDate(movement.createdAt);
     if ((filters.startDate && date < filters.startDate) || (filters.endDate && date > filters.endDate)) return false;
     if ((page === "reportCollectionsSummary" || page === "reportCollectionsGeneralSummary") && filters.filterCollector && filters.collectorId && movement.collectorId !== filters.collectorId) return false;
     const client = movement.clientId ? clientById.get(movement.clientId) : undefined;
@@ -877,18 +887,20 @@ function buildCompactReportTable(page: ReportPageId, snapshot: Snapshot, filters
     if ((page === "reportCollectionsByService") && filters.zone && route?.sector !== filters.zone) return false;
     const charge = movement.chargeId ? chargeById.get(movement.chargeId) : undefined;
     if (page === "reportCollectionsByService" && filters.service && charge?.service !== filters.service) return false;
-    const selectedCurrency = charge?.currency ?? "Peso Dominicano";
+    const selectedCurrency = movement.currency ?? "DOP";
     if (filters.currency !== "No definido" && reportCurrencyKey(selectedCurrency) !== reportCurrencyKey(filters.currency)) return false;
     return true;
   });
 
   const summarize = (keyFor: (movement: Snapshot["movements"][number]) => { key: string; label: string }) => {
-    const totals = new Map<string, { label: string; amount: number }>();
+    const totals = new Map<string, { label: string; currency: string; amount: bigint }>();
     for (const movement of movements) {
       const identity = keyFor(movement);
-      const summary = totals.get(identity.key) ?? { label: identity.label, amount: 0 };
-      summary.amount += movement.amount;
-      totals.set(identity.key, summary);
+      const currency = currencyCode(movement.currency);
+      const key = identity.key + "\n" + currency;
+      const summary = totals.get(key) ?? { label: identity.label, currency, amount: 0n };
+      summary.amount += BigInt(movement.amount);
+      totals.set(key, summary);
     }
     return [...totals.entries()].sort((left, right) => left[1].label.localeCompare(right[1].label, "es"));
   };
@@ -898,19 +910,21 @@ function buildCompactReportTable(page: ReportPageId, snapshot: Snapshot, filters
       key: movement.collectorId,
       label: snapshot.collectors.find((collector) => collector.id === movement.collectorId)?.name ?? "Cobrador sin nombre",
     }));
-    return table(["Cobrador", "Importe"], groups.map(([, group]) => [group.label, group.amount]), [1], 0, [1], groups.map(([key]) => key), "No hay cobros para los filtros seleccionados.");
+    return table(["Cobrador", "Importe"], groups.map(([, group]) => [group.label, group.amount]), [1], 0, [1], groups.map(([key]) => key), "No hay cobros para los filtros seleccionados.", groups.map(([, group]) => group.currency));
   }
 
   if (page === "reportCollectionsGeneralSummary") {
-    const groups = new Map<string, { collector: string; collected: number; deposited: number; delivered: number; paid: number }>();
+    const groups = new Map<string, { collector: string; currency: string; collected: bigint; deposited: bigint; delivered: bigint; paid: bigint }>();
     for (const movement of movements) {
       const collector = snapshot.collectors.find((item) => item.id === movement.collectorId)?.name ?? "Cobrador sin nombre";
-      const summary = groups.get(movement.collectorId) ?? { collector, collected: 0, deposited: 0, delivered: 0, paid: 0 };
-      if (movement.type === "collection") summary.collected += movement.amount;
-      if (movement.type === "deposit") summary.deposited += movement.amount;
-      if (movement.type === "office_delivery") summary.delivered += movement.amount;
-      if (movement.type === "payout") summary.paid += movement.amount;
-      groups.set(movement.collectorId, summary);
+      const currency = currencyCode(movement.currency);
+      const key = movement.collectorId + "\n" + currency;
+      const summary = groups.get(key) ?? { collector, currency, collected: 0n, deposited: 0n, delivered: 0n, paid: 0n };
+      if (movement.type === "collection") summary.collected += BigInt(movement.amount);
+      if (movement.type === "deposit") summary.deposited += BigInt(movement.amount);
+      if (movement.type === "office_delivery") summary.delivered += BigInt(movement.amount);
+      if (movement.type === "payout") summary.paid += BigInt(movement.amount);
+      groups.set(key, summary);
     }
     const summaries = [...groups.entries()].sort((left, right) => left[1].collector.localeCompare(right[1].collector, "es"));
     return table(
@@ -921,6 +935,7 @@ function buildCompactReportTable(page: ReportPageId, snapshot: Snapshot, filters
       [1, 2, 3, 4, 5, 6],
       summaries.map(([collectorId]) => collectorId),
       "No hay movimientos para los filtros seleccionados.",
+      summaries.map(([, summary]) => summary.currency),
     );
   }
 
@@ -929,6 +944,7 @@ function buildCompactReportTable(page: ReportPageId, snapshot: Snapshot, filters
     const client = movement.clientId ? clientById.get(movement.clientId) : undefined;
     return {
       id: movement.id,
+      currency: currencyCode(movement.currency),
       clientCode: client?.code ?? "",
       identification: client?.identification ?? "",
       clientName: client?.name ?? "Cliente sin nombre",
@@ -945,6 +961,7 @@ function buildCompactReportTable(page: ReportPageId, snapshot: Snapshot, filters
     [5],
     serviceRows.map((row) => row.id),
     "No hay cobros para los filtros seleccionados.",
+    serviceRows.map((row) => row.currency),
   );
 }
 
@@ -961,13 +978,7 @@ const pendingChargeExportFormats = [
 
 const pendingChargeColumns = ["Fecha", "DD", "Identificacion", "Cliente", "Importe", "Recibido", "Pendiente"] as const;
 
-function reportCurrencyKey(value: string | undefined) {
-  const normalized = (value ?? "Peso Dominicano").trim().toLowerCase();
-  if (normalized === "dop" || normalized.includes("peso dominicano")) return "dop";
-  if (normalized === "usd" || normalized.includes("dólar") || normalized.includes("dolar")) return "usd";
-  if (normalized === "eur" || normalized.includes("euro")) return "eur";
-  return normalized;
-}
+function reportCurrencyKey(value: string | undefined) { return currencyCode(value).toLowerCase(); }
 
 function dateDifferenceInDays(from: string, to: string) {
   const fromTime = Date.parse(`${from.slice(0, 10)}T00:00:00Z`);
@@ -1006,9 +1017,9 @@ function rtfText(value: string) {
 }
 
 function reportTableMatrix(table: ReportTableModel) {
-  const visibleRows = table.rows.map((row) => table.columns.map((_, columnIndex) => {
+  const visibleRows = table.rows.map((row, rowIndex) => table.columns.map((_, columnIndex) => {
     const value = row[columnIndex] ?? "";
-    if (typeof value === "number" && table.moneyColumns.includes(columnIndex)) return reportAmount(value);
+    if ((typeof value === "number" || typeof value === "bigint") && table.moneyColumns.includes(columnIndex)) return table.rowCurrencies ? nativeMoney(value, table.rowCurrencies[rowIndex]) : reportAmount(Number(value));
     return String(value);
   }));
   const totalRow = table.columns.map(() => "");
@@ -1018,7 +1029,7 @@ function reportTableMatrix(table: ReportTableModel) {
       const value = row[columnIndex];
       return sum + (typeof value === "number" && Number.isFinite(value) ? value : 0);
     }, 0);
-    totalRow[columnIndex] = table.moneyColumns.includes(columnIndex) ? reportAmount(total) : String(total);
+    totalRow[columnIndex] = table.moneyColumns.includes(columnIndex) && table.rowCurrencies ? nativeTotals(table.rows.map((row, index) => ({ currency: table.rowCurrencies?.[index], amount: typeof row[columnIndex] === "bigint" || typeof row[columnIndex] === "number" ? row[columnIndex] as number | bigint : 0 })), table.defaultCurrency) : table.moneyColumns.includes(columnIndex) ? reportAmount(total) : String(total);
   }
   return [table.columns.map(String), ...visibleRows, totalRow];
 }
@@ -1114,15 +1125,15 @@ function ReportGrid({ table }: Readonly<{ table: ReportTableModel }>) {
       <tbody>
         {table.rows.map((row, rowIndex) => <tr key={table.rowKeys?.[rowIndex] ?? `${JSON.stringify(row)}-${rowIndex}`}>{table.columns.map((_, columnIndex) => {
           const value = row[columnIndex] ?? "";
-          const isMoney = table.moneyColumns.includes(columnIndex) && typeof value === "number";
-          return <td key={table.columns[columnIndex] ?? columnIndex} className={table.moneyColumns.includes(columnIndex) ? "pending-charges-number" : undefined}>{isMoney ? money(value) : String(value)}</td>;
+          const isMoney = table.moneyColumns.includes(columnIndex) && (typeof value === "number" || typeof value === "bigint");
+          return <td key={table.columns[columnIndex] ?? columnIndex} className={table.moneyColumns.includes(columnIndex) ? "pending-charges-number" : undefined}>{isMoney ? table.rowCurrencies ? nativeMoney(value as number | bigint, table.rowCurrencies[rowIndex]) : money(Number(value)) : String(value)}</td>;
         })}</tr>)}
         {table.rows.length === 0 && <tr><td colSpan={table.columns.length} className="pending-charges-empty">{table.emptyMessage ?? "Sin registros."}</td></tr>}
       </tbody>
       <tfoot><tr>{table.columns.map((_, columnIndex) => {
         const value = totals.get(columnIndex);
         if (columnIndex === table.totalLabelColumn) return <th key={columnIndex} scope="row">Total</th>;
-        return <td key={columnIndex} className={table.moneyColumns.includes(columnIndex) ? "pending-charges-number" : undefined}>{value === undefined ? "" : table.moneyColumns.includes(columnIndex) ? money(value) : value}</td>;
+        return <td key={columnIndex} className={table.moneyColumns.includes(columnIndex) ? "pending-charges-number" : undefined}>{value === undefined ? "" : table.moneyColumns.includes(columnIndex) ? table.rowCurrencies ? nativeTotals(table.rows.map((row, index) => ({ currency: table.rowCurrencies?.[index], amount: typeof row[columnIndex] === "number" || typeof row[columnIndex] === "bigint" ? row[columnIndex] as number | bigint : 0 })), table.defaultCurrency) : money(value) : value}</td>;
       })}</tr></tfoot>
     </table>
   );
@@ -1176,13 +1187,14 @@ function PendingClientChargesReport({ snapshot, onRefresh }: Readonly<{ snapshot
     const pending = Math.max(0, charge.amount - charge.collected);
     const date = charge.dueDate.slice(0, 10);
     const selectedCurrency = currency === "No definido" || reportCurrencyKey(charge.currency) === reportCurrencyKey(currency);
-    if (charge.status === "cancelled" || pending <= 0 || !selectedCurrency) return [];
+    if (charge.currencyConflict || charge.status === "cancelled" || pending <= 0 || !selectedCurrency) return [];
     if (startDate && date < startDate) return [];
     if (endDate && date > endDate) return [];
     const client = snapshot.clients.find((item) => item.id === charge.clientId);
     return [{
       id: charge.id,
       date,
+      currency: currencyCode(charge.currency),
       overdueDays: dateDifferenceInDays(date, snapshot.businessDate),
       identification: client?.identification ?? "",
       client: client?.name ?? "Cliente sin nombre",
@@ -1196,6 +1208,8 @@ function PendingClientChargesReport({ snapshot, onRefresh }: Readonly<{ snapshot
     columns: pendingChargeColumns,
     rows: rows.map((row) => [safeDateLabel(row.date), row.overdueDays, row.identification, row.client, row.amount, row.received, row.pending]),
     rowKeys: rows.map((row) => row.id),
+    rowCurrencies: rows.map((row) => row.currency),
+    defaultCurrency: currencyCode(currency) || "DOP",
     totalColumns: [4, 5, 6],
     moneyColumns: [4, 5, 6],
     totalLabelColumn: 3,
@@ -1226,7 +1240,7 @@ function PendingClientChargesReport({ snapshot, onRefresh }: Readonly<{ snapshot
         </div>
       </aside>
       <section className="pending-charges-grid-panel" aria-label={title}>
-        <div className="pending-charges-grid-scroll"><ReportGrid table={table} /></div>
+        {snapshot.charges.some((item) => item.currencyConflict) && <p role="alert">Hay cargos históricos con moneda pendiente de revisión; sus saldos no se incluyen en este reporte. Los movimientos conservan su moneda original.</p>}<div className="pending-charges-grid-scroll"><ReportGrid table={table} /></div>
       </section>
     </div>
   );
@@ -2246,38 +2260,44 @@ function ClientDataDialog({ client, zones, routes, defaultCode = "", onClose, on
   );
 }
 
-function ClientFinancePager() {
-  return <div className="legacy-mdi-pager client-finance-pager"><button type="button">|&lt;</button><button type="button">&lt;</button><span>Página [ 1 ] de 1</span><button type="button">&gt;</button><button type="button">&gt;|</button></div>;
+function ClientFinancePager({ page = 1, pages = 1, onPage }: Readonly<{ page?: number; pages?: number; onPage?: (page: number) => void }>) {
+  return <div className="legacy-mdi-pager client-finance-pager"><button type="button" disabled={page <= 1} onClick={() => onPage?.(1)}>|&lt;</button><button type="button" disabled={page <= 1} onClick={() => onPage?.(page - 1)}>&lt;</button><span>Página [ {page} ] de {pages}</span><button type="button" disabled={page >= pages} onClick={() => onPage?.(page + 1)}>&gt;</button><button type="button" disabled={page >= pages} onClick={() => onPage?.(pages)}>&gt;|</button></div>;
 }
 
 function ClientFinanceTable({ columns, rows }: Readonly<{ columns: readonly string[]; rows: readonly ReactNode[][] }>) {
-  return <div className="client-finance-grid"><LegacyDenseTable columns={columns} rows={rows.length ? rows : [["", "Sin registros", "", "", "", "", "", ""]]} /><ClientFinancePager /></div>;
+  const [page, setPage] = useState(1);
+  const pages = Math.max(1, Math.ceil(rows.length / 50));
+  const currentPage = Math.min(page, pages);
+  return <div className="client-finance-grid"><LegacyDenseTable columns={columns} rows={rows.length ? rows.slice((currentPage - 1) * 50, currentPage * 50) : [["", "Sin registros", "", "", "", "", "", ""]]} /><ClientFinancePager page={currentPage} pages={pages} onPage={setPage} /></div>;
 }
 
-function ClientFinancialDialog({ client, snapshot, onClose }: Readonly<{ client: ClientLegacyRecord; snapshot: Snapshot; onClose: () => void }>) {
+function ClientFinancialDialog({ client, snapshot, onClose, onRefresh }: Readonly<{ client: ClientLegacyRecord; snapshot: Snapshot; onClose: () => void; onRefresh: () => Promise<void> }>) {
   const [tab, setTab] = useState<ClientFinanceTab>("Cargos");
   const [currency, setCurrency] = useState("Peso Dominicano");
-  const [fromDate, setFromDate] = useState("2026-09-18");
-  const [toDate, setToDate] = useState("2026-09-18");
-  const clientCharges = snapshot.charges.filter((charge) => charge.clientId === client.id);
-  const clientRecurringCharges = ((snapshot as Snapshot & { recurringCharges?: RecurringChargeRecord[] }).recurringCharges ?? []).filter((charge) => charge.clientId === client.id);
-  const clientPayouts = snapshot.payouts.filter((payout) => payout.clientId === client.id);
-  const clientCollections = snapshot.movements.filter((movement) => movement.type === "collection" && movement.clientId === client.id);
-  const clientPayments = snapshot.movements.filter((movement) => movement.type === "payout" && movement.clientId === client.id);
-  const refreshButton = <button type="button" className="legacy-refresh-button" onClick={() => toast.success("Datos recargados")}>Refrescar</button>;
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
+  const matches = (date: string, itemCurrency?: string) => financeMatches(date, itemCurrency, fromDate, toDate, currency);
+  const clientCharges = snapshot.charges.filter((charge) => charge.clientId === client.id && matches(charge.dueDate, charge.currency));
+  const clientRecurringCharges = ((snapshot as Snapshot & { recurringCharges?: RecurringChargeRecord[] }).recurringCharges ?? []).filter((charge) => charge.clientId === client.id && (currency === "No definido" || currencyCode((charge as RecurringChargeRecord & { currency?: string }).currency) === currencyCode(currency)));
+  const clientPayouts = snapshot.payouts.filter((payout) => payout.clientId === client.id && matches((payout as Payout & { dueDate?: string }).dueDate ?? "", (payout as Payout & { currency?: string }).currency));
+  const clientCollections = snapshot.movements.filter((movement) => movement.type === "collection" && movement.clientId === client.id && matches(businessDate(movement.createdAt), (movement as Movement & { currency?: string }).currency));
+  const clientPayments = snapshot.movements.filter((movement) => movement.type === "payout" && movement.clientId === client.id && matches(businessDate(movement.createdAt), (movement as Movement & { currency?: string }).currency));
+  const refresh = async () => { if (refreshing) return; setRefreshing(true); try { await onRefresh(); toast.success("Datos recargados"); } catch (error) { toast.error(error instanceof Error ? error.message : "No se pudieron recargar los datos."); } finally { setRefreshing(false); } };
+  const refreshButton = <button type="button" className="legacy-refresh-button" disabled={refreshing} onClick={() => void refresh()}>Refrescar</button>;
   return (
     <LegacyDialog title="Datos de Cobros y Pagos del Cliente..." onClose={onClose} className="client-finance-dialog">
-      <div className="client-finance-view">
+      <div className="client-finance-view">{[...clientCharges, ...clientPayouts].some((item) => item.currencyConflict) && <p role="alert">Hay registros antiguos cuya moneda no coincide con su libro original. Sus recibos conservan la moneda registrada; revisa el saldo antes de operar.</p>}
         <div className="client-finance-header"><span>Código: <strong>{client.code}</strong></span><span>Cliente: <strong>{client.name}</strong></span><label>Moneda:<select value={currency} onChange={(event) => setCurrency(event.target.value)}><option>No definido</option><option>Peso Dominicano</option><option>Dólar Americano</option><option>Euro</option></select></label></div>
         <div className="legacy-tabs client-finance-tabs" role="tablist" aria-label="Cobros y Pagos del Cliente">{clientFinanceTabs.filter((item) => SHOW_RECURRING_PAYOUTS || item !== "Descargos Rec.").map((item) => <button type="button" key={item} className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{item}</button>)}</div>
         {(tab === "Cargos" || tab === "Cobros" || tab === "Descargos" || tab === "Pagos") && <div className="client-finance-filters"><label>Fecha Inicial:<input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} /></label><label>Fecha Final:<input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} /></label>{refreshButton}</div>}
         {(tab === "Cargos Rec." || (SHOW_RECURRING_PAYOUTS && tab === "Descargos Rec.")) && <div className="client-finance-filters compact-only">{refreshButton}</div>}
-        {tab === "Cargos" && <ClientFinanceTable columns={["Nro.", "Fecha", "Servicio", "Concepto", "Importe", "Recibos", "Pendiente", "Activo"]} rows={clientCharges.map((charge, index) => [index + 1, safeDateLabel(charge.dueDate), charge.service, charge.service, money(charge.amount), money(charge.collected), money(Math.max(0, charge.amount - charge.collected)), <LegacyCheck checked={charge.status !== "cancelled"} />])} />}
-        {tab === "Cargos Rec." && <ClientFinanceTable columns={["Nro.", "Fecha", "Servicio", "Concepto", "Importe", "Activo"]} rows={clientRecurringCharges.map((item, index) => [index + 1, safeDateLabel(item.startDate), item.service, item.concept, money(item.amount), <LegacyCheck checked={item.active} />])} />}
-        {tab === "Cobros" && <ClientFinanceTable columns={["Nro.", "Fecha", "En Linea", "En Cen.", "Importe", "Activo", "Cobrador"]} rows={clientCollections.map((movement, index) => [index + 1, safeDateLabel(movement.createdAt.slice(0, 10)), "Sí", "No", money(movement.amount), <LegacyCheck />, snapshot.collectors.find((collector) => collector.id === movement.collectorId)?.name ?? ""]) } />}
-        {tab === "Descargos" && <ClientFinanceTable columns={["Nro.", "Fecha", "Servicio", "Concepto", "Importe", "Activo"]} rows={clientPayouts.map((payout, index) => [index + 1, "18/09/2026", payout.concept, payout.concept, money(payout.amount), <LegacyCheck checked={payout.status !== "cancelled"} />])} />}
-        {SHOW_RECURRING_PAYOUTS && tab === "Descargos Rec." && <ClientFinanceTable columns={["Nro.", "Fecha", "Servicio", "Concepto", "Importe", "Activo"]} rows={snapshot.payoutRecurring.filter((item) => item.clientId === client.id).map((item, index) => [index + 1, safeDateLabel(item.nextRunDate), "Descargo", item.concept, money(item.amount), <LegacyCheck checked={item.status === "active"} />])} />}
-        {tab === "Pagos" && <ClientFinanceTable columns={["Nro.", "Fecha", "EnLinea", "En Cen.", "Importe", "Activo", "Cobrador"]} rows={clientPayments.map((movement, index) => [index + 1, safeDateLabel(movement.createdAt.slice(0, 10)), "Sí", "No", money(movement.amount), <LegacyCheck />, snapshot.collectors.find((collector) => collector.id === movement.collectorId)?.name ?? ""]) } />}
+        {tab === "Cargos" && <ClientFinanceTable key={`${tab}-${fromDate}-${toDate}-${currency}`} columns={["Nro.", "Fecha", "Servicio", "Concepto", "Importe", "Recibos", "Pendiente", "Activo"]} rows={clientCharges.map((charge, index) => [index + 1, safeDateLabel(charge.dueDate), charge.service, charge.concept ?? charge.service, nativeMoney(charge.amount, charge.currency), nativeTotals(obligationReceived(charge), charge.currency), charge.currencyConflict ? "Revisar moneda" : nativeMoney(Math.max(0, charge.amount - charge.collected), charge.currency), <LegacyCheck checked={charge.status !== "cancelled"} />])} />}
+        {tab === "Cargos Rec." && <ClientFinanceTable columns={["Nro.", "Fecha", "Servicio", "Concepto", "Importe", "Activo"]} rows={clientRecurringCharges.map((item, index) => [index + 1, safeDateLabel(item.startDate), item.service, item.concept, nativeMoney(item.amount, (item as typeof item & { currency?: string }).currency), <LegacyCheck checked={item.active} />])} />}
+        {tab === "Cobros" && <ClientFinanceTable key={`${tab}-${fromDate}-${toDate}-${currency}`} columns={["Nro.", "Fecha", "En Linea", "En Cen.", "Importe", "Activo", "Cobrador"]} rows={clientCollections.map((movement, index) => [index + 1, safeDateLabel(businessDate(movement.createdAt)), "Sí", "No", nativeMoney(movement.amount, (movement as Movement & { currency?: string }).currency), <LegacyCheck checked={!movement.cancelledAt} />, snapshot.collectors.find((collector) => collector.id === movement.collectorId)?.name ?? ""]) } />}
+        {tab === "Descargos" && <ClientFinanceTable key={`${tab}-${fromDate}-${toDate}-${currency}`} columns={["Nro.", "Fecha", "Servicio", "Concepto", "Importe", "Activo"]} rows={clientPayouts.map((payout, index) => [index + 1, safeDateLabel((payout as Payout & { dueDate?: string }).dueDate ?? ""), (payout as Payout & { service?: string }).service ?? "Descargo", payout.concept, nativeMoney(payout.amount, (payout as Payout & { currency?: string }).currency), <LegacyCheck checked={payout.status !== "cancelled"} />])} />}
+        {SHOW_RECURRING_PAYOUTS && tab === "Descargos Rec." && <ClientFinanceTable columns={["Nro.", "Fecha", "Servicio", "Concepto", "Importe", "Activo"]} rows={snapshot.payoutRecurring.filter((item) => item.clientId === client.id).map((item, index) => [index + 1, safeDateLabel(item.nextRunDate), "Descargo", item.concept, nativeMoney(item.amount, (item as typeof item & { currency?: string }).currency), <LegacyCheck checked={item.status === "active"} />])} />}
+        {tab === "Pagos" && <ClientFinanceTable key={`${tab}-${fromDate}-${toDate}-${currency}`} columns={["Nro.", "Fecha", "EnLinea", "En Cen.", "Importe", "Activo", "Cobrador"]} rows={clientPayments.map((movement, index) => [index + 1, safeDateLabel(businessDate(movement.createdAt)), "Sí", "No", nativeMoney(movement.amount, (movement as Movement & { currency?: string }).currency), <LegacyCheck checked={!movement.cancelledAt} />, snapshot.collectors.find((collector) => collector.id === movement.collectorId)?.name ?? ""]) } />}
       </div>
     </LegacyDialog>
   );
@@ -2338,33 +2358,39 @@ function ClientMapDialog({ client, onClose, onSave }: Readonly<{ client: ClientL
 
 type ClientMachineDraft = Pick<ClientMachine, "number" | "entry" | "exit" | "value" | "percentage">;
 
-function ClientMachineFormDialog({ machine, defaultNumber, onClose, onSave }: Readonly<{ machine?: ClientMachine; defaultNumber: number; onClose: () => void; onSave: (draft: ClientMachineDraft) => Promise<boolean> }>) {
-  const [draft, setDraft] = useState<ClientMachineDraft>({ number: machine?.number ?? defaultNumber, entry: machine?.entry ?? "", exit: machine?.exit ?? "", value: machine?.value ?? 0, percentage: machine?.percentage ?? 0 });
+function ClientMachineFormDialog({ actorId, clientId, machine, defaultNumber, onClose, onSave }: Readonly<{ actorId: string; clientId: string; machine?: ClientMachine; defaultNumber: number; onClose: () => void; onSave: (draft: ClientMachineDraft) => Promise<boolean> }>) {
+  const request = useMovementRequest(actorId, `machine-${clientId}`);
+  const pending = pendingMovementDraft<{ draft: ClientMachineDraft; machineId?: string }>(actorId, `machine-${clientId}`);
+  const [draft, setDraft] = useState<ClientMachineDraft>(pending?.draft ?? { number: machine?.number ?? defaultNumber, entry: machine?.entry ?? "", exit: machine?.exit ?? "", value: machine?.value ?? 0, percentage: machine?.percentage ?? 0 });
   const [saving, setSaving] = useState(false);
   const update = (field: keyof ClientMachineDraft, value: string) => setDraft((current) => ({ ...current, [field]: field === "entry" || field === "exit" ? value : Number(value) }));
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    if (request.busy) return;
     if (!Number.isInteger(draft.number) || draft.number < 1) return toast.error("El número de tragamonedas debe ser mayor que cero.");
     if (!Number.isFinite(draft.value) || draft.value < 0 || !Number.isFinite(draft.percentage) || draft.percentage < 0 || draft.percentage > 100) return toast.error("Revisa el valor y el porciento.");
     setSaving(true);
     try { if (await onSave(draft)) onClose(); } finally { setSaving(false); }
   };
-  return <LegacyDialog title="Tragamonedas..." onClose={onClose} className="client-machine-form-dialog"><form className="client-machine-form" onSubmit={(event) => void submit(event)}><label>Nro.:<input type="number" min="1" value={draft.number} onChange={(event) => update("number", event.target.value)} /></label><label>Entrada:<input value={draft.entry} onChange={(event) => update("entry", event.target.value)} /></label><label>Salida:<input value={draft.exit} onChange={(event) => update("exit", event.target.value)} /></label><label>Valor Mon.:<input type="number" min="0" step="0.0001" value={draft.value} onChange={(event) => update("value", event.target.value)} /></label><label>Porciento:<input type="number" min="0" max="100" step="0.01" value={draft.percentage} onChange={(event) => update("percentage", event.target.value)} /></label><div className="legacy-dialog-actions centered"><button type="submit" disabled={saving}>{saving ? "Guardando…" : "oK"}</button><button type="button" onClick={onClose}>Cancelar</button></div></form></LegacyDialog>;
+  const close = () => { if (!request.busy) onClose(); };
+  return <LegacyDialog title="Tragamonedas..." onClose={close} className="client-machine-form-dialog"><form className="client-machine-form" onSubmit={(event) => void submit(event)}><fieldset disabled={request.locked} style={{ border: 0, padding: 0, margin: 0, display: "contents" }}><label>Nro.:<input type="number" min="1" value={draft.number} onChange={(event) => update("number", event.target.value)} /></label><label>Entrada:<input value={draft.entry} onChange={(event) => update("entry", event.target.value)} /></label><label>Salida:<input value={draft.exit} onChange={(event) => update("exit", event.target.value)} /></label><label>Valor Mon.:<input type="number" min="0" step="0.0001" value={draft.value} onChange={(event) => update("value", event.target.value)} /></label><label>Porciento:<input type="number" min="0" max="100" step="0.01" value={draft.percentage} onChange={(event) => update("percentage", event.target.value)} /></label></fieldset>{request.error && <p role="alert">{request.error}</p>}{request.uncertain && <p role="status">Reintenta el mismo registro para recuperar su confirmación.</p>}<div className="legacy-dialog-actions centered"><button type="submit" disabled={saving || request.busy}>{saving ? "Guardando…" : request.uncertain ? "Reintentar" : "oK"}</button><button type="button" disabled={request.busy} onClick={close}>Cancelar</button></div></form></LegacyDialog>;
 }
 
 function ClientMachineLogsDialog({ client, machines, logs, onClose, onRefresh }: Readonly<{ client: ClientLegacyRecord; machines: readonly ClientMachine[]; logs: readonly ClientMachineLog[]; onClose: () => void; onRefresh: () => Promise<void> }>) {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
-  const visibleLogs = logs.filter((log) => (!fromDate || log.registeredAt.slice(0, 10) >= fromDate) && (!toDate || log.registeredAt.slice(0, 10) <= toDate));
-  const rows = visibleLogs.map((log) => [new Date(log.registeredAt).toLocaleString("es-DO"), machines.find((machine) => machine.id === log.machineId)?.number ?? "", log.previousEntry, log.entry, log.entryDifference, log.previousExit, log.exit, log.exitDifference, log.difference, log.currency, log.amount.toFixed(2), `${log.percentage}%`, log.charge.toFixed(2), log.modifiedAt ? new Date(log.modifiedAt).toLocaleString("es-DO") : "", log.cancelledAt ? new Date(log.cancelledAt).toLocaleString("es-DO") : ""]);
+  const visibleLogs = logs.filter((log) => (!fromDate || businessDate(log.registeredAt) >= fromDate) && (!toDate || businessDate(log.registeredAt) <= toDate));
+  const rows = visibleLogs.map((log) => [businessTimestamp(log.registeredAt), machines.find((machine) => machine.id === log.machineId)?.number ?? "", log.previousEntry, log.entry, log.entryDifference, log.previousExit, log.exit, log.exitDifference, log.difference, log.currency, log.amount.toFixed(2), `${log.percentage}%`, log.charge.toFixed(2), log.modifiedAt ? businessTimestamp(log.modifiedAt) : "", log.cancelledAt ? businessTimestamp(log.cancelledAt) : ""]);
   return <LegacyDialog title="Registros de Máquina Tragamonedas..." onClose={onClose} className="client-machine-logs-dialog"><div className="client-machine-logs"><div className="client-machine-log-filters"><label>Fecha Inicial:<input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} /></label><label>Fecha Final:<input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} /></label><button type="button" className="legacy-refresh-button" onClick={() => { setFromDate(""); setToDate(""); void onRefresh(); }}>Refrescar</button><button type="button" onClick={onClose}>Cancelar</button></div><div className="client-machine-log-grid"><LegacyDenseTable columns={["Registro", "Nro.", "Ent. Ant.", "Entrada", "Dif_Entr...", "Sal. Ant.", "Salida", "Dif_Sali...", "Diferencia", "Mon.", "Importe", "Porc.", "Cargo", "Modificación", "Cancelación"]} rows={rows} /></div><ClientFinancePager /></div><span className="sr-only">Registros de {client.name}</span></LegacyDialog>;
 }
 
-function ClientMachinesDialog({ client, onClose }: Readonly<{ client: ClientLegacyRecord; onClose: () => void }>) {
+function ClientMachinesDialog({ client, actorId, onClose }: Readonly<{ client: ClientLegacyRecord; actorId: string; onClose: () => void }>) {
+  const request = useMovementRequest(actorId, `machine-${client.id}`);
+  const pending = pendingMovementDraft<{ draft: ClientMachineDraft; machineId?: string }>(actorId, `machine-${client.id}`);
   const [machines, setMachines] = useState<ClientMachine[]>([]);
   const [logs, setLogs] = useState<ClientMachineLog[]>([]);
-  const [selectedId, setSelectedId] = useState("");
-  const [formMode, setFormMode] = useState<"new" | "edit" | null>(null);
+  const [selectedId, setSelectedId] = useState(pending?.machineId ?? "");
+  const [formMode, setFormMode] = useState<"new" | "edit" | null>(() => pending ? pending.machineId ? "edit" : "new" : null);
   const [logsOpen, setLogsOpen] = useState(false);
   const refresh = useCallback(async () => {
     try {
@@ -2381,18 +2407,16 @@ function ClientMachinesDialog({ client, onClose }: Readonly<{ client: ClientLega
   const saveMachine = async (draft: ClientMachineDraft) => {
     const isEdit = formMode === "edit" && selected;
     try {
-      const saved = await api<ClientMachine>(`/clientes/${encodeURIComponent(client.id)}/tragamonedas${isEdit ? `/${encodeURIComponent(selected.id)}` : ""}`, {
-        method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify(draft),
-      });
-      setMachines((current) => isEdit ? current.map((item) => item.id === saved.id ? saved : item) : [...current, saved]);
+      const saved = await request.run<ClientMachine>(`/clientes/${encodeURIComponent(client.id)}/tragamonedas${isEdit ? `/${encodeURIComponent(selected.id)}` : ""}`, draft, { draft, machineId: isEdit ? selected.id : undefined }, (value) => Boolean(value?.id) && value.clientId === client.id && value.number === draft.number, "POST", "api");
+      setMachines((current) => current.some((item) => item.id === saved.id) ? current.map((item) => item.id === saved.id ? saved : item) : [...current, saved]);
       setSelectedId(saved.id); setFormMode(null); toast.success(isEdit ? "Tragamonedas actualizada" : "Tragamonedas agregada");
-      const refreshedLogs = await api<ClientMachineLog[]>(`/clientes/${encodeURIComponent(client.id)}/tragamonedas/registros`);
-      setLogs(refreshedLogs);
+      try { setLogs(await api<ClientMachineLog[]>(`/clientes/${encodeURIComponent(client.id)}/tragamonedas/registros`)); }
+      catch { toast.warning("La tragamonedas quedó confirmada; no se pudo actualizar el historial."); }
       return true;
     } catch (error) { toast.error(error instanceof Error ? error.message : "No se pudo guardar la tragamonedas."); return false; }
   };
-  const rows = machines.map((machine) => [machine.number, machine.entry, machine.exit, machine.value.toFixed(2), `${machine.percentage}%`, new Date(machine.registeredAt).toLocaleString("es-DO")]);
-  return <LegacyDialog title="Tragamonedas del Cliente..." onClose={onClose} className="client-machines-dialog"><div className="client-machines-view"><div className="client-machines-toolbar"><button type="button" title="Agregar" onClick={() => setFormMode("new")}><Plus size={15} />Agregar</button><button type="button" title="Modificar" disabled={!selected} onClick={() => selected ? setFormMode("edit") : undefined}><Pencil size={15} />Modificar</button><button type="button" title="Refrescar" onClick={() => void refresh()}><RefreshCw size={15} />Refrescar</button><button type="button" title="Registros" onClick={() => setLogsOpen(true)}><History size={15} />Registros</button><span className="client-machines-client">{client.code} · {client.name}</span></div><div className="client-machines-grid"><div className="legacy-mdi-table-wrap"><table className="legacy-mdi-table"><thead><tr>{["Nro.", "Entrada", "Salida", "Valor", "Porc.", "Registro"].map((column) => <th key={column}>{column}</th>)}</tr></thead><tbody>{machines.map((machine) => <tr key={machine.id} className={machine.id === selectedId ? "selected-row" : ""} role="button" tabIndex={0} onClick={() => setSelectedId(machine.id)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedId(machine.id))}><td>{machine.number}</td><td>{machine.entry}</td><td>{machine.exit}</td><td>{machine.value.toFixed(2)}</td><td>{machine.percentage}%</td><td>{new Date(machine.registeredAt).toLocaleString("es-DO")}</td></tr>)}</tbody></table></div></div><div className="legacy-footerbar"><span>Cantidad</span><strong>{machines.length}</strong></div></div>{formMode && <ClientMachineFormDialog machine={formMode === "edit" ? selected : undefined} defaultNumber={Math.max(0, ...machines.map((machine) => machine.number)) + 1} onClose={() => setFormMode(null)} onSave={saveMachine} />}{logsOpen && <ClientMachineLogsDialog client={client} machines={machines} logs={logs} onClose={() => setLogsOpen(false)} onRefresh={refresh} />}</LegacyDialog>;
+  const rows = machines.map((machine) => [machine.number, machine.entry, machine.exit, machine.value.toFixed(2), `${machine.percentage}%`, businessTimestamp(machine.registeredAt)]);
+  return <LegacyDialog title="Tragamonedas del Cliente..." onClose={onClose} className="client-machines-dialog"><div className="client-machines-view"><div className="client-machines-toolbar"><button type="button" title="Agregar" onClick={() => setFormMode("new")}><Plus size={15} />Agregar</button><button type="button" title="Modificar" disabled={!selected} onClick={() => selected ? setFormMode("edit") : undefined}><Pencil size={15} />Modificar</button><button type="button" title="Refrescar" onClick={() => void refresh()}><RefreshCw size={15} />Refrescar</button><button type="button" title="Registros" onClick={() => setLogsOpen(true)}><History size={15} />Registros</button><span className="client-machines-client">{client.code} · {client.name}</span></div><div className="client-machines-grid"><div className="legacy-mdi-table-wrap"><table className="legacy-mdi-table"><thead><tr>{["Nro.", "Entrada", "Salida", "Valor", "Porc.", "Registro"].map((column) => <th key={column}>{column}</th>)}</tr></thead><tbody>{machines.map((machine) => <tr key={machine.id} className={machine.id === selectedId ? "selected-row" : ""} role="button" tabIndex={0} onClick={() => setSelectedId(machine.id)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedId(machine.id))}><td>{machine.number}</td><td>{machine.entry}</td><td>{machine.exit}</td><td>{machine.value.toFixed(2)}</td><td>{machine.percentage}%</td><td>{businessTimestamp(machine.registeredAt)}</td></tr>)}</tbody></table></div></div><div className="legacy-footerbar"><span>Cantidad</span><strong>{machines.length}</strong></div></div>{formMode && <ClientMachineFormDialog actorId={actorId} clientId={client.id} machine={formMode === "edit" ? selected : undefined} defaultNumber={Math.max(0, ...machines.map((machine) => machine.number)) + 1} onClose={() => setFormMode(null)} onSave={saveMachine} />}{logsOpen && <ClientMachineLogsDialog client={client} machines={machines} logs={logs} onClose={() => setLogsOpen(false)} onRefresh={refresh} />}</LegacyDialog>;
 }
 
 function ClientToolbar({ filtersVisible, onToggleFilters, onFirst, onPrevious, onNext, onLast, onNew, onEdit, onDelete, onRefresh, onFinance, onMap, onMachines }: Readonly<{ filtersVisible: boolean; onToggleFilters: () => void; onFirst: () => void; onPrevious: () => void; onNext: () => void; onLast: () => void; onNew: () => void; onEdit: () => void; onDelete: () => void; onRefresh: () => void; onFinance: () => void; onMap: () => void; onMachines: () => void }>) {
@@ -2416,7 +2440,13 @@ function ClientToolbar({ filtersVisible, onToggleFilters, onFirst, onPrevious, o
   );
 }
 
-function ClientsLegacyView({ snapshot, onRefresh }: Readonly<{ snapshot: Snapshot; onRefresh: () => Promise<void> }>): ReactNode {
+function ClientsLegacyView({ snapshot, actorId, onRefresh }: Readonly<{ snapshot: Snapshot; actorId: string; onRefresh: () => Promise<void> }>): ReactNode {
+  const clientDialogVersion = useRef(0);
+  const mapDialogVersion = useRef(0);
+  const closeClientForm = () => { clientDialogVersion.current++; setFormMode(null); };
+  const openClientForm = (mode: "new" | "edit") => { clientDialogVersion.current++; setFormMode(mode); };
+  const closeMap = () => { mapDialogVersion.current++; setMapOpen(false); };
+  const openMap = () => { mapDialogVersion.current++; setMapOpen(true); };
   const [clientsData, setClientsData] = useState<ClientLegacyRecord[]>(() => defaultClientRecords(snapshot));
   const [selectedClientId, setSelectedClientId] = useState(clientsData[0]?.id ?? "");
   const [filtersVisible, setFiltersVisible] = useState(true);
@@ -2431,6 +2461,7 @@ function ClientsLegacyView({ snapshot, onRefresh }: Readonly<{ snapshot: Snapsho
   const [financeOpen, setFinanceOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
   const [machinesOpen, setMachinesOpen] = useState(false);
+  const chooseClient = (id: string) => { if (id !== selectedClientId) { clientDialogVersion.current++; mapDialogVersion.current++; } setSelectedClientId(id); };
   useEffect(() => {
     setClientsData(defaultClientRecords(snapshot));
     setSelectedClientId((selected) => snapshot.clients.some((client) => client.id === selected) ? selected : snapshot.clients[0]?.id ?? "");
@@ -2466,8 +2497,8 @@ function ClientsLegacyView({ snapshot, onRefresh }: Readonly<{ snapshot: Snapsho
     setZoneFilter("No Definida");
     setRouteFilter(snapshot.routes[0]?.id ?? "");
     setStatusFilter("Activo");
-    await onRefresh();
-    toast.success("Clientes recargados");
+    try { await onRefresh(); toast.success("Clientes recargados"); }
+    catch (error) { toast.error(error instanceof Error ? error.message : "No se pudieron recargar los clientes."); }
   };
   const clientPayload = (draft: ClientLegacyDraft, coordinates?: { lat: number; lng: number }) => ({
     code: draft.code.trim(), name: draft.name.trim(), identification: draft.identification.trim(),
@@ -2476,16 +2507,18 @@ function ClientsLegacyView({ snapshot, onRefresh }: Readonly<{ snapshot: Snapsho
     ...(coordinates ? { lat: coordinates.lat, lng: coordinates.lng } : draft.lat !== undefined && draft.lng !== undefined ? { lat: draft.lat, lng: draft.lng } : {}),
   });
   const saveClient = async (draft: ClientLegacyDraft) => {
+    const version = clientDialogVersion.current;
+    invalidateSnapshotReads();
     try {
       const isEdit = formMode === "edit" && selectedClient;
       const saved = await remittancesApi<Client>(isEdit ? `/clientes/${encodeURIComponent(selectedClient.id)}` : "/clientes", {
         method: "POST", body: JSON.stringify(clientPayload(draft, isEdit && selectedClient.lat !== undefined && selectedClient.lng !== undefined ? { lat: selectedClient.lat, lng: selectedClient.lng } : undefined)),
       });
       const record = { ...clientRecordFromSnapshot(saved), ...draft, id: saved.id, lat: saved.lat, lng: saved.lng, active: isEdit ? selectedClient.active : true };
+      invalidateSnapshotReads();
       setClientsData((current) => isEdit ? current.map((client) => client.id === record.id ? record : client) : [...current, record]);
-      setSelectedClientId(record.id);
-      setFormMode(null);
-      await onRefresh();
+      if (version === clientDialogVersion.current) { setSelectedClientId(record.id); closeClientForm(); }
+      await onRefresh().catch(() => toast.warning("El cliente quedó guardado; no se pudo actualizar el listado."));
       toast.success(isEdit ? "Cliente actualizado" : "Cliente creado");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo guardar el cliente.");
@@ -2493,15 +2526,18 @@ function ClientsLegacyView({ snapshot, onRefresh }: Readonly<{ snapshot: Snapsho
   };
   const saveClientLocation = async (lat: number, lng: number) => {
     if (!selectedClient) return false;
+    const version = mapDialogVersion.current;
+    invalidateSnapshotReads();
     const payload = clientPayload({ ...selectedClient, active: selectedClient.active }, { lat, lng });
     try {
       const saved = await remittancesApi<Client>(`/clientes/${encodeURIComponent(selectedClient.id)}`, {
         method: "POST", body: JSON.stringify(payload),
       });
-      setClientsData((current) => current.map((client) => client.id === saved.id ? { ...client, lat, lng } : client));
-      await onRefresh();
+      invalidateSnapshotReads();
+      setClientsData((current) => current.map((client) => client.id === saved.id ? { ...client, lat: saved.lat, lng: saved.lng } : client));
+      await onRefresh().catch(() => toast.warning("La ubicación quedó guardada; no se pudo actualizar el listado."));
       toast.success("Ubicación del cliente guardada");
-      return true;
+      return version === mapDialogVersion.current;
     } catch (error) { toast.error(error instanceof Error ? error.message : "No se pudo guardar la ubicación."); return false; }
   };
   const inactivateClient = async () => {
@@ -2516,7 +2552,7 @@ function ClientsLegacyView({ snapshot, onRefresh }: Readonly<{ snapshot: Snapsho
   };
   return (
     <div className="clients-mdi-view">
-      <ClientToolbar filtersVisible={filtersVisible} onToggleFilters={() => setFiltersVisible((visible) => !visible)} onFirst={() => moveSelectedClient("first")} onPrevious={() => moveSelectedClient("up")} onNext={() => moveSelectedClient("down")} onLast={() => moveSelectedClient("last")} onNew={() => setFormMode("new")} onEdit={() => selectedClient ? setFormMode("edit") : toast.info("Seleccione un cliente.")} onDelete={() => selectedClient ? setConfirmDelete(true) : toast.info("Seleccione un cliente.")} onRefresh={() => void refreshClients()} onFinance={() => selectedClient ? setFinanceOpen(true) : toast.info("Seleccione un cliente.")} onMap={() => selectedClient ? setMapOpen(true) : toast.info("Seleccione un cliente.")} onMachines={() => selectedClient ? setMachinesOpen(true) : toast.info("Seleccione un cliente.")} />
+      <ClientToolbar filtersVisible={filtersVisible} onToggleFilters={() => setFiltersVisible((visible) => !visible)} onFirst={() => moveSelectedClient("first")} onPrevious={() => moveSelectedClient("up")} onNext={() => moveSelectedClient("down")} onLast={() => moveSelectedClient("last")} onNew={() => openClientForm("new")} onEdit={() => selectedClient ? openClientForm("edit") : toast.info("Seleccione un cliente.")} onDelete={() => selectedClient ? setConfirmDelete(true) : toast.info("Seleccione un cliente.")} onRefresh={() => void refreshClients()} onFinance={() => selectedClient ? setFinanceOpen(true) : toast.info("Seleccione un cliente.")} onMap={() => selectedClient ? openMap() : toast.info("Seleccione un cliente.")} onMachines={() => selectedClient ? setMachinesOpen(true) : toast.info("Seleccione un cliente.")} />
       <div className="clients-workspace">
         {filtersVisible && <aside className="clients-filter-panel" aria-label="Filtros de clientes">
           <label className="client-radio-line"><input type="radio" name="client-filter" checked={filterMode === "all"} onChange={() => setFilterMode("all")} /> <span>Todos</span></label>
@@ -2526,13 +2562,13 @@ function ClientsLegacyView({ snapshot, onRefresh }: Readonly<{ snapshot: Snapsho
           <label className="client-radio-line"><input type="radio" name="client-filter" checked={filterMode === "route"} onChange={() => setFilterMode("route")} /> <span>por Ruta:</span></label><select value={routeFilter} disabled={filterMode !== "route"} onChange={(event) => setRouteFilter(event.target.value)}>{snapshot.routes.map((route) => <option key={route.id} value={route.id}>{route.name}</option>)}</select>
           <label>Estado:<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option>Activo</option><option>Inactivo</option><option>Todos</option></select></label>
         </aside>}
-        <div className="clients-grid-panel"><div className="legacy-mdi-table-wrap"><table className="legacy-mdi-table clients-grid"><thead><tr><th>Código</th><th>Identificación</th><th>Cliente</th><th>Zona</th><th>Ruta</th><th>Teléfono</th><th>Celular</th><th>Activo</th></tr></thead><tbody>{visibleClients.map((client) => { const isSelected = selectedClientId === client.id; return <tr key={client.id} className={isSelected ? "selected-row" : ""} role="button" tabIndex={0} onClick={() => setSelectedClientId(client.id)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedClientId(client.id))}><td><span className={`mdi-row-select ${isSelected ? "selected" : ""}`}>{client.code}</span></td><td>{client.identification || "No registrada"}</td><td>{client.name}</td><td>{client.zone}</td><td>{snapshot.routes.find((route) => route.id === client.routeId)?.name ?? ""}</td><td>{client.phone}</td><td>{client.cellular}</td><td><LegacyCheck checked={client.active} /></td></tr>; })}</tbody></table></div><div className="legacy-footerbar"><span>Cantidad</span><strong>{visibleClients.length}</strong></div></div>
+        <div className="clients-grid-panel"><div className="legacy-mdi-table-wrap"><table className="legacy-mdi-table clients-grid"><thead><tr><th>Código</th><th>Identificación</th><th>Cliente</th><th>Zona</th><th>Ruta</th><th>Teléfono</th><th>Celular</th><th>Activo</th></tr></thead><tbody>{visibleClients.map((client) => { const isSelected = selectedClientId === client.id; return <tr key={client.id} className={isSelected ? "selected-row" : ""} role="button" tabIndex={0} onClick={() => chooseClient(client.id)} onKeyDown={(event) => handleKeyboardActivation(event, () => chooseClient(client.id))}><td><span className={`mdi-row-select ${isSelected ? "selected" : ""}`}>{client.code}</span></td><td>{client.identification || "No registrada"}</td><td>{client.name}</td><td>{client.zone}</td><td>{snapshot.routes.find((route) => route.id === client.routeId)?.name ?? ""}</td><td>{client.phone}</td><td>{client.cellular}</td><td><LegacyCheck checked={client.active} /></td></tr>; })}</tbody></table></div><div className="legacy-footerbar"><span>Cantidad</span><strong>{visibleClients.length}</strong></div></div>
       </div>
-      {formMode && <ClientDataDialog client={formMode === "edit" ? selectedClient : undefined} zones={zones} routes={snapshot.routes} defaultCode={formMode === "new" ? nextClientCode(clientsData) : ""} onClose={() => setFormMode(null)} onSave={saveClient} />}
+      {formMode && <ClientDataDialog key={`${clientDialogVersion.current}-${selectedClient?.id ?? ""}`} client={formMode === "edit" ? selectedClient : undefined} zones={zones} routes={snapshot.routes} defaultCode={formMode === "new" ? nextClientCode(clientsData) : ""} onClose={closeClientForm} onSave={saveClient} />}
       {confirmDelete && <LegacyConfirmDialog message={selectedClient?.active ? "¿Inactivar cliente? Se conserva su historial." : "¿Activar cliente?"} onYes={() => void inactivateClient()} onNo={() => setConfirmDelete(false)} />}
-      {financeOpen && selectedClient && <ClientFinancialDialog client={selectedClient} snapshot={snapshot} onClose={() => setFinanceOpen(false)} />}
-      {mapOpen && selectedClient && <ClientMapDialog client={selectedClient} onClose={() => setMapOpen(false)} onSave={saveClientLocation} />}
-      {machinesOpen && selectedClient && <ClientMachinesDialog client={selectedClient} onClose={() => setMachinesOpen(false)} />}
+      {financeOpen && selectedClient && <ClientFinancialDialog key={selectedClient.id} client={selectedClient} snapshot={snapshot} onRefresh={onRefresh} onClose={() => setFinanceOpen(false)} />}
+      {mapOpen && selectedClient && <ClientMapDialog key={`${mapDialogVersion.current}-${selectedClient.id}`} client={selectedClient} onClose={closeMap} onSave={saveClientLocation} />}
+      {machinesOpen && selectedClient && <ClientMachinesDialog key={selectedClient.id} actorId={actorId} client={selectedClient} onClose={() => setMachinesOpen(false)} />}
     </div>
   );
 }
@@ -4290,6 +4326,9 @@ function Login({
   );
 }
 
+let snapshotReadVersion = 0;
+const invalidateSnapshotReads = () => { snapshotReadVersion++; };
+
 export default function App() {
   const [authenticated, setAuthenticated] = useState(!!getToken()),
     [user, setUser] = useState<User | null>(null),
@@ -4324,11 +4363,13 @@ export default function App() {
   const [clock, setClock] = useState(() => new Date());
   const [mdiWindows, setMdiWindows] = useState<MdiWindowState[]>([]);
   const highestZIndex = useRef(140);
+  const latestSnapshotRead = useRef(0);
   const nextZIndex = useCallback(() => {
     highestZIndex.current += 1;
     return highestZIndex.current;
   }, []);
   const clearLocalSession = useCallback(() => {
+    invalidateSnapshotReads();
     clearToken();
     setAuthenticated(false);
     setSnapshot(null);
@@ -4349,24 +4390,30 @@ export default function App() {
     }).catch(() => toast.warning("La sesión se cerró en este dispositivo. No pudimos confirmar su cierre en el servidor; podría seguir activa hasta vencer."));
   }, [clearLocalSession]);
   const refresh = useCallback(async () => {
+    const version = ++snapshotReadVersion;
+    latestSnapshotRead.current = version;
     setRefreshing(true);
     try {
       const result = await api<Snapshot>("/snapshot");
+      if (version !== snapshotReadVersion) return false;
       setSnapshot(result);
       setInitialError("");
       setLastUpdated(new Date());
+      return true;
     } catch (error) {
+      if (version !== snapshotReadVersion) return false;
       if (error instanceof ApiError && error.status === 401) {
         clearLocalSession();
-        return;
+        return false;
       }
       setInitialError(
         error instanceof Error
           ? error.message
           : "No se pudo conectar con el servidor.",
       );
+      return false;
     } finally {
-      setRefreshing(false);
+      if (version === latestSnapshotRead.current) setRefreshing(false);
     }
   }, [clearLocalSession]);
   useEffect(() => {
@@ -4909,7 +4956,7 @@ export default function App() {
               ) : isConnectedAdminTool(windowState.page) ? (
                 <ConnectedAdminTools page={windowState.page} snapshot={snapshot} onRefresh={() => void refresh()} />
               ) : windowState.page === "clients" ? (
-                <ClientsLegacyView snapshot={snapshot} onRefresh={() => refresh()} />
+                <ClientsLegacyView snapshot={snapshot} actorId={user?.id ?? ""} onRefresh={async () => { if (!await refresh()) throw new Error("No se pudieron recargar los clientes. Inténtalo de nuevo."); }} />
               ) : windowState.page === "charges" ? (
                 <ChargesOperationalView
                   snapshot={snapshot}
@@ -5183,13 +5230,13 @@ export default function App() {
                 operation={operation}
                 snapshot={snapshot}
                 onClose={() => setOperation(null)}
-                onComplete={refresh}
+                onComplete={async () => { await refresh(); }}
               />
               <AccountModal
                 operation={accountOperation}
                 snapshot={snapshot}
                 onClose={() => setAccountOperation(null)}
-                onComplete={refresh}
+                onComplete={async () => { await refresh(); }}
               />
             </>
           )}
@@ -5669,6 +5716,7 @@ const asLocalCharge = (charge: Charge): LocalCharge => ({
 });
 
 function CargoDialog({
+  actorId,
   charge,
   clients,
   businessDate,
@@ -5676,6 +5724,7 @@ function CargoDialog({
   onSave,
   onLoadClients,
 }: Readonly<{
+  actorId: string;
   charge?: LocalCharge;
   clients: Client[];
   businessDate: string;
@@ -5683,14 +5732,16 @@ function CargoDialog({
   onSave: (charge: LocalCharge) => Promise<boolean>;
   onLoadClients: () => Promise<Client[]>;
 }>) {
+  const request = useMovementRequest(actorId, "manual-charge");
+  const close = () => { if (!request.busy) onClose(); };
   const initialClient = clients.find((client) => client.id === charge?.clientId);
   const [draft, setDraft] = useState<CargoDialogDraft>({
     clientId: initialClient?.id ?? "",
     clientCode: initialClient?.code ?? "",
-    currency: charge?.currency ?? "Peso Dominicano",
+    currency: currencyName(charge?.currency),
     service: charge?.service ?? "Serv",
     concept: charge?.concept ?? "",
-    amount: charge ? (charge.amount / 100).toFixed(2) : "0.00",
+    amount: charge ? centsInput(charge.amount) : "0.00",
     quantity: "1.00",
     note: charge?.note ?? "",
   });
@@ -5699,9 +5750,8 @@ function CargoDialog({
   const [errorMessage, setErrorMessage] = useState("");
   const [saving, setSaving] = useState(false);
   const selectedClient = searchClients.find((client) => client.id === draft.clientId);
-  const amount = Number(draft.amount || 0);
-  const quantity = Number(draft.quantity || 0);
-  const total = Number.isFinite(amount * quantity) ? amount * quantity : 0;
+  const totalCents = (() => { try { return decimalProductCents(draft.amount, draft.quantity); } catch { return 0; } })();
+  const total = totalCents / 100;
   const update = (field: keyof CargoDialogDraft, value: string) =>
     setDraft((current) => ({ ...current, [field]: value }));
   const updateClientCode = (value: string) => {
@@ -5718,6 +5768,7 @@ function CargoDialog({
   };
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    if (request.busy) return;
     if (!draft.clientId || !selectedClient) {
       setErrorMessage('El campo "Cliente" no puede estar vacío');
       return;
@@ -5726,6 +5777,8 @@ function CargoDialog({
       setErrorMessage("El importe total debe ser mayor a cero.");
       return;
     }
+    let exactAmount: number;
+    try { exactAmount = decimalProductCents(draft.amount, draft.quantity); } catch (error) { setErrorMessage(error instanceof Error ? error.message : "Importe no válido."); return; }
     setSaving(true);
     try {
       const saved = await onSave({
@@ -5735,13 +5788,13 @@ function CargoDialog({
         concept: draft.concept.trim(),
         currency: draft.currency,
         note: draft.note.trim(),
-        amount: Math.round(total * 100),
+        amount: exactAmount,
         collected: charge?.collected ?? 0,
         dueDate: charge?.dueDate ?? businessDate,
         required: charge?.required ?? false,
         status: charge?.status ?? "pending",
       });
-      if (saved) onClose();
+      if (saved) close();
     } finally {
       setSaving(false);
     }
@@ -5751,8 +5804,9 @@ function CargoDialog({
     : CARGO_SERVICES;
   return (
     <>
-      <LegacyDialog title="Datos del Cargo..." onClose={onClose} className="charge-data-dialog">
+      <LegacyDialog title="Datos del Cargo..." onClose={close} className="charge-data-dialog">
         <form className="cargo-entry-form" onSubmit={(event) => void submit(event)}>
+          <fieldset disabled={request.locked} style={{ border: 0, padding: 0, margin: 0, display: "contents" }}>
           <div className="cargo-entry-row cargo-client-row">
             <label htmlFor="cargo-client-code">Cliente:</label>
             <input id="cargo-client-code" autoFocus value={draft.clientCode} onChange={(event) => updateClientCode(event.target.value)} />
@@ -5779,15 +5833,18 @@ function CargoDialog({
             <label htmlFor="cargo-amount">Importe:</label>
             <label>Monto<input id="cargo-amount" type="number" min="0" step="0.01" value={draft.amount} onChange={(event) => update("amount", event.target.value)} /></label>
             <label>Tasa/Cantidad<input type="number" min="0.01" step="0.01" value={draft.quantity} onChange={(event) => update("quantity", event.target.value)} /></label>
-            <label>Total<input type="number" value={total.toFixed(2)} disabled readOnly /></label>
+            <label>Total<input type="number" value={centsInput(totalCents)} disabled readOnly /></label>
           </div>
           <div className="cargo-entry-row">
             <label htmlFor="cargo-note">Nota:</label>
             <input id="cargo-note" value={draft.note} onChange={(event) => update("note", event.target.value)} />
           </div>
+          </fieldset>
+          {request.error && <p role="alert">{request.error}</p>}
+          {request.uncertain && <p role="status">Reintenta esta misma operación para confirmar el resultado antes de cambiar los datos.</p>}
           <div className="legacy-dialog-actions centered">
-            <button type="submit" disabled={saving}>{saving ? "Guardando…" : "oK"}</button>
-            <button type="button" onClick={onClose}>Cancelar</button>
+            <button type="submit" disabled={saving || request.busy}>{saving || request.busy ? "Guardando…" : request.uncertain ? "Reintentar" : "oK"}</button>
+            <button type="button" disabled={request.busy} onClick={close}>Cancelar</button>
           </div>
         </form>
       </LegacyDialog>
@@ -5854,6 +5911,8 @@ function ChargeCancelReasonDialog({ onClose, onConfirm, busy }: Readonly<{ onClo
 }
 
 function ChargesOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{ snapshot: Snapshot; currentUser: User; onRefresh: () => Promise<void> }>) {
+  const chargeRequest = useMovementRequest(currentUser.id, "manual-charge");
+  const pendingCharge = pendingMovementDraft<{ charge: LocalCharge; editing: boolean }>(currentUser.id, "manual-charge");
   const importRequest = useChargeImportRequest(currentUser.id);
   const [charges, setCharges] = useState<LocalCharge[]>(() => snapshot.charges.map(asLocalCharge));
   const [mode, setMode] = useState("Todos");
@@ -5864,9 +5923,9 @@ function ChargesOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{
   const [toDate, setToDate] = useState("");
   const [status, setStatus] = useState("Activo");
   const [relation, setRelation] = useState("Todas");
-  const [selectedCharge, setSelectedCharge] = useState<LocalCharge | null>(null);
+  const [selectedCharge, setSelectedCharge] = useState<LocalCharge | null>(pendingCharge?.editing ? pendingCharge.charge : null);
   const [filtersVisible, setFiltersVisible] = useState(true);
-  const [dialogMode, setDialogMode] = useState<"new" | "edit" | null>(null);
+  const [dialogMode, setDialogMode] = useState<"new" | "edit" | null>(() => pendingCharge ? pendingCharge.editing ? "edit" : "new" : null);
   const [uploadOpen, setUploadOpen] = useState(() => Boolean(importRequest.attempt));
   const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
   const [cancelReasonOpen, setCancelReasonOpen] = useState(false);
@@ -5910,28 +5969,25 @@ function ChargesOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{
     }
   };
   const saveCharge = async (draft: LocalCharge) => {
-    const editing = Boolean(selectedCharge && selectedCharge.id === draft.id && dialogMode === "edit");
+    draft = pendingCharge?.charge ?? draft;
+    const editing = pendingCharge?.editing ?? Boolean(selectedCharge && selectedCharge.id === draft.id && dialogMode === "edit");
     const body = {
       clientId: draft.clientId,
       service: draft.service,
       concept: draft.concept,
-      currency: draft.currency,
+      currency: currencyCode(draft.currency),
       note: draft.note,
       amount: draft.amount,
       dueDate: draft.dueDate,
       required: draft.required,
     };
     try {
-      const saved = await api<Charge>(editing ? `/cargos/${encodeURIComponent(draft.id)}` : "/cargos", {
-        method: "POST",
-        headers: { "Idempotency-Key": crypto.randomUUID() },
-        body: JSON.stringify(body),
-      });
+      const saved = await chargeRequest.run<Charge>(editing ? `/cargos/${encodeURIComponent(draft.id)}` : "/cargos", body, { charge: draft, editing }, (result) => Boolean(result?.id) && result.clientId === draft.clientId && result.amount === draft.amount && currencyCode(result.currency) === currencyCode(draft.currency) && result.dueDate === draft.dueDate && (!editing || result.id === draft.id), "POST", "api");
       const local = asLocalCharge(saved);
       setCharges((current) => editing ? current.map((item) => item.id === local.id ? local : item) : [...current, local]);
       setSelectedCharge(local);
       toast.success(editing ? "Cargo actualizado" : "Cargo registrado");
-      await onRefresh();
+      await onRefresh().catch(() => toast.warning("El cargo quedó confirmado; no se pudo actualizar el listado."));
       return true;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo guardar el cargo.");
@@ -6047,7 +6103,7 @@ function ChargesOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{
             <label className="field compact-field">Relación de Pago:<select value={relation} onChange={(event) => setRelation(event.target.value)}><option>Todas</option><option>Con recibo</option><option>Sin recibo</option></select></label>
           </aside>
         )}
-        <section className="legacy-grid-panel charges-grid-panel" aria-label="Grilla de cargos">
+        <section className="legacy-grid-panel charges-grid-panel" aria-label="Grilla de cargos">{visibleCharges.some((item) => item.currencyConflict) && <p role="alert">Los saldos con moneda pendiente de revisión se excluyen del total pendiente. Se conserva el libro de cada recibo.</p>}
           <div className="legacy-mdi-table-wrap">
             <table className="legacy-mdi-table charges-table">
               <thead><tr><th>Nro.</th><th>Fecha</th><th>Cód.</th><th>Identif.</th><th>Cliente</th><th>Abrev</th><th>Servicio</th><th>Importe</th><th>Recibido</th><th>Pendiente</th><th>Act.</th></tr></thead>
@@ -6057,17 +6113,17 @@ function ChargesOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{
                   const pending = Math.max(0, charge.amount - charge.collected);
                   const isSelected = selectedCharge?.id === charge.id;
                   return <tr key={charge.id} className={isSelected ? "selected-row" : undefined} aria-selected={isSelected} role="button" tabIndex={0} onPointerDown={() => setSelectedCharge(charge)} onClick={() => setSelectedCharge(charge)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedCharge(charge))}>
-                    <td>{index + 1}</td><td>{safeDateLabel(charge.dueDate)}</td><td>{client?.code ?? ""}</td><td>{client?.identification ?? ""}</td><td>{client?.name ?? "Cliente sin nombre"}</td><td>{abbreviation(charge.service)}</td><td>{charge.service}</td><td>{money(charge.amount)}</td><td>{money(charge.collected)}</td><td>{money(pending)}</td><td><LegacyCheck checked={charge.status !== "cancelled"} /></td>
+                    <td>{index + 1}</td><td>{safeDateLabel(charge.dueDate)}</td><td>{client?.code ?? ""}</td><td>{client?.identification ?? ""}</td><td>{client?.name ?? "Cliente sin nombre"}</td><td>{abbreviation(charge.service)}</td><td>{charge.service}</td><td>{nativeMoney(charge.amount, charge.currency)}</td><td>{nativeTotals(obligationReceived(charge), charge.currency)}</td><td>{charge.currencyConflict ? "Revisar moneda" : nativeMoney(pending, charge.currency)}</td><td><LegacyCheck checked={charge.status !== "cancelled"} /></td>
                   </tr>;
                 })}
               </tbody>
             </table>
             {!visibleCharges.length && <Empty title="Sin cargos" text="Ajusta los filtros o registra un nuevo cargo." />}
           </div>
-          <div className="legacy-footerbar"><span>Cantidad: <strong>{visibleCharges.length}</strong></span><span>Total: <strong>{money(totals.total)}</strong></span><span>Recib.: <strong>{money(totals.received)}</strong></span><span>Pend.: <strong>{money(totals.total - totals.received)}</strong></span></div>
+          <div className="legacy-footerbar"><span>Cantidad: <strong>{visibleCharges.length}</strong></span><span>Total: <strong>{nativeTotals(visibleCharges)}</strong></span><span>Recib.: <strong>{nativeTotals(visibleCharges.flatMap(obligationReceived))}</strong></span><span>Pend.: <strong>{nativeTotals(visibleCharges.filter((item) => !item.currencyConflict).map((item) => ({ currency: item.currency, amount: item.amount - item.collected })))}</strong></span></div>
         </section>
       </div>
-      {dialogMode && <CargoDialog charge={dialogMode === "edit" ? selectedCharge ?? undefined : undefined} clients={snapshot.clients} businessDate={snapshot.businessDate} onClose={() => setDialogMode(null)} onSave={saveCharge} onLoadClients={loadClients} />}
+      {dialogMode && <CargoDialog actorId={currentUser.id} charge={pendingCharge?.charge ?? (dialogMode === "edit" ? selectedCharge ?? undefined : undefined)} clients={snapshot.clients} businessDate={snapshot.businessDate} onClose={() => setDialogMode(null)} onSave={saveCharge} onLoadClients={loadClients} />}
       {uploadOpen && <CargoUploadDialog onClose={() => setUploadOpen(false)} onUpload={uploadCharges} request={importRequest} />}
       {clientSearchOpen && <ClientSearchSubmodal clients={clientDirectory} onClose={() => setClientSearchOpen(false)} onSelect={(client) => { setClientQuery(client.code); setClientSearchOpen(false); }} />}
       {confirmCancelOpen && <LegacyConfirmDialog message="¿Está seguro que desea cancelar el Cargo?" onYes={() => { setConfirmCancelOpen(false); setCancelReasonOpen(true); }} onNo={() => setConfirmCancelOpen(false)} />}
@@ -6449,12 +6505,12 @@ function RecurringChargesOperationalView({ snapshot, currentUser, onRefresh }: R
                 const client = clientById(record.clientId);
                 const isSelected = selectedRow?.id === record.id;
                 return <tr key={record.id} className={isSelected ? "selected-row" : undefined} aria-selected={isSelected} role="button" tabIndex={0} onClick={() => setSelectedRow(record)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedRow(record))}>
-                  <td>{index + 1}</td><td>{safeDateLabel(record.startDate)}</td><td>{record.frequency}</td><td>{client?.identification ?? ""}</td><td>{client?.name ?? "Cliente sin nombre"}</td><td>{record.service}</td><td className="text-right">{money(record.amount)}</td><td><LegacyCheck checked={record.active} /></td><td>{safeDateLabel(record.registeredAt)}</td>
+                  <td>{index + 1}</td><td>{safeDateLabel(record.startDate)}</td><td>{record.frequency}</td><td>{client?.identification ?? ""}</td><td>{client?.name ?? "Cliente sin nombre"}</td><td>{record.service}</td><td className="text-right">{nativeMoney(record.amount, record.currency)}</td><td><LegacyCheck checked={record.active} /></td><td>{safeDateLabel(record.registeredAt)}</td>
                 </tr>;
               }) : <tr><td className="recurring-charges-empty-cell" colSpan={9}>Sin cargos recurrentes.</td></tr>}</tbody>
             </table>
           </div>
-          <div className="legacy-footerbar"><span>Cantidad: <strong>{visibleRecords.length}</strong></span><span>Total: <strong>{money(recurringTotals.amount)}</strong></span><span>Recib.: <strong>{money(recurringTotals.received)}</strong></span><span>Pend.: <strong>{money(recurringTotals.pending)}</strong></span></div>
+          <div className="legacy-footerbar"><span>Cantidad: <strong>{visibleRecords.length}</strong></span><span>Total: <strong>{nativeTotals(visibleRecords)}</strong></span><span>Recib.: <strong>{nativeTotals(sourceCharges.flatMap(obligationReceived))}</strong></span><span>Pend.: <strong>{nativeTotals(sourceCharges.filter((item) => !item.currencyConflict).map((item) => ({ currency: item.currency, amount: Math.max(0, item.amount - item.collected) })))}</strong></span></div>
         </section>
       </div>
       {clientSearchOpen && <ClientSearchSubmodal clients={snapshot.clients} onClose={() => setClientSearchOpen(false)} onSelect={(client) => { setClientQuery(client.code); setClientSearchOpen(false); }} />}
@@ -6802,7 +6858,7 @@ function LegacyOperationView({
                   }) : <tr><td className="collections-empty-cell" colSpan={10}>Sin cobros registrados.</td></tr>}</tbody>
                 </table>
               </div>
-              <div className="legacy-footerbar"><span>Cantidad: <strong>{orderedCollectionRows.length}</strong></span><span>Total: <strong>{money(collectionTotal)}</strong></span><span>Cancelado: <strong>{money(collectionCancelledTotal)}</strong></span></div>
+              <div className="legacy-footerbar"><span>Cantidad: <strong>{orderedCollectionRows.length}</strong></span><span>Total: <strong>{nativeTotals(orderedCollectionRows.filter((row) => !(row.__raw as unknown as Movement).cancelledAt).map((row) => row.__raw as unknown as Movement))}</strong></span><span>Cancelado: <strong>{nativeTotals(orderedCollectionRows.filter((row) => (row.__raw as unknown as Movement).cancelledAt).map((row) => row.__raw as unknown as Movement))}</strong></span></div>
             </section>
           </div>
         </div>
@@ -7042,30 +7098,24 @@ type DepositDraft = {
 const emptyDepositQuantities = (): Record<number, string> =>
   Object.fromEntries(DENOMS.map((denomination) => [denomination, ""]));
 
-const depositAmount = (quantities: Record<number, string>) =>
-  DENOMS.reduce((total, denomination) => total + denomination * (Number(quantities[denomination]) || 0), 0);
+const validDepositQuantities = (quantities: Record<number, string>) => DENOMS.every((denomination) => { const value = quantities[denomination] ?? ""; return value === "" || /^\d+$/.test(value) && Number.isSafeInteger(Number(value)); });
+
+const depositAmount = (quantities: Record<number, string>) => {
+  if (!validDepositQuantities(quantities)) return NaN;
+  const total = DENOMS.reduce((sum, denomination) => sum + BigInt(denomination) * BigInt(quantities[denomination] || "0"), 0n);
+  return total <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(total) : NaN;
+};
 
 function depositMoney(value: number, currency: string) {
-  const formatted = new Intl.NumberFormat("es-DO", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value / 100);
-  const symbol = currency === "Peso Dominicano"
-    ? "RD$"
-    : currency === "Dólar Americano"
-      ? "US$"
-      : currency === "Euro"
-        ? "€"
-        : "";
-  return symbol ? `${symbol} ${formatted}` : formatted;
+  return nativeMoney(value, currency);
 }
 
 function depositDraftFromMovement(movement: Movement, fallbackCurrency = "Peso Dominicano"): DepositDraft {
   const quantities = emptyDepositQuantities();
   for (const item of movement.denominations ?? []) quantities[item.denominacion] = String(item.cantidad);
   return {
-    date: movement.createdAt.slice(0, 10),
-    currency: String((movement as Movement & { currency?: string }).currency ?? fallbackCurrency),
+    date: businessDate(movement.createdAt),
+    currency: currencyName((movement as Movement & { currency?: string }).currency ?? fallbackCurrency),
     collectorId: movement.collectorId,
     note: String((movement as Movement & { note?: string }).note ?? ""),
     quantities,
@@ -7082,7 +7132,7 @@ function depositDenominations(quantities: Record<number, string>) {
 function depositTicketFromDraft(draft: DepositDraft, id: string, snapshot: Snapshot): CollectionTicketModel {
   const lines = depositDenominations(draft.quantities).map(({ denominacion, cantidad }) => ({
     service: "Efectivo",
-    concept: `${money(denominacion)} × ${cantidad}`,
+    concept: `${nativeMoney(denominacion, draft.currency)} × ${cantidad}`,
     amount: denominacion * cantidad,
   }));
   const collector = snapshot.collectors.find((item) => item.id === draft.collectorId);
@@ -7106,10 +7156,12 @@ function depositTicketFromDraft(draft: DepositDraft, id: string, snapshot: Snaps
 function depositTicketFromRow(row: TableRow, snapshot: Snapshot): CollectionTicketModel {
   const movement = row.__raw as unknown as Movement;
   const draft = depositDraftFromMovement(movement, String(row.currency ?? "Peso Dominicano"));
-  return depositTicketFromDraft(draft, String(row.__id ?? movement.id), snapshot);
+  return { ...depositTicketFromDraft(draft, String(row.__id ?? movement.id), snapshot), amount: movement.amount };
 }
 
 function DepositsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{ snapshot: Snapshot; currentUser: User; onRefresh: () => void }>) {
+  const depositRequest = useMovementRequest(currentUser.id, "manual-deposit");
+  const pendingDeposit = pendingMovementDraft<{ draft: DepositDraft; print: boolean }>(currentUser.id, "manual-deposit");
   const permissions = permissionsFor(currentUser);
   const [mode, setMode] = useState("Todos");
   const [collectorFilter, setCollectorFilter] = useState("Todas");
@@ -7121,8 +7173,7 @@ function DepositsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
   const [filtersVisible, setFiltersVisible] = useState(true);
   const [selectedRow, setSelectedRow] = useState<TableRow | null>(null);
   const [order, setOrder] = useState<string[]>([]);
-  const [depositOverrides, setDepositOverrides] = useState<Record<string, DepositDraft>>({});
-  const [formTarget, setFormTarget] = useState<TableRow | "new" | null>(null);
+  const [formTarget, setFormTarget] = useState<TableRow | "new" | null>(() => pendingDeposit ? "new" : null);
   const [acceptConfirmOpen, setAcceptConfirmOpen] = useState(false);
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
   const [cancelReasonOpen, setCancelReasonOpen] = useState(false);
@@ -7142,31 +7193,22 @@ function DepositsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
   }, [orderKey, snapshot.movements]);
   const zones = Array.from(new Set(snapshot.routes.map((route) => route.sector).filter(Boolean)));
   const allRows = snapshot.movements.filter((movement) => movement.type === "deposit").map((movement, index): TableRow => {
-    const localDraft = depositOverrides[movement.id];
-    const raw = localDraft ? {
-      ...movement,
-      collectorId: localDraft.collectorId,
-      amount: depositAmount(localDraft.quantities),
-      createdAt: `${localDraft.date}T12:00:00.000Z`,
-      denominations: depositDenominations(localDraft.quantities),
-      currency: localDraft.currency,
-      note: localDraft.note,
-    } : movement;
+    const raw = movement;
     const collector = snapshot.collectors.find((item) => item.id === raw.collectorId);
     const stateLabel = raw.cancelledAt ? "Cancelado" : raw.acceptedAt ? "Aceptado" : "Pendiente";
     return {
       __id: movement.id,
-      __date: raw.createdAt.slice(0, 10),
+      __date: businessDate(raw.createdAt),
       __status: stateLabel,
       __amount: raw.amount,
       __raw: raw as unknown as Record<string, unknown>,
       n: index + 1,
-      date: dateLabel(raw.createdAt.slice(0, 10)),
+      date: dateLabel(businessDate(raw.createdAt)),
       collector: collector?.name ?? "Cobrador",
-      currency: String((raw as Movement & { currency?: string }).currency ?? "Peso Dominicano"),
-      amount: money(raw.amount),
+      currency: currencyName((raw as Movement & { currency?: string }).currency),
+      amount: nativeMoney(raw.amount, (raw as Movement & { currency?: string }).currency),
       checks: "0",
-      checkAmount: money(0),
+      checkAmount: nativeMoney(0, raw.currency),
       active: !raw.cancelledAt,
       accepted: Boolean(raw.acceptedAt),
     };
@@ -7175,7 +7217,7 @@ function DepositsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
     const movement = row.__raw as unknown as Movement;
     const collector = snapshot.collectors.find((item) => item.id === movement.collectorId);
     const route = snapshot.routes.find((item) => item.collectorId === movement.collectorId);
-    const rowDate = movement.createdAt.slice(0, 10);
+    const rowDate = businessDate(movement.createdAt);
     const zone = route?.sector ?? "";
     return (mode !== "Por Cobrador" || collectorFilter === "Todas" || movement.collectorId === collectorFilter)
       && (mode !== "Por Zona" || zoneFilter === "Todas" || zone === zoneFilter)
@@ -7193,7 +7235,7 @@ function DepositsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
   const currentMovement = currentSelection?.__raw as unknown as Movement | undefined;
   const detailDenominations = currentMovement?.denominations ?? [];
   const detailsTotal = detailDenominations.reduce((total, item) => total + item.denominacion * item.cantidad, 0);
-  const totals = orderedRows.reduce((total, row) => total + Number(row.__amount ?? 0), 0);
+  const totals = nativeTotals(orderedRows.map((row) => row.__raw as unknown as Movement));
   const moveSelected = (target: "first" | "previous" | "next" | "last") => {
     const id = String(selectedRow?.__id ?? "");
     const ids = [...order];
@@ -7265,27 +7307,24 @@ function DepositsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
   };
   const saveDeposit = async (draft: DepositDraft, shouldPrint: boolean) => {
     try {
-      let id = String(formTarget !== "new" && formTarget ? formTarget.__id : "");
-      if (formTarget === "new") {
-        const result = await api<{ movement?: Movement }>("/depositos", {
-          method: "POST",
-          body: JSON.stringify({ collectorId: draft.collectorId, amount: depositAmount(draft.quantities) }),
-        });
-        id = result.movement?.id ?? "";
-        if (!id) throw new Error("El servidor no devolvió el depósito creado.");
-      }
-      setDepositOverrides((current) => ({ ...current, [id]: draft }));
+      if (formTarget !== "new") throw new Error("El depósito registrado es inmutable. Puedes consultar, aceptar o cancelar el movimiento.");
+      const result = await depositRequest.run<{ movement: Movement }>("/depositos", {
+        collectorId: draft.collectorId, amount: depositAmount(draft.quantities), currency: currencyCode(draft.currency),
+        note: draft.note, denominations: depositDenominations(draft.quantities),
+      }, { draft, print: shouldPrint }, (value) => Boolean(value?.movement?.id) && value.movement.type === "deposit" && value.movement.collectorId === draft.collectorId && value.movement.amount === depositAmount(draft.quantities) && currencyCode(value.movement.currency) === currencyCode(draft.currency) && Boolean(businessDate(value.movement.createdAt)), "POST", "api");
+      const id = result.movement.id;
       setFormTarget(null);
-      toast.success(formTarget === "new" ? "Depósito guardado." : "Depósito actualizado localmente.");
+      toast.success("Depósito guardado.");
       onRefresh();
-      if (shouldPrint) setPrintTickets([depositTicketFromDraft(draft, id, snapshot)]);
+      if (shouldPrint) setPrintTickets([{ ...depositTicketFromDraft(depositDraftFromMovement(result.movement), id, snapshot), amount: result.movement.amount }]);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo guardar el depósito.");
     }
   };
   const formMovement = formTarget && formTarget !== "new" ? formTarget.__raw as unknown as Movement : undefined;
-  const formInitial = formMovement ? depositOverrides[String(formMovement.id)] ?? depositDraftFromMovement(formMovement) : undefined;
-  const acceptTotal = Object.entries(acceptQuantities).reduce((sum, [denomination, quantity]) => sum + Number(denomination) * (Number(quantity) || 0), 0);
+  const formInitial = formMovement ? depositDraftFromMovement(formMovement) : pendingDeposit?.draft;
+  const acceptTotal = depositAmount(acceptQuantities);
+  const acceptCurrency = (acceptTarget?.__raw as unknown as Movement | undefined)?.currency;
   const acceptAmount = Number(acceptTarget?.__amount ?? 0);
   return (
     <>
@@ -7334,37 +7373,41 @@ function DepositsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
                 </tr>;
               }) : <tr><td colSpan={9} className="collections-empty-cell">Sin depósitos registrados.</td></tr>}</tbody>
             </table></div>
-            <div className="legacy-footerbar"><span>Cantidad: <strong>{orderedRows.length}</strong></span><span>Total: <strong>{money(totals)}</strong></span></div>
+            <div className="legacy-footerbar"><span>Cantidad: <strong>{orderedRows.length}</strong></span><span>Total: <strong>{totals}</strong></span></div>
           </section>
           <aside className="legacy-detail-panel deposit-detail-panel" aria-label="Panel de detalles">
             <h2>Panel de Detalles</h2>
-            <div className="deposit-detail-meta">{currentSelection ? <><strong>{String(currentSelection.collector ?? "Cobrador")}</strong><span>{String(currentSelection.currency ?? "Peso Dominicano")} · {money(Number(currentSelection.__amount ?? 0))}</span>{(currentMovement as Movement & { note?: string } | undefined)?.note && <small>{(currentMovement as Movement & { note?: string }).note}</small>}</> : <p>Seleccione un depósito para ver sus detalles.</p>}</div>
-            <div className="deposit-detail-table-wrap"><table className="deposit-detail-table"><thead><tr><th>Banco</th><th>Numero</th><th>Importe</th></tr></thead><tbody>{detailDenominations.length ? detailDenominations.map((item) => <tr key={`${item.denominacion}-${item.cantidad}`}><td>Efectivo</td><td>{money(item.denominacion)} × {item.cantidad}</td><td>{money(item.denominacion * item.cantidad)}</td></tr>) : <tr><td colSpan={3} className="deposit-detail-empty">Sin detalle de efectivo.</td></tr>}</tbody><tfoot><tr><td colSpan={2}>Total</td><td>{money(detailsTotal)}</td></tr></tfoot></table></div>
+            <div className="deposit-detail-meta">{currentSelection ? <><strong>{String(currentSelection.collector ?? "Cobrador")}</strong><span>{String(currentSelection.currency ?? "Peso Dominicano")} · {nativeMoney(Number(currentSelection.__amount ?? 0), currentMovement?.currency)}</span>{(currentMovement as Movement & { note?: string } | undefined)?.note && <small>{(currentMovement as Movement & { note?: string }).note}</small>}</> : <p>Seleccione un depósito para ver sus detalles.</p>}</div>
+            <div className="deposit-detail-table-wrap"><table className="deposit-detail-table"><thead><tr><th>Banco</th><th>Numero</th><th>Importe</th></tr></thead><tbody>{detailDenominations.length ? detailDenominations.map((item) => <tr key={`${item.denominacion}-${item.cantidad}`}><td>Efectivo</td><td>{nativeMoney(item.denominacion, currentMovement?.currency)} × {item.cantidad}</td><td>{nativeMoney(item.denominacion * item.cantidad, currentMovement?.currency)}</td></tr>) : <tr><td colSpan={3} className="deposit-detail-empty">Sin detalle de efectivo.</td></tr>}</tbody><tfoot><tr><td colSpan={2}>Total</td><td>{nativeMoney(detailsTotal, currentMovement?.currency)}</td></tr></tfoot></table></div>
             <div className="deposit-detail-actions"><button type="button" onClick={() => { setDetailRevision((revision) => revision + 1); onRefresh(); toast.success("Detalles refrescados."); }}><RefreshCw size={14} /> Refrescar</button><span className="sr-only">Actualización {detailRevision}</span></div>
           </aside>
         </div>
       </div>
-      {formTarget && <DepositDataDialog snapshot={snapshot} movement={formMovement} initialDraft={formInitial} onClose={() => setFormTarget(null)} onSave={saveDeposit} />}
+      {formTarget && <DepositDataDialog actorId={currentUser.id} snapshot={snapshot} movement={formMovement} initialDraft={formInitial} onClose={() => setFormTarget(null)} onSave={saveDeposit} />}
       {acceptConfirmOpen && <LegacyConfirmDialog message="¿Está seguro que en aceptar el depósito?" onYes={beginAccept} onNo={() => setAcceptConfirmOpen(false)} />}
       {cancelConfirmOpen && <LegacyConfirmDialog message="¿Realmente desea cancelar el registro actual?" onYes={beginCancel} onNo={() => setCancelConfirmOpen(false)} />}
       {cancelReasonOpen && <LegacyDialog title="Entre un valor..." onClose={() => { setCancelReasonOpen(false); setCancelReason("Digitado por error"); }} className="deposit-cancel-reason-dialog" overlayClassName="collection-receipt-suboverlay"><label className="deposit-dialog-row"><span>Valor:</span><input autoFocus value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} /></label><div className="legacy-dialog-actions centered"><button type="button" onClick={confirmCancel}>oK</button><button type="button" onClick={() => { setCancelReasonOpen(false); setCancelReason("Digitado por error"); }}>Cancelar</button></div></LegacyDialog>}
-      {acceptTarget && <LegacyDialog title="Desglose de denominaciones" onClose={() => setAcceptTarget(null)} className="deposits-accept-dialog"><p>Depósito de {money(acceptAmount)} — indique los billetes y monedas:</p><div className="deposit-accept-denoms">{DENOMS.map((denomination) => <label key={denomination}>{money(denomination)}<input type="number" min="0" step="1" value={acceptQuantities[denomination] ?? ""} onChange={(event) => setAcceptQuantities((current) => ({ ...current, [denomination]: event.target.value }))} /></label>)}</div><div className="legacy-footerbar"><span>Desglosado: <strong>{money(acceptTotal)}</strong> de <strong>{money(acceptAmount)}</strong></span></div>{acceptTotal !== 0 && acceptTotal !== acceptAmount && <div className="inline-error" role="alert">El desglose debe cuadrar exactamente con el importe.</div>}<div className="legacy-dialog-actions centered"><button type="button" onClick={() => setAcceptTarget(null)}>Cancelar</button><button type="button" disabled={acceptTotal !== 0 && acceptTotal !== acceptAmount} onClick={() => void runDepositAction(acceptTarget, "aceptar", depositDenominations(acceptQuantities))}>Aceptar depósito</button></div></LegacyDialog>}
+      {acceptTarget && <LegacyDialog title="Desglose de denominaciones" onClose={() => setAcceptTarget(null)} className="deposits-accept-dialog"><p>Depósito de {nativeMoney(acceptAmount, acceptCurrency)} — indique los billetes y monedas:</p><div className="deposit-accept-denoms">{DENOMS.map((denomination) => <label key={denomination}>{nativeMoney(denomination, acceptCurrency)}<input type="number" min="0" step="1" value={acceptQuantities[denomination] ?? ""} onChange={(event) => setAcceptQuantities((current) => ({ ...current, [denomination]: event.target.value }))} /></label>)}</div><div className="legacy-footerbar"><span>Desglosado: <strong>{Number.isSafeInteger(acceptTotal) ? nativeMoney(acceptTotal, acceptCurrency) : "Desglose no válido"}</strong> de <strong>{nativeMoney(acceptAmount, acceptCurrency)}</strong></span></div>{(!Number.isSafeInteger(acceptTotal) || (acceptTotal !== 0 && acceptTotal !== acceptAmount)) && <div className="inline-error" role="alert">El desglose debe cuadrar exactamente con el importe.</div>}<div className="legacy-dialog-actions centered"><button type="button" onClick={() => setAcceptTarget(null)}>Cancelar</button><button type="button" disabled={!Number.isSafeInteger(acceptTotal) || (acceptTotal !== 0 && acceptTotal !== acceptAmount)} onClick={() => void runDepositAction(acceptTarget, "aceptar", depositDenominations(acceptQuantities))}>Aceptar depósito</button></div></LegacyDialog>}
       {printTickets && <CollectionReceiptPrintDialog receipts={printTickets} onClose={() => setPrintTickets(null)} />}
     </>
   );
 }
 
-function DepositDataDialog({ snapshot, movement, initialDraft, onClose, onSave }: Readonly<{ snapshot: Snapshot; movement?: Movement; initialDraft?: DepositDraft; onClose: () => void; onSave: (draft: DepositDraft, shouldPrint: boolean) => Promise<void> }>) {
-  const [date, setDate] = useState(initialDraft?.date ?? localSystemDate());
+function DepositDataDialog({ actorId, snapshot, movement, initialDraft, onClose, onSave }: Readonly<{ actorId: string; snapshot: Snapshot; movement?: Movement; initialDraft?: DepositDraft; onClose: () => void; onSave: (draft: DepositDraft, shouldPrint: boolean) => Promise<void> }>) {
+  const request = useMovementRequest(actorId, "manual-deposit");
+  const pending = pendingMovementDraft<{ draft: DepositDraft; print: boolean }>(actorId, "manual-deposit");
+  const [date] = useState(initialDraft?.date ?? snapshot.businessDate);
   const [currency, setCurrency] = useState(initialDraft?.currency ?? "Peso Dominicano");
   const [collectorId, setCollectorId] = useState(initialDraft?.collectorId ?? snapshot.collectors[0]?.id ?? "");
   const [note, setNote] = useState(initialDraft?.note ?? "");
-  const [quantities, setQuantities] = useState<Record<number, string>>(emptyDepositQuantities());
+  const [quantities, setQuantities] = useState<Record<number, string>>(initialDraft?.quantities ?? emptyDepositQuantities());
   const [errorOpen, setErrorOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const total = depositAmount(quantities);
+  const total = movement?.amount ?? depositAmount(quantities);
+  const validTotal = Number.isSafeInteger(total) && total >= 0;
   const submit = async (shouldPrint: boolean) => {
-    if (total <= 0) {
+    if (movement || request.busy || busy) return;
+    if (!Number.isSafeInteger(total) || total <= 0) {
       setErrorOpen(true);
       return;
     }
@@ -7374,7 +7417,7 @@ function DepositDataDialog({ snapshot, movement, initialDraft, onClose, onSave }
     }
     setBusy(true);
     try {
-      await onSave({ date, currency, collectorId, note, quantities: { ...quantities } }, shouldPrint);
+      await onSave(pending?.draft ?? { date, currency, collectorId, note, quantities: { ...quantities } }, pending?.print ?? shouldPrint);
     } finally {
       setBusy(false);
     }
@@ -7382,10 +7425,8 @@ function DepositDataDialog({ snapshot, movement, initialDraft, onClose, onSave }
   const refreshDenominations = () => {
     const collector = snapshot.collectors.find((item) => item.id === collectorId);
     const loaded = emptyDepositQuantities();
-    // El snapshot solo expone el efectivo disponible del cobrador en DOP.
-    // No se debe presentar ese saldo como recaudación de otra moneda.
-    if (collector && currency === "Peso Dominicano") {
-      let remaining = Math.max(0, Math.round(collector.cashInHand));
+    if (collector && currencyCode(currency)) {
+      let remaining = Math.max(0, collectionCash(snapshot.movements, collector.id, currency));
       for (const denomination of DENOMS) {
         const quantity = Math.floor(remaining / denomination);
         loaded[denomination] = quantity ? String(quantity) : "";
@@ -7394,27 +7435,28 @@ function DepositDataDialog({ snapshot, movement, initialDraft, onClose, onSave }
     }
     setQuantities(loaded);
     toast.success(
-      collector && currency === "Peso Dominicano"
+      collector && currencyCode(currency)
         ? `Denominaciones cargadas para ${collector.name} · ${currency}.`
         : `No hay recaudación disponible para ${collector?.name ?? "el cobrador"} en ${currency}.`,
     );
   };
-  return <LegacyDialog title="Datos del Depósito..." onClose={onClose} className="deposit-data-dialog"><div className="deposit-data-content">
+  const close = () => { if (!request.busy && !busy) onClose(); };
+  return <LegacyDialog title="Datos del Depósito..." onClose={close} className="deposit-data-dialog"><div className="deposit-data-content">{movement && <p role="status">Movimiento confirmado e inmutable. Consulta su importe y desglose; utiliza Aceptar o Cancelar desde el listado.</p>}<fieldset disabled={Boolean(movement) || request.locked} style={{ border: 0, padding: 0, margin: 0, display: "contents" }}>
     <div className="deposit-data-fields">
-      <div className="deposit-data-meta-row"><label>Doc:<input value={movement?.id ?? "-1"} readOnly disabled /></label><label>Fecha:<input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label></div>
-      <label className="deposit-dialog-row"><span>Moneda:</span><select value={currency} onChange={(event) => setCurrency(event.target.value)}>{CURRENCIES.map((item) => <option key={item}>{item}</option>)}</select></label>
-      <label className="deposit-dialog-row"><span>Cobrad.:</span><select value={collectorId} onChange={(event) => setCollectorId(event.target.value)}>{snapshot.collectors.map((collector) => <option key={collector.id} value={collector.id}>{collector.name}</option>)}</select></label>
+      <div className="deposit-data-meta-row"><label>Doc:<input value={movement?.id ?? "-1"} readOnly disabled /></label><label>Fecha:<input type="date" value={date} readOnly /></label></div>
+      <label className="deposit-dialog-row"><span>Moneda:</span><select value={currency} onChange={(event) => { setCurrency(event.target.value); setQuantities(emptyDepositQuantities()); }}>{CURRENCIES.map((item) => <option key={item}>{item}</option>)}</select></label>
+      <label className="deposit-dialog-row"><span>Cobrad.:</span><select value={collectorId} onChange={(event) => { setCollectorId(event.target.value); setQuantities(emptyDepositQuantities()); }}>{snapshot.collectors.map((collector) => <option key={collector.id} value={collector.id}>{collector.name}</option>)}</select></label>
       <label className="deposit-dialog-row"><span>Nota:</span><input value={note} onChange={(event) => setNote(event.target.value)} /></label>
     </div>
-    <section className="deposit-denominations-section"><div className="deposit-denominations-toolbar"><strong>Denominaciones</strong><button type="button" onClick={refreshDenominations}><RefreshCw size={14} /> Refrescar</button></div><div className="deposit-denominations-table-wrap"><table className="deposit-denominations-table"><thead><tr><th>Denom.</th><th>Cantidad</th><th>Importe</th></tr></thead><tbody>{DENOMS.map((denomination) => { const quantity = Number(quantities[denomination] ?? 0) || 0; return <tr key={denomination}><td>{depositMoney(denomination, currency)}</td><td><span className="deposit-denomination-quantity">{quantity}</span></td><td>{depositMoney(denomination * quantity, currency)}</td></tr>; })}</tbody></table></div></section>
-    <div className="deposit-data-footer"><label>Total:<input value={depositMoney(total, currency)} readOnly disabled /></label><div className="legacy-dialog-actions"><button type="button" disabled={busy} onClick={() => void submit(false)}>Guardar</button><button type="button" disabled={busy} onClick={() => void submit(true)}>Guardar e Imp.</button><button type="button" disabled={busy} onClick={onClose}>Cancelar</button></div></div>
+    <section className="deposit-denominations-section"><div className="deposit-denominations-toolbar"><strong>Denominaciones</strong><button type="button" onClick={refreshDenominations}><RefreshCw size={14} /> Refrescar</button></div><div className="deposit-denominations-table-wrap"><table className="deposit-denominations-table"><thead><tr><th>Denom.</th><th>Cantidad</th><th>Importe</th></tr></thead><tbody>{DENOMS.map((denomination) => { const quantity = Number(quantities[denomination] ?? 0) || 0; return <tr key={denomination}><td>{depositMoney(denomination, currency)}</td><td><input aria-label={`Cantidad ${denomination / 100}`} type="number" min="0" step="1" value={quantities[denomination] ?? ""} onChange={(event) => setQuantities((current) => ({ ...current, [denomination]: event.target.value }))} /></td><td>{Number.isSafeInteger(denomination * quantity) && quantity >= 0 ? depositMoney(denomination * quantity, currency) : "Cantidad no válida"}</td></tr>; })}</tbody></table></div></section>
+    </fieldset>{request.error && <p role="alert">{request.error}</p>}{request.uncertain && <p role="status">Reintenta este mismo depósito antes de cambiar los datos.</p>}<div className="deposit-data-footer"><label>Total:<input value={validTotal ? depositMoney(total, currency) : "Importe no válido"} readOnly disabled /></label><div className="legacy-dialog-actions"><button type="button" disabled={Boolean(movement) || busy || request.busy} onClick={() => void submit(false)}>{request.uncertain ? "Reintentar" : "Guardar"}</button><button type="button" disabled={Boolean(movement) || busy || request.busy || request.uncertain} onClick={() => void submit(true)}>Guardar e Imp.</button><button type="button" disabled={busy || request.busy} onClick={close}>Cancelar</button></div></div>
   </div>{errorOpen && <LegacyAlertDialog title="Error" message={'El campo "Total" no contiene un valor real válido'} onClose={() => setErrorOpen(false)} overlayClassName="collection-receipt-suboverlay" />}</LegacyDialog>;
 }
 
 function cashDeliveryTicketFromDraft(draft: DepositDraft, id: string, snapshot: Snapshot): CollectionTicketModel {
   const lines = depositDenominations(draft.quantities).map(({ denominacion, cantidad }) => ({
     service: "Entrega de dinero",
-    concept: `${money(denominacion)} × ${cantidad}`,
+    concept: `${nativeMoney(denominacion, draft.currency)} × ${cantidad}`,
     amount: denominacion * cantidad,
   }));
   const collector = snapshot.collectors.find((item) => item.id === draft.collectorId);
@@ -7436,6 +7478,8 @@ function cashDeliveryTicketFromDraft(draft: DepositDraft, id: string, snapshot: 
 }
 
 function CashDeliveriesOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{ snapshot: Snapshot; currentUser: User; onRefresh: () => void }>) {
+  const deliveryRequest = useMovementRequest(currentUser.id, "manual-delivery");
+  const pendingDelivery = pendingMovementDraft<{ draft: DepositDraft; print: boolean }>(currentUser.id, "manual-delivery");
   const permissions = permissionsFor(currentUser);
   const [mode, setMode] = useState("Todos");
   const [collectorFilter, setCollectorFilter] = useState("Todas");
@@ -7446,7 +7490,7 @@ function CashDeliveriesOperationalView({ snapshot, currentUser, onRefresh }: Rea
   const [selectedId, setSelectedId] = useState("");
   const [order, setOrder] = useState<string[]>([]);
   const [localDetails, setLocalDetails] = useState<Record<string, DepositDraft>>({});
-  const [formOpen, setFormOpen] = useState(false);
+  const [formOpen, setFormOpen] = useState(() => Boolean(pendingDelivery));
   const [deliveryToCancel, setDeliveryToCancel] = useState<Movement | null>(() => pendingMovementDraft<{ movement: Movement }>(currentUser.id, "cancel-office_delivery")?.movement ?? null);
   const [printTicket, setPrintTicket] = useState<CollectionTicketModel | null>(null);
   const [flash, setFlash] = useState(false);
@@ -7475,17 +7519,17 @@ function CashDeliveriesOperationalView({ snapshot, currentUser, onRefresh }: Rea
       const collector = snapshot.collectors.find((item) => item.id === movement.collectorId);
       return {
         __id: movement.id,
-        __date: raw.createdAt.slice(0, 10),
+        __date: businessDate(raw.createdAt),
         __status: movement.cancelledAt ? "Inactivo" : "Activo",
         __amount: movement.amount,
         __raw: raw as unknown as Record<string, unknown>,
         n: index + 1,
-        date: dateLabel(raw.createdAt.slice(0, 10)),
+        date: dateLabel(businessDate(raw.createdAt)),
         collector: collector?.name ?? "Cobrador",
-        currency: local?.currency ?? "Peso Dominicano",
-        amount: money(movement.amount),
+        currency: currencyName(movement.currency),
+        amount: nativeMoney(movement.amount, movement.currency),
         checks: "0",
-        checkAmount: money(0),
+        checkAmount: nativeMoney(0, movement.currency),
         active: !movement.cancelledAt,
         accepted: false,
       };
@@ -7530,19 +7574,19 @@ function CashDeliveriesOperationalView({ snapshot, currentUser, onRefresh }: Rea
   };
   const saveDelivery = async (draft: DepositDraft, shouldPrint: boolean) => {
     try {
-      const result = await api<{ movement?: Movement }>("/entregas", {
-        method: "POST",
-        headers: { "Idempotency-Key": crypto.randomUUID() },
-        body: JSON.stringify({ collectorId: draft.collectorId, amount: depositAmount(draft.quantities) }),
-      });
+      const result = await deliveryRequest.run<{ movement: Movement }>("/entregas", {
+        collectorId: draft.collectorId, amount: depositAmount(draft.quantities), currency: currencyCode(draft.currency),
+        note: draft.note, denominations: depositDenominations(draft.quantities),
+      }, { draft, print: shouldPrint }, (value) => Boolean(value?.movement?.id) && value.movement.type === "office_delivery" && value.movement.collectorId === draft.collectorId && value.movement.amount === depositAmount(draft.quantities) && currencyCode(value.movement.currency) === currencyCode(draft.currency) && Boolean(businessDate(value.movement.createdAt)), "POST", "api");
       const id = result.movement?.id;
       if (!id) throw new Error("El servidor no devolvió la entrega creada.");
-      setLocalDetails((current) => ({ ...current, [id]: draft }));
+      const confirmed = depositDraftFromMovement(result.movement);
+      setLocalDetails((current) => ({ ...current, [id]: confirmed }));
       setFormOpen(false);
       setSelectedId(id);
       toast.success("Entrega de dinero registrada.");
       await onRefresh();
-      if (shouldPrint) setPrintTicket(cashDeliveryTicketFromDraft(draft, id, snapshot));
+      if (shouldPrint) setPrintTicket(cashDeliveryTicketFromDraft(confirmed, id, snapshot));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo registrar la entrega de dinero.");
     }
@@ -7592,26 +7636,28 @@ function CashDeliveriesOperationalView({ snapshot, currentUser, onRefresh }: Rea
         </section>
       </div>
     </div>
-    {formOpen && <CashDeliveryDataDialog snapshot={snapshot} onClose={() => setFormOpen(false)} onSave={saveDelivery} />}
+    {formOpen && <CashDeliveryDataDialog actorId={currentUser.id} snapshot={snapshot} onClose={() => setFormOpen(false)} onSave={saveDelivery} />}
     {deliveryToCancel && <MovementCancellationDialog actorId={currentUser.id} movement={deliveryToCancel} kind="entregas" onClose={() => setDeliveryToCancel(null)} onSaved={() => { setDeliveryToCancel(null); setSelectedId(""); onRefresh(); }} />}
     {printTicket && <CollectionReceiptPrintDialog receipts={[printTicket]} title="Imprimir Recibo de Entrega..." onClose={() => setPrintTicket(null)} />}
   </>;
 }
 
-function CashDeliveryDataDialog({ snapshot, onClose, onSave }: Readonly<{ snapshot: Snapshot; onClose: () => void; onSave: (draft: DepositDraft, shouldPrint: boolean) => Promise<void> }>) {
-  const [date, setDate] = useState(localSystemDate());
-  const [currency, setCurrency] = useState("Peso Dominicano");
-  const [collectorId, setCollectorId] = useState(snapshot.collectors[0]?.id ?? "");
-  const [note, setNote] = useState("");
-  const [quantities, setQuantities] = useState<Record<number, string>>(emptyDepositQuantities());
+function CashDeliveryDataDialog({ actorId, snapshot, onClose, onSave }: Readonly<{ actorId: string; snapshot: Snapshot; onClose: () => void; onSave: (draft: DepositDraft, shouldPrint: boolean) => Promise<void> }>) {
+  const request = useMovementRequest(actorId, "manual-delivery");
+  const pending = pendingMovementDraft<{ draft: DepositDraft; print: boolean }>(actorId, "manual-delivery");
+  const [date] = useState(pending?.draft.date ?? snapshot.businessDate);
+  const [currency, setCurrency] = useState(pending?.draft.currency ?? "Peso Dominicano");
+  const [collectorId, setCollectorId] = useState(pending?.draft.collectorId ?? snapshot.collectors[0]?.id ?? "");
+  const [note, setNote] = useState(pending?.draft.note ?? "");
+  const [quantities, setQuantities] = useState<Record<number, string>>(pending?.draft.quantities ?? emptyDepositQuantities());
   const [errorOpen, setErrorOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const total = depositAmount(quantities);
   const refreshDenominations = () => {
     const collector = snapshot.collectors.find((item) => item.id === collectorId);
     const loaded = emptyDepositQuantities();
-    if (collector && currency === "Peso Dominicano") {
-      const movements = snapshot.movements.filter((item) => item.collectorId === collector.id && !item.cancelledAt);
+    if (collector && currencyCode(currency)) {
+      const movements = snapshot.movements.filter((item) => item.collectorId === collector.id && !item.cancelledAt && currencyCode((item as Movement & { currency?: string }).currency) === currencyCode(currency));
       const delivered = movements.filter((item) => item.type === "office_delivery").reduce((sum, item) => sum + item.amount, 0);
       const paid = movements.filter((item) => item.type === "payout").reduce((sum, item) => sum + item.amount, 0);
       const capacity = Math.max(0, collector.payoutLimit - (delivered - paid));
@@ -7623,12 +7669,13 @@ function CashDeliveryDataDialog({ snapshot, onClose, onSave }: Readonly<{ snapsh
       }
     }
     setQuantities(loaded);
-    toast.success(collector && currency === "Peso Dominicano" && depositAmount(loaded) > 0
+    toast.success(collector && currencyCode(currency) && depositAmount(loaded) > 0
       ? `Desglose simulado para ${collector.name} · ${currency}.`
       : `No hay efectivo disponible para simular una entrega en ${currency}.`);
   };
   const submit = async (shouldPrint: boolean) => {
-    if (total <= 0) {
+    if (request.busy || busy) return;
+    if (!Number.isSafeInteger(total) || total <= 0) {
       setErrorOpen(true);
       return;
     }
@@ -7638,20 +7685,24 @@ function CashDeliveryDataDialog({ snapshot, onClose, onSave }: Readonly<{ snapsh
     }
     setBusy(true);
     try {
-      await onSave({ date, currency, collectorId, note, quantities: { ...quantities } }, shouldPrint);
+      await onSave(pending?.draft ?? { date, currency, collectorId, note, quantities: { ...quantities } }, pending?.print ?? shouldPrint);
     } finally {
       setBusy(false);
     }
   };
-  return <LegacyDialog title="Datos de la Entrega de Dinero..." onClose={onClose} className="cash-delivery-data-dialog deposit-data-dialog"><div className="deposit-data-content">
+  const close = () => { if (!request.busy && !busy) onClose(); };
+  return <LegacyDialog title="Datos de la Entrega de Dinero..." onClose={close} className="cash-delivery-data-dialog deposit-data-dialog"><div className="deposit-data-content">
+    <fieldset disabled={request.locked} style={{ border: 0, padding: 0, margin: 0, display: "contents" }}>
     <div className="deposit-data-fields">
-      <div className="deposit-data-meta-row"><label>Doc:<input value="-1" readOnly disabled /></label><label>Fecha:<input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label></div>
+      <div className="deposit-data-meta-row"><label>Doc:<input value="-1" readOnly disabled /></label><label>Fecha:<input type="date" value={date} readOnly /></label></div>
       <label className="deposit-dialog-row"><span>Moneda:</span><select value={currency} onChange={(event) => { setCurrency(event.target.value); setQuantities(emptyDepositQuantities()); }}>{CURRENCIES.map((item) => <option key={item}>{item}</option>)}</select></label>
       <label className="deposit-dialog-row"><span>Cobrad.:</span><select value={collectorId} onChange={(event) => { setCollectorId(event.target.value); setQuantities(emptyDepositQuantities()); }}><option value="">Seleccione</option>{snapshot.collectors.map((collector) => <option key={collector.id} value={collector.id}>{collector.name}</option>)}</select></label>
       <label className="deposit-dialog-row"><span>Nota:</span><input value={note} onChange={(event) => setNote(event.target.value)} /></label>
     </div>
     <section className="deposit-denominations-section"><div className="deposit-denominations-toolbar"><strong>Denominaciones</strong><button type="button" onClick={refreshDenominations}><RefreshCw size={14} /> Refrescar</button></div><div className="deposit-denominations-table-wrap"><table className="deposit-denominations-table"><thead><tr><th>Denom.</th><th>Cantidad</th><th>Importe</th></tr></thead><tbody>{DENOMS.map((denomination) => { const quantity = Number(quantities[denomination] ?? 0) || 0; return <tr key={denomination}><td>{depositMoney(denomination, currency)}</td><td><span className="deposit-denomination-quantity">{quantity}</span></td><td>{depositMoney(denomination * quantity, currency)}</td></tr>; })}</tbody></table></div></section>
-    <div className="deposit-data-footer"><label>Total:<input value={depositMoney(total, currency)} readOnly disabled /></label><div className="legacy-dialog-actions"><button type="button" disabled={busy} onClick={() => void submit(false)}>Guardar</button><button type="button" disabled={busy} onClick={() => void submit(true)}>Guardar e Imp.</button><button type="button" disabled={busy} onClick={onClose}>Cancelar</button></div></div>
+    </fieldset>
+    {request.error && <p role="alert">{request.error}</p>}{request.uncertain && <p role="status">Reintenta esta misma entrega antes de cambiar los datos.</p>}
+    <div className="deposit-data-footer"><label>Total:<input value={depositMoney(total, currency)} readOnly disabled /></label><div className="legacy-dialog-actions"><button type="button" disabled={busy || request.busy} onClick={() => void submit(false)}>{request.uncertain ? "Reintentar" : "Guardar"}</button><button type="button" disabled={busy || request.busy || request.uncertain} onClick={() => void submit(true)}>Guardar e Imp.</button><button type="button" disabled={busy || request.busy} onClick={close}>Cancelar</button></div></div>
   </div>{errorOpen && <LegacyAlertDialog title="Error" message={'El campo "Total" no contiene un valor real válido'} onClose={() => setErrorOpen(false)} overlayClassName="collection-receipt-suboverlay" />}</LegacyDialog>;
 }
 
@@ -7661,7 +7712,7 @@ type PayoutLocalDetails = Pick<Payout, "clientId" | "collectorId" | "concept" | 
   service: string;
   note: string;
 };
-type PayoutViewRecord = Payout & PayoutLocalDetails;
+type PayoutViewRecord = Omit<Payout, "currency"> & PayoutLocalDetails;
 type PayoutFormDraft = {
   clientId: string;
   clientCode: string;
@@ -7674,6 +7725,8 @@ type PayoutFormDraft = {
 };
 
 function PayoutsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{ snapshot: Snapshot; currentUser: User; onRefresh: () => void }>) {
+  const payoutRequest = useMovementRequest(currentUser.id, "manual-payout");
+  const pendingPayout = pendingMovementDraft<PayoutFormDraft>(currentUser.id, "manual-payout");
   const permissions = permissionsFor(currentUser);
   const [mode, setMode] = useState("Todos");
   const [clientQuery, setClientQuery] = useState("");
@@ -7688,7 +7741,7 @@ function PayoutsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{
   const [clientSearchOpen, setClientSearchOpen] = useState(false);
   const [order, setOrder] = useState<string[]>([]);
   const [localDetails, setLocalDetails] = useState<Record<string, PayoutLocalDetails>>({});
-  const [formTarget, setFormTarget] = useState<string | "new" | null>(null);
+  const [formTarget, setFormTarget] = useState<string | "new" | null>(() => pendingPayout ? "new" : null);
   const [confirmInactivate, setConfirmInactivate] = useState(false);
   const [flash, setFlash] = useState(false);
   const payoutIdsKey = snapshot.payouts.map((payout) => payout.id).join("|");
@@ -7712,10 +7765,10 @@ function PayoutsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{
       collectorId: details?.collectorId ?? payout.collectorId,
       concept: details?.concept ?? payout.concept,
       amount: details?.amount ?? payout.amount,
-      date: details?.date ?? snapshot.businessDate,
-      currency: details?.currency ?? "Peso Dominicano",
-      service: details?.service ?? payout.concept,
-      note: details?.note ?? "",
+      date: (payout as Payout & { dueDate?: string }).dueDate ?? details?.date ?? "",
+      currency: currencyName((payout as Payout & { currency?: string }).currency ?? details?.currency),
+      service: (payout as Payout & { service?: string }).service ?? details?.service ?? "Descargo",
+      note: (payout as Payout & { note?: string }).note ?? details?.note ?? "",
     };
   });
   const visibleRecords = records.filter((payout) => {
@@ -7771,10 +7824,12 @@ function PayoutsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{
     onRefresh();
   };
   const savePayout = async (draft: PayoutFormDraft) => {
+    draft = pendingPayout ?? draft;
     const client = snapshot.clients.find((item) => item.id === draft.clientId);
     const route = snapshot.routes.find((item) => item.id === client?.routeId);
     const collectorId = route?.collectorId ?? snapshot.collectors.find((item) => item.routeId === client?.routeId)?.id ?? "";
-    const amount = Math.round(Number(draft.price) * Number(draft.quantity) * 100);
+    let amount: number;
+    try { amount = decimalProductCents(draft.price, draft.quantity); } catch (error) { toast.error(error instanceof Error ? error.message : "Importe no válido."); return false; }
     if (!client) {
       toast.error('El campo "Cliente" no puede estar vacío.');
       return false;
@@ -7783,7 +7838,7 @@ function PayoutsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{
       toast.error("No hay un cobrador asignado a la ruta del cliente.");
       return false;
     }
-    if (!Number.isFinite(amount) || amount <= 0) {
+    if (!Number.isSafeInteger(amount) || amount <= 0) {
       toast.error("El importe total debe ser mayor a cero.");
       return false;
     }
@@ -7804,11 +7859,9 @@ function PayoutsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{
       return true;
     }
     try {
-      const saved = await api<Payout>("/descargos", {
-        method: "POST",
-        headers: { "Idempotency-Key": crypto.randomUUID() },
-        body: JSON.stringify({ clientId: client.id, collectorId, concept: details.concept, amount }),
-      });
+      const saved = await payoutRequest.run<Payout>("/descargos", {
+        clientId: client.id, collectorId, concept: details.concept, amount, currency: currencyCode(draft.currency),
+      }, draft, (value) => Boolean(value?.id) && value.clientId === client.id && value.collectorId === collectorId && value.amount === amount && currencyCode(value.currency) === currencyCode(draft.currency), "POST", "api");
       setLocalDetails((current) => ({ ...current, [saved.id]: details }));
       setSelectedId(saved.id);
       setFormTarget(null);
@@ -7887,15 +7940,15 @@ function PayoutsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{
                 const client = snapshot.clients.find((item) => item.id === payout.clientId);
                 const selected = payout.id === selectedPayout?.id;
                 return <tr key={payout.id} className={selected ? "selected-row" : undefined} aria-selected={selected} role="button" tabIndex={0} onClick={() => setSelectedId(payout.id)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedId(payout.id))}>
-                  <td>{index + 1}</td><td>{client?.identification ?? ""}</td><td>{client?.name ?? "Cliente sin nombre"}</td><td>{safeDateLabel(payout.date)}</td><td>{payout.currency}</td><td>{payout.service}</td><td>{money(payout.amount)}</td><td><LegacyCheck checked={payout.status !== "cancelled"} /></td>
+                  <td>{index + 1}</td><td>{client?.identification ?? ""}</td><td>{client?.name ?? "Cliente sin nombre"}</td><td>{safeDateLabel(payout.date)}</td><td>{payout.currency}</td><td>{payout.service}</td><td>{nativeMoney(payout.amount, payout.currency)}</td><td><LegacyCheck checked={payout.status !== "cancelled"} /></td>
                 </tr>;
               }) : <tr><td colSpan={8} className="payouts-empty-cell">Sin descargos registrados.</td></tr>}
             </tbody></table></div>
-            <div className="legacy-footerbar"><span>Cantidad: <strong>{orderedRecords.length}</strong></span><span>Total: <strong>{money(totals.amount)}</strong></span><span>Pagado: <strong>{money(totals.paid)}</strong></span><span>Pendiente: <strong>{money(totals.pending)}</strong></span></div>
+            <div className="legacy-footerbar"><span>Cantidad: <strong>{orderedRecords.length}</strong></span><span>Total: <strong>{nativeTotals(orderedRecords)}</strong></span><span>Pagado: <strong>{nativeTotals(orderedRecords.flatMap(obligationReceived))}</strong></span><span>Pendiente: <strong>{nativeTotals(orderedRecords.filter((item) => !item.currencyConflict).map((item) => ({ currency: item.currency, amount: Math.max(0, item.amount - item.paid) })))}</strong></span></div>
           </section>
         </div>
       </div>
-      {formTarget && <PayoutDataDialog key={formTarget} snapshot={snapshot} payout={formPayout} concepts={concepts} onClose={() => setFormTarget(null)} onSave={savePayout} />}
+      {formTarget && <PayoutDataDialog key={formTarget} actorId={currentUser.id} snapshot={snapshot} payout={formPayout} concepts={concepts} onClose={() => setFormTarget(null)} onSave={savePayout} />}
       {clientSearchOpen && <ClientSearchSubmodal clients={snapshot.clients} onClose={() => setClientSearchOpen(false)} onSelect={(client) => { findClientForFilter(client); setClientSearchOpen(false); }} />}
       {confirmInactivate && <LegacyConfirmDialog message="¿Inactivar datos?" onYes={() => void inactivateSelected()} onNo={() => setConfirmInactivate(false)} />}
     </>
@@ -8012,7 +8065,7 @@ function PaymentsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
       id: savedMovements.map((item) => item.id).join("-"),
       receiptNumber: savedMovements.map((item) => item.id).join(", "),
       date: movementBusinessDate(savedMovements[0].createdAt),
-      currency: "Peso Dominicano",
+      currency: currencyName(savedMovements[0].currency),
       clientName: client.name,
       clientIdentification: client.identification ?? "",
       collectorName: collector?.name ?? "Administración",
@@ -8072,11 +8125,11 @@ function PaymentsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
                 const client = snapshot.clients.find((item) => item.id === movement.clientId);
                 const active = selectedId === movement.id;
                 return <tr key={movement.id} className={active ? "selected-row" : undefined} aria-selected={active} role="button" tabIndex={0} onClick={() => setSelectedId(movement.id)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedId(movement.id))}>
-                  <td>{index + 1}</td><td>{client?.identification ?? ""}</td><td>{client?.name ?? "Cliente sin nombre"}</td><td>{safeDateLabel(movementBusinessDate(movement.createdAt))}</td><td><LegacyCheck checked={Boolean(movement.receiptToken)} /></td><td>{(movement as Movement & { registeredCentrally?: boolean }).registeredCentrally === undefined ? "—" : (movement as Movement & { registeredCentrally?: boolean }).registeredCentrally ? "Sí" : "No"}</td><td className="numeric-cell">{money(movement.amount)}</td><td>{movement.cancellationNote || ""}</td>
+                  <td>{index + 1}</td><td>{client?.identification ?? ""}</td><td>{client?.name ?? "Cliente sin nombre"}</td><td>{safeDateLabel(movementBusinessDate(movement.createdAt))}</td><td><LegacyCheck checked={Boolean(movement.receiptToken)} /></td><td>{(movement as Movement & { registeredCentrally?: boolean }).registeredCentrally === undefined ? "—" : (movement as Movement & { registeredCentrally?: boolean }).registeredCentrally ? "Sí" : "No"}</td><td className="numeric-cell">{nativeMoney(movement.amount, movement.currency)}</td><td>{movement.cancellationNote || ""}</td>
                 </tr>;
               }) : <tr><td colSpan={8} className="payouts-empty-cell">Sin pagos registrados.</td></tr>}
             </tbody></table></div>
-            <div className="legacy-footerbar"><span>Cantidad: <strong>{orderedPayments.length}</strong></span><span>Total: <strong>{money(activeTotal)}</strong></span><span>Cancelado: <strong>{money(cancelledTotal)}</strong></span></div>
+            <div className="legacy-footerbar"><span>Cantidad: <strong>{orderedPayments.length}</strong></span><span>Total: <strong>{nativeTotals(orderedPayments.filter((item) => !item.cancelledAt))}</strong></span><span>Cancelado: <strong>{nativeTotals(orderedPayments.filter((item) => item.cancelledAt))}</strong></span></div>
           </section>
         </div>
       </div>
@@ -8111,8 +8164,8 @@ function PaymentDataDialog({ actorId, snapshot, onClose, onSaved }: Readonly<{ a
   const close = () => { if (!request.locked) { request.clear(); onClose(); } };
   const update = <K extends keyof PaymentFormDraft>(field: K, value: PaymentFormDraft[K]) => {
     if (request.locked) return;
-    if (field === "collectorId" && value !== draft.collectorId) clearSelection();
-    setDraft((current) => ({ ...current, [field]: value, ...(field === "collectorId" && value !== current.collectorId ? { lines: [] } : {}) }));
+    if ((field === "collectorId" || field === "currency") && value !== draft[field]) clearSelection();
+    setDraft((current) => ({ ...current, [field]: value, ...((field === "collectorId" || field === "currency") && value !== current[field] ? { lines: [] } : {}) }));
   };
   const selectClient = (next: Client | undefined, code: string) => {
     if (request.locked) return;
@@ -8133,10 +8186,10 @@ function PaymentDataDialog({ actorId, snapshot, onClose, onSaved }: Readonly<{ a
   };
   const eligiblePayouts = snapshot.payouts.filter((payout) => {
     const alreadyAdded = draft.lines.filter((line) => line.payoutId === payout.id).reduce((sum, line) => sum + line.amount, 0);
-    return payout.clientId === draft.clientId && payout.collectorId === draft.collectorId && payout.status !== "cancelled" && payout.amount - payout.paid - alreadyAdded > 0;
+    return !payout.currencyConflict && payout.clientId === draft.clientId && payout.collectorId === draft.collectorId && currencyCode(payout.currency) === currencyCode(draft.currency) && payout.status !== "cancelled" && payout.amount - payout.paid - alreadyAdded > 0;
   });
   const addPayoutLine = (payout: Payout) => {
-    if (request.locked || payout.clientId !== draft.clientId || payout.collectorId !== draft.collectorId || draft.lines.some((line) => line.payoutId === payout.id)) return;
+    if (request.locked || payout.clientId !== draft.clientId || payout.collectorId !== draft.collectorId || currencyCode(payout.currency) !== currencyCode(draft.currency) || draft.lines.some((line) => line.payoutId === payout.id)) return;
     const alreadyAdded = draft.lines.filter((line) => line.payoutId === payout.id).reduce((sum, line) => sum + line.amount, 0);
     const pending = Math.max(0, payout.amount - payout.paid - alreadyAdded);
     if (pending <= 0) return;
@@ -8163,12 +8216,12 @@ function PaymentDataDialog({ actorId, snapshot, onClose, onSaved }: Readonly<{ a
       if (!draft.lines.length || draft.lines.length > 100 || new Set(draft.lines.map((line) => line.payoutId)).size !== draft.lines.length) { setSaveError("Agregue entre 1 y 100 pagos autorizados, sin repetirlos."); return; }
       const invalid = draft.lines.some((line) => {
         const payout = snapshot.payouts.find((item) => item.id === line.payoutId);
-        return !payout || payout.clientId !== draft.clientId || payout.collectorId !== draft.collectorId || payout.status === "cancelled" || !Number.isSafeInteger(line.amount) || line.amount <= 0 || line.amount > payout.amount - payout.paid;
+        return !payout || payout.currencyConflict || payout.clientId !== draft.clientId || payout.collectorId !== draft.collectorId || currencyCode(payout.currency) !== currencyCode(draft.currency) || payout.status === "cancelled" || !Number.isSafeInteger(line.amount) || line.amount <= 0 || line.amount > payout.amount - payout.paid;
       });
       if (invalid) { setSaveError("Revise las partidas: deben pertenecer al cliente y cobrador seleccionados y respetar su saldo pendiente."); return; }
     }
     try {
-      const result = await request.run<CentralCollectionResult>("/pagos/central", { clientId: submitted.clientId, collectorId: submitted.collectorId, lines: submitted.lines.map((line) => ({ payoutId: line.payoutId, amount: line.amount })) }, submitted, (data) =>
+      const result = await request.run<CentralCollectionResult>("/pagos/central", { clientId: submitted.clientId, collectorId: submitted.collectorId, currency: currencyCode(submitted.currency), lines: submitted.lines.map((line) => ({ payoutId: line.payoutId, amount: line.amount })) }, submitted, (data) =>
         Array.isArray(data?.movements) && Array.isArray(data.receipts) && data.movements.length === submitted.lines.length && new Set(data.movements.map((movement) => movement.id)).size === submitted.lines.length && new Set(data.movements.map((movement) => movement.payoutId)).size === submitted.lines.length && data.movements.every((movement) => Boolean(movement.id && movement.receiptToken) && movement.type === "payout" && movement.clientId === submitted.clientId && movement.collectorId === submitted.collectorId && Number.isFinite(Date.parse(movement.createdAt)) && submitted.lines.some((line) => line.payoutId === movement.payoutId && line.amount === movement.amount) && data.receipts.some((receipt) => receipt.movementId === movement.id && receipt.token === movement.receiptToken)));
       onSaved(submitted, result.movements);
     } catch { /* The request manager retains the exact attempt and displays its error. */ }
@@ -8181,7 +8234,7 @@ function PaymentDataDialog({ actorId, snapshot, onClose, onSaved }: Readonly<{ a
           <div className="collection-receipt-row collection-receipt-meta-row">
             <label>Doc:<input type="number" value="-1" readOnly disabled aria-label="Documento" /></label>
             <label>Fecha:<input type="date" value={pending?.date ?? snapshot.businessDate} readOnly title="Fecha de la jornada; el comprobante usa la fecha registrada por el servidor" /></label>
-            <label>Moneda:<select value="Peso Dominicano" disabled title="Esta caja opera en pesos dominicanos">{CURRENCIES.map((option) => <option key={option}>{option}</option>)}</select></label>
+            <label>Moneda:<select value={draft.currency} onChange={(event) => update("currency", event.target.value)}>{CURRENCIES.map((option) => <option key={option}>{option}</option>)}</select></label>
           </div>
           <div className="collection-receipt-row collection-receipt-client-row">
             <label htmlFor="payment-client-code">Cliente:</label>
@@ -8197,12 +8250,12 @@ function PaymentDataDialog({ actorId, snapshot, onClose, onSaved }: Readonly<{ a
         </div>
         <section className="collection-receipt-detail" aria-label="Detalle del pago">
           <div className="collection-receipt-detail-toolbar"><button type="button" disabled={busy} onClick={requestAddLine}>Agregar</button><button type="button" disabled={!selectedLine || busy} onClick={() => selectedLine && setEditingLine(selectedLine)}>Modificar</button><button type="button" disabled={!selectedLine || busy} onClick={() => setConfirmDeleteOpen(true)}>Borrar</button><button type="button" disabled={busy} onClick={() => { setSelectedLineId(""); setSaveError(""); toast.info("Detalle actualizado."); }}>Refrescar</button></div>
-          <div className="collection-receipt-table-wrap"><table className="collection-receipt-table"><thead><tr><th>Nro.</th><th>Servicio</th><th>Concepto</th><th>Importe</th></tr></thead><tbody>{draft.lines.length ? draft.lines.map((line, index) => <tr key={line.id} className={selectedLineId === line.id ? "selected-row" : undefined} aria-selected={selectedLineId === line.id} role="button" tabIndex={0} onClick={() => setSelectedLineId(line.id)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedLineId(line.id))}><td>{index + 1}</td><td>{line.service}</td><td>{line.concept}</td><td className="numeric-cell">{money(line.amount)}</td></tr>) : <tr><td colSpan={4} className="collection-receipt-empty">Sin pagos agregados.</td></tr>}</tbody></table></div>
+          <div className="collection-receipt-table-wrap"><table className="collection-receipt-table"><thead><tr><th>Nro.</th><th>Servicio</th><th>Concepto</th><th>Importe</th></tr></thead><tbody>{draft.lines.length ? draft.lines.map((line, index) => <tr key={line.id} className={selectedLineId === line.id ? "selected-row" : undefined} aria-selected={selectedLineId === line.id} role="button" tabIndex={0} onClick={() => setSelectedLineId(line.id)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedLineId(line.id))}><td>{index + 1}</td><td>{line.service}</td><td>{line.concept}</td><td className="numeric-cell">{nativeMoney(line.amount, draft.currency)}</td></tr>) : <tr><td colSpan={4} className="collection-receipt-empty">Sin pagos agregados.</td></tr>}</tbody></table></div>
         </section>
         </fieldset>
         {(saveError || request.error) && <div className="collection-receipt-error" role="alert">{saveError || request.error}</div>}
-        <p role="status">Esta caja registra pagos en DOP y efectivo, con la fecha del servidor.{request.uncertain ? " El resultado aún no está confirmado; reintenta la misma solicitud para recuperarlo sin duplicar pagos." : ""}</p>
-        <div className="collection-receipt-footer"><label className="collection-receipt-total">Total:<input value={money(total)} readOnly disabled aria-label="Total del pago" /></label><div className="collection-receipt-footer-actions"><button type="button" disabled={busy} onClick={(event) => void submit(event)}>{busy ? "Guardando…" : request.uncertain ? "Reintentar" : "Guardar"}</button><button type="button" disabled={request.locked} onClick={(event) => void submit(event, true)}>Guardar e Imp.</button><button type="button" disabled={request.locked} onClick={close}>Cancelar</button></div></div>
+        <p role="status">Esta caja registra efectivo en la moneda seleccionada, con la fecha del servidor. Cada moneda requiere sus propios fondos.{request.uncertain ? " El resultado aún no está confirmado; reintenta la misma solicitud para recuperarlo sin duplicar pagos." : ""}</p>
+        <div className="collection-receipt-footer"><label className="collection-receipt-total">Total:<input value={nativeMoney(total, draft.currency)} readOnly disabled aria-label="Total del pago" /></label><div className="collection-receipt-footer-actions"><button type="button" disabled={busy} onClick={(event) => void submit(event)}>{busy ? "Guardando…" : request.uncertain ? "Reintentar" : "Guardar"}</button><button type="button" disabled={request.locked} onClick={(event) => void submit(event, true)}>Guardar e Imp.</button><button type="button" disabled={request.locked} onClick={close}>Cancelar</button></div></div>
       </form>
       {clientSearchOpen && <ClientSearchSubmodal clients={snapshot.clients} onClose={() => setClientSearchOpen(false)} onSelect={chooseClient} />}
       {payoutPickerOpen && <PaymentPayoutPickerDialog payouts={eligiblePayouts} onClose={() => setPayoutPickerOpen(false)} onSelect={addPayoutLine} />}
@@ -8216,7 +8269,7 @@ function PaymentDataDialog({ actorId, snapshot, onClose, onSaved }: Readonly<{ a
 function PaymentPayoutPickerDialog({ payouts, onClose, onSelect }: Readonly<{ payouts: Payout[]; onClose: () => void; onSelect: (payout: Payout) => void }>) {
   const [selectedId, setSelectedId] = useState(payouts[0]?.id ?? "");
   const selected = payouts.find((payout) => payout.id === selectedId);
-  return <LegacyDialog title="Seleccionar..." onClose={onClose} className="collection-charge-picker-dialog" overlayClassName="collection-receipt-suboverlay"><div className="collection-charge-picker-table-wrap"><table className="collection-receipt-table"><thead><tr><th>Servicio</th><th>Concepto</th><th>Importe</th></tr></thead><tbody>{payouts.length ? payouts.map((payout) => { const pending = Math.max(0, payout.amount - payout.paid); const active = selectedId === payout.id; return <tr key={payout.id} className={active ? "selected-row" : undefined} aria-selected={active} role="button" tabIndex={0} onClick={() => setSelectedId(payout.id)} onDoubleClick={() => onSelect(payout)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedId(payout.id))}><td>Pago autorizado</td><td>{payout.concept}</td><td className="numeric-cell">{money(pending)}</td></tr>; }) : <tr><td colSpan={3} className="collection-receipt-empty">No hay pagos pendientes para seleccionar.</td></tr>}</tbody></table></div><div className="legacy-dialog-actions centered"><button type="button" onClick={onClose}>Cancelar</button><button type="button" disabled={!selected} onClick={() => selected && onSelect(selected)}>oK</button></div></LegacyDialog>;
+  return <LegacyDialog title="Seleccionar..." onClose={onClose} className="collection-charge-picker-dialog" overlayClassName="collection-receipt-suboverlay"><div className="collection-charge-picker-table-wrap"><table className="collection-receipt-table"><thead><tr><th>Servicio</th><th>Concepto</th><th>Importe</th></tr></thead><tbody>{payouts.length ? payouts.map((payout) => { const pending = Math.max(0, payout.amount - payout.paid); const active = selectedId === payout.id; return <tr key={payout.id} className={active ? "selected-row" : undefined} aria-selected={active} role="button" tabIndex={0} onClick={() => setSelectedId(payout.id)} onDoubleClick={() => onSelect(payout)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedId(payout.id))}><td>Pago autorizado</td><td>{payout.concept}</td><td className="numeric-cell">{nativeMoney(pending, payout.currency)}</td></tr>; }) : <tr><td colSpan={3} className="collection-receipt-empty">No hay pagos pendientes para seleccionar.</td></tr>}</tbody></table></div><div className="legacy-dialog-actions centered"><button type="button" onClick={onClose}>Cancelar</button><button type="button" disabled={!selected} onClick={() => selected && onSelect(selected)}>oK</button></div></LegacyDialog>;
 }
 
 function PaymentAmountDialog({ line, maxAmount, onClose, onSave }: Readonly<{ line: PaymentDetailLine; maxAmount: number; onClose: () => void; onSave: (amount: number) => void }>) {
@@ -8230,15 +8283,18 @@ function PaymentCancelNoteDialog({ note, onChange, onClose, onConfirm }: Readonl
   return <LegacyDialog title="Entre un valor..." onClose={onClose} className="collection-flow-dialog collection-cancel-reason-dialog" overlayClassName="collection-receipt-suboverlay"><label className="collection-flow-field">Nota:<input autoFocus value={note} onChange={(event) => onChange(event.target.value)} /></label><div className="legacy-dialog-actions centered"><button type="button" onClick={onConfirm}>oK</button><button type="button" onClick={onClose}>Cancelar</button></div></LegacyDialog>;
 }
 
-function PayoutDataDialog({ snapshot, payout, concepts, onClose, onSave }: Readonly<{ snapshot: Snapshot; payout?: PayoutViewRecord; concepts: string[]; onClose: () => void; onSave: (draft: PayoutFormDraft) => Promise<boolean> }>) {
+function PayoutDataDialog({ actorId, snapshot, payout, concepts, onClose, onSave }: Readonly<{ actorId: string; snapshot: Snapshot; payout?: PayoutViewRecord; concepts: string[]; onClose: () => void; onSave: (draft: PayoutFormDraft) => Promise<boolean> }>) {
+  const request = useMovementRequest(actorId, "manual-payout");
+  const pending = pendingMovementDraft<PayoutFormDraft>(actorId, "manual-payout");
+  const close = () => { if (!request.busy) onClose(); };
   const initialClient = snapshot.clients.find((client) => client.id === payout?.clientId);
-  const [draft, setDraft] = useState<PayoutFormDraft>({
+  const [draft, setDraft] = useState<PayoutFormDraft>(pending ?? {
     clientId: payout?.clientId ?? "",
     clientCode: initialClient?.code ?? "",
-    currency: payout?.currency ?? "Peso Dominicano",
+    currency: currencyName(payout?.currency),
     service: payout?.service ?? CARGO_SERVICES[0],
     concept: payout?.concept ?? "No definido",
-    price: payout ? (payout.amount / 100).toFixed(2) : "0.00",
+    price: payout ? centsInput(payout.amount) : "0.00",
     quantity: "1.00",
     note: payout?.note ?? "",
   });
@@ -8246,9 +8302,8 @@ function PayoutDataDialog({ snapshot, payout, concepts, onClose, onSave }: Reado
   const [errorMessage, setErrorMessage] = useState("");
   const [saving, setSaving] = useState(false);
   const client = snapshot.clients.find((item) => item.id === draft.clientId);
-  const price = Number(draft.price) || 0;
-  const quantity = Number(draft.quantity) || 0;
-  const total = Number.isFinite(price * quantity) ? price * quantity : 0;
+  const totalCents = (() => { try { return decimalProductCents(draft.price, draft.quantity); } catch { return 0; } })();
+  const total = totalCents / 100;
   const update = (field: keyof PayoutFormDraft, value: string) => setDraft((current) => ({ ...current, [field]: value }));
   const updateClient = (value: string) => {
     const matched = snapshot.clients.find((item) => item.code.trim().toLowerCase() === value.trim().toLowerCase() || item.identification?.trim().toLowerCase() === value.trim().toLowerCase());
@@ -8256,6 +8311,7 @@ function PayoutDataDialog({ snapshot, payout, concepts, onClose, onSave }: Reado
   };
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    if (request.busy) return;
     if (!client) {
       setErrorMessage('El campo "Cliente" no puede estar vacío');
       return;
@@ -8279,16 +8335,19 @@ function PayoutDataDialog({ snapshot, payout, concepts, onClose, onSave }: Reado
   const payoutConcepts = draft.concept && !concepts.includes(draft.concept) ? [draft.concept, ...concepts] : concepts;
   return (
     <>
-      <LegacyDialog title="Datos del Descargo..." onClose={onClose} className="payout-data-dialog">
+      <LegacyDialog title="Datos del Descargo..." onClose={close} className="payout-data-dialog">
         <form className="cargo-entry-form payout-entry-form" onSubmit={(event) => void submit(event)}>
+          <fieldset disabled={request.locked} style={{ border: 0, padding: 0, margin: 0, display: "contents" }}>
           <div className="cargo-entry-row cargo-client-row"><label htmlFor="payout-client-code">Cliente:</label><input id="payout-client-code" autoFocus value={draft.clientCode} onChange={(event) => updateClient(event.target.value)} /><button type="button" aria-label="Buscar cliente" onClick={() => setClientSearchOpen(true)}>[...]</button><input aria-label="Nombre del cliente" value={client?.name ?? ""} disabled readOnly /></div>
           <div className="cargo-entry-row"><label htmlFor="payout-currency">Moneda:</label><select id="payout-currency" value={draft.currency} onChange={(event) => update("currency", event.target.value)}><option>No definida</option><option>Peso Dominicano</option><option>Dólar Americano</option><option>Euro</option></select></div>
           <div className="cargo-entry-row"><label htmlFor="payout-service">Servicio:</label><select id="payout-service" value={draft.service} onChange={(event) => update("service", event.target.value)}>{services.map((service) => <option key={service}>{service}</option>)}</select></div>
           <div className="cargo-entry-row"><label htmlFor="payout-concept">Concepto:</label><select id="payout-concept" value={draft.concept} onChange={(event) => update("concept", event.target.value)}>{payoutConcepts.map((concept) => <option key={concept}>{concept}</option>)}</select></div>
-          <div className="cargo-entry-row cargo-amount-row"><label htmlFor="payout-price">Importe:</label><label>Precio<input id="payout-price" type="number" min="0" step="0.01" value={draft.price} onChange={(event) => update("price", event.target.value)} /></label><label>Cantidad<input type="number" min="0" step="0.01" value={draft.quantity} onChange={(event) => update("quantity", event.target.value)} /></label><label>Total<input type="number" value={total.toFixed(2)} disabled readOnly /></label></div>
+          <div className="cargo-entry-row cargo-amount-row"><label htmlFor="payout-price">Importe:</label><label>Precio<input id="payout-price" type="number" min="0" step="0.01" value={draft.price} onChange={(event) => update("price", event.target.value)} /></label><label>Cantidad<input type="number" min="0" step="0.01" value={draft.quantity} onChange={(event) => update("quantity", event.target.value)} /></label><label>Total<input type="number" value={centsInput(totalCents)} disabled readOnly /></label></div>
           <div className="cargo-entry-row"><label htmlFor="payout-note">Nota:</label><input id="payout-note" value={draft.note} onChange={(event) => update("note", event.target.value)} /></div>
+          </fieldset>
           {errorMessage && <div className="inline-error" role="alert">{errorMessage}</div>}
-          <div className="legacy-dialog-actions centered"><button type="submit" disabled={saving}>{saving ? "Guardando…" : "oK"}</button><button type="button" disabled={saving} onClick={onClose}>Cancelar</button></div>
+          {request.error && <p role="alert">{request.error}</p>}{request.uncertain && <p role="status">Reintenta este mismo descargo antes de cambiar los datos.</p>}
+          <div className="legacy-dialog-actions centered"><button type="submit" disabled={saving || request.busy}>{saving || request.busy ? "Guardando…" : request.uncertain ? "Reintentar" : "oK"}</button><button type="button" disabled={saving || request.busy} onClick={close}>Cancelar</button></div>
         </form>
       </LegacyDialog>
       {clientSearchOpen && <ClientSearchSubmodal clients={snapshot.clients} onClose={() => setClientSearchOpen(false)} onSelect={(selected) => { setDraft((current) => ({ ...current, clientId: selected.id, clientCode: selected.code })); setClientSearchOpen(false); }} />}
@@ -8681,7 +8740,7 @@ type ReceiptDetailLine = {
   amount: number;
 };
 
-type CentralCollectionDraft = { clientId: string; clientCode: string; collectorId: string; lines: ReceiptDetailLine[]; print: boolean };
+type CentralCollectionDraft = { clientId: string; clientCode: string; collectorId: string; currency?: string; lines: ReceiptDetailLine[]; print: boolean };
 type CentralCollectionResult = { movements: Movement[]; receipts: { movementId: string; token: string; url: string }[] };
 
 type CollectionRecordScope = "all" | "current";
@@ -8722,7 +8781,7 @@ function collectionTicketFromRow(row: TableRow, index: number, snapshot: Snapsho
     id: String(row.__id ?? movement?.id ?? index),
     receiptNumber: String(movement?.receiptToken ?? row.receipt ?? row.__id ?? index + 1),
     date: movement ? movementBusinessDate(movement.createdAt) : String(row.__date ?? row.date ?? localSystemDate()),
-    currency: String(row.currency ?? "Peso Dominicano"),
+    currency: currencyName(movement?.currency ?? String(row.currency ?? "Peso Dominicano")),
     clientName: client?.name ?? "Cliente sin nombre",
     clientIdentification: client?.identification ?? "",
     collectorName: collector?.name ?? "",
@@ -8786,7 +8845,7 @@ function MovementCancellationDialog({ actorId, movement, kind, onClose, onSaved 
   };
   return <LegacyDialog title={"Cancelar " + label} onClose={close} className="collection-flow-dialog collection-cancel-reason-dialog" overlayClassName="collection-receipt-suboverlay">
     <form onSubmit={(event) => void submit(event)}>
-      <p>Confirma la cancelación del {label}: <strong>{formatMoney(movement.amount, "RD$")}</strong> · {safeDateLabel(movementBusinessDate(movement.createdAt))}.</p>
+      <p>Confirma la cancelación del {label}: <strong>{nativeMoney(movement.amount, movement.currency)}</strong> · {safeDateLabel(movementBusinessDate(movement.createdAt))}.</p>
       <p>Referencia: {movement.id}. Solo se puede cancelar en la jornada actual, sin cierre y con saldo disponible.</p>
       <label className="collection-flow-field">Motivo:<input autoFocus required maxLength={500} disabled={request.locked} value={reason} onChange={(event) => { setReason(event.target.value); setValidation(""); }} /></label>
       {(validation || request.error) && <p className="collection-receipt-error" role="alert">{validation || request.error}</p>}
@@ -8838,13 +8897,13 @@ function CollectionReceiptPrintDialog({ receipts, onClose, title = "Imprimir Rec
               `Moneda: ${receipt.currency}`,
               `Cobrador: ${receipt.collectorName || "Administración"}`,
               "--------------------------------",
-              ...receipt.lines.map((line) => `${line.service}\n${line.concept}\n${money(line.amount)}`),
+              ...receipt.lines.map((line) => `${line.service}\n${line.concept}\n${nativeMoney(line.amount, receipt.currency)}`),
               "--------------------------------",
               `Forma: ${receipt.paymentForm}`,
               ...(receipt.bank !== "No Definido" ? [`Banco: ${receipt.bank}`] : []),
               ...(receipt.checkNumber ? [`Número: ${receipt.checkNumber}`] : []),
               ...(receipt.note ? [`Nota: ${receipt.note}`] : []),
-              `TOTAL: ${money(receipt.amount)}`,
+              `TOTAL: ${nativeMoney(receipt.amount, receipt.currency)}`,
               "================================",
               "*** REVISE SU RECIBO ***",
               `Impreso: ${printedAt}`,
@@ -8872,6 +8931,7 @@ function CollectionReceiptDialog({ snapshot, actorId, onClose, onSaved, onRefres
   const pending = pendingMovementDraft<CentralCollectionDraft>(actorId, "central-collection");
   const [clientId, setClientId] = useState(pending?.clientId ?? "");
   const [clientCode, setClientCode] = useState(pending?.clientCode ?? "");
+  const [currency, setCurrency] = useState(currencyName(pending?.currency));
   const [lines, setLines] = useState<ReceiptDetailLine[]>(pending?.lines ?? []);
   const [selectedLineId, setSelectedLineId] = useState("");
   const [clientSearchOpen, setClientSearchOpen] = useState(false);
@@ -8907,29 +8967,29 @@ function CollectionReceiptDialog({ snapshot, actorId, onClose, onSaved, onRefres
   const save = async (print: boolean) => {
     if (request.busy) return;
     setSaveError("");
-    const draft = pending ?? { clientId, clientCode, collectorId, lines: lines.map((line) => ({ ...line })), print };
+    const draft = pending ?? { clientId, clientCode, collectorId, currency, lines: lines.map((line) => ({ ...line })), print };
     if (!request.uncertain) {
       if (!client || client.active === false || !collector || collector.active === false) { setSaveError("Escoge un cliente activo con ruta y cobrador activos."); return; }
       if (!lines.length || !Number.isSafeInteger(total) || total <= 0) { setSaveError("Agrega al menos un cargo pendiente con importe válido."); return; }
       const invalidLine = lines.some((line) => {
         const charge = snapshot.charges.find((item) => item.id === line.chargeId);
-        return !charge || charge.clientId !== client.id || charge.status === "cancelled" || !Number.isSafeInteger(line.amount) || line.amount <= 0 || line.amount > charge.amount - charge.collected;
+        return !charge || charge.currencyConflict || charge.clientId !== client.id || currencyCode(charge.currency) !== currencyCode(currency) || charge.status === "cancelled" || !Number.isSafeInteger(line.amount) || line.amount <= 0 || line.amount > charge.amount - charge.collected;
       });
       if (invalidLine) { setSaveError("Un importe supera el saldo pendiente o el cargo ya no está disponible. Refresca y revisa el detalle."); return; }
     }
     let result: CentralCollectionResult;
     try {
-      result = await request.run<CentralCollectionResult>("/cobros/central", { clientId: draft.clientId, collectorId: draft.collectorId, lines: draft.lines.map((line) => ({ chargeId: line.chargeId, amount: line.amount })) }, draft, (data) =>
+      result = await request.run<CentralCollectionResult>("/cobros/central", { clientId: draft.clientId, collectorId: draft.collectorId, currency: currencyCode(draft.currency), lines: draft.lines.map((line) => ({ chargeId: line.chargeId, amount: line.amount })) }, draft, (data) =>
         Array.isArray(data?.movements) && Array.isArray(data.receipts) && data.movements.length === draft.lines.length && new Set(data.movements.map((movement) => movement.id)).size === draft.lines.length && data.movements.every((movement) => Boolean(movement.id && movement.receiptToken) && movement.type === "collection" && draft.lines.some((line) => line.chargeId === movement.chargeId && line.amount === movement.amount) && data.receipts.some((receipt) => receipt.movementId === movement.id && receipt.token === movement.receiptToken)));
     } catch { return; }
     onSaved(result.movements, draft.print);
   };
-  const eligibleCharges = snapshot.charges.filter((charge) => charge.clientId === clientId && charge.status !== "paid" && charge.status !== "cancelled" && charge.amount > charge.collected && (!charge.currency || ["DOP", "Peso Dominicano"].includes(charge.currency)));
+  const eligibleCharges = snapshot.charges.filter((charge) => !charge.currencyConflict && charge.clientId === clientId && charge.status !== "paid" && charge.status !== "cancelled" && charge.amount > charge.collected && currencyCode(charge.currency) === currencyCode(currency));
   return <LegacyDialog title="Datos del Cobro..." onClose={close} className="collection-receipt-dialog">
     <div className="collection-receipt-content">
       <fieldset disabled={request.locked} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
         <div className="collection-receipt-fields">
-          <div className="collection-receipt-row collection-receipt-meta-row"><label>Doc:<input value="Nuevo" title="El número se asigna al guardar" readOnly /></label><label>Fecha:<input type="date" value={snapshot.businessDate} readOnly /></label><label>Moneda:<input value="Peso Dominicano (DOP)" readOnly /></label></div>
+          <div className="collection-receipt-row collection-receipt-meta-row"><label>Doc:<input value="Nuevo" title="El número se asigna al guardar" readOnly /></label><label>Fecha:<input type="date" value={snapshot.businessDate} readOnly /></label><label>Moneda:<select value={currency} onChange={(event) => { setCurrency(event.target.value); setLines([]); setSelectedLineId(""); setChargePickerOpen(false); setEditingLine(null); }}>{CURRENCIES.map((item) => <option key={item}>{item}</option>)}</select></label></div>
           <div className="collection-receipt-row collection-receipt-client-row"><label htmlFor="receipt-client-code">Cliente:</label><input id="receipt-client-code" autoFocus value={clientCode} onChange={(event) => resolveClientCode(event.target.value)} /><button type="button" aria-label="Buscar cliente" onClick={() => setClientSearchOpen(true)}>[...]</button><input value={client?.name ?? ""} readOnly aria-label="Nombre del cliente" /></div>
           <div className="collection-receipt-row collection-receipt-labeled-row"><label htmlFor="receipt-collector">Cobrad.:</label><input id="receipt-collector" value={collector?.name ?? "Sin cobrador asignado"} readOnly /></div>
           <div className="collection-receipt-row collection-receipt-labeled-row"><label htmlFor="receipt-payment-form">Forma:</label><input id="receipt-payment-form" value="Efectivo · registrado desde central" readOnly /></div>
@@ -8938,12 +8998,12 @@ function CollectionReceiptDialog({ snapshot, actorId, onClose, onSaved, onRefres
           <div className="collection-receipt-detail-toolbar">
             <button type="button" disabled={!client || client.active === false} onClick={() => setChargePickerOpen(true)}>Agregar</button><button type="button" disabled={!selectedLine} onClick={() => selectedLine && setEditingLine(selectedLine)}>Modificar</button><button type="button" disabled={!selectedLine} onClick={() => setConfirmDeleteOpen(true)}>Borrar</button><button type="button" onClick={onRefresh}>Actualizar saldos</button>
           </div>
-          <div className="collection-receipt-table-wrap"><table className="collection-receipt-table"><thead><tr><th>Nro.</th><th>Servicio</th><th>Concepto</th><th>Importe</th></tr></thead><tbody>{lines.length ? lines.map((line, index) => <tr key={line.id} className={selectedLineId === line.id ? "selected-row" : undefined} aria-selected={selectedLineId === line.id} role="button" tabIndex={0} onClick={() => setSelectedLineId(line.id)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedLineId(line.id))}><td>{index + 1}</td><td>{line.service}</td><td>{line.concept}</td><td className="numeric-cell">{formatMoney(line.amount, "RD$")}</td></tr>) : <tr><td colSpan={4} className="collection-receipt-empty">Sin cargos agregados.</td></tr>}</tbody></table></div>
+          <div className="collection-receipt-table-wrap"><table className="collection-receipt-table"><thead><tr><th>Nro.</th><th>Servicio</th><th>Concepto</th><th>Importe</th></tr></thead><tbody>{lines.length ? lines.map((line, index) => <tr key={line.id} className={selectedLineId === line.id ? "selected-row" : undefined} aria-selected={selectedLineId === line.id} role="button" tabIndex={0} onClick={() => setSelectedLineId(line.id)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedLineId(line.id))}><td>{index + 1}</td><td>{line.service}</td><td>{line.concept}</td><td className="numeric-cell">{nativeMoney(line.amount, currency)}</td></tr>) : <tr><td colSpan={4} className="collection-receipt-empty">Sin cargos agregados.</td></tr>}</tbody></table></div>
         </section>
       </fieldset>
       {(saveError || request.error) && <div className="collection-receipt-error" role="alert">{saveError || request.error}</div>}
       {request.uncertain && <p role="status">No se ha confirmado el resultado. Reintenta la misma solicitud para evitar cobros duplicados.</p>}
-      <div className="collection-receipt-footer"><label className="collection-receipt-total">Total:<input value={formatMoney(total, "RD$")} readOnly aria-label="Total del recibo" /></label><div className="collection-receipt-footer-actions"><button type="button" disabled={request.busy} onClick={() => void save(false)}>{request.busy ? "Guardando…" : request.uncertain ? "Reintentar" : "Guardar"}</button><button type="button" disabled={request.locked} onClick={() => void save(true)}>Guardar e Imp.</button><button type="button" disabled={request.locked} onClick={close}>Cancelar</button></div></div>
+      <div className="collection-receipt-footer"><label className="collection-receipt-total">Total:<input value={nativeMoney(total, currency)} readOnly aria-label="Total del recibo" /></label><div className="collection-receipt-footer-actions"><button type="button" disabled={request.busy} onClick={() => void save(false)}>{request.busy ? "Guardando…" : request.uncertain ? "Reintentar" : "Guardar"}</button><button type="button" disabled={request.locked} onClick={() => void save(true)}>Guardar e Imp.</button><button type="button" disabled={request.locked} onClick={close}>Cancelar</button></div></div>
     </div>
     {clientSearchOpen && <ClientSearchSubmodal clients={snapshot.clients.filter((item) => item.active !== false)} onClose={() => setClientSearchOpen(false)} onSelect={(item) => chooseClient(item.id, item.code)} />}
     {chargePickerOpen && <CollectionChargePickerDialog charges={eligibleCharges} onClose={() => setChargePickerOpen(false)} onSelect={addLine} />}
@@ -8972,7 +9032,7 @@ function CollectionChargePickerDialog({
             const pending = Math.max(0, charge.amount - charge.collected);
             const active = selectedChargeId === charge.id;
             return <tr key={charge.id} className={active ? "selected-row" : undefined} aria-selected={active} role="button" tabIndex={0} onClick={() => setSelectedChargeId(charge.id)} onDoubleClick={() => onSelect(charge)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedChargeId(charge.id))}>
-              <td>{charge.service}</td><td>{charge.concept ?? charge.service}</td><td className="numeric-cell">{money(pending)}</td>
+              <td>{charge.service}</td><td>{charge.concept ?? charge.service}</td><td className="numeric-cell">{nativeMoney(pending, charge.currency)}</td>
             </tr>;
           }) : <tr><td colSpan={3} className="collection-receipt-empty">El cliente no tiene cargos pendientes.</td></tr>}</tbody>
         </table>
@@ -9791,7 +9851,7 @@ function operationSpec(page: Page, snapshot: Snapshot): OperationSpec {
         line: collector(movement.collectorId)?.name,
         receipt:
           movement.receiptToken?.slice(0, 10) ?? movement.id.slice(0, 10),
-        amount: money(movement.amount),
+        amount: nativeMoney(movement.amount, movement.currency),
         active: "Sí",
         registry: timeLabel(movement.createdAt),
       })),
@@ -9799,7 +9859,7 @@ function operationSpec(page: Page, snapshot: Snapshot): OperationSpec {
         { label: "Cantidad", value: rows.length },
         {
           label: "Total",
-          value: money(rows.reduce((sum, item) => sum + item.amount, 0)),
+          value: nativeTotals(rows),
         },
         { label: "Cancelado", value: money(0) },
       ],
@@ -10533,7 +10593,8 @@ function emptySettlementRow(date: string, id = `local-settlement-${date}`): Dail
 }
 
 function dailySettlementRows(snapshot: Snapshot, currency: string): DailySettlementGridRow[] {
-  if (currency !== "Peso Dominicano") return [];
+  const selectedCurrency = currencyCode(currency);
+  if (!selectedCurrency) return [];
   const grouped = new Map<string, { collected: number; deposited: number; delivered: number; paid: number; closed: boolean }>();
   const closedCollectorDates = new Set<string>();
   const ensureDate = (date: string) => {
@@ -10545,6 +10606,7 @@ function dailySettlementRows(snapshot: Snapshot, currency: string): DailySettlem
   };
 
   snapshot.settlements.forEach((settlement) => {
+    if (currencyCode((settlement as typeof settlement & { currency?: string }).currency) !== selectedCurrency) return;
     const row = ensureDate(settlement.date);
     row.collected += settlement.collected;
     row.deposited += settlement.deposited;
@@ -10555,7 +10617,7 @@ function dailySettlementRows(snapshot: Snapshot, currency: string): DailySettlem
   });
 
   snapshot.movements.forEach((movement) => {
-    if (movement.cancelledAt) return;
+    if (movement.cancelledAt || currencyCode(movement.currency) !== selectedCurrency) return;
     const date = settlementBusinessDate(movement.createdAt);
     if (closedCollectorDates.has(`${movement.collectorId}:${date}`)) return;
     const row = ensureDate(date);
@@ -10889,22 +10951,18 @@ function ledgerForEntity(
   name: string,
   snapshot: Snapshot,
   collectorIds: string[],
-  currencyCode = "DOP",
+  selectedCurrency = "DOP",
 ): MonitorRow {
   const collectorIdSet = new Set(collectorIds);
   const collectors = snapshot.collectors.filter((collector) =>
     collectorIdSet.has(collector.id),
   );
-  const movements = currencyCode === "DOP"
-    ? snapshot.movements.filter((movement) => collectorIdSet.has(movement.collectorId) && !movement.cancelledAt)
-    : [];
+  const movements = snapshot.movements.filter((movement) => collectorIdSet.has(movement.collectorId) && !movement.cancelledAt && currencyCode(movement.currency) === selectedCurrency);
   const collectionLimit = collectors.reduce((sum, collector) => {
-      const currencyLimit = collector.limits?.find((limit) => limit.abbr === currencyCode);
-      return sum + (currencyCode === "DOP" ? collector.collectionLimit : currencyLimit?.collectionLimit ?? 0);
+      return sum + collector.collectionLimit;
     }, 0),
     payoutLimit = collectors.reduce((sum, collector) => {
-      const currencyLimit = collector.limits?.find((limit) => limit.abbr === currencyCode);
-      return sum + (currencyCode === "DOP" ? collector.payoutLimit : currencyLimit?.payoutLimit ?? 0);
+      return sum + collector.payoutLimit;
     }, 0),
     collected = sumMovements(movements, "collection"),
     deposited = sumMovements(movements, "deposit"),
@@ -10925,15 +10983,15 @@ function ledgerForEntity(
     entityType,
     rawName: name,
     name,
-    collectionLimit: money(collectionLimit),
-    payoutLimit: money(payoutLimit),
-    collected: money(collected),
-    deposited: money(deposited),
-    delivered: money(delivered),
-    paid: money(paid),
+    collectionLimit: nativeMoney(collectionLimit, selectedCurrency),
+    payoutLimit: nativeMoney(payoutLimit, selectedCurrency),
+    collected: nativeMoney(collected, selectedCurrency),
+    deposited: nativeMoney(deposited, selectedCurrency),
+    delivered: nativeMoney(delivered, selectedCurrency),
+    paid: nativeMoney(paid, selectedCurrency),
     difference: (
       <span className={difference === 0 ? "balanced-text" : "warning-text"}>
-        {money(difference)}
+        {nativeMoney(difference, selectedCurrency)}
       </span>
     ),
     metrics,

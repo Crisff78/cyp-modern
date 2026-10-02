@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
   ArrowDownLeft,
@@ -11,32 +11,40 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
-import { api, ApiError, money } from "./api";
+import { api, ApiError, getToken, money } from "./api";
 import type { Operation } from "./types";
+import { browserPaymentIntents, confirmedPaymentReceipt, intentStorageKey, type IntentScope, type PaymentIntent } from "./services/paymentIntents";
+import { isMockToken, mockLedgerId } from "./mock";
 
-type Attempt = { key: string; amount: number };
 const denominations = [2000, 1000, 500, 200, 100, 50, 25, 10, 5, 1];
 export function CollectionSheet({
+  actorId,
   operation,
   online,
   onClose,
   onSuccess,
 }: {
+  actorId: string;
   operation: Operation;
   online: boolean;
   onClose: () => void;
   onSuccess: (token: string) => void;
 }) {
-  const storageKey = `cyp-attempt-${operation.kind}-${operation.id}`;
-  const [attempt, setAttempt] = useState<Attempt | null>(() => {
+  const [mockScope] = useState(() => {
+    try { return isMockToken(getToken()) ? mockLedgerId : null; } catch { return null; }
+  });
+  const scope = useMemo<IntentScope>(() => ({ actorId: mockScope ? `${mockScope}:${actorId}` : actorId, kind: operation.kind, entityId: operation.id }),
+    [actorId, operation.kind, operation.id, mockScope]);
+  const [initial] = useState(() => {
     try {
-      return JSON.parse(
-        sessionStorage.getItem(storageKey) ?? "null",
-      ) as Attempt | null;
-    } catch {
-      return null;
+      if (sessionStorage.getItem(`cyp-attempt-${operation.kind}-${operation.id}`))
+        throw new Error("Existe una referencia pendiente de una versión anterior. Consulta su recibo con la oficina antes de registrar otra operación.");
+      return { attempt: browserPaymentIntents().read(scope), error: "" };
+    } catch (error) {
+      return { attempt: null, error: error instanceof Error ? error.message : "No se pudo leer la referencia guardada." };
     }
   });
+  const [attempt, setAttempt] = useState<PaymentIntent | null>(initial.attempt);
   const [value, setValue] = useState(
     attempt
       ? (attempt.amount / 100).toFixed(2)
@@ -44,7 +52,25 @@ export function CollectionSheet({
   );
   const [replace, setReplace] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(initial.error);
+  const inFlight = useRef(false);
+  const newConfirmedKey = useRef<string | undefined>(undefined);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    const synchronize = (event: StorageEvent) => {
+      if (event.key !== null && event.key !== intentStorageKey(scope)) return;
+      try {
+        const stored = browserPaymentIntents().read(scope);
+        newConfirmedKey.current = undefined;
+        // Deletion in another tab never proves that a known attempt did not commit.
+        setAttempt((current) => stored ?? current);
+        if (stored) setValue((stored.amount / 100).toFixed(2));
+      } catch (error) { setError(error instanceof Error ? error.message : "No se pudo leer la referencia guardada."); }
+    };
+    window.addEventListener("storage", synchronize);
+    return () => { mounted.current = false; window.removeEventListener("storage", synchronize); };
+  }, [scope]);
   const [breakdown, setBreakdown] = useState(false);
   const [bills, setBills] = useState<Record<number, number>>({});
   const amount = Math.round(Number(value || "0") * 100);
@@ -79,26 +105,46 @@ export function CollectionSheet({
     }
   }
 
-  async function confirm() {
-    if (busy || !online || (!valid && !attempt)) return;
+  async function confirm(beginAnother = false) {
+    if (inFlight.current || !online || (!valid && !attempt)) return;
+    inFlight.current = true;
     setBusy(true);
     setError("");
-    const active = attempt ?? { key: crypto.randomUUID(), amount };
-    sessionStorage.setItem(storageKey, JSON.stringify(active));
-    setAttempt(active);
+    const previousConfirmedKey = attempt?.status === "confirmed" ? attempt.key : undefined;
     try {
-      const result = await api<{ receipt: { token: string } }>(
-        collecting ? "/cobros" : "/pagos",
-        {
-          method: "POST",
-          headers: { "Idempotency-Key": active.key },
-          body: JSON.stringify({
-            [collecting ? "chargeId" : "payoutId"]: operation.id,
-            amount: active.amount,
-          }),
+      const authorizedToken = getToken();
+      if (sessionStorage.getItem(`cyp-attempt-${operation.kind}-${operation.id}`))
+        throw new Error("Existe una referencia pendiente de una versión anterior. Consulta su recibo con la oficina antes de registrar otra operación.");
+      const result = await browserPaymentIntents().confirm<{ receipt: { token: string } }>(
+        scope, amount,
+        async (active) => {
+          if (!mounted.current || getToken() !== authorizedToken)
+            throw new ApiError("La sesión cambió. Vuelve a entrar con la cuenta original para resolver esta referencia.", 401);
+          setAttempt(active);
+          setValue((active.amount / 100).toFixed(2));
+          return api(collecting ? "/cobros" : "/pagos", {
+            method: "POST", headers: { "Idempotency-Key": active.key },
+            body: JSON.stringify({ [collecting ? "chargeId" : "payoutId"]: operation.id, amount: active.amount }),
+          });
         },
+        (response, active) => confirmedPaymentReceipt(response, active, !!mockScope),
+        (err) => err instanceof ApiError && err.status >= 400 && err.status < 500 && ![401, 408, 429].includes(err.status),
+        beginAnother,
+        newConfirmedKey.current,
+        attempt,
       );
-      sessionStorage.removeItem(storageKey);
+      if (!mounted.current) return;
+      if (getToken() !== authorizedToken)
+        throw new ApiError("La sesión cambió. El recibo se conserva para la cuenta original; vuelve a entrar para consultarlo.", 401);
+      if (beginAnother) {
+        newConfirmedKey.current = previousConfirmedKey;
+        setAttempt(null);
+        setValue((operation.outstanding / 100).toFixed(2));
+        setReplace(true);
+        setBreakdown(false);
+        setBills({});
+        return;
+      }
       toast.success(
         collecting
           ? "Cobro registrado correctamente"
@@ -110,18 +156,18 @@ export function CollectionSheet({
         err instanceof Error
           ? err.message
           : "No pudimos registrar la operación.";
-      setError(message);
-      if (
-        err instanceof ApiError &&
-        err.status >= 400 &&
-        err.status < 500 &&
-        err.status !== 408
-      ) {
-        sessionStorage.removeItem(storageKey);
-        setAttempt(null);
+      if (mounted.current) {
+        setError(message);
+        newConfirmedKey.current = undefined;
+        try {
+          const stored = browserPaymentIntents().read(scope);
+          setAttempt(stored);
+          if (stored) setValue((stored.amount / 100).toFixed(2));
+        } catch { /* Keep the last known reference visible. */ }
       }
     } finally {
-      setBusy(false);
+      inFlight.current = false;
+      if (mounted.current) setBusy(false);
     }
   }
 
@@ -228,8 +274,9 @@ export function CollectionSheet({
           {attempt && (
             <p className="info-note">
               <LockKeyhole size={18} />
-              Este intento conserva el mismo importe y referencia. Reintentar
-              consulta o registra una sola operación.
+              {attempt.status === "confirmed"
+                ? "Esta operación ya fue confirmada. Consulta el recibo original antes de registrar dinero nuevo."
+                : "Este intento conserva el mismo importe y referencia. Reintentar consulta o registra una sola operación."}
             </p>
           )}
           <button
@@ -306,10 +353,15 @@ export function CollectionSheet({
             {busy
               ? "Confirmando…"
               : attempt
-                ? "Reintentar con la misma referencia"
+                ? attempt.status === "confirmed" ? "Consultar recibo original" : "Reintentar con la misma referencia"
                 : `Confirmar ${collecting ? "cobro" : "pago"}`}{" "}
             {!attempt && <strong>{money(amount || 0)}</strong>}
           </button>
+          {attempt?.status === "confirmed" && (
+            <button className="secondary" disabled={busy || !online} onClick={() => void confirm(true)}>
+              Registrar otro {collecting ? "cobro" : "pago"} con dinero nuevo
+            </button>
+          )}
           <p className="sheet-footnote">
             El recibo se genera al confirmar el registro.
           </p>

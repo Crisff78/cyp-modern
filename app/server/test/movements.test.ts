@@ -90,7 +90,7 @@ test("invalid central receipt leaves no partial charge, ledger or idempotency ch
     await store.transaction((s) => { s.routes[0].active = false; });
     assert.equal((await post("/api/cobros/central", body)).json().error.code, "CLIENT_ROUTE_INACTIVE");
     await store.transaction((s) => { s.routes[0].active = true; s.charges[0].currency = "USD"; });
-    assert.equal((await post("/api/cobros/central", body)).json().error.code, "UNSUPPORTED_COLLECTION_CURRENCY");
+    assert.equal((await post("/api/cobros/central", body)).json().error.code, "CURRENCY_MISMATCH");
     const direct = fixture(), directBefore = structuredClone(direct);
     assert.throws(() => createCentralCollections(direct, admin, body));
     assert.deepEqual(direct, directBefore);

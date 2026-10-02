@@ -215,7 +215,7 @@ test("charges persist legacy fields, support safe edits, and keep cancel rules",
     );
     assert.equal(updated.statusCode, 200);
     assert.equal(updated.json().amount, 15000);
-    assert.equal(updated.json().currency, "Euro");
+    assert.equal(updated.json().currency, "EUR");
     assert.equal(updated.json().concept, "Concepto actualizado");
     assert.equal(updated.json().note, "Nota actualizada");
 
@@ -226,7 +226,8 @@ test("charges persist legacy fields, support safe edits, and keep cancel rules",
 
     const collectedCharge = await post("/api/cargos", createBody, adminToken);
     const collectedId = collectedCharge.json().id as string;
-    assert.equal((await post("/api/cobros", { chargeId: collectedId, amount: 1000 }, collectorToken)).statusCode, 200);
+    assert.equal((await post("/api/cobros", { chargeId: collectedId, amount: 1000 }, collectorToken)).statusCode, 422);
+    assert.equal((await post("/api/cobros", { chargeId: collectedId, amount: 1000 }, adminToken)).statusCode, 200);
     assert.equal((await post(`/api/cargos/${collectedId}`, createBody, adminToken)).statusCode, 409);
     assert.equal((await post("/api/cargos/cancelar", { id: collectedId }, adminToken)).statusCode, 409);
   } finally {

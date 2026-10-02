@@ -139,6 +139,8 @@ export type Charge = {
   service: string;
   concept?: string;
   currency?: string;
+  currencyConflict?: boolean;
+  collectedByCurrency?: Partial<Record<"DOP" | "USD" | "EUR", number>>;
   note?: string;
   amount: number;
   collected: number;
@@ -151,6 +153,12 @@ export type Payout = {
   clientId: string;
   collectorId: string;
   concept: string;
+  currency?: "DOP" | "USD" | "EUR";
+  currencyConflict?: boolean;
+  paidByCurrency?: Partial<Record<"DOP" | "USD" | "EUR", number>>;
+  dueDate?: string;
+  service?: string;
+  note?: string;
   amount: number;
   paid: number;
   status: "pending" | "partial" | "paid" | "cancelled";
@@ -163,6 +171,8 @@ export type Movement = {
   payoutId?: string;
   type: "collection" | "deposit" | "office_delivery" | "payout";
   amount: number;
+  currency?: "DOP" | "USD" | "EUR";
+  note?: string;
   createdAt: string;
   receiptToken?: string;
   acceptedAt?: string;
@@ -195,6 +205,7 @@ export type RecurringPayout = {
   clientId: string;
   concept: string;
   amount: number;
+  currency?: "DOP" | "USD" | "EUR";
   frequency: "weekly" | "monthly" | "quarterly";
   nextRunDate: string;
   status: "active" | "paused" | "archived";
