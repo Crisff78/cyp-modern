@@ -47,6 +47,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [outputError, setOutputError] = useState("");
   const [notice, setNotice] = useState("");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
@@ -67,7 +68,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   const mutationLock = useRef(false);
 
   const refresh = useCallback(async () => {
-    setLoading(true); setError("");
+    setLoading(true); setError(""); setOutputError("");
     try {
       const [data, outgoing, incoming] = await Promise.all([api<RemittanceSnapshot>("/envios/snapshot"), api<Transfer[]>("/envios"), api<Transfer[]>("/envios/recibos")]);
       setSnapshot(data); setSent(outgoing); setReceived(incoming);
@@ -85,10 +86,11 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   const clientName = (id: string) => snapshot?.clients.find((client) => client.id === id)?.name ?? "Cliente";
   const operatorName = (id?: string) => snapshot?.operators.find((operator) => operator.id === id)?.name ?? (id === user.id ? user.name : id || "—");
   const detail = snapshot?.transfers.find((transfer) => transfer.id === detailId);
-  const updateDraft = <K extends keyof Draft>(key: K, value: Draft[K]) => { setDraft((current) => ({ ...current, [key]: value })); setQuote(null); setError(""); };
+  const clearErrors = () => { setError(""); setOutputError(""); };
+  const updateDraft = <K extends keyof Draft>(key: K, value: Draft[K]) => { setDraft((current) => ({ ...current, [key]: value })); setQuote(null); clearErrors(); };
   const confirm = (action: Confirmation) => { setConfirmation({ ...action, idempotencyKey: operationKey() }); setConfirmationError(""); setUncertain(false); setNotice(""); };
   const failureMessage = (failure: unknown) => failure instanceof Error ? failure.message : "No pudimos completar la operación.";
-  const runOutput = (action: () => void) => { try { action(); } catch (failure) { setError(failureMessage(failure)); } };
+  const runOutput = (action: () => void) => { try { action(); setOutputError(""); } catch (failure) { setOutputError(failureMessage(failure)); } };
 
   async function submitConfirmation() {
     if (!confirmation || mutationLock.current) return;
@@ -114,7 +116,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   }
 
   async function requestQuote(event: FormEvent) {
-    event.preventDefault(); setError(""); setQuote(null); setBusy(true);
+    event.preventDefault(); clearErrors(); setQuote(null); setBusy(true);
     try {
       if (!draft.senderClientId || !draft.recipientClientId || draft.senderClientId === draft.recipientClientId) throw new Error("Selecciona un remitente y un destinatario distintos.");
       const amount = decimalCents(draft.amount);
@@ -160,7 +162,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   }
 
   async function loadReport(event: FormEvent) {
-    event.preventDefault(); setBusy(true); setError("");
+    event.preventDefault(); setBusy(true); clearErrors();
     try {
       if (!reportFilters.from || !reportFilters.to || reportFilters.from > reportFilters.to) throw new Error("Revisa las fechas del reporte.");
       const query = new URLSearchParams({ from: reportFilters.from, to: reportFilters.to, grouping: reportFilters.grouping });
@@ -185,12 +187,13 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
 
   return <section className="remittances" aria-label="Envíos de Dinero">
     <header className="remittance-heading"><div><h1>Envíos de Dinero</h1><p>{snapshot ? `Fecha de operación: ${snapshot.businessDate}` : "Conexión con la API"} · {user.name}</p></div><button type="button" onClick={() => void refresh()} disabled={loading || busy}>{loading ? "Cargando…" : "Actualizar"}</button></header>
-    <nav className="remittance-tabs" aria-label="Secciones de Envíos">{tabs.filter((item) => item.id !== "tasas" || isAdmin).map((item) => <button key={item.id} type="button" aria-current={tab === item.id ? "page" : undefined} onClick={() => { setTab(item.id); setError(""); }}>{item.label}</button>)}</nav>
+    <nav className="remittance-tabs" aria-label="Secciones de Envíos">{tabs.filter((item) => item.id !== "tasas" || isAdmin).map((item) => <button key={item.id} type="button" aria-current={tab === item.id ? "page" : undefined} onClick={() => { setTab(item.id); clearErrors(); }}>{item.label}</button>)}</nav>
     {error && <div className="remittance-error" role="alert">{error}</div>}
+    {outputError && <div className="remittance-error" role="alert">{outputError}</div>}
     {notice && <div className="remittance-notice" role="status">{notice}</div>}
     {!snapshot ? <div className="remittance-empty">{loading ? "Cargando clientes, tasas y cajas…" : "No hay datos conectados. Actualiza para volver a intentar."}</div> : <>
       {(tab === "envios" || tab === "recibos") && <>
-        <div className="remittance-toolbar"><label>Buscar<input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Referencia o cliente" /></label><label>Estado<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">Todos</option><option value="pending">Pendientes</option><option value="paid">Pagados</option><option value="cancelled">Cancelados</option></select></label>{tab === "envios" && <button type="button" className="remittance-primary" onClick={() => { setFormOpen(!formOpen); setError(""); }}>{formOpen ? "Ocultar formulario" : "Nuevo envío"}</button>}</div>
+        <div className="remittance-toolbar"><label>Buscar<input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Referencia o cliente" /></label><label>Estado<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">Todos</option><option value="pending">Pendientes</option><option value="paid">Pagados</option><option value="cancelled">Cancelados</option></select></label>{tab === "envios" && <button type="button" className="remittance-primary" onClick={() => { setFormOpen(!formOpen); clearErrors(); }}>{formOpen ? "Ocultar formulario" : "Nuevo envío"}</button>}</div>
         {tab === "envios" && formOpen && <form className="remittance-panel" onSubmit={(event) => void requestQuote(event)}>
           <h2>Nuevo envío</h2><fieldset disabled={busy} className="remittance-form-grid">
             <label>Remitente<select required value={draft.senderClientId} onChange={(event) => updateDraft("senderClientId", event.target.value)}><option value="">Selecciona un cliente</option>{snapshot.clients.filter((client) => client.active && client.canSendFrom).map((client) => <option key={client.id} value={client.id}>{client.code} · {client.name}</option>)}</select></label>
@@ -215,7 +218,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
       {tab === "caja" && <>
         <p className="remittance-help">Caja exclusiva de envíos. Saldo = apertura + ingresos de envíos − devoluciones − pagos. Cada moneda se cuenta por separado.</p>
         {isAdmin && <form className="remittance-panel" onSubmit={prepareOpening}><h2>Abrir caja del {snapshot.businessDate}</h2><fieldset disabled={busy} className="remittance-form-grid"><label>Operador<select required value={opening.operatorId} onChange={(event) => setOpening((current) => ({ ...current, operatorId: event.target.value }))}>{snapshot.operators.map((operator) => <option key={operator.id} value={operator.id}>{operator.name}</option>)}</select></label><label>Moneda<select value={opening.currency} onChange={(event) => setOpening((current) => ({ ...current, currency: event.target.value as Currency }))}>{snapshot.currencies.map((currency) => <option key={currency}>{currency}</option>)}</select></label><label>Efectivo inicial<input required inputMode="decimal" value={opening.amount} onChange={(event) => setOpening((current) => ({ ...current, amount: event.target.value }))} /></label></fieldset><button className="remittance-primary" disabled={busy}>Revisar apertura</button></form>}
-        <div className="remittance-cash-grid">{snapshot.cashSessions.map((cash) => <article className="remittance-panel" key={cash.id}><h2>{cash.currency} · {operatorName(cash.operatorId)}</h2><p>{cash.date} · {cash.status === "open" ? "Abierta" : "Cerrada"}</p><dl className="remittance-summary"><div><dt>Apertura</dt><dd>{money(cash.openingAmount, cash.currency)}</dd></div><div><dt>Ingresos por envíos</dt><dd>{money(cash.sentTotal, cash.currency)}</dd></div><div><dt>Devoluciones</dt><dd>{money(cash.cancelRefund, cash.currency)}</dd></div><div><dt>Pagos</dt><dd>{money(cash.paid, cash.currency)}</dd></div><div className="remittance-total"><dt>Efectivo esperado</dt><dd>{money(cash.expected, cash.currency)}</dd></div>{cash.countedAmount !== undefined && <div><dt>Contado al cierre</dt><dd>{money(cash.countedAmount, cash.currency)}</dd></div>}</dl>{cash.canClose && <button type="button" onClick={() => { setClosing(cash); setCounted(""); setError(""); }}>Contar y cerrar</button>}</article>)}{!snapshot.cashSessions.length && <div className="remittance-empty">No hay cajas de envíos. Un administrador debe abrir la caja antes de operar.</div>}</div>
+        <div className="remittance-cash-grid">{snapshot.cashSessions.map((cash) => <article className="remittance-panel" key={cash.id}><h2>{cash.currency} · {operatorName(cash.operatorId)}</h2><p>{cash.date} · {cash.status === "open" ? "Abierta" : "Cerrada"}</p><dl className="remittance-summary"><div><dt>Apertura</dt><dd>{money(cash.openingAmount, cash.currency)}</dd></div><div><dt>Ingresos por envíos</dt><dd>{money(cash.sentTotal, cash.currency)}</dd></div><div><dt>Devoluciones</dt><dd>{money(cash.cancelRefund, cash.currency)}</dd></div><div><dt>Pagos</dt><dd>{money(cash.paid, cash.currency)}</dd></div><div className="remittance-total"><dt>Efectivo esperado</dt><dd>{money(cash.expected, cash.currency)}</dd></div>{cash.countedAmount !== undefined && <div><dt>Contado al cierre</dt><dd>{money(cash.countedAmount, cash.currency)}</dd></div>}</dl>{cash.canClose && <button type="button" onClick={() => { setClosing(cash); setCounted(""); clearErrors(); }}>Contar y cerrar</button>}</article>)}{!snapshot.cashSessions.length && <div className="remittance-empty">No hay cajas de envíos. Un administrador debe abrir la caja antes de operar.</div>}</div>
       </>}
       {tab === "reportes" && <>
         <form className="remittance-panel" onSubmit={(event) => void loadReport(event)}><h2>Reportes de envíos</h2><fieldset disabled={busy} className="remittance-form-grid"><label>Desde<input type="date" required value={reportFilters.from} onChange={(event) => { setReportFilters((current) => ({ ...current, from: event.target.value })); setReport(null); }} /></label><label>Hasta<input type="date" required value={reportFilters.to} onChange={(event) => { setReportFilters((current) => ({ ...current, to: event.target.value })); setReport(null); }} /></label><label>Presentación<select value={reportFilters.grouping} onChange={(event) => { setReportFilters((current) => ({ ...current, grouping: event.target.value as "range" | "day" })); setReport(null); }}><option value="range">Resumido del rango</option><option value="day">Diario</option></select></label><label>Reporte<select value={reportFilters.type} onChange={(event) => setReportFilters((current) => ({ ...current, type: event.target.value }))}><option value="amounts">Montos y cantidad de envíos</option><option value="times">Tiempos de entrega</option><option value="delivered">Envíos pagados</option><option value="cash">Caja</option></select></label></fieldset><button className="remittance-primary" disabled={busy}>{busy ? "Consultando…" : "Consultar"}</button></form>

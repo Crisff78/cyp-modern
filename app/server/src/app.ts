@@ -30,6 +30,11 @@ import {
   importCharges,
   importPayouts,
   MAX_MONEY_AMOUNT,
+  ledgerCurrency,
+  supportedLedgerCurrency,
+  ledgerCurrencies,
+  obligationCurrencyConflict,
+  type LedgerCurrency,
   postMovement,
   preview,
   publicAccount,
@@ -47,6 +52,7 @@ import { registerCatalogRoutes } from "./catalog-routes.js";
 import { registerDemoAccess, type DemoAccessConfig } from "./demo-access.js";
 import { assertAuthSession, createAuthSession, recordMutationTrace, revokeUserSessions } from "./admin-tools.js";
 import { registerAdminToolsRoutes } from "./admin-tools-routes.js";
+import { legacyFinancialFingerprintBody } from "./financial-currency-compat.js";
 
 type Config = {
   store: Store;
@@ -60,6 +66,9 @@ type Config = {
   adminPassword?: string;
 };
 const money = z.number().int().positive().max(MAX_MONEY_AMOUNT);
+const currency = z.string().trim().min(1).max(40)
+  .refine((value) => supportedLedgerCurrency(value) !== undefined, "Selecciona DOP, USD o EUR.")
+  .transform(ledgerCurrency);
 const id = z.string().min(1).max(80),
   text = z.string().trim().min(1).max(160),
   date = z.iso.date();
@@ -68,7 +77,7 @@ const chargeBody = z
     clientId: id,
     service: text,
     concept: z.string().trim().max(160).default(""),
-    currency: z.string().trim().min(1).max(40).default("Peso Dominicano"),
+    currency: currency.default("DOP"),
     note: z.string().trim().max(2000).default(""),
     amount: money,
     dueDate: date,
@@ -77,15 +86,20 @@ const chargeBody = z
   .strict();
 const batchBody = z.object({
   service: text,
+  currency: currency.default("DOP"),
   amount: money,
   dueDate: date,
   required: z.boolean().default(false),
   clientIds: z.array(id).min(1).max(100),
 }).strict();
 const payoutBody = z
-  .object({ clientId: id, collectorId: id, concept: text, amount: money })
+  .object({ clientId: id, collectorId: id, concept: text, amount: money, currency: currency.default("DOP"), dueDate: date.optional() })
   .strict();
-const transferBody = z.object({ collectorId: id, amount: money }).strict();
+const transferBody = z.object({
+  collectorId: id, amount: money, currency: currency.default("DOP"),
+  note: z.string().trim().max(2000).optional(),
+  denominations: z.array(z.object({ denominacion: z.number().int().positive(), cantidad: z.number().int().min(0) }).strict()).max(100).optional(),
+}).strict();
 const clientBody = z.object({
   name: text,
   code: z.string().trim().min(1).max(80),
@@ -169,6 +183,10 @@ export async function buildApp(config: Config) {
     return payload;
   });
   app.setErrorHandler((error, request, reply) => {
+    if ((error as { statusCode?: number }).statusCode === 413)
+      return reply.code(413).send({
+        error: { code: "PAYLOAD_TOO_LARGE", message: "La solicitud supera 65536 bytes (64 KiB). Divide el archivo en lotes más pequeños; no se guardó ninguna fila." },
+      });
     if (error instanceof z.ZodError)
       return reply.code(400).send({
         error: {
@@ -302,7 +320,7 @@ export async function buildApp(config: Config) {
             requestBody: {
               required: true,
               content: {
-                "application/json": { schema: z.toJSONSchema(schema) },
+                "application/json": { schema: z.toJSONSchema(schema, { io: "input" }) },
               },
             },
           }
@@ -342,7 +360,10 @@ export async function buildApp(config: Config) {
         assertAuthSession(state, u, (u as User & { sid?: string }).sid);
         const existing = state.idempotency.find((i) => i.id === scope);
         if (existing) {
-          if (existing.fingerprint !== fingerprint)
+          const legacyBody = legacyFinancialFingerprintBody(path, body, req.body);
+          const legacyFingerprint = legacyBody === undefined ? undefined : createHash("sha256")
+            .update(JSON.stringify({ path: req.url, body: legacyBody })).digest("hex");
+          if (existing.fingerprint !== fingerprint && existing.fingerprint !== legacyFingerprint)
             throw new DomainError(
               "IDEMPOTENCY_CONFLICT",
               "Esta clave ya se usó para otra operación.",
@@ -624,7 +645,9 @@ export async function buildApp(config: Config) {
         }),
       );
     const stops = clients.filter(hasLocation).map((client, index) => {
-      const charges = state.charges.filter((item) => item.clientId === client.id && item.status !== "cancelled");
+      const allCharges = state.charges.filter((item) => item.clientId === client.id && item.status !== "cancelled");
+      const conflicts = allCharges.filter((charge) => obligationCurrencyConflict(state, charge, "collection"));
+      const charges = allCharges.filter((charge) => !obligationCurrencyConflict(state, charge, "collection"));
       const pending = charges.filter((charge) => charge.collected < charge.amount);
       return {
         id: `pcp-${client.id}`,
@@ -632,8 +655,10 @@ export async function buildApp(config: Config) {
         client_name: client.name,
         lat: client.lat!,
         lng: client.lng!,
-        amount_due: moneyUnits(pending.reduce((sum, charge) => sum + charge.amount - charge.collected, 0)),
-        status: pending.length ? "pending" : charges.length ? "paid" : "pending",
+        amount_due: moneyUnits(pending.filter((charge) => ledgerCurrency(charge.currency) === "DOP").reduce((sum, charge) => sum + charge.amount - charge.collected, 0)),
+        amount_due_by_currency: Object.fromEntries(ledgerCurrencies.map((currency) => [currency, moneyUnits(pending.filter((charge) => ledgerCurrency(charge.currency) === currency).reduce((sum, charge) => sum + charge.amount - charge.collected, 0))])),
+        currency_conflict_count: conflicts.length,
+        status: pending.length || conflicts.length ? "pending" : charges.length ? "paid" : "pending",
         obligated: pending.some((charge) => charge.required),
       };
     });
@@ -852,6 +877,8 @@ export async function buildApp(config: Config) {
       throw new DomainError("NOT_FOUND", "Cargo no encontrado.", 404);
     if (charge.status === "cancelled")
       throw new DomainError("CARGO_CANCELLED", "No se puede modificar un cargo cancelado.", 409);
+    if (obligationCurrencyConflict(s, charge, "collection") || s.movements.some((movement) => movement.chargeId === charge.id && ledgerCurrency(movement.currency) !== b.currency))
+      throw new DomainError("LEGACY_CURRENCY_RECONCILIATION_REQUIRED", "La autorización tiene movimientos históricos en otra moneda. Requiere revisión administrativa; no se convirtió ni modificó ningún importe.", 409);
     if (charge.collected > 0 || s.movements.some((movement) => movement.type === "collection" && movement.chargeId === charge.id && !movement.cancelledAt))
       throw new DomainError("CARGO_HAS_COLLECTIONS", "No se puede modificar un cargo que ya tiene cobros.", 409);
     collectorForClient(s, b.clientId);
@@ -874,6 +901,7 @@ export async function buildApp(config: Config) {
         id: randomUUID(),
         clientId,
         service: b.service,
+        currency: b.currency,
         amount: b.amount,
         dueDate: b.dueDate,
         required: b.required,
@@ -898,6 +926,7 @@ export async function buildApp(config: Config) {
       const payout = {
         id: randomUUID(),
         ...b,
+        dueDate: b.dueDate ?? businessDate(),
         paid: 0,
         status: "pending" as const,
       };
@@ -909,12 +938,12 @@ export async function buildApp(config: Config) {
     [
       "/api/cobros",
       "collection",
-      z.object({ chargeId: id, amount: money }).strict(),
+      z.object({ chargeId: id, amount: money, currency: currency.optional() }).strict(),
     ],
     [
       "/api/pagos",
       "payout",
-      z.object({ payoutId: id, amount: money }).strict(),
+      z.object({ payoutId: id, amount: money, currency: currency.optional() }).strict(),
     ],
     ["/api/depositos", "deposit", transferBody],
     ["/api/entregas", "office_delivery", transferBody],
@@ -927,6 +956,9 @@ export async function buildApp(config: Config) {
         chargeId?: string;
         payoutId?: string;
         collectorId?: string;
+        currency?: LedgerCurrency;
+        note?: string;
+        denominations?: Array<{ denominacion: number; cantidad: number }>;
       }>,
       (s, u, b) => {
         const movement = postMovement(s, u, type, b);
@@ -950,6 +982,7 @@ export async function buildApp(config: Config) {
     z.object({
       clientId: id,
       collectorId: id,
+      currency: currency.default("DOP"),
       lines: z.array(z.object({ chargeId: id, amount: money }).strict()).min(1).max(100),
     }).strict(),
     (s, u, b) => {
@@ -970,6 +1003,7 @@ export async function buildApp(config: Config) {
     z.object({
       clientId: id,
       collectorId: id,
+      currency: currency.default("DOP"),
       lines: z.array(z.object({ payoutId: id, amount: money }).strict()).min(1).max(100),
     }).strict(),
     (s, u, b) => {
@@ -1045,6 +1079,7 @@ export async function buildApp(config: Config) {
       importe: z.number(),
       fecha: z.iso.date().optional(),
       requerido: z.boolean().optional(),
+      moneda: currency.optional(),
     })
     .strict();
   const importPayoutRow = z
@@ -1053,6 +1088,7 @@ export async function buildApp(config: Config) {
       concepto: z.string().trim().min(1).max(160),
       importe: z.number(),
       cobrador: z.string().trim().min(1).max(80).optional(),
+      moneda: currency.optional(),
     })
     .strict();
   mutate(
@@ -1075,6 +1111,7 @@ export async function buildApp(config: Config) {
         clientId: id,
         concept: text,
         amount: money,
+        currency: currency.default("DOP"),
         frequency: z.enum(["weekly", "monthly", "quarterly"]),
         nextRunDate: date,
       })
@@ -1088,6 +1125,7 @@ export async function buildApp(config: Config) {
       .object({
         concept: text.optional(),
         amount: money.optional(),
+        currency: currency.optional(),
         frequency: z.enum(["weekly", "monthly", "quarterly"]).optional(),
         nextRunDate: date.optional(),
         status: z.enum(["active", "paused", "archived"]).optional(),
@@ -1096,12 +1134,12 @@ export async function buildApp(config: Config) {
     (s, u, b, params) => updateRecurringPayout(s, u, params.id, b),
   );
   app.get("/api/cuadres/preview", async (req) => {
-    const q = z.object({ collectorId: id, date }).parse(req.query);
+    const q = z.object({ collectorId: id, date, currency: currency.default("DOP") }).parse(req.query);
     assertCollectorAccess(user(req), q.collectorId);
     const s = await config.store.read();
     if (!s.collectors.some((c) => c.id === q.collectorId))
       throw new DomainError("NOT_FOUND", "Cobrador no encontrado.", 404);
-    return preview(s, q.collectorId, q.date);
+    return preview(s, q.collectorId, q.date, q.currency);
   });
   describe(
     "get",
@@ -1180,9 +1218,11 @@ export async function buildApp(config: Config) {
       collectorName:
         s.collectors.find((c) => c.id === m.collectorId)?.name ?? "Cobrador",
       concept: m.chargeId
-        ? (s.charges.find((c) => c.id === m.chargeId)?.service ?? "Cobro")
+        ? (s.charges.find((c) => c.id === m.chargeId)?.concept || s.charges.find((c) => c.id === m.chargeId)?.service || "Cobro")
         : (s.payouts.find((p) => p.id === m.payoutId)?.concept ?? "Pago"),
       amount: m.amount,
+      currency: ledgerCurrency(m.currency),
+      businessDate: businessDate(new Date(m.createdAt)),
       createdAt: m.createdAt,
       type: m.type,
     };
@@ -1212,7 +1252,8 @@ export async function buildApp(config: Config) {
           .replace(/[^\x20-\x7E]/g, "")
           .match(new RegExp(`.{1,${cols}}`, "g"))
           ?.join("\n") ?? "";
-      const body = `COBROS Y PAGOS\nRecibo operacional\n${"-".repeat(cols)}\n${clean(r.clientName)}\n${clean(r.concept)}\nRD$ ${(r.amount / 100).toFixed(2)}\n${clean(r.collectorName)}\n${r.createdAt.slice(0, 10)}\n${clean(r.id)}\nNo es comprobante fiscal\n\n\n`;
+      const symbol = r.currency === "DOP" ? "RD$" : r.currency;
+      const body = `COBROS Y PAGOS\nRecibo operacional\n${"-".repeat(cols)}\n${clean(r.clientName)}\n${clean(r.concept)}\n${symbol} ${(r.amount / 100).toFixed(2)}\n${clean(r.collectorName)}\n${r.businessDate}\n${clean(r.id)}\nNo es comprobante fiscal\n\n\n`;
       return reply
         .header(
           "Content-Disposition",
