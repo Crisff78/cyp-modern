@@ -1,0 +1,184 @@
+.connected-user-permissions-dialog {
+  width: min(880px, calc(100vw - 48px));
+  height: min(490px, calc(100vh - 64px));
+  border-color: #065f46;
+}
+
+.connected-user-permissions-dialog > .legacy-dialog-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  padding: 0;
+  background: #f8fafc;
+}
+
+.connected-user-permissions-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.connected-user-permissions-content > .legacy-mdi-toolbar {
+  flex-shrink: 0;
+}
+
+.connected-user-permissions-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.connected-user-permissions-table {
+  min-width: 920px;
+}
+
+.connected-permission-table tbody tr,
+.connected-user-permissions-table tbody tr {
+  cursor: pointer;
+}
+
+.connected-permission-table tbody tr:hover td,
+.connected-user-permissions-table tbody tr:hover td {
+  background: #ecfdf5;
+}
+
+.connected-permission-table tbody tr.is-selected td,
+.connected-user-permissions-table tbody tr.is-selected td {
+  background: #d1fae5;
+  color: #064e3b;
+}
+
+.connected-permission-table tbody tr:focus-visible,
+.connected-user-permissions-table tbody tr:focus-visible {
+  outline: 2px solid #059669;
+  outline-offset: -2px;
+}
+
+.connected-user-permissions-note {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 7px 10px;
+  border-top: 1px solid #cbd5e1;
+  color: #64748b;
+  font-size: 11px;
+}
+
+.connected-permission-picker {
+  width: min(650px, calc(100vw - 48px));
+  border-color: #065f46;
+}
+
+.connected-user-permissions-dialog > .legacy-dialog-titlebar,
+.connected-permission-picker > .legacy-dialog-titlebar,
+.connected-permission-confirm > .legacy-dialog-titlebar {
+  background: linear-gradient(180deg, #047857 0%, #065f46 100%);
+  border-bottom-color: #064e3b;
+}
+
+.connected-permission-picker > .legacy-dialog-body,
+.connected-permission-confirm > .legacy-dialog-body {
+  background: #f8fafc;
+  padding: 12px;
+}
+
+.connected-permission-picker-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.connected-permission-category {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.connected-permission-category select {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 3px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background: #fff;
+  color: #334155;
+  font: inherit;
+}
+
+.connected-permission-category select:focus-visible {
+  outline: 2px solid #059669;
+  outline-offset: 1px;
+}
+
+.connected-permission-picker-label {
+  color: #334155;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.connected-permission-picker-scroll {
+  height: min(300px, 42vh);
+  min-height: 100px;
+  overflow: auto;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+}
+
+.connected-permission-table {
+  min-width: 450px;
+}
+
+.connected-permission-code {
+  display: inline-block;
+  width: 38px;
+  font-variant-numeric: tabular-nums;
+  color: #64748b;
+}
+
+.connected-permission-assigned {
+  margin-left: 12px;
+  color: #64748b;
+  font-size: 10px;
+}
+
+.connected-permission-table tr[aria-disabled="true"] {
+  cursor: default;
+  opacity: .6;
+}
+
+.connected-permission-actions {
+  justify-content: center;
+  gap: 12px;
+  padding-top: 6px;
+}
+
+.connected-permission-confirm {
+  width: min(450px, calc(100vw - 48px));
+  border-color: #065f46;
+}
+
+.connected-permission-confirm-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: #334155;
+}
+
+.connected-permission-confirm-content svg {
+  flex-shrink: 0;
+  color: #047857;
+}
+
+.connected-permission-error {
+  margin: 0;
+  padding: 6px 10px;
+  color: #be123c;
+  font-size: 12px;
+}
