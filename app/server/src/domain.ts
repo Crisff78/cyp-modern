@@ -8,6 +8,49 @@ import type { RemittanceState } from "./remittances.js";
 import { emptyAdminToolsState, type AdminToolsState } from "./admin-tools.js";
 
 export type Role = "admin" | "collector";
+export const ledgerCurrencies = ["DOP", "USD", "EUR"] as const;
+export type LedgerCurrency = (typeof ledgerCurrencies)[number];
+// Missing currency in historical records means DOP. Never infer a ledger
+// movement's currency from an obligation that may have been edited later.
+const currencyAliases: Readonly<Record<string, LedgerCurrency>> = Object.freeze({
+  dop: "DOP", "peso dominicano": "DOP", usd: "USD", "dólar americano": "USD", "dolar americano": "USD",
+  "dólar estadounidense": "USD", "dolar estadounidense": "USD", eur: "EUR", euro: "EUR",
+});
+export function supportedLedgerCurrency(value?: string): LedgerCurrency | undefined {
+  const name = (value ?? "DOP").trim().toLowerCase() || "dop";
+  return Object.hasOwn(currencyAliases, name) ? currencyAliases[name] : undefined;
+}
+export function ledgerCurrency(value?: string): LedgerCurrency {
+  const currency = supportedLedgerCurrency(value);
+  if (!currency) throw new DomainError("INVALID_CURRENCY", "Selecciona DOP, USD o EUR.", 422);
+  return currency;
+}
+export function obligationCurrencyConflict(state: State, row: Charge | Payout, type: "collection" | "payout") {
+  const currency = supportedLedgerCurrency(row.currency);
+  if (!currency) return true;
+  const movements = state.movements.filter((movement) => movement.type === type &&
+    (type === "collection" ? movement.chargeId === row.id : movement.payoutId === row.id));
+  const nativeTotal = movements.filter((movement) => !movement.cancelledAt && ledgerCurrency(movement.currency) === currency)
+    .reduce((total, movement) => total + movement.amount, 0);
+  const aggregate = "collected" in row ? row.collected : row.paid;
+  return movements.some((movement) => ledgerCurrency(movement.currency) !== currency) ||
+    (currency !== "DOP" && aggregate !== nativeTotal);
+}
+function financialObligation<T extends Charge | Payout>(state: State, row: T, type: "collection" | "payout"): Omit<T, "currency"> & {
+  currency: string; currencyConflict?: true; currencyUnsupported?: true;
+  collectedByCurrency?: Record<LedgerCurrency, number>; paidByCurrency?: Record<LedgerCurrency, number>;
+} {
+  const currencyConflict = obligationCurrencyConflict(state, row, type);
+  const supported = supportedLedgerCurrency(row.currency);
+  const byCurrency = Object.fromEntries(ledgerCurrencies.map((currency) => [currency,
+    state.movements.filter((movement) => movement.type === type && !movement.cancelledAt && ledgerCurrency(movement.currency) === currency &&
+      (type === "collection" ? movement.chargeId === row.id : movement.payoutId === row.id)).reduce((total, movement) => total + movement.amount, 0),
+  ])) as Record<LedgerCurrency, number>;
+  return { ...row, currency: supported ?? row.currency ?? "DOP", ...(!supported ? { currencyUnsupported: true as const } : {}), ...(currencyConflict ? {
+    currencyConflict: true,
+    ...(type === "collection" ? { collectedByCurrency: byCurrency } : { paidByCurrency: byCurrency }),
+  } : {}) };
+}
 export type User = {
   id: string;
   name: string;
@@ -17,6 +60,8 @@ export type User = {
 export type Account = {
   id: string;
   name: string;
+  nickname?: string;
+  note?: string;
   email: string;
   role: Role;
   collectorId?: string;
@@ -36,6 +81,7 @@ export type Client = {
   phone: string;
   address: string;
   routeId: string;
+  preferredCurrency?: LedgerCurrency;
   collectionPointId?: string;
   alias?: string;
   sector?: string;
@@ -88,7 +134,16 @@ export type Route = {
   active?: boolean;
 };
 export type Zone = { id: string; name: string; sector: string; number?: string; from?: string; to?: string; active?: boolean };
-export type Service = { id: string; service: string; abbr: string; caption: string; obligated: boolean; fixedAmount: boolean; active: boolean };
+export type Service = {
+  id: string; service: string; abbr: string; caption: string;
+  obligated: boolean; fixedAmount: boolean; active: boolean;
+  // Optional operator-entered references. They do not price obligations or move stock.
+  referencePriceCents?: number | null;
+  referenceCurrency?: LedgerCurrency | null;
+  taxReference?: string | null;
+  benefitReference?: string | null;
+  referenceQuantity?: string | null;
+};
 export type DelayReason = { id: string; reason: string; active: boolean };
 export type RecurringCharge = {
   id: string; clientId: string; routeId?: string; serviceId?: string;
@@ -132,9 +187,17 @@ export type Payout = {
   clientId: string;
   collectorId: string;
   concept: string;
+  currency?: LedgerCurrency;
+  dueDate?: string;
   amount: number;
   paid: number;
   status: Charge["status"];
+};
+export type DepositComponent = {
+  method: "cash" | "cheque" | "bank_deposit";
+  amount: number;
+  bank?: string;
+  reference?: string;
 };
 export type Movement = {
   id: string;
@@ -144,6 +207,8 @@ export type Movement = {
   payoutId?: string;
   type: "collection" | "deposit" | "office_delivery" | "payout";
   amount: number;
+  currency?: LedgerCurrency;
+  note?: string;
   createdAt: string;
   receiptToken?: string;
   receiptRevoked?: boolean;
@@ -155,6 +220,7 @@ export type Movement = {
   cancelledBy?: string;
   cancellationNote?: string;
   denominations?: Array<{ denominacion: number; cantidad: number }>;
+  depositComponents?: DepositComponent[];
 };
 export type Settlement = {
   id: string;
@@ -168,6 +234,7 @@ export type Settlement = {
   status: "closed";
   closedAt: string;
   actorId: string;
+  totalsByCurrency?: Record<LedgerCurrency, ReturnType<typeof preview>>;
 };
 export type Idempotency = {
   id: string;
@@ -180,6 +247,7 @@ export type RecurringPayout = {
   clientId: string;
   concept: string;
   amount: number;
+  currency?: LedgerCurrency;
   frequency: "weekly" | "monthly" | "quarterly";
   nextRunDate: string;
   status: "active" | "paused" | "archived";
@@ -293,10 +361,11 @@ export function findAccount(state: State, email: string) {
     (account) => account.email.toLowerCase() === normalized,
   );
 }
-export function preview(state: State, collectorId: string, date?: string) {
+export function preview(state: State, collectorId: string, date?: string, currency: LedgerCurrency = "DOP") {
   const rows = state.movements.filter(
     (m) =>
       m.collectorId === collectorId &&
+      ledgerCurrency(m.currency) === currency &&
       (!date || businessDate(new Date(m.createdAt)) === date),
   );
   const sum = (type: Movement["type"]) =>
@@ -314,6 +383,46 @@ export function preview(state: State, collectorId: string, date?: string) {
     paidToClients,
     difference: collected - deposited + (officeDelivered - paidToClients),
   };
+}
+// Components describe one deposit; they do not introduce separate bank balances.
+// Missing components preserve historical cash deposits and their fingerprints.
+function depositCashAmount(amount: number, components?: DepositComponent[]) {
+  if (components === undefined) return amount;
+  if (!Array.isArray(components) || components.length < 1 || components.length > 20)
+    throw new DomainError("DEPOSIT_COMPONENTS_INVALID", "Indica entre 1 y 20 componentes del depósito.", 422);
+  if (!Number.isSafeInteger(amount) || amount <= 0 || amount > MAX_MONEY_AMOUNT)
+    throw new DomainError("DEPOSIT_COMPONENTS_INVALID", "El importe del depósito debe ser un entero positivo seguro en centavos.", 422);
+  let total = 0n, cash = 0n;
+  for (const component of components) {
+    if (!component || !["cash", "cheque", "bank_deposit"].includes(component.method) ||
+      !Number.isSafeInteger(component.amount) || component.amount <= 0 || component.amount > MAX_MONEY_AMOUNT)
+      throw new DomainError("DEPOSIT_COMPONENTS_INVALID", "Cada componente necesita un método e importe positivo seguro en centavos.", 422);
+    if (component.method === "cash") {
+      if (component.bank !== undefined || component.reference !== undefined)
+        throw new DomainError("DEPOSIT_COMPONENTS_INVALID", "El efectivo no utiliza banco ni referencia.", 422);
+      cash += BigInt(component.amount);
+    } else if (typeof component.bank !== "string" || !component.bank.trim() || component.bank.length > 160 ||
+      typeof component.reference !== "string" || !component.reference.trim() || component.reference.length > 160)
+      throw new DomainError("DEPOSIT_COMPONENTS_INVALID", "Indica banco y referencia para cheques y depósitos bancarios (máximo 160 caracteres).", 422);
+    total += BigInt(component.amount);
+  }
+  if (total !== BigInt(amount))
+    throw new DomainError("DEPOSIT_COMPONENTS_MISMATCH", "La suma de los componentes debe coincidir exactamente con el importe del depósito.", 422);
+  return Number(cash);
+}
+function assertDenominations(amount: number, lines?: Array<{ denominacion: number; cantidad: number }>, exactEmpty = false) {
+  if (lines === undefined || (!exactEmpty && !lines.length)) return;
+  let total = 0;
+  for (const line of lines) {
+    const value = line.denominacion * line.cantidad;
+    if (!Number.isSafeInteger(line.denominacion) || line.denominacion <= 0 ||
+        !Number.isSafeInteger(line.cantidad) || line.cantidad < 0 ||
+        !Number.isSafeInteger(value) || !Number.isSafeInteger(total + value))
+      throw new DomainError("DEPOSIT_BREAKDOWN_INVALID", "El desglose contiene valores inválidos.", 422);
+    total += value;
+  }
+  if (total !== amount)
+    throw new DomainError("DEPOSIT_BREAKDOWN_MISMATCH", `El desglose de efectivo suma ${total} centavos; se esperan ${amount}.`, 422);
 }
 export function acceptDeposit(
   state: State,
@@ -336,29 +445,8 @@ export function acceptDeposit(
       "No se puede aceptar un depósito cancelado.",
       422,
     );
-  if (desglose?.length) {
-    let total = 0;
-    for (const item of desglose) {
-      if (
-        !Number.isInteger(item.denominacion) ||
-        item.denominacion <= 0 ||
-        !Number.isInteger(item.cantidad) ||
-        item.cantidad < 0
-      )
-        throw new DomainError(
-          "DEPOSIT_BREAKDOWN_INVALID",
-          "El desglose contiene valores inválidos.",
-          422,
-        );
-      total += item.denominacion * item.cantidad;
-    }
-    if (total !== movement.amount)
-      throw new DomainError(
-        "DEPOSIT_BREAKDOWN_MISMATCH",
-        `El desglose suma ${total} centavos y el depósito es ${movement.amount}.`,
-        422,
-      );
-  }
+  const cashAmount = depositCashAmount(movement.amount, movement.depositComponents);
+  assertDenominations(cashAmount, desglose, movement.depositComponents !== undefined);
   const yaAceptado = state.depositEvents.some(
     (e) => e.movementId === movementId && e.action === "accepted",
   );
@@ -420,6 +508,7 @@ export function createRecurringPayout(
     clientId: string;
     concept: string;
     amount: number;
+    currency?: LedgerCurrency;
     frequency: RecurringPayout["frequency"];
     nextRunDate: string;
   },
@@ -437,6 +526,7 @@ export function createRecurringPayout(
     clientId: input.clientId,
     concept: input.concept.trim(),
     amount: input.amount,
+    currency: ledgerCurrency(input.currency),
     frequency: input.frequency,
     nextRunDate: input.nextRunDate,
     status: "active",
@@ -453,6 +543,7 @@ export function updateRecurringPayout(
   cambio: {
     concept?: string;
     amount?: number;
+    currency?: LedgerCurrency;
     frequency?: RecurringPayout["frequency"];
     nextRunDate?: string;
     status?: RecurringPayout["status"];
@@ -476,6 +567,7 @@ export function updateRecurringPayout(
     template.amount = cambio.amount;
   }
   if (cambio.concept !== undefined) template.concept = cambio.concept.trim();
+  if (cambio.currency !== undefined) template.currency = ledgerCurrency(cambio.currency);
   if (cambio.frequency !== undefined) template.frequency = cambio.frequency;
   if (cambio.nextRunDate !== undefined)
     template.nextRunDate = cambio.nextRunDate;
@@ -512,8 +604,8 @@ export function clientStatement(state: State, user: User, clientId: string) {
         403,
       );
   }
-  const cargos = state.charges.filter((c) => c.clientId === clientId);
-  const autorizaciones = state.payouts.filter((p) => p.clientId === clientId);
+  const cargos = state.charges.filter((c) => c.clientId === clientId).map((row) => financialObligation(state, row, "collection"));
+  const autorizaciones = state.payouts.filter((p) => p.clientId === clientId).map((row) => financialObligation(state, row, "payout"));
   const cobros = state.movements.filter(
     (m) =>
       m.type === "collection" && m.clientId === clientId && !m.cancelledAt,
@@ -521,21 +613,22 @@ export function clientStatement(state: State, user: User, clientId: string) {
   const pagos = state.movements.filter(
     (m) => m.type === "payout" && m.clientId === clientId && !m.cancelledAt,
   );
+  const summarize = (currency: LedgerCurrency) => ({
+    totalCargado: cargos.filter((c) => !c.currencyConflict && ledgerCurrency(c.currency) === currency).reduce((a, c) => a + c.amount, 0),
+    totalCobrado: cobros.filter((m) => ledgerCurrency(m.currency) === currency).reduce((a, m) => a + m.amount, 0),
+    totalPendiente: cargos.filter((c) => !c.currencyConflict && c.status !== "cancelled" && ledgerCurrency(c.currency) === currency).reduce((a, c) => a + Math.max(0, c.amount - c.collected), 0),
+    totalAutorizado: autorizaciones.filter((p) => !p.currencyConflict && ledgerCurrency(p.currency) === currency).reduce((a, p) => a + p.amount, 0),
+    totalPagadoACliente: pagos.filter((m) => ledgerCurrency(m.currency) === currency).reduce((a, m) => a + m.amount, 0),
+  });
   return {
     client: { id: client.id, code: client.code, name: client.name },
     cargos,
     cobros,
     autorizaciones,
     pagos,
-    resumen: {
-      totalCargado: cargos.reduce((a, c) => a + c.amount, 0),
-      totalCobrado: cobros.reduce((a, m) => a + m.amount, 0),
-      totalPendiente: cargos
-        .filter((c) => c.status !== "cancelled")
-        .reduce((a, c) => a + Math.max(0, c.amount - c.collected), 0),
-      totalAutorizado: autorizaciones.reduce((a, p) => a + p.amount, 0),
-      totalPagadoACliente: pagos.reduce((a, m) => a + m.amount, 0),
-    },
+    resumen: summarize("DOP"),
+    resumenByCurrency: Object.fromEntries(ledgerCurrencies.map((currency) => [currency, summarize(currency)])),
+    currencyConflicts: [...cargos, ...autorizaciones].filter((row) => row.currencyConflict),
   };
 }
 
@@ -575,6 +668,7 @@ export function importCharges(
     importe: number;
     fecha?: string;
     requerido?: boolean;
+    moneda?: LedgerCurrency;
   }>,
 ) {
   assertAdmin(user);
@@ -596,6 +690,7 @@ export function importCharges(
         clientId: client.id,
         service: fila.servicio.trim(),
         amount: fila.importe,
+        currency: ledgerCurrency(fila.moneda),
         dueDate: fila.fecha ?? businessDate(),
         required: fila.requerido ?? false,
         collected: 0,
@@ -620,6 +715,7 @@ export function importPayouts(
     concepto: string;
     importe: number;
     cobrador?: string;
+    moneda?: LedgerCurrency;
   }>,
 ) {
   assertAdmin(user);
@@ -648,6 +744,8 @@ export function importPayouts(
         collectorId,
         concept: fila.concepto.trim(),
         amount: fila.importe,
+        currency: ledgerCurrency(fila.moneda),
+        dueDate: businessDate(),
         paid: 0,
         status: "pending" as const,
       });
@@ -693,6 +791,10 @@ export function postMovement(
     chargeId?: string;
     payoutId?: string;
     collectorId?: string;
+    currency?: LedgerCurrency;
+    note?: string;
+    denominations?: Array<{ denominacion: number; cantidad: number }>;
+    depositComponents?: DepositComponent[];
   },
   now = new Date(),
 ) {
@@ -706,29 +808,32 @@ export function postMovement(
       throw new DomainError("NOT_FOUND", "Cargo no encontrado.", 404);
     collectorId = collectorForClient(state, charge.clientId);
     clientId = charge.clientId;
-    if (
-      charge.status === "cancelled" ||
-      charge.collected + body.amount > charge.amount
-    )
-      throw new DomainError(
-        "INVALID_AMOUNT",
-        "El cobro supera el saldo pendiente.",
-      );
   } else if (type === "payout") {
     payout = state.payouts.find((p) => p.id === body.payoutId);
     if (!payout)
       throw new DomainError("NOT_FOUND", "Descargo no encontrado.", 404);
     collectorId = payout.collectorId;
     clientId = payout.clientId;
-    if (
-      payout.status === "cancelled" ||
-      payout.paid + body.amount > payout.amount
-    )
-      throw new DomainError(
-        "INVALID_AMOUNT",
-        "El pago supera el saldo autorizado.",
-      );
   } else assertAdmin(user);
+  if ((charge && obligationCurrencyConflict(state, charge, "collection")) || (payout && obligationCurrencyConflict(state, payout, "payout")))
+    throw new DomainError("LEGACY_CURRENCY_RECONCILIATION_REQUIRED", "La autorización tiene movimientos históricos en otra moneda. Requiere revisión administrativa antes de continuar; no se convirtió ni modificó ningún importe.", 409);
+  const currency = type === "collection" ? ledgerCurrency(charge?.currency)
+    : type === "payout" ? ledgerCurrency(payout?.currency) : ledgerCurrency(body.currency);
+  if (body.currency !== undefined && ledgerCurrency(body.currency) !== currency)
+    throw new DomainError("CURRENCY_MISMATCH", "La moneda debe coincidir con la autorización.", 422);
+  if (user.role !== "admin" && currency !== "DOP")
+    throw new DomainError("UNSUPPORTED_COLLECTOR_CURRENCY", "Este portal de cobrador opera en DOP; USD y EUR se registran desde administración.", 422);
+  assertImportAmount(body.amount);
+  if (charge && (charge.status === "cancelled" || charge.collected + body.amount > charge.amount))
+    throw new DomainError("INVALID_AMOUNT", "El cobro supera el saldo pendiente.");
+  if (payout && (payout.status === "cancelled" || payout.paid + body.amount > payout.amount))
+    throw new DomainError("INVALID_AMOUNT", "El pago supera el saldo autorizado.");
+  if (body.depositComponents !== undefined && type !== "deposit")
+    throw new DomainError("DEPOSIT_COMPONENTS_INVALID", "Los componentes solo se permiten en depósitos.", 422);
+  if (type === "deposit") {
+    const cashAmount = depositCashAmount(body.amount, body.depositComponents);
+    assertDenominations(cashAmount, body.denominations, body.depositComponents !== undefined);
+  }
   const collector = state.collectors.find((c) => c.id === collectorId);
   if (!collector)
     throw new DomainError("NOT_FOUND", "Cobrador no encontrado.", 404);
@@ -750,14 +855,14 @@ export function postMovement(
   );
   if (old.length) {
     const oldState = { ...state, movements: old };
-    if (preview(oldState, collector.id).difference !== 0)
+    if (ledgerCurrencies.some((unit) => preview(oldState, collector.id, undefined, unit).difference !== 0))
       throw new DomainError(
         "PREVIOUS_DAY_OPEN",
         "Debes resolver el efectivo pendiente de la jornada anterior.",
         409,
       );
   }
-  const balance = preview(state, collector.id);
+  const balance = preview(state, collector.id, undefined, currency);
   const collectionCash = balance.collected - balance.deposited,
     payoutCash = balance.officeDelivered - balance.paidToClients;
   if (
@@ -798,6 +903,10 @@ export function postMovement(
     payoutId: payout?.id,
     type,
     amount: body.amount,
+    currency,
+    ...(body.note ? { note: body.note } : {}),
+    ...(body.denominations ? { denominations: body.denominations } : {}),
+    ...(body.depositComponents ? { depositComponents: structuredClone(body.depositComponents) } : {}),
     createdAt: now.toISOString(),
     actorId: user.id,
     ...(clientId
@@ -822,7 +931,7 @@ export function postMovement(
 export function createCentralCollections(
   state: State,
   user: User,
-  input: { clientId: string; collectorId: string; lines: Array<{ chargeId: string; amount: number }> },
+  input: { clientId: string; collectorId: string; currency?: LedgerCurrency; lines: Array<{ chargeId: string; amount: number }> },
   now = new Date(),
 ) {
   assertAdmin(user);
@@ -841,8 +950,10 @@ export function createCentralCollections(
     const charge = state.charges.find((item) => item.id === line.chargeId);
     if (!charge || charge.clientId !== client.id)
       throw new DomainError("CHARGE_CLIENT_MISMATCH", "Todos los cargos deben pertenecer al cliente seleccionado.", 422);
-    if (charge.currency && !["DOP", "Peso Dominicano"].includes(charge.currency))
-      throw new DomainError("UNSUPPORTED_COLLECTION_CURRENCY", "Los cobros de esta caja se registran únicamente en pesos dominicanos.", 422);
+    if (obligationCurrencyConflict(state, charge, "collection"))
+      throw new DomainError("LEGACY_CURRENCY_RECONCILIATION_REQUIRED", "La autorización tiene una moneda histórica sin resolver. Requiere revisión administrativa; no se modificó ningún importe.", 409);
+    if (ledgerCurrency(charge.currency) !== ledgerCurrency(input.currency))
+      throw new DomainError("CURRENCY_MISMATCH", "Todos los cargos deben pertenecer a la moneda seleccionada.", 422);
   }
   // Validate the complete receipt before publishing any of its movements.
   const draft = structuredClone(state);
@@ -855,7 +966,7 @@ export function createCentralCollections(
 export function createCentralPayments(
   state: State,
   user: User,
-  input: { clientId: string; collectorId: string; lines: Array<{ payoutId: string; amount: number }> },
+  input: { clientId: string; collectorId: string; currency?: LedgerCurrency; lines: Array<{ payoutId: string; amount: number }> },
   now = new Date(),
 ) {
   assertAdmin(user);
@@ -877,6 +988,10 @@ export function createCentralPayments(
       throw new DomainError("PAYOUT_CLIENT_MISMATCH", "Todos los descargos deben pertenecer al cliente seleccionado.", 422);
     if (payout.collectorId !== collector.id)
       throw new DomainError("PAYOUT_COLLECTOR_MISMATCH", "Todos los descargos deben corresponder al cobrador seleccionado.", 422);
+    if (obligationCurrencyConflict(state, payout, "payout"))
+      throw new DomainError("LEGACY_CURRENCY_RECONCILIATION_REQUIRED", "La autorización tiene una moneda histórica sin resolver. Requiere revisión administrativa; no se modificó ningún importe.", 409);
+    if (ledgerCurrency(payout.currency) !== ledgerCurrency(input.currency))
+      throw new DomainError("CURRENCY_MISMATCH", "Todos los descargos deben pertenecer a la moneda seleccionada.", 422);
   }
   // Publish the complete payment only after every line passes the ledger guards.
   const draft = structuredClone(state);
@@ -908,7 +1023,7 @@ export function cancelMovement(
     throw new DomainError("CANCELLATION_DAY_MISMATCH", "Solo puedes anular movimientos de la jornada actual. Los movimientos de otra fecha requieren revisión administrativa.", 409);
   const collector = state.collectors.find((item) => item.id === movement.collectorId);
   if (!collector) throw new DomainError("NOT_FOUND", "Cobrador no encontrado.", 404);
-  const balance = preview(state, collector.id);
+  const balance = preview(state, collector.id, undefined, ledgerCurrency(movement.currency));
   if (type === "collection" && balance.collected - balance.deposited < movement.amount)
     throw new DomainError("INSUFFICIENT_COLLECTION_CASH", "No se puede anular el cobro porque su efectivo ya fue depositado. Revisa primero los depósitos de esta jornada.", 409);
   if (type === "office_delivery" && balance.officeDelivered - balance.paidToClients < movement.amount)
@@ -957,10 +1072,11 @@ export function closeDay(
   )
     throw new DomainError("DAY_CLOSED", "La jornada ya está cerrada.", 409);
   const totals = preview(state, collectorId, date);
-  if (totals.difference !== 0)
+  const totalsByCurrency = Object.fromEntries(ledgerCurrencies.map((currency) => [currency, preview(state, collectorId, date, currency)])) as Record<LedgerCurrency, ReturnType<typeof preview>>;
+  if (Object.values(totalsByCurrency).some((balance) => balance.difference !== 0))
     throw new DomainError(
       "UNBALANCED",
-      "El cuadre debe tener una diferencia exacta de RD$ 0.00.",
+      "El cuadre debe tener una diferencia exacta de 0.00 en cada moneda (DOP, USD y EUR).",
       409,
     );
   const settlement: Settlement = {
@@ -968,6 +1084,7 @@ export function closeDay(
     collectorId,
     date,
     ...totals,
+    totalsByCurrency,
     status: "closed",
     closedAt: now.toISOString(),
     actorId: user.id,
@@ -981,22 +1098,25 @@ export function snapshot(state: State, user: User) {
   const routes = state.routes.filter((r) => allowed(r.collectorId));
   const clients = state.clients.filter((c) =>
     routes.some((r) => r.id === c.routeId),
-  );
+  ).map((client) => ({ ...client, preferredCurrency: client.preferredCurrency ?? "DOP" }));
   const movements = state.movements
-    .filter((m) => allowed(m.collectorId))
+    .filter((m) => allowed(m.collectorId) && (user.role === "admin" || ledgerCurrency(m.currency) === "DOP"))
     .map(({ actorId, receiptRevoked, ...m }) => ({
       ...m,
+      currency: ledgerCurrency(m.currency),
       ...(receiptRevoked || m.cancelledAt ? { receiptToken: undefined } : {}),
     }));
   const collectors = state.collectors
     .filter((c) => allowed(c.id))
     .map((c) => {
       const b = preview(state, c.id);
+      const balances = Object.fromEntries(ledgerCurrencies.map((currency) => [currency, preview(state, c.id, undefined, currency)]));
       return {
         ...c,
         cashInHand: b.difference,
-        status: (c.active === false ? "offline" : b.collected - b.deposited >= c.collectionLimit ||
-        b.officeDelivered - b.paidToClients >= c.payoutLimit
+        cashInHandByCurrency: Object.fromEntries(ledgerCurrencies.map((currency) => [currency, balances[currency].difference])),
+        status: (c.active === false ? "offline" : (user.role === "admin" ? Object.values(balances) : [b]).some((balance) => balance.collected - balance.deposited >= c.collectionLimit ||
+        balance.officeDelivered - balance.paidToClients >= c.payoutLimit)
           ? "limit"
           : Date.now() - Date.parse(c.lastSeen) > 15 * 60 * 1000
             ? "offline"
@@ -1007,9 +1127,9 @@ export function snapshot(state: State, user: User) {
   const daily = movements.filter(
     (m) => businessDate(new Date(m.createdAt)) === date,
   );
-  const sum = (type: Movement["type"]) =>
+  const sum = (type: Movement["type"], currency: LedgerCurrency = "DOP") =>
     daily
-      .filter((m) => m.type === type && !m.cancelledAt)
+      .filter((m) => m.type === type && !m.cancelledAt && ledgerCurrency(m.currency) === currency)
       .reduce((s, m) => s + m.amount, 0);
   const collected = sum("collection"),
     paid = sum("payout"),
@@ -1020,7 +1140,7 @@ export function snapshot(state: State, user: User) {
     d.setDate(d.getDate() - 6 + i);
     const day = businessDate(d);
     const rows = movements.filter(
-      (m) => businessDate(new Date(m.createdAt)) === day,
+      (m) => businessDate(new Date(m.createdAt)) === day && ledgerCurrency(m.currency) === "DOP",
     );
     return {
       label: day.slice(5),
@@ -1039,16 +1159,16 @@ export function snapshot(state: State, user: User) {
     zones: state.zones.filter((z) => user.role === "admin" || routes.some((r) => r.zoneId === z.id)),
     services: state.services,
     delayReasons: state.delayReasons,
-    recurringCharges: user.role === "admin" ? state.recurringCharges : [],
+    recurringCharges: user.role === "admin" ? state.recurringCharges.map((row) => ({ ...row, currency: supportedLedgerCurrency(row.currency) ?? row.currency, ...(!supportedLedgerCurrency(row.currency) ? { currencyUnsupported: true } : {}) })) : [],
     collectors,
     accounts:
       user.role === "admin"
         ? state.accounts.map(publicAccount)
         : state.accounts.filter((a) => a.id === user.id).map(publicAccount),
     charges: state.charges.filter((c) =>
-      clients.some((cl) => cl.id === c.clientId),
-    ),
-    payouts: state.payouts.filter((p) => allowed(p.collectorId)),
+      clients.some((cl) => cl.id === c.clientId) && (user.role === "admin" || supportedLedgerCurrency(c.currency) === "DOP"),
+    ).map((c) => financialObligation(state, c, "collection")),
+    payouts: state.payouts.filter((p) => allowed(p.collectorId) && (user.role === "admin" || supportedLedgerCurrency(p.currency) === "DOP")).map((p) => financialObligation(state, p, "payout")),
     payoutRecurring:
       user.role === "admin" ? state.payoutRecurring : [],
     movements,
@@ -1061,6 +1181,10 @@ export function snapshot(state: State, user: User) {
       difference: collected - deposited + officeDelivered - paid,
       activeCollectors: collectors.filter((c) => c.status === "active").length,
     },
+    totalsByCurrency: Object.fromEntries(ledgerCurrencies.map((currency) => {
+      const collected = sum("collection", currency), paid = sum("payout", currency), deposited = sum("deposit", currency), officeDelivered = sum("office_delivery", currency);
+      return [currency, { collected, paid, deposited, officeDelivered, difference: collected - deposited + officeDelivered - paid }];
+    })),
     history,
   };
 }

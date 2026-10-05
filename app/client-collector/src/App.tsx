@@ -59,6 +59,7 @@ import { GeoMap } from "../../client-admin/src/GeoMap";
 import { locationUnavailable, locationError, validLocation } from "../../shared/geolocation";
 import { transformRouteToMap } from "./services/mapAdapter";
 import { businessDay as localDay, timeLabel } from "./services/dates";
+import { pocketBalances } from "./services/pocket";
 import type {
   Charge,
   Client,
@@ -555,7 +556,8 @@ export function App() {
       </nav>
       {operation && (
         <CollectionSheet
-          key={`${operation.kind}-${operation.id}`}
+          key={`${user.id}-${operation.kind}-${operation.id}`}
+          actorId={user.id}
           operation={operation}
           online={online}
           onClose={() => setOperation(null)}
@@ -807,6 +809,7 @@ function RouteView({
 }) {
   const [filter, setFilter] = useState<Filter>("Todos");
   const [query, setQuery] = useState("");
+  const [nextClientId, setNextClientId] = useState<string | null>(null);
   const [display, setDisplay] = useState<"map" | "list">("map");
   const [routeMode, setRouteMode] = useState<RouteMode>("Por rutas");
   const [delayReasons, setDelayReasons] = useState<Record<string, string>>({});
@@ -873,9 +876,10 @@ function RouteView({
             ))),
     );
   const progress = total ? Math.round((paid / total) * 100) : 0;
-  const currentStop = list.find(({ charges: rows }) =>
+  const pendingStops = list.filter(({ charges: rows }) =>
     rows.some((row) => row.status !== "paid"),
   );
+  const currentStop = pendingStops.find(({ client }) => client.id === nextClientId) ?? pendingStops[0];
   const currentCharge = currentStop?.charges.find(
     (row) => row.status !== "paid",
   );
@@ -1093,7 +1097,11 @@ function RouteView({
             >
               Sin Cobro / Atraso
             </button>
-            <button className="secondary">Omitir / Siguiente</button>
+            <button className="secondary" disabled={pendingStops.length < 2}
+              onClick={() => {
+                const index = pendingStops.indexOf(currentStop);
+                setNextClientId(pendingStops[(index + 1) % pendingStops.length].client.id);
+              }}>Omitir / Siguiente</button>
           </div>
         </section>
       )}
@@ -1556,15 +1564,7 @@ function PocketView({
   onInstall: () => void;
   onLogout: () => void;
 }) {
-  const movements = snapshot.movements.filter(
-    (item) => item.collectorId === collector?.id,
-  );
-  const sum = (type: string) =>
-    movements
-      .filter((item) => item.type === type)
-      .reduce((result, item) => result + item.amount, 0);
-  const collectionCash = sum("collection") - sum("deposit");
-  const payoutCash = sum("office_delivery") - sum("payout");
+  const { collectionCash, payoutCash } = pocketBalances(snapshot.movements, collector?.id);
   return (
     <>
       <PageTitle

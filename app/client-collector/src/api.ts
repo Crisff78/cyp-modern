@@ -1,4 +1,4 @@
-import { isMockToken, mockApi } from "./mock";
+import { isMockToken, mockApi, MockApiError } from "./mock";
 
 const TOKEN_KEY = "cyp-collector-token";
 export const getToken = () => sessionStorage.getItem(TOKEN_KEY);
@@ -19,7 +19,13 @@ export async function api<T>(
   options: RequestInit = {},
 ): Promise<T> {
   const token = getToken();
-  if (isMockToken(token)) return mockApi<T>(path, options);
+  if (isMockToken(token)) {
+    try { return await mockApi<T>(path, options); }
+    catch (error) {
+      if (error instanceof MockApiError) throw new ApiError(error.message, error.status);
+      throw error;
+    }
+  }
   const headers = new Headers(options.headers);
   if (options.body) headers.set("Content-Type", "application/json");
   if (token && !path.startsWith("/recibos/"))

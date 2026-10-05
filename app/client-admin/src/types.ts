@@ -62,6 +62,7 @@ export const isSuspendedUser = (user: User) =>
   user.isActive === false || user.hasWorkPermission === false;
 
 export type Client = {
+  preferredCurrency?: "DOP" | "USD" | "EUR";
   active?: boolean;
   id: string;
   name: string;
@@ -139,6 +140,8 @@ export type Charge = {
   service: string;
   concept?: string;
   currency?: string;
+  currencyConflict?: boolean;
+  collectedByCurrency?: Partial<Record<"DOP" | "USD" | "EUR", number>>;
   note?: string;
   amount: number;
   collected: number;
@@ -151,9 +154,21 @@ export type Payout = {
   clientId: string;
   collectorId: string;
   concept: string;
+  currency?: "DOP" | "USD" | "EUR";
+  currencyConflict?: boolean;
+  paidByCurrency?: Partial<Record<"DOP" | "USD" | "EUR", number>>;
+  dueDate?: string;
+  service?: string;
+  note?: string;
   amount: number;
   paid: number;
   status: "pending" | "partial" | "paid" | "cancelled";
+};
+export type DepositComponent = {
+  method: "cash" | "cheque" | "bank_deposit";
+  amount: number;
+  bank?: string;
+  reference?: string;
 };
 export type Movement = {
   id: string;
@@ -163,14 +178,18 @@ export type Movement = {
   payoutId?: string;
   type: "collection" | "deposit" | "office_delivery" | "payout";
   amount: number;
+  currency?: "DOP" | "USD" | "EUR";
+  note?: string;
   createdAt: string;
   receiptToken?: string;
+  receiptRevoked?: boolean;
   acceptedAt?: string;
   acceptedBy?: string;
   cancelledAt?: string;
   cancelledBy?: string;
   cancellationNote?: string;
   denominations?: { denominacion: number; cantidad: number }[];
+  depositComponents?: DepositComponent[];
 };
 export type Balance = {
   collected: number;
@@ -180,6 +199,8 @@ export type Balance = {
   difference: number;
 };
 export type PublicAccount = {
+  nickname?: string;
+  note?: string;
   id: string;
   name: string;
   email: string;
@@ -195,6 +216,7 @@ export type RecurringPayout = {
   clientId: string;
   concept: string;
   amount: number;
+  currency?: "DOP" | "USD" | "EUR";
   frequency: "weekly" | "monthly" | "quarterly";
   nextRunDate: string;
   status: "active" | "paused" | "archived";

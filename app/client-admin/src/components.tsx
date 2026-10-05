@@ -75,7 +75,7 @@ export function Modal({
                 {description ?? "Consulta el detalle y gestiona tu operación."}
               </Dialog.Description>
             </div>
-            <Dialog.Close className="icon-button" aria-label="Cerrar">
+            <Dialog.Close className="icon-button" aria-label="Cerrar" title="Cerrar">
               <X size={20} />
             </Dialog.Close>
           </div>

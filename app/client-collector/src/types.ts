@@ -115,6 +115,8 @@ export type Movement = {
   amount: number;
   createdAt: string;
   receiptToken?: string;
+  cancelledAt?: string;
+  currency?: "DOP" | "USD" | "EUR";
 };
 export type Snapshot = {
   businessDate: string;

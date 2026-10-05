@@ -230,6 +230,7 @@ export function ConnectedAdminTools({ page, snapshot, onRefresh }: { page: Admin
   const formClass = dialog?.type === "stations" ? "legacy-relation-manager legacy-admin-relations" : page === "stations" && dialog?.type === "edit" ? "legacy-dialog-form pcp-station-form" : page === "pcps" && dialog?.type === "edit" ? "legacy-dialog-form pcp-data-form legacy-pcp-form" : page === "authorizationRequests" ? "authorization-form" : "legacy-dialog-form";
   return <section className={"connected-admin-tools legacy-mdi-view " + layout + "-mdi-view"} aria-label={definition.title} aria-busy={loading}>
     {toolbar}
+    {page === "authorizationRequests" && <p className="legacy-admin-note">Solicitudes de revisión administrativa de un cliente y su cobrador responsable. Registra el motivo, consulta la solicitud y resuélvela como aprobada, rechazada o anulada. La decisión queda en el historial; no registra cobros o pagos ni amplía límites o permisos.</p>}
     {error && <p className="legacy-admin-feedback error" role="alert">{error}</p>}{message && <p className="legacy-admin-feedback success" role="status">{message}</p>}
     {page === "pcps" && !loading && !groups.length && <p className="legacy-admin-note">Crea un grupo de PCPs para registrar el primer punto.</p>}
     {paged || page === "pcps" ? <div className={layout + "-workspace"}>{filtersVisible && filterPanel}{grid}</div> : grid}
@@ -253,7 +254,7 @@ export function ConnectedAdminTools({ page, snapshot, onRefresh }: { page: Admin
           <fieldset className="legacy-config-fieldset station-general-fieldset"><legend>General</legend>
             <span className="station-internal-id" title={dialog.row?.id}>ID: {dialog.row?.id ?? "Nuevo"}</span>
             <label>Estación:{input("name", undefined, true)}</label>
-            <div className="legacy-dialog-row two-cols"><label>Nro.:{input("number")}</label><label>ID:{input("deviceId")}</label></div>
+            <div className="legacy-dialog-row two-cols"><label>Nro.:{input("number")}</label><label>ID dispositivo:{input("deviceId")}</label></div>
             <div className="license-row"><label>Lic.:{input("license")}</label><button type="button" disabled title="Los datos del dispositivo se registran manualmente.">Obtener Datos</button><button type="button" disabled title="No hay un servicio de emisión de licencias conectado.">Obtener Licencia</button></div>
             <label>Descrip.:<textarea rows={2} maxLength={1000} value={String(draft.description ?? "")} disabled={locked} onChange={(event) => updateDraft("description", event.target.value)} /></label>
             <div className="legacy-dialog-row two-cols"><label>Grupo:{input("group")}</label><label>Tipo:{input("type")}</label></div>
@@ -289,7 +290,7 @@ export function ConnectedAdminTools({ page, snapshot, onRefresh }: { page: Admin
           <label>Motivo:<textarea autoFocus required rows={3} maxLength={2000} value={String(draft.note ?? "")} disabled={locked} onChange={(event) => updateDraft("note", event.target.value)} /></label>
           <p className="legacy-admin-note">La decisión quedará registrada y no podrá editarse después. No crea pagos ni modifica límites de efectivo.</p>
         </>}
-        {dialog.type === "confirm" && <div className="legacy-confirm-content"><span className="legacy-question-icon">?</span><p>{dialog.action === "close" ? dialog.row?.current ? "Tu sesión se cerrará y tendrás que iniciar sesión de nuevo." : "Se cerrará la sesión de " + (dialog.row ? value(dialog.row, "userName") : "este usuario") + ". Su token dejará de permitir acceso." : dialog.action === "delete" ? "El grupo se eliminará si no tiene PCPs asociados." : "El registro quedará " + (dialog.action === "activate" ? "activo" : "inactivo") + "."}</p></div>}
+        {dialog.type === "confirm" && <div className="legacy-confirm-content"><span className="legacy-question-icon">?</span><p>{dialog.action === "close" ? dialog.row?.current ? "Tu sesión se cerrará y tendrás que iniciar sesión de nuevo." : "Se cerrará la sesión de " + (dialog.row ? value(dialog.row, "userName") : "este usuario") + ". Su token dejará de permitir acceso." : dialog.action === "delete" ? "El grupo se eliminará si no tiene PCPs asociados." : page === "stations" && dialog.row ? `¿${dialog.action === "activate" ? "Activar" : "Inactivar"} la estación ${value(dialog.row, "name")} (código ${value(dialog.row, "number")})? Su historial y asociaciones se conservan.` : "El registro quedará " + (dialog.action === "activate" ? "activo" : "inactivo") + "."}</p></div>}
         {dialog.type !== "stations" && <>{formMessages}{actions(dialog.type === "confirm" ? "Confirmar" : "oK")}</>}
       </form>}
     </LegacyDialog>}

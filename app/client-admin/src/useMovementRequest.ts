@@ -1,8 +1,9 @@
 import { useSyncExternalStore } from "react";
 import { operationKey, StrictApiError } from "../../shared/remittances/strictApi";
+import { api, ApiError } from "./api";
 import { remittancesApi } from "./remittancesApi";
 
-type Attempt = { key: string; path: string; body: string; draft: unknown };
+type Attempt = { key: string; path: string; method: "POST" | "PUT"; transport: "strict" | "api"; body: string; draft: unknown };
 type RequestState = { attempt?: Attempt; busy: boolean; uncertain: boolean; error: string };
 const idle: RequestState = { busy: false, uncertain: false, error: "" };
 // These business errors are emitted after the server has checked the saved key.
@@ -45,20 +46,23 @@ export function useMovementRequest(actorId: string, scope: string) {
   const id = requestId(actorId, scope);
   const state = useSyncExternalStore(subscribe, () => states.get(id) ?? idle);
 
-  const run = async <T,>(path: string, body: unknown, draft: unknown, valid: (result: T) => boolean): Promise<T> => {
+  const run = async <T,>(path: string, body: unknown, draft: unknown, valid: (result: T) => boolean, method: "POST" | "PUT" = "POST", transport: "strict" | "api" = "strict"): Promise<T> => {
     const previous = states.get(id) ?? idle;
     if (previous.busy) throw new Error("La operación ya se está enviando.");
-    const attempt = previous.attempt ?? { key: operationKey(), path, body: JSON.stringify(body), draft };
+    const attempt = previous.attempt ?? { key: operationKey(), path, method, transport, body: JSON.stringify(body), draft };
     publish(id, { ...previous, attempt, busy: true, error: "" });
     try {
-      const result = await remittancesApi<T>(attempt.path, {
-        method: "POST", headers: { "Idempotency-Key": attempt.key }, body: attempt.body,
+      const request = attempt.transport === "api" ? api : remittancesApi;
+      const result = await request<T>(attempt.path, {
+        method: attempt.method, headers: { "Idempotency-Key": attempt.key }, body: attempt.body,
       });
       if (!valid(result)) throw new StrictApiError("No se pudo confirmar la respuesta. Reintenta esta misma operación para recuperar su resultado.", 200, true);
       publish(id, idle);
       return result;
     } catch (error) {
-      const failure = error instanceof StrictApiError ? error : new StrictApiError(error instanceof Error ? error.message : "No se pudo completar la operación.", 0, true);
+      const failure = error instanceof StrictApiError ? error : error instanceof ApiError
+        ? new StrictApiError(error.message, error.status, error.uncertain, error.code)
+        : new StrictApiError(error instanceof Error ? error.message : "No se pudo completar la operación.", 0, true);
       // Auth/prevalidation failures cannot resolve an earlier lost response.
       const definitive = Boolean(failure.code && definitiveCodes.has(failure.code));
       const uncertain = failure.uncertain || (previous.uncertain && !definitive);

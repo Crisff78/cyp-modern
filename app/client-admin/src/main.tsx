@@ -6,6 +6,7 @@ import "@fontsource/inter/600.css";
 import "@fontsource/inter/700.css";
 import "leaflet/dist/leaflet.css";
 import "./styles.css";
+import "./suggestions-shell.css";
 import App from "./App";
 
 class ErrorBoundary extends React.Component<

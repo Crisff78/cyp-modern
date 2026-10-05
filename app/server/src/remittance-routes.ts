@@ -47,7 +47,14 @@ export function registerRemittanceRoutes(
   }).strict(), (state, actor, input) => setDailyRate(state, actor, input));
   mutate("/api/envios", "Registrar envío y recibir principal más comisión", z.object({
     ...quoteFields, senderClientId: id, recipientClientId: id, sendingUserId: id.optional(),
-    quote: z.object({ date: z.iso.date(), sourceRate: z.string().max(19), destinationRate: z.string().max(19) }).strict(),
+    quote: z.object({ date: z.iso.date(), sourceRate: z.string().max(19), destinationRate: z.string().max(19),
+      quotedAt: z.iso.datetime().optional(), sourceRateChangeId: id.optional(), destinationRateChangeId: id.optional(),
+      sourceRateChangedAt: z.iso.datetime().optional(), destinationRateChangedAt: z.iso.datetime().optional(),
+    }).strict(),
+    managerCommission: z.object({
+      managerName: z.string().trim().min(1).max(160).refine((value) => value.length <= 160, "El nombre del gestor excede 160 caracteres."),
+      amount, currency,
+    }).strict().optional(),
     note: z.string().trim().max(2000).default(""),
   }).strict(), (state, actor, input) => createRemittance(state, actor, input, systemOperators));
   mutate("/api/envios/:id/pagar", "Pagar recibo completo", z.object({}).strict(),

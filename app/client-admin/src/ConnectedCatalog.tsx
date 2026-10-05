@@ -5,6 +5,7 @@ import { ConnectedUserPermissionsDialog } from "./ConnectedUserPermissionsDialog
 import { CollectorAssignmentsDialog } from "./CollectorAssignmentsDialog";
 import type { CollectorAssignment } from "./collectorAssignmentsState";
 import { remittancesApi } from "./remittancesApi";
+import { pendingMovementDraft, useMovementRequest } from "./useMovementRequest";
 import { decimalCents, formatMoney } from "../../shared/remittances/output";
 import type { Snapshot } from "./types";
 import "./connected-catalog.css";
@@ -22,16 +23,18 @@ const definitions: Record<CatalogPage, { title: string; path: string; label: str
 export const isConnectedCatalog = (page: string): page is CatalogPage => Object.hasOwn(definitions, page);
 type RecordRow = { id: string; [key: string]: unknown };
 type Draft = Record<string, string | boolean>;
-type Field = { key: string; label: string; type?: "money" | "number" | "date" | "password" | "boolean"; required?: boolean; options?: { value: string; label: string }[] };
+type Field = { key: string; label: string; type?: "money" | "number" | "date" | "password" | "boolean"; required?: boolean; maxLength?: number; options?: { value: string; label: string }[] };
 const moneyString = (value: unknown) => typeof value === "number" ? `${Math.trunc(value / 100)}.${String(value % 100).padStart(2, "0")}` : "0.00";
 const active = (row: RecordRow) => row.active !== false && row.status !== "disabled";
+// Match the public invitation policy (demo-access.ts), never an invitation value.
+const MIN_ACCOUNT_PASSWORD_LENGTH = 10;
 const assignmentText = (value: unknown) => typeof value === "string" || typeof value === "number" ? String(value) : "";
 const areaAssignment = (row: { id: string; name: string; number?: unknown; from?: unknown; to?: unknown }): CollectorAssignment => ({
   id: row.id, name: row.name, number: assignmentText(row.number) || row.id,
   from: assignmentText(row.from), to: assignmentText(row.to),
 });
 
-export function ConnectedCatalog({ page, snapshot, onRefresh }: { page: CatalogPage; snapshot: Snapshot; onRefresh: () => void }) {
+export function ConnectedCatalog({ page, snapshot, actorId, onRefresh }: { page: CatalogPage; snapshot: Snapshot; actorId: string; onRefresh: () => void }) {
   const definition = definitions[page];
   const [records, setRecords] = useState<RecordRow[]>([]);
   const [selectedId, setSelectedId] = useState("");
@@ -56,6 +59,7 @@ export function ConnectedCatalog({ page, snapshot, onRefresh }: { page: CatalogP
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState("");
   const [toggleTarget, setToggleTarget] = useState<RecordRow | null>(null);
+  const [limitsTarget, setLimitsTarget] = useState<RecordRow | null>(null);
   const refresh = useCallback(async () => {
     setLoading(true); setError("");
     try { const result = await remittancesApi<RecordRow[]>(definition.path); if (!Array.isArray(result)) throw new Error("El servidor no devolvió un catálogo válido."); setRecords(result); }
@@ -80,8 +84,14 @@ export function ConnectedCatalog({ page, snapshot, onRefresh }: { page: CatalogP
     { key: "number", label: "Número" }, { key: "name", label: "Nombre", required: true }, { key: "sector", label: "Sector" }, { key: "from", label: "Desde" }, { key: "to", label: "Hasta" },
   ] : page === "servicesProducts" ? [
     { key: "service", label: "Servicio", required: true }, { key: "abbr", label: "Abreviatura" }, { key: "caption", label: "Descripción" }, { key: "fixedAmount", label: "Usa importe fijo", type: "boolean" }, { key: "obligated", label: "Cobro obligatorio", type: "boolean" },
+    { key: "referencePriceCents", label: "Precio de referencia", type: "money" },
+    { key: "referenceCurrency", label: "Moneda del precio de referencia", options: ["DOP", "USD", "EUR"].map((value) => ({ value, label: value })) },
+    { key: "taxReference", label: "Impuestos de referencia (indica unidad)", maxLength: 160 },
+    { key: "benefitReference", label: "Beneficio de referencia (indica unidad)", maxLength: 160 },
+    { key: "referenceQuantity", label: "Cantidad de referencia (indica unidad)", maxLength: 64 },
   ] : page === "delayReasons" ? [{ key: "reason", label: "Motivo", required: true }] : page === "users" ? [
-    { key: "name", label: "Nombre", required: true }, { key: "email", label: "Correo", required: true }, { key: "role", label: "Rol", required: true, options: [{ value: "admin", label: "Administrador" }, { value: "collector", label: "Cobrador" }] }, { key: "collectorId", label: "Cobrador asociado", options: collectorOptions, required: draft.role === "collector" }, ...(editing === "new" ? [{ key: "password", label: "Contraseña inicial (mínimo 12 caracteres)", type: "password" as const, required: true }] : []),
+    { key: "nickname", label: "Apodo", maxLength: 120 }, { key: "note", label: "Nota", maxLength: 1000 },
+    { key: "name", label: "Nombre", required: true }, { key: "email", label: "Correo", required: true }, { key: "role", label: "Rol", required: true, options: [{ value: "admin", label: "Administrador" }, { value: "collector", label: "Cobrador" }] }, { key: "collectorId", label: "Cobrador asociado", options: collectorOptions, required: draft.role === "collector" }, ...(editing === "new" ? [{ key: "password", label: `Contraseña inicial (mínimo ${MIN_ACCOUNT_PASSWORD_LENGTH} caracteres)`, type: "password" as const, required: true }] : []),
   ] : [
     { key: "clientId", label: "Cliente", required: true, options: snapshot.clients.map((row) => ({ value: row.id, label: row.name })) }, { key: "service", label: "Servicio", required: true }, { key: "concept", label: "Concepto", required: true },
     { key: "startDate", label: "Fecha inicial", type: "date", required: true }, { key: "endDate", label: "Fecha final", type: "date" },
@@ -92,6 +102,7 @@ export function ConnectedCatalog({ page, snapshot, onRefresh }: { page: CatalogP
     if (busy) return;
     const next: Draft = { role: "collector", frequency: "Mensual", startDate: snapshot.businessDate, day1: "1", day2: "15", active: true };
     for (const field of fields) next[field.key] = field.type === "money" ? moneyString(record === "new" ? page === "collectors" ? 1_000_000 : 0 : record[field.key]) : field.type === "boolean" ? Boolean(record !== "new" && record[field.key]) : String(record === "new" ? next[field.key] ?? "" : record[field.key] ?? "");
+    if (page === "servicesProducts") next.referencePriceCents = record === "new" || record.referencePriceCents == null ? "" : moneyString(record.referencePriceCents);
     if (next.frequency === "Semestal") next.frequency = "Semestral";
     setDraft(next); setEditing(record); setFormError(""); setMessage("");
   };
@@ -100,13 +111,20 @@ export function ConnectedCatalog({ page, snapshot, onRefresh }: { page: CatalogP
     for (const field of fields) {
       const valueForField = value[field.key] ?? "";
       if (field.required && String(valueForField).trim() === "") throw new Error(`Completa ${field.label.toLowerCase()}.`);
-      if (field.type === "money") payload[field.key] = decimalCents(String(valueForField || "0"));
+      if (page === "servicesProducts" && ["referencePriceCents", "referenceCurrency", "taxReference", "benefitReference", "referenceQuantity"].includes(field.key) && String(valueForField).trim() === "") payload[field.key] = null;
+      else if (field.key === "referencePriceCents") {
+        const cents = decimalCents(String(valueForField), true);
+        if (cents > 1_000_000_000) throw new Error("El precio de referencia debe ser de hasta 10,000,000.00 en su moneda.");
+        payload[field.key] = cents;
+      }
+      else if (field.type === "money") payload[field.key] = decimalCents(String(valueForField || "0"));
       else if (field.type === "number") { const n = Number(valueForField || "0"); if (!Number.isSafeInteger(n)) throw new Error(`Revisa ${field.label.toLowerCase()}.`); payload[field.key] = n; }
       else payload[field.key] = field.type === "boolean" ? Boolean(valueForField) : String(valueForField).trim();
     }
+    if (page === "servicesProducts" && (payload.referencePriceCents != null) !== (payload.referenceCurrency != null)) throw new Error("El precio de referencia requiere su moneda; borra ambos para dejarlo vacío.");
     if (page === "users") {
       if (payload.role === "admin") delete payload.collectorId;
-      if (editing === "new" && String(payload.password).length < 12) throw new Error("La contraseña necesita al menos 12 caracteres.");
+      if (editing === "new" && String(payload.password).length < MIN_ACCOUNT_PASSWORD_LENGTH) throw new Error(`La contraseña necesita al menos ${MIN_ACCOUNT_PASSWORD_LENGTH} caracteres.`);
     } else payload.active = editing === "new" || !editing ? true : active(editing);
     if (page === "recurringCharges") { payload.currency = "DOP"; payload.useConceptAmount = editing && editing !== "new" ? Boolean(editing.useConceptAmount) : false; }
     return payload;
@@ -134,7 +152,7 @@ export function ConnectedCatalog({ page, snapshot, onRefresh }: { page: CatalogP
   };
   const changePassword = async (event: FormEvent) => {
     event.preventDefault(); if (!passwordTarget || busy) return;
-    if (String(draft.password ?? "").length < 12) { setFormError("La contraseña necesita al menos 12 caracteres."); return; }
+    if (String(draft.password ?? "").length < MIN_ACCOUNT_PASSWORD_LENGTH) { setFormError(`La contraseña necesita al menos ${MIN_ACCOUNT_PASSWORD_LENGTH} caracteres.`); return; }
     if (draft.password !== draft.confirmation) { setFormError("La confirmación no coincide con la clave."); return; }
     setBusy(true); setFormError("");
     try { await remittancesApi(`/usuarios/${encodeURIComponent(passwordTarget.id)}/clave`, { method: "POST", body: JSON.stringify({ password: draft.password }) }); setDraft({}); await complete("Contraseña actualizada correctamente."); }
@@ -154,7 +172,7 @@ export function ConnectedCatalog({ page, snapshot, onRefresh }: { page: CatalogP
   const invalidRange = Boolean(from && to && from > to);
   const visible = records.filter((row) => {
     const client = clientOf(row);
-    const matchesQuery = [text(row, definition.label), text(row, "number"), text(row, "email"), client?.code, client?.name].join(" ").toLocaleLowerCase().includes(query.toLocaleLowerCase());
+    const matchesQuery = [text(row, definition.label), text(row, "number"), text(row, "email"), text(row, "nickname"), text(row, "note"), client?.code, client?.name].join(" ").toLocaleLowerCase().includes(query.toLocaleLowerCase());
     return matchesQuery && (page !== "recurringCharges" || (!invalidRange &&
       (filterMode === "all" || !filterClientId || row.clientId === filterClientId) &&
       (!from || text(row, "startDate") >= from) && (!to || text(row, "startDate") <= to) &&
@@ -168,7 +186,7 @@ export function ConnectedCatalog({ page, snapshot, onRefresh }: { page: CatalogP
     setSelectedId(visible[next].id);
   };
   const openRelation = (kind: NonNullable<typeof relation>) => {
-    if (!selected || busy) return;
+    if (!selected || loading || busy) return;
     setRelationRow(selected); setRelation(kind);
   };
   const openPicker = (target: "form" | "filter") => {
@@ -186,7 +204,7 @@ export function ConnectedCatalog({ page, snapshot, onRefresh }: { page: CatalogP
     collectors: ["Cod.", "Cobrador", "Celular", "Cuenta", "Act."],
     routes: ["Nro.", "Ruta", "Desde", "Hasta", "Activo"],
     zones: ["Nro", "Zona", "Desde", "Hasta", "Act."],
-    servicesProducts: ["Nro.", "Servicio", "Abrev", "Caption", "Ob. Cob.", "Activo"],
+    servicesProducts: ["Nro.", "Servicio", "Abrev", "Caption", "Ob. Cob.", "Importe fijo", "Activo"],
     delayReasons: ["Nro.", "Motivo", "Activo"],
     users: ["Usuario", "Cuenta", "Rol", "Act."],
     recurringCharges: ["Nro.", "Fecha", "Frecuencia", "Identif.", "Cliente", "Servicio", "Importe", "Activo", "Fecha de Registro"],
@@ -201,7 +219,7 @@ export function ConnectedCatalog({ page, snapshot, onRefresh }: { page: CatalogP
     switch (page) {
       case "collectors": return [marker(text(row, "ident") || "—"), text(row, "name"), text(row, "cellular"), text(row, "accountId"), check];
       case "routes": case "zones": return [marker(text(row, "number") || index + 1), text(row, "name"), text(row, "from"), text(row, "to"), check];
-      case "servicesProducts": return [marker(index + 1), text(row, "service"), text(row, "abbr"), text(row, "caption"), <LegacyCheck checked={Boolean(row.obligated)} />, check];
+      case "servicesProducts": return [marker(index + 1), text(row, "service"), text(row, "abbr"), text(row, "caption"), <LegacyCheck checked={Boolean(row.obligated)} />, <input type="checkbox" readOnly aria-label="Usa importe fijo" checked={Boolean(row.fixedAmount)} />, check];
       case "delayReasons": return [marker(index + 1), text(row, "reason"), check];
       case "users": return [marker(text(row, "name")), text(row, "email"), row.role === "admin" ? "Administrador" : "Cobrador", check];
       case "recurringCharges": {
@@ -216,7 +234,7 @@ export function ConnectedCatalog({ page, snapshot, onRefresh }: { page: CatalogP
   const control = (key: string, label?: string, className?: string): ReactNode => {
     const field = fields.find((item) => item.key === key);
     if (!field) return null;
-    const common = { "aria-label": label ?? field.label, disabled: busy, required: field.required, className };
+    const common = { "aria-label": label ?? field.label, disabled: busy, required: field.required, maxLength: field.maxLength, className };
     if (field.type === "boolean") return <input {...common} type="checkbox" checked={Boolean(draft[key])} onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.checked }))} />;
     if (field.options) return <select {...common} value={String(draft[key] ?? "")} onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))}><option value="">Selecciona…</option>{field.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>;
     return <input {...common} type={field.type === "date" || field.type === "password" ? field.type : "text"} inputMode={field.type === "money" ? "decimal" : field.type === "number" ? "numeric" : undefined} autoComplete={field.type === "password" ? "new-password" : "off"} value={String(draft[key] ?? "")} onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))} />;
@@ -261,18 +279,27 @@ export function ConnectedCatalog({ page, snapshot, onRefresh }: { page: CatalogP
       <div className="service-form-row service-two-cols"><label><span>Caption:</span>{control("caption")}</label><label><span>Abrev:</span>{control("abbr")}</label></div>
       <label className="legacy-check-line service-obligated-line">{control("obligated")}<span>Obligado cobrar</span></label>
       <label className="legacy-check-line service-obligated-line">{control("fixedAmount")}<span>Usa importe fijo</span></label>
+      <fieldset className="legacy-config-fieldset"><legend>Referencias opcionales</legend>
+        <div className="service-form-row service-two-cols"><label><span>Precio:</span>{control("referencePriceCents")}</label><label><span>Moneda:</span>{control("referenceCurrency")}</label></div>
+        <label className="service-form-row"><span>Impuestos:</span>{control("taxReference")}</label>
+        <label className="service-form-row"><span>Beneficio:</span>{control("benefitReference")}</label>
+        <label className="service-form-row"><span>Cantidad:</span>{control("referenceQuantity")}</label>
+        <p className="catalog-scope-note">Datos manuales informativos. Indica la unidad en impuestos, beneficio y cantidad. No calculan impuestos o beneficios ni modifican cargos, existencias o totales. Déjalos vacíos si no aplican; el precio requiere una moneda explícita.</p>
+      </fieldset>
     </>;
     if (page === "delayReasons") return <label>Motivo:{control("reason")}</label>;
     if (page === "users") return <>
       <label className="legacy-form-row"><span>Nombre:</span>{control("name")}</label>
+      <label className="legacy-form-row"><span>Apodo:</span>{control("nickname")}</label>
+      <label className="legacy-form-row"><span>Nota:</span>{control("note")}</label>
       <div className="legacy-form-row user-role-row"><label><span>Usuario / correo:</span>{control("email")}</label><label><span>Rol:</span>{control("role")}</label></div>
       {draft.role === "collector" && <label className="legacy-form-row"><span>Cobrador:</span>{control("collectorId")}</label>}
       {editing === "new" && <label className="legacy-form-row"><span>Clave inicial:</span>{control("password")}</label>}
-      {editing === "new" && <small>Mínimo 12 caracteres.</small>}
+      {editing === "new" && <small>Mínimo {MIN_ACCOUNT_PASSWORD_LENGTH} caracteres.</small>}
     </>;
     const client = snapshot.clients.find((item) => item.id === draft.clientId);
     return <>
-      <div className="recurring-charge-row recurring-charge-client-row"><span>Cliente:</span><input aria-label="Código del cliente" value={client?.code ?? ""} readOnly /><input aria-label="Nombre del cliente" value={client?.name ?? ""} readOnly placeholder="Seleccione un cliente" /><button type="button" disabled={busy} onClick={() => openPicker("form")} aria-label="Buscar cliente">[...]</button></div>
+      <div className="recurring-charge-row recurring-charge-client-row"><span>Cliente:</span><input aria-label="Código del cliente" value={client?.code ?? ""} readOnly /><input aria-label="Nombre del cliente" value={client?.name ?? ""} readOnly placeholder="Seleccione un cliente" /><button type="button" disabled={busy} onClick={() => openPicker("form")} aria-label="Buscar cliente" title="Buscar cliente">[...]</button></div>
       <div className="recurring-charge-row recurring-charge-date-row"><span>F. Inicial:</span>{control("startDate")}<span>F. final:</span>{control("endDate")}</div>
       <div className="recurring-charge-row recurring-charge-frequency-row"><span>Frecuencia:</span>{control("frequency")}<span>Día1:</span>{control("day1", undefined, "recurring-charge-day")}<span>Día2:</span>{control("day2", undefined, "recurring-charge-day")}</div>
       <label className="recurring-charge-row recurring-charge-labeled-row"><span>Moneda:</span><input value="Peso Dominicano (DOP)" readOnly /></label>
@@ -332,7 +359,7 @@ export function ConnectedCatalog({ page, snapshot, onRefresh }: { page: CatalogP
       {page === "recurringCharges" && filtersVisible && <aside className="legacy-filter-panel charges-filter-panel recurring-charge-filter-panel" aria-label="Panel de filtro de cargos recurrentes">
         <div className="pending-charges-filter-heading">Panel de Filtro</div>
         <label className="charges-radio-row"><input type="radio" name="connected-recurring-filter" checked={filterMode === "all"} onChange={() => setFilterMode("all")} />Todos</label>
-        <div className="charges-filter-group"><label className="charges-radio-row"><input type="radio" name="connected-recurring-filter" checked={filterMode === "client"} onChange={() => setFilterMode("client")} />por Cliente:</label><div className="legacy-lookup-field charges-filter-control"><input aria-label="Cliente del filtro" value={snapshot.clients.find((client) => client.id === filterClientId)?.name ?? ""} disabled={filterMode !== "client"} readOnly /><button type="button" disabled={filterMode !== "client"} onClick={() => openPicker("filter")} aria-label="Seleccionar cliente">...</button></div></div>
+        <div className="charges-filter-group"><label className="charges-radio-row"><input type="radio" name="connected-recurring-filter" checked={filterMode === "client"} onChange={() => setFilterMode("client")} />por Cliente:</label><div className="legacy-lookup-field charges-filter-control"><input aria-label="Cliente del filtro" value={snapshot.clients.find((client) => client.id === filterClientId)?.name ?? ""} disabled={filterMode !== "client"} readOnly /><button type="button" disabled={filterMode !== "client"} onClick={() => openPicker("filter")} aria-label="Seleccionar cliente" title="Seleccionar cliente">...</button></div></div>
         <label className="field compact-field">Fecha Inicial:<input type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></label>
         <label className="field compact-field">Fecha final:<input type="date" value={to} onChange={(event) => setTo(event.target.value)} /></label>
         <label className="field compact-field">Estado:<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">Todos</option><option value="active">Activo</option><option value="inactive">Inactivo</option></select></label>
@@ -348,14 +375,52 @@ export function ConnectedCatalog({ page, snapshot, onRefresh }: { page: CatalogP
       </div>
     </div>
     {page === "recurringCharges" && <p className="catalog-scope-note">Plantillas guardadas. La generación por calendario todavía no está disponible; recibido y pendiente no se calculan para plantillas.</p>}
+    {page === "users" && <p className="catalog-scope-note">Usuarios → Permisos muestra las asignaciones de pantallas de este navegador. El rol de la cuenta y la API determinan las operaciones autorizadas; este panel no modifica los permisos efectivos de un rol.</p>}
+    {limitsTarget && <CollectorLimitsDialog key={`${actorId}-${limitsTarget.id}`} actorId={actorId} collector={limitsTarget} onClose={() => setLimitsTarget(null)} onSaved={async (saved) => { setLimitsTarget(null); setRelationRow(saved); await refresh(); setMessage("Límites del cobrador guardados. Sus demás datos se conservan."); onRefresh(); }} />}
     {editing && <LegacyDialog title={formTitles[page]} className={dialogClasses[page] + " catalog-legacy-dialog"} onClose={() => { if (!busy) setEditing(null); }}>
       <form className={formClasses[page]} onSubmit={submit}>{formContent()}{formError && <p role="alert">{formError}</p>}<div className="legacy-dialog-actions centered"><button type="submit" disabled={busy}>{busy ? "Guardando…" : "oK"}</button><button type="button" disabled={busy} onClick={() => setEditing(null)}>Cancelar</button></div></form>
     </LegacyDialog>}
     {toggleTarget && <LegacyDialog title="Confirmar" className="legacy-confirm-dialog catalog-legacy-dialog" onClose={() => { if (!busy) setToggleTarget(null); }}><div className="legacy-confirm-content"><span className="legacy-question-icon">?</span><p>¿{active(toggleTarget) ? "Inactivar" : "Reactivar"} {text(toggleTarget, definition.label)}?</p></div><p className="catalog-scope-note">El historial se conserva.</p>{formError && <p role="alert">{formError}</p>}<div className="legacy-dialog-actions centered"><button type="button" disabled={busy} onClick={() => void toggle()}>{busy ? "Guardando…" : "Sí"}</button><button type="button" disabled={busy} onClick={() => setToggleTarget(null)}>No</button></div></LegacyDialog>}
-    {passwordTarget && <LegacyDialog title="Cambiar clave de usuario..." className="legacy-password-dialog catalog-legacy-dialog" onClose={() => { if (!busy) setPasswordTarget(null); }}><form className="legacy-user-form" onSubmit={changePassword}><label className="legacy-form-row"><span>Clave:</span><input autoFocus type="password" disabled={busy} required minLength={12} autoComplete="new-password" value={String(draft.password ?? "")} onChange={(event) => setDraft((current) => ({ ...current, password: event.target.value }))} /></label><label className="legacy-form-row"><span>Confirmación:</span><input type="password" disabled={busy} required autoComplete="new-password" value={String(draft.confirmation ?? "")} onChange={(event) => setDraft((current) => ({ ...current, confirmation: event.target.value }))} /></label><small>Mínimo 12 caracteres.</small>{formError && <p role="alert">{formError}</p>}<div className="legacy-dialog-actions centered"><button type="submit" disabled={busy}>{busy ? "Guardando…" : "oK"}</button><button type="button" disabled={busy} onClick={() => setPasswordTarget(null)}>Cancelar</button></div></form></LegacyDialog>}
+    {passwordTarget && <LegacyDialog title="Cambiar clave de usuario..." className="legacy-password-dialog catalog-legacy-dialog" onClose={() => { if (!busy) setPasswordTarget(null); }}><form className="legacy-user-form" onSubmit={changePassword}><label className="legacy-form-row"><span>Clave:</span><input autoFocus type="password" disabled={busy} required minLength={MIN_ACCOUNT_PASSWORD_LENGTH} autoComplete="new-password" value={String(draft.password ?? "")} onChange={(event) => setDraft((current) => ({ ...current, password: event.target.value }))} /></label><label className="legacy-form-row"><span>Confirmación:</span><input type="password" disabled={busy} required autoComplete="new-password" value={String(draft.confirmation ?? "")} onChange={(event) => setDraft((current) => ({ ...current, confirmation: event.target.value }))} /></label><small>Mínimo {MIN_ACCOUNT_PASSWORD_LENGTH} caracteres.</small>{formError && <p role="alert">{formError}</p>}<div className="legacy-dialog-actions centered"><button type="submit" disabled={busy}>{busy ? "Guardando…" : "oK"}</button><button type="button" disabled={busy} onClick={() => setPasswordTarget(null)}>Cancelar</button></div></form></LegacyDialog>}
     {relation === "permissions" && relationRow && <ConnectedUserPermissionsDialog key={relationRow.id} userId={relationRow.id} userName={text(relationRow, "name") || text(relationRow, "email") || relationRow.id} role={text(relationRow, "role")} onClose={() => setRelation(null)} />}
-    {(relation === "zones" || relation === "limits" || relation === "routes") && relationRow && <CollectorAssignmentsDialog key={`${relationRow.id}:${relation}`} collectorId={relationRow.id} collectorName={text(relationRow, "name")} kind={relation} initial={assignmentInitial} loadOptions={loadAssignmentOptions} onSave={saveAssignments} onClose={() => setRelation(null)} />}
+    {(relation === "zones" || relation === "limits" || relation === "routes") && relationRow && <CollectorAssignmentsDialog key={`${relationRow.id}:${relation}`} collectorId={relationRow.id} collectorName={text(relationRow, "name")} kind={relation} initial={assignmentInitial} loadOptions={loadAssignmentOptions} onSave={saveAssignments} onClose={() => setRelation(null)} onModifyOperationalLimits={relation === "limits" ? () => { if (!busy && !loading) { setMessage(""); setLimitsTarget(relationRow); setRelation(null); } } : undefined} />}
     {(relation === "clients" || relation === "balances") && relationRow && <LegacyDialog title={relationTitles[relation]} className="catalog-relation-dialog" onClose={() => setRelation(null)}><div className="legacy-relation-manager">{relationContent()}<div className="legacy-relation-footer"><span>{text(relationRow, "name")}</span><button type="button" onClick={() => setRelation(null)}>Cerrar</button></div></div></LegacyDialog>}
     {clientPicker && <LegacyDialog title="Buscar Cliente..." className="catalog-client-picker" onClose={() => setClientPicker(null)}><div className="legacy-dialog-form"><label>Buscar:<input autoFocus value={clientQuery} onChange={(event) => setClientQuery(event.target.value)} /></label><div className="legacy-mdi-table-wrap"><table className="legacy-mdi-table"><thead><tr><th>Código</th><th>Cliente</th><th>Identificación</th></tr></thead><tbody>{clientOptions.map((client) => <tr key={client.id} className={pickedClientId === client.id ? "selected-row" : ""} tabIndex={0} aria-selected={pickedClientId === client.id} onClick={() => setPickedClientId(client.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setPickedClientId(client.id); } }}><td>{client.code}</td><td>{client.name}</td><td>{client.identification}</td></tr>)}</tbody></table></div><div className="legacy-dialog-actions centered"><button type="button" disabled={!pickedClientId} onClick={pickClient}>oK</button><button type="button" onClick={() => setClientPicker(null)}>Cancelar</button></div></div></LegacyDialog>}
   </section>;
+}
+
+type CollectorLimitsDraft = { collectionLimit: string; payoutLimit: string; previousCollectionLimit: number; previousPayoutLimit: number };
+function CollectorLimitsDialog({ actorId, collector, onClose, onSaved }: { actorId: string; collector: RecordRow; onClose: () => void; onSaved: (collector: RecordRow) => Promise<void> }) {
+  const scope = `collector-limits:${collector.id}`;
+  const request = useMovementRequest(actorId, scope);
+  const [draft, setDraft] = useState<CollectorLimitsDraft>(() => pendingMovementDraft<CollectorLimitsDraft>(actorId, scope) ?? { collectionLimit: moneyString(collector.collectionLimit), payoutLimit: moneyString(collector.payoutLimit), previousCollectionLimit: Number(collector.collectionLimit ?? 0), previousPayoutLimit: Number(collector.payoutLimit ?? 0) });
+  const [reviewing, setReviewing] = useState(() => Boolean(pendingMovementDraft(actorId, scope)));
+  const [formError, setFormError] = useState("");
+  const close = () => { if (!request.locked) { request.clear(); onClose(); } };
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (request.busy) return;
+    setFormError("");
+    try {
+      const submitted = pendingMovementDraft<CollectorLimitsDraft>(actorId, scope) ?? draft;
+      const payload = { collectionLimit: decimalCents(submitted.collectionLimit), payoutLimit: decimalCents(submitted.payoutLimit) };
+      if (payload.collectionLimit > 1_000_000_000 || payload.payoutLimit > 1_000_000_000) throw new Error("Cada límite debe ser positivo y no superar DOP 10,000,000.00.");
+      if (!reviewing) { setReviewing(true); return; }
+      const saved = await request.run<RecordRow>(`/cobradores/${encodeURIComponent(collector.id)}/limites`, payload, submitted, (result) => result?.id === collector.id && result.collectionLimit === payload.collectionLimit && result.payoutLimit === payload.payoutLimit);
+      await onSaved(saved);
+    } catch (failure) { setFormError(failure instanceof Error ? failure.message : "No se pudieron guardar los límites."); }
+  };
+  return <LegacyDialog title={reviewing ? "Confirmar límites del cobrador..." : "Modificar límites del cobrador..."} className="collector-form-dialog catalog-legacy-dialog" onClose={close}>
+    <form className="legacy-dialog-form" onSubmit={submit}>
+      <p>Cobrador: <strong>{String(collector.name ?? "")}</strong> · Código: {String(collector.ident ?? collector.id)}</p>
+      <p className="catalog-scope-note">Este formulario solo modifica los límites. Nombre, contacto, cuenta, actividad y ruta se conservan.</p>
+      {reviewing ? <><LegacyDenseTable columns={["Límite", "Antes", "Después"]} rows={[["Cobro", formatMoney(draft.previousCollectionLimit, "DOP"), formatMoney(decimalCents(draft.collectionLimit), "DOP")], ["Pago", formatMoney(draft.previousPayoutLimit, "DOP"), formatMoney(decimalCents(draft.payoutLimit), "DOP")]]} /><p>Confirma estos cambios para el cobrador indicado.</p></> : <fieldset disabled={request.locked} className="legacy-config-fieldset"><legend>Límites en DOP</legend>
+        <label>Cobro:<input autoFocus required aria-label="Límite de cobro (DOP)" inputMode="decimal" value={draft.collectionLimit} onChange={(event) => setDraft((current) => ({ ...current, collectionLimit: event.target.value }))} /></label>
+        <label>Pago:<input required aria-label="Límite de pago (DOP)" inputMode="decimal" value={draft.payoutLimit} onChange={(event) => setDraft((current) => ({ ...current, payoutLimit: event.target.value }))} /></label>
+      </fieldset>}
+      {(request.error || formError) && <p role="alert">{request.error || formError}</p>}
+      {request.uncertain && <p role="status">El resultado está pendiente de confirmación. Reintenta los mismos límites antes de cambiar los datos o cerrar.</p>}
+      <div className="legacy-dialog-actions centered"><button type="submit" disabled={request.busy}>{request.busy ? "Guardando…" : request.uncertain ? "Reintentar mismos límites" : reviewing ? "Confirmar límites" : "Revisar límites"}</button>{reviewing && <button type="button" disabled={request.locked} onClick={() => setReviewing(false)}>Volver</button>}<button type="button" disabled={request.locked} onClick={close}>Cancelar</button></div>
+    </form>
+  </LegacyDialog>;
 }

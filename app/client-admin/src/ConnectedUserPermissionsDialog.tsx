@@ -231,7 +231,7 @@ export function ConnectedUserPermissionsDialog({ userId, userName, role, onClose
           </tbody>
         </table>
       </div>
-      <p className="connected-user-permissions-note">Asignaciones locales de esta interfaz. Los permisos efectivos se validan en la API.</p>
+      <p className="connected-user-permissions-note">Usuarios → Permisos: asignaciones de pantallas guardadas solo en este navegador. No cambian los permisos efectivos de un rol ni conceden operaciones en el servidor. El rol se consulta en Usuarios; la API valida las operaciones autorizadas.</p>
       {storageError && <p className="connected-permission-error" role="alert">El navegador no pudo guardar los cambios; permanecerán hasta cerrar esta ventana.</p>}
     </div>
     {pickerOpen && <PermissionPicker assignedIds={assignedIds} onAdd={addPermission} onClose={() => setPickerOpen(false)} />}

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { assertAdmin, DomainError, type State, type User, type Zone } from "./domain.js";
+import { assertAdmin, DomainError, ledgerCurrency, MAX_MONEY_AMOUNT, supportedLedgerCurrency, type State, type User, type Zone } from "./domain.js";
 import type { Store } from "./store.js";
 import { frequencyCodes } from "./catalog-store.js";
 
@@ -20,14 +20,22 @@ const collectorBody = z.object({
   name, ident: short.optional(), cellular: z.string().trim().max(40).optional(), accountId: short.optional(),
   routeId: id.optional(), collectionLimit: amount.optional(), payoutLimit: amount.optional(), active: z.boolean().optional(),
 }).strict();
-const serviceBody = z.object({ service: name, abbr: short.default(""), caption: short.default(""), obligated: z.boolean(), active: z.boolean(), fixedAmount: z.boolean().optional() }).strict();
+const collectorLimitsBody = z.object({ collectionLimit: amount, payoutLimit: amount }).strict();
+const serviceBody = z.object({
+  service: name, abbr: short.default(""), caption: short.default(""), obligated: z.boolean(), active: z.boolean(), fixedAmount: z.boolean().optional(),
+  referencePriceCents: z.number().int().min(0).max(MAX_MONEY_AMOUNT).nullable().optional(),
+  referenceCurrency: z.enum(["DOP", "USD", "EUR"]).nullable().optional(),
+  taxReference: z.string().trim().min(1).max(160).nullable().optional(),
+  benefitReference: z.string().trim().min(1).max(160).nullable().optional(),
+  referenceQuantity: z.string().trim().min(1).max(64).nullable().optional(),
+}).strict();
 const reasonBody = z.object({ reason: name, active: z.boolean() }).strict();
 const recurringBody = z.object({
   clientId: id, routeId: id.optional(), serviceId: id.optional(), startDate: z.iso.date(),
   endDate: z.union([z.iso.date(), z.literal("")]).default(""), frequency: name,
   day1: z.union([z.string().max(40), z.number().int().min(0).max(31)]).default(""),
   day2: z.union([z.string().max(40), z.number().int().min(0).max(31)]).default(""),
-  currency: z.enum(["DOP", "Peso Dominicano"]).default("DOP"), service: name, concept: short.default(""),
+  currency: z.string().trim().min(1).max(40).refine((value) => supportedLedgerCurrency(value) !== undefined, "Selecciona DOP, USD o EUR.").transform(ledgerCurrency).default("DOP"), service: name, concept: short.default(""),
   useConceptAmount: z.boolean().default(false), amount, note: z.string().trim().max(2000).default(""), active: z.boolean(),
 }).strict();
 function requireRow<T extends { id: string }>(rows: T[], rowId: string, label: string): T {
@@ -117,10 +125,14 @@ export function registerCatalogRoutes(app: FastifyInstance, store: Store, user: 
       assertAdmin(actor);
       const current = editing ? requireRow(state.services, params.id, "Servicio") : undefined;
       uniqueName(state.services.map((row) => ({ id: row.id, name: row.service })), input.service, current?.id);
+      const referencePrice = input.referencePriceCents === undefined ? current?.referencePriceCents : input.referencePriceCents;
+      const referenceCurrency = input.referenceCurrency === undefined ? current?.referenceCurrency : input.referenceCurrency;
+      if ((referencePrice != null) !== (referenceCurrency != null))
+        throw new DomainError("SERVICE_REFERENCE_PAIR", "El precio de referencia requiere su moneda; borra ambos para dejarlo vacío.", 422);
       if (current) {
         const previousName = current.service;
         Object.assign(current, input);
-        for (const item of [...state.charges, ...state.recurringCharges]) {
+        for (const item of previousName === current.service ? [] : [...state.charges, ...state.recurringCharges]) {
           if (item.serviceId === current.id || (!item.serviceId && item.service === previousName)) {
             item.serviceId = current.id; item.service = current.service;
           }
@@ -156,5 +168,12 @@ export function registerCatalogRoutes(app: FastifyInstance, store: Store, user: 
   mutate("/api/cobradores/:id/actividad", "Activar o inactivar cobrador", z.object({ active: z.boolean() }).strict(), (state, actor, input, params) => {
     assertAdmin(actor); const collector = requireRow(state.collectors, params.id, "Cobrador");
     collector.active = input.active; return collector;
+  });
+  mutate("/api/cobradores/:id/limites", "Modificar solo los límites del cobrador", collectorLimitsBody, (state, actor, input, params) => {
+    assertAdmin(actor);
+    const collector = requireRow(state.collectors, params.id, "Cobrador");
+    collector.collectionLimit = input.collectionLimit;
+    collector.payoutLimit = input.payoutLimit;
+    return collector;
   });
 }

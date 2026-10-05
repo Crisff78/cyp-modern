@@ -10,7 +10,17 @@ const frequencyLabels = Object.fromEntries(Object.entries(frequencyCodes).map(([
 export async function readCatalogs(client: pg.PoolClient, state: State) {
   state.zones = (await client.query(`SELECT id,name,sector,number,range_from AS "from",range_to AS "to",active FROM zones ORDER BY name,id`)).rows;
   state.services = (await client.query(`SELECT id,name AS service,abbreviation AS abbr,caption,required_by_default AS obligated,
-    fixed_amount AS "fixedAmount",status='active' AS active FROM services ORDER BY name,id`)).rows;
+    fixed_amount AS "fixedAmount",status='active' AS active,reference_price_cents AS "referencePriceCents",
+    reference_currency AS "referenceCurrency",tax_reference AS "taxReference",benefit_reference AS "benefitReference",
+    reference_quantity AS "referenceQuantity" FROM services ORDER BY name,id`)).rows.map((row) => {
+      const { referencePriceCents, referenceCurrency, taxReference, benefitReference, referenceQuantity, ...service } = row;
+      return { ...service,
+        ...(referencePriceCents != null ? { referencePriceCents, referenceCurrency } : {}),
+        ...(taxReference != null ? { taxReference } : {}),
+        ...(benefitReference != null ? { benefitReference } : {}),
+        ...(referenceQuantity != null ? { referenceQuantity } : {}),
+      };
+    });
   state.delayReasons = (await client.query(`SELECT id,name AS reason,status='active' AS active FROM delay_reasons ORDER BY name,id`)).rows;
   state.recurringCharges = (await client.query(`SELECT rc.id,coalesce(rc.client_id,'') AS "clientId",rc.route_id AS "routeId",
     rc.service_id AS "serviceId",rc.created_at AS "registeredAt",coalesce(rc.start_date,rc.next_run_date)::text AS "startDate",
@@ -30,10 +40,16 @@ export async function saveCatalogMasters(client: pg.PoolClient, state: State, be
   }
   for (const service of state.services) {
     if (JSON.stringify(before.services.find((s) => s.id === service.id)) === JSON.stringify(service)) continue;
-    await client.query(`INSERT INTO services(id,name,abbreviation,caption,required_by_default,fixed_amount,status) VALUES($1,$2,$3,$4,$5,$6,$7)
+    await client.query(`INSERT INTO services(id,name,abbreviation,caption,required_by_default,fixed_amount,status,
+      reference_price_cents,reference_currency,tax_reference,benefit_reference,reference_quantity)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
       ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,abbreviation=EXCLUDED.abbreviation,caption=EXCLUDED.caption,
-      required_by_default=EXCLUDED.required_by_default,fixed_amount=EXCLUDED.fixed_amount,status=EXCLUDED.status`,
-      [service.id,service.service,service.abbr,service.caption,service.obligated,service.fixedAmount,service.active ? "active" : "archived"]);
+      required_by_default=EXCLUDED.required_by_default,fixed_amount=EXCLUDED.fixed_amount,status=EXCLUDED.status,
+      reference_price_cents=EXCLUDED.reference_price_cents,reference_currency=EXCLUDED.reference_currency,
+      tax_reference=EXCLUDED.tax_reference,benefit_reference=EXCLUDED.benefit_reference,reference_quantity=EXCLUDED.reference_quantity`,
+      [service.id,service.service,service.abbr,service.caption,service.obligated,service.fixedAmount,service.active ? "active" : "archived",
+        service.referencePriceCents ?? null,service.referenceCurrency ?? null,service.taxReference ?? null,
+        service.benefitReference ?? null,service.referenceQuantity ?? null]);
   }
   for (const reason of state.delayReasons) {
     if (JSON.stringify(before.delayReasons.find((r) => r.id === reason.id)) === JSON.stringify(reason)) continue;
