@@ -35,6 +35,7 @@ import {
   ledgerCurrencies,
   obligationCurrencyConflict,
   type LedgerCurrency,
+  type DepositComponent,
   postMovement,
   preview,
   publicAccount,
@@ -100,12 +101,24 @@ const transferBody = z.object({
   note: z.string().trim().max(2000).optional(),
   denominations: z.array(z.object({ denominacion: z.number().int().positive(), cantidad: z.number().int().min(0) }).strict()).max(100).optional(),
 }).strict();
+const nonCashComponent = {
+  amount: money,
+  bank: z.string().trim().min(1).max(160),
+  reference: z.string().trim().min(1).max(160),
+};
+const depositComponent = z.discriminatedUnion("method", [
+  z.object({ method: z.literal("cash"), amount: money }).strict(),
+  z.object({ method: z.literal("cheque"), ...nonCashComponent }).strict(),
+  z.object({ method: z.literal("bank_deposit"), ...nonCashComponent }).strict(),
+]);
+const depositBody = transferBody.extend({ depositComponents: z.array(depositComponent).min(1).max(20).optional() });
 const clientBody = z.object({
   name: text,
   code: z.string().trim().min(1).max(80),
   phone: z.string().trim().max(40).default(""),
   address: z.string().trim().max(240).default(""),
   routeId: id,
+  preferredCurrency: z.enum(ledgerCurrencies).optional(),
   alias: z.string().trim().max(160).default(""),
   sector: z.string().trim().max(160).default(""),
   cellular: z.string().trim().max(40).default(""),
@@ -469,11 +482,13 @@ export async function buildApp(config: Config) {
   const emailField = z.email("Escribe un correo válido.").max(200);
   const passwordField = z
     .string()
-    .min(12, "La contraseña debe tener al menos 12 caracteres.")
+    .min(10, "La contraseña debe tener al menos 10 caracteres.")
     .max(200);
   const accountBody = z
     .object({
       name: text,
+      nickname: z.string().trim().max(120).optional(),
+      note: z.string().trim().max(1000).optional(),
       email: emailField,
       role: z.enum(["admin", "collector"]),
       collectorId: id.optional(),
@@ -532,6 +547,8 @@ export async function buildApp(config: Config) {
         account: Account = {
           id: randomUUID(),
           name: body.name,
+          ...(body.nickname !== undefined ? { nickname: body.nickname } : {}),
+          ...(body.note !== undefined ? { note: body.note } : {}),
           email,
           role: body.role,
           ...(body.collectorId ? { collectorId: body.collectorId } : {}),
@@ -558,11 +575,19 @@ export async function buildApp(config: Config) {
     const email = body.email.trim().toLowerCase();
     if (state.accounts.some((item) => item.id !== account.id && item.email.toLowerCase() === email))
       throw new DomainError("DUPLICATE_EMAIL", "Ya existe una cuenta con ese correo.", 409);
+    // Informative fields do not rotate credentials or revoke active sessions.
+    // Keep the existing revocation behavior for changes reflected in auth claims.
+    const authChanged = account.name !== body.name || account.email !== email ||
+      account.role !== body.role || account.collectorId !== body.collectorId;
     Object.assign(account, { name: body.name, email, role: body.role });
+    if (body.nickname !== undefined) account.nickname = body.nickname;
+    if (body.note !== undefined) account.note = body.note;
     if (body.collectorId) account.collectorId = body.collectorId;
     else delete account.collectorId;
-    touch(account);
-    revokeUserSessions(state, account.id, actor.id);
+    if (authChanged) {
+      touch(account);
+      revokeUserSessions(state, account.id, actor.id);
+    } else account.updatedAt = new Date().toISOString();
     return publicAccount(account);
   });
   mutate(
@@ -777,11 +802,11 @@ export async function buildApp(config: Config) {
       throw new DomainError("ROUTE_NOT_FOUND", "Selecciona una ruta válida.", 404);
     if (s.clients.some((client) => client.code === b.code))
       throw new DomainError("CLIENT_CODE_EXISTS", "El código de cliente ya existe.", 409);
-    const client = { id: randomUUID(), active: true, ...b };
+    const client = { id: randomUUID(), active: true, ...b, preferredCurrency: b.preferredCurrency ?? "DOP" };
     s.clients.push(client);
     return client;
   });
-  mutate<{ name: string; code: string; phone: string; address: string; routeId: string; alias: string; sector: string; cellular: string; email: string; note: string; identification: string; lat?: number; lng?: number }, { id: string }>(
+  mutate<{ name: string; code: string; phone: string; address: string; routeId: string; preferredCurrency?: LedgerCurrency; alias: string; sector: string; cellular: string; email: string; note: string; identification: string; lat?: number; lng?: number }, { id: string }>(
     "/api/clientes/:id",
     "Actualizar cliente",
     clientBody,
@@ -945,7 +970,7 @@ export async function buildApp(config: Config) {
       "payout",
       z.object({ payoutId: id, amount: money, currency: currency.optional() }).strict(),
     ],
-    ["/api/depositos", "deposit", transferBody],
+    ["/api/depositos", "deposit", depositBody],
     ["/api/entregas", "office_delivery", transferBody],
   ] as const) {
     mutate(
@@ -959,6 +984,7 @@ export async function buildApp(config: Config) {
         currency?: LedgerCurrency;
         note?: string;
         denominations?: Array<{ denominacion: number; cantidad: number }>;
+        depositComponents?: DepositComponent[];
       }>,
       (s, u, b) => {
         const movement = postMovement(s, u, type, b);

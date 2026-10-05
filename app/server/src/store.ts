@@ -90,7 +90,7 @@ async function readState(client: pg.PoolClient): Promise<State> {
   const state = emptyState();
   state.accounts = (
     await client.query(
-      `SELECT id,name,email,role,collector_id AS "collectorId",salt,password_hash AS "passwordHash",
+      `SELECT id,name,nickname,note,email,role,collector_id AS "collectorId",salt,password_hash AS "passwordHash",
        credential_version AS "credentialVersion",status,created_at AS "createdAt",updated_at AS "updatedAt"
        FROM users WHERE email IS NOT NULL ORDER BY created_at,id`,
     )
@@ -110,7 +110,7 @@ async function readState(client: pg.PoolClient): Promise<State> {
   state.clients = (
     await client.query(
       `SELECT c.id,c.name,c.code,c.phone,cp.address,c.route_id AS "routeId",c.collection_point_id AS "collectionPointId",
-       c.alias,c.sector,c.cellular,c.email,c.note,c.identification,c.lat,c.lng,c.active
+       c.alias,c.sector,c.cellular,c.email,c.note,c.identification,c.lat,c.lng,c.active,c.preferred_currency AS "preferredCurrency"
        FROM clients c JOIN collection_points cp ON cp.id=c.collection_point_id ORDER BY c.id`,
     )
   ).rows.map(clean);
@@ -152,7 +152,7 @@ async function readState(client: pg.PoolClient): Promise<State> {
         registered_centrally AS "registeredCentrally",
         NULL::timestamptz AS "acceptedAt",NULL::text AS "acceptedBy",
         NULL::timestamptz AS "cancelledAt",NULL::text AS "cancelledBy",
-        NULL::jsonb AS "denominations"
+        NULL::jsonb AS "denominations",NULL::jsonb AS "depositComponents"
        FROM collections
        UNION ALL
        SELECT id,collector_id AS "collectorId",client_id AS "clientId",NULL::text AS "chargeId",
@@ -161,7 +161,7 @@ async function readState(client: pg.PoolClient): Promise<State> {
         registered_centrally AS "registeredCentrally",
         NULL::timestamptz AS "acceptedAt",NULL::text AS "acceptedBy",
         NULL::timestamptz AS "cancelledAt",NULL::text AS "cancelledBy",
-        NULL::jsonb AS "denominations"
+        NULL::jsonb AS "denominations",NULL::jsonb AS "depositComponents"
        FROM payments
        UNION ALL
        SELECT id,collector_id AS "collectorId",NULL::text AS "clientId",NULL::text AS "chargeId",
@@ -170,7 +170,7 @@ async function readState(client: pg.PoolClient): Promise<State> {
         NULL::boolean AS "registeredCentrally",
         accepted_at AS "acceptedAt",accepted_by AS "acceptedBy",
         cancelled_at AS "cancelledAt",cancelled_by AS "cancelledBy",
-        denominations AS "denominations"
+        denominations AS "denominations",deposit_components AS "depositComponents"
        FROM cash_handovers
        ORDER BY "createdAt", id`,
     )
@@ -247,17 +247,19 @@ async function saveState(client: pg.PoolClient, state: State, before: State) {
     ...state.remittances.transfers.flatMap((t) => [t.sendingUserId, t.registeredBy]),
     ...state.remittances.cashSessions.flatMap((c) => [c.operatorId, c.openedBy]),
     ...state.remittances.events.map((event) => event.actorId),
+    ...(state.remittances.rateHistory ?? []).map((change) => change.actorId),
   ]))
     await ensureUser(client, userId, state);
   for (const account of state.accounts) {
     if (unchanged(before.accounts, account)) continue;
     const updatedAt = account.updatedAt || account.createdAt;
     await client.query(
-      `INSERT INTO users(id,name,email,role,collector_id,salt,password_hash,credential_version,status,created_at,updated_at)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      `INSERT INTO users(id,name,email,role,collector_id,salt,password_hash,credential_version,status,created_at,updated_at,nickname,note)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
        ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,email=EXCLUDED.email,role=EXCLUDED.role,
        collector_id=EXCLUDED.collector_id,salt=EXCLUDED.salt,password_hash=EXCLUDED.password_hash,
-       credential_version=EXCLUDED.credential_version,status=EXCLUDED.status,updated_at=EXCLUDED.updated_at`,
+       credential_version=EXCLUDED.credential_version,status=EXCLUDED.status,updated_at=EXCLUDED.updated_at,
+       nickname=EXCLUDED.nickname,note=EXCLUDED.note`,
       [
         account.id,
         account.name,
@@ -270,6 +272,8 @@ async function saveState(client: pg.PoolClient, state: State, before: State) {
         account.status,
         account.createdAt,
         updatedAt,
+        account.nickname ?? "",
+        account.note ?? "",
       ],
     );
   }
@@ -330,13 +334,13 @@ async function saveState(client: pg.PoolClient, state: State, before: State) {
       [pointId, clientRow.routeId, clientRow.address],
     );
     await client.query(
-      `INSERT INTO clients(id,name,code,phone,route_id,collection_point_id,alias,sector,cellular,email,note,identification,lat,lng,active)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+      `INSERT INTO clients(id,name,code,phone,route_id,collection_point_id,alias,sector,cellular,email,note,identification,lat,lng,active,preferred_currency)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
        ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,code=EXCLUDED.code,phone=EXCLUDED.phone,
        route_id=EXCLUDED.route_id,collection_point_id=EXCLUDED.collection_point_id,
        alias=EXCLUDED.alias,sector=EXCLUDED.sector,cellular=EXCLUDED.cellular,
        email=EXCLUDED.email,note=EXCLUDED.note,identification=EXCLUDED.identification,
-       lat=EXCLUDED.lat,lng=EXCLUDED.lng,active=EXCLUDED.active`,
+       lat=EXCLUDED.lat,lng=EXCLUDED.lng,active=EXCLUDED.active,preferred_currency=EXCLUDED.preferred_currency`,
       [
         clientRow.id,
         clientRow.name,
@@ -353,6 +357,7 @@ async function saveState(client: pg.PoolClient, state: State, before: State) {
         clientRow.lat ?? null,
         clientRow.lng ?? null,
         clientRow.active !== false,
+        clientRow.preferredCurrency ?? "DOP",
       ],
     );
   }
@@ -490,8 +495,8 @@ async function saveState(client: pg.PoolClient, state: State, before: State) {
       );
     else
       await client.query(
-        `INSERT INTO cash_handovers(id,collector_id,type,amount,handed_over_at,actor_id,currency,note,denominations)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(id) DO NOTHING`,
+        `INSERT INTO cash_handovers(id,collector_id,type,amount,handed_over_at,actor_id,currency,note,denominations,deposit_components)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(id) DO NOTHING`,
         [
           movement.id,
           movement.collectorId,
@@ -502,6 +507,7 @@ async function saveState(client: pg.PoolClient, state: State, before: State) {
           movement.currency ?? "DOP",
           movement.note ?? null,
           movement.denominations ? JSON.stringify(movement.denominations) : null,
+          movement.depositComponents ? JSON.stringify(movement.depositComponents) : null,
         ],
       );
   }

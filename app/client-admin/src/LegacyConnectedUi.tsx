@@ -148,7 +148,7 @@ export function LegacyDialog({ title, onClose, children, className = "", overlay
       <section className={`legacy-dialog ${className}`} style={{ transform: `translate(${offset.x}px, ${offset.y}px)` }} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1}>
         <div className="legacy-dialog-titlebar" onMouseDown={startDialogDrag}>
           <span>{title}</span>
-          <button type="button" aria-label={`Cerrar ${title}`} onMouseDown={(event) => event.stopPropagation()} onClick={onClose}>X</button>
+          <button type="button" aria-label={`Cerrar ${title}`} onMouseDown={(event) => event.stopPropagation()} onClick={onClose} title={`Cerrar ${title}`}>X</button>
         </div>
         <div className="legacy-dialog-body">{children}</div>
       </section>

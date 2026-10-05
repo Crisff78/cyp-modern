@@ -3,8 +3,16 @@ import { assertAdmin, businessDate, DomainError, type State, type User } from ".
 
 export const currencies = ["DOP", "USD", "EUR"] as const;
 export type Currency = (typeof currencies)[number];
-export type Quote = { date: string; sourceRate: string; destinationRate: string };
-export type ExchangeRate = { id: string; currency: Currency; rate: string; date: string };
+export type Quote = {
+  date: string; sourceRate: string; destinationRate: string; quotedAt?: string;
+  sourceRateChangeId?: string; destinationRateChangeId?: string;
+  sourceRateChangedAt?: string; destinationRateChangedAt?: string;
+};
+export type ExchangeRate = { id: string; currency: Currency; rate: string; date: string; changeId?: string; updatedAt?: string; updatedBy?: string };
+export type RateChange = { id: string; currency: Currency; rate: string; date: string; createdAt: string; actorId: string };
+export type RemittanceContact = { id: string; code: string; name: string; phone: string; cellular: string; address: string };
+// An optional manual annotation, independent of the business commission/cash ledger.
+export type ManagerCommission = { managerName: string; amount: number; currency: Currency };
 export type Remittance = {
   id: string; sequence: number; envioReference: string; reciboReference: string;
   operatingCode: string; senderClientId: string; recipientClientId: string;
@@ -14,6 +22,8 @@ export type Remittance = {
   quote: Quote; note: string; status: "pending" | "paid" | "cancelled";
   createdAt: string; paidAt?: string; paidBy?: string;
   cancelledAt?: string; cancelledBy?: string; cancelReason?: string;
+  senderContact?: RemittanceContact; recipientContact?: RemittanceContact;
+  managerCommission?: ManagerCommission;
 };
 export type CashSession = {
   id: string; operatorId: string; currency: Currency; date: string;
@@ -27,13 +37,14 @@ export type RemittanceEvent = {
 };
 export type RemittanceState = {
   rates: ExchangeRate[]; transfers: Remittance[];
-  cashSessions: CashSession[]; events: RemittanceEvent[];
+  cashSessions: CashSession[]; events: RemittanceEvent[]; rateHistory?: RateChange[];
 };
 export type QuoteInput = {
   sourceCurrency: Currency; destinationCurrency: Currency; amount: number; commissionBps: number;
 };
 export type CreateRemittanceInput = QuoteInput & {
   senderClientId: string; recipientClientId: string; sendingUserId?: string; quote: Quote; note?: string;
+  managerCommission?: ManagerCommission;
 };
 
 const fail = (code: string, message: string, status = 422): never => {
@@ -63,29 +74,44 @@ const scaledRate = (rate: string) => BigInt(normalizeRate(rate).replace(".", "")
 const assertCurrency = (currency: Currency) => {
   if (!currencies.includes(currency)) fail("INVALID_CURRENCY", "Moneda no admitida.");
 };
+function manualManagerCommission(value: ManagerCommission | undefined): ManagerCommission | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).length !== 3 ||
+      Object.keys(value).some((key) => !["managerName", "amount", "currency"].includes(key)) ||
+      typeof value.managerName !== "string" || !value.managerName.trim() || value.managerName.trim().length > 160 ||
+      !Number.isSafeInteger(value.amount) || value.amount < 0 || !currencies.includes(value.currency))
+    return fail("INVALID_MANAGER_COMMISSION", "Indica el gestor (hasta 160 caracteres), la moneda y una comisión manual en centavos enteros seguros.");
+  return { managerName: value.managerName.trim(), amount: value.amount, currency: value.currency };
+}
 function dailyRate(state: State, currency: Currency, date: string) {
   assertCurrency(currency);
-  if (currency === "DOP") return "1.000000";
   const rate = state.remittances.rates.find((r) => r.currency === currency && r.date === date);
+  if (currency === "DOP") return { rate: "1.000000", changeId: rate?.changeId, changedAt: rate?.updatedAt };
   if (!rate) return fail("RATE_MISSING", `Falta la tasa de ${currency} para ${date}.`, 409);
-  return normalizeRate(rate.rate);
+  return { rate: normalizeRate(rate.rate), changeId: rate.changeId, changedAt: rate.updatedAt };
 }
 export function quoteRemittance(state: State, input: QuoteInput, now = new Date()) {
   const amount = integerMoney(input.amount, true);
   if (!Number.isInteger(input.commissionBps) || input.commissionBps < 0 || input.commissionBps > 10000)
     fail("INVALID_COMMISSION", "La comisión debe estar entre 0 y 10000 BPS.");
   const date = businessDate(now);
-  const sourceRate = dailyRate(state, input.sourceCurrency, date);
-  const destinationRate = dailyRate(state, input.destinationCurrency, date);
+  const source = dailyRate(state, input.sourceCurrency, date);
+  const destination = dailyRate(state, input.destinationCurrency, date);
+  const sourceRate = source.rate, destinationRate = destination.rate;
   const commissionAmount = safeMoney(roundHalfUp(amount * BigInt(input.commissionBps), 10000n));
   const receiveAmount = safeMoney(roundHalfUp(amount * scaledRate(sourceRate), scaledRate(destinationRate)));
   if (receiveAmount === 0) fail("AMOUNT_TOO_SMALL", "El importe recibido se redondea a cero.");
   return {
     ...input, commissionAmount, totalAmount: safeMoney(amount + BigInt(commissionAmount)),
-    receiveAmount, quote: { date, sourceRate, destinationRate },
+    receiveAmount, quote: { date, sourceRate, destinationRate, quotedAt: now.toISOString(),
+      ...(source.changeId ? { sourceRateChangeId: source.changeId } : {}),
+      ...(destination.changeId ? { destinationRateChangeId: destination.changeId } : {}),
+      ...(source.changedAt ? { sourceRateChangedAt: source.changedAt } : {}),
+      ...(destination.changedAt ? { destinationRateChangedAt: destination.changedAt } : {}),
+    },
   };
 }
-export function setDailyRate(state: State, user: User, input: Omit<ExchangeRate, "id">, now = new Date()) {
+export function setDailyRate(state: State, user: User, input: Pick<ExchangeRate, "currency" | "rate" | "date">, now = new Date()) {
   remittanceOperators(state, user);
   assertAdmin(user);
   assertCurrency(input.currency);
@@ -93,8 +119,14 @@ export function setDailyRate(state: State, user: User, input: Omit<ExchangeRate,
   const rate = normalizeRate(input.rate);
   if (input.currency === "DOP" && rate !== "1.000000") fail("DOP_RATE", "La tasa DOP debe ser uno.");
   const existing = state.remittances.rates.find((r) => r.currency === input.currency && r.date === input.date);
-  if (existing) { existing.rate = rate; return existing; }
-  const row = { ...input, rate, id: randomUUID() };
+  // A retry/no-op does not manufacture a change. A legacy rate obtains its first
+  // known timestamp only when explicitly confirmed; its earlier time stays unknown.
+  if (existing?.changeId && existing.rate === rate) return existing;
+  const change: RateChange = { id: randomUUID(), currency: input.currency, date: input.date, rate, createdAt: now.toISOString(), actorId: user.id };
+  (state.remittances.rateHistory ??= []).push(change);
+  const metadata = { changeId: change.id, updatedAt: change.createdAt, updatedBy: change.actorId };
+  if (existing) { Object.assign(existing, { rate, ...metadata }); return existing; }
+  const row = { currency: input.currency, date: input.date, rate, id: randomUUID(), ...metadata };
   state.remittances.rates.push(row);
   return row;
 }
@@ -191,6 +223,7 @@ export function closeRemittanceCash(state: State, user: User, id: string, counte
   return cashView(state, user, cash);
 }
 export function createRemittance(state: State, user: User, input: CreateRemittanceInput, systemOperators: User[] = [], now = new Date()) {
+  const managerCommission = manualManagerCommission(input.managerCommission);
   const sendingUser = operator(state, user, input.sendingUserId ?? user.id, systemOperators);
   if (input.senderClientId === input.recipientClientId) fail("SAME_CLIENT", "Remitente y destinatario deben ser distintos.");
   for (const id of [input.senderClientId, input.recipientClientId]) {
@@ -204,7 +237,8 @@ export function createRemittance(state: State, user: User, input: CreateRemittan
     amount: input.amount, commissionBps: input.commissionBps,
     sourceCurrency: input.sourceCurrency, destinationCurrency: input.destinationCurrency,
   }, now);
-  if (input.quote.date !== calculated.quote.date || input.quote.sourceRate !== calculated.quote.sourceRate || input.quote.destinationRate !== calculated.quote.destinationRate)
+  if (input.quote.date !== calculated.quote.date || input.quote.sourceRate !== calculated.quote.sourceRate || input.quote.destinationRate !== calculated.quote.destinationRate ||
+      input.quote.sourceRateChangeId !== calculated.quote.sourceRateChangeId || input.quote.destinationRateChangeId !== calculated.quote.destinationRateChangeId)
     fail("QUOTE_CHANGED", "La fecha o la tasa cambió. Vuelve a cotizar antes de guardar.", 409);
   const cash = currentCash(state, sendingUser.id, input.sourceCurrency, now);
   assertCashMovement(state, cash, "sent", calculated.totalAmount);
@@ -216,10 +250,17 @@ export function createRemittance(state: State, user: User, input: CreateRemittan
     senderClientId: input.senderClientId, recipientClientId: input.recipientClientId,
     sendingUserId: sendingUser.id, registeredBy: user.id, ...calculated,
     note: (input.note ?? "").trim(), status: "pending", createdAt: now.toISOString(),
+    senderContact: contactSnapshot(state, input.senderClientId), recipientContact: contactSnapshot(state, input.recipientClientId),
+    ...(managerCommission === undefined ? {} : { managerCommission }),
   };
   state.remittances.transfers.push(transfer);
   addEvent(state, user, cash, "sent", transfer.totalAmount, now, transfer.id);
   return transferView(state, user, transfer);
+}
+function contactSnapshot(state: State, id: string): RemittanceContact {
+  const client = state.clients.find((row) => row.id === id)!;
+  return { id: client.id, code: client.code, name: client.name, phone: client.phone ?? "",
+    cellular: client.cellular ?? "", address: client.address ?? "" };
 }
 function pendingTransfer(state: State, user: User, id: string) {
   const transfer = state.remittances.transfers.find((t) => t.id === id);
@@ -255,10 +296,12 @@ export function remittanceSnapshot(state: State, user: User, systemOperators: Us
   const date = businessDate(now);
   return {
     businessDate: date, currencies,
-    clients: state.clients.map((c) => ({ id: c.id, code: c.code, name: c.name, routeId: c.routeId, active: c.active !== false,
+    clients: state.clients.map((c) => ({ id: c.id, code: c.code, name: c.name, routeId: c.routeId, active: c.active !== false, preferredCurrency: c.preferredCurrency ?? "DOP",
       canSendFrom: clientInRoute(state, user, c.id), canReceive: clientInRoute(state, user, c.id) })),
     operators: remittanceOperators(state, user, systemOperators),
-    rates: [{ id: `DOP-${date}`, currency: "DOP" as Currency, rate: "1.000000", date }, ...state.remittances.rates.filter((r) => r.currency !== "DOP")],
+    rates: [state.remittances.rates.find((r) => r.currency === "DOP" && r.date === date) ?? { id: `DOP-${date}`, currency: "DOP" as Currency, rate: "1.000000", date }, ...state.remittances.rates.filter((r) => r.currency !== "DOP")]
+      .map(({ updatedBy, ...row }) => ({ ...row, ...(user.role === "admin" && updatedBy ? { updatedBy } : {}) })),
+    rateHistory: user.role === "admin" ? state.remittances.rateHistory ?? [] : [],
     transfers: state.remittances.transfers.filter((t) => canSeeOutgoing(state, user, t) || canSeeReceipt(state, user, t)).map((t) => transferView(state, user, t)),
     cashSessions: state.remittances.cashSessions.filter((c) => user.role === "admin" || c.operatorId === user.id).map((c) => cashView(state, user, c)),
   };
@@ -270,6 +313,12 @@ export function remittanceReports(state: State, user: User, input: { from: strin
   const visible = state.remittances.transfers.filter((t) => canSeeOutgoing(state, user, t) || canSeeReceipt(state, user, t));
   type AmountRow = { date: string; sourceCurrency: Currency; destinationCurrency: Currency; count: number; pendingCount: number; paidCount: number; cancelledCount: number; amount: number; commissionAmount: number; totalAmount: number; receiveAmount: number };
   const amounts = new Map<string, AmountRow>();
+  type CommissionTotal = { date: string; currency: Currency; count: number; commissionAmount: number; cancelledCount: number; cancelledCommissionAmount: number };
+  const commissionTotals = new Map<string, CommissionTotal>();
+  const commissionDetails: Array<Pick<Remittance, "id" | "envioReference" | "createdAt" | "sendingUserId" | "senderClientId" | "recipientClientId" | "sourceCurrency" | "destinationCurrency" | "amount" | "commissionBps" | "commissionAmount" | "status">> = [];
+  type ManagerCommissionTotal = ManagerCommission & { date: string; count: number; cancelledCount: number; cancelledAmount: number };
+  const managerCommissionTotals = new Map<string, ManagerCommissionTotal>();
+  const managerCommissionDetails: Array<ManagerCommission & Pick<Remittance, "id" | "envioReference" | "createdAt" | "status">> = [];
   const delivered = new Map<string, { date: string; currency: Currency; count: number; amount: number }>();
   const deliveryTimes: { id: string; envioReference: string; createdAt: string; paidAt: string; elapsedSeconds: number }[] = [];
   for (const transfer of visible) {
@@ -280,6 +329,37 @@ export function remittanceReports(state: State, user: User, input: { from: strin
       if (transfer.status !== "cancelled") for (const field of ["amount", "commissionAmount", "totalAmount", "receiveAmount"] as const)
         row[field] = safeMoney(BigInt(row[field]) + BigInt(transfer[field]));
       amounts.set(key, row);
+      commissionDetails.push({ id: transfer.id, envioReference: transfer.envioReference, createdAt: transfer.createdAt,
+        sendingUserId: transfer.sendingUserId, senderClientId: transfer.senderClientId, recipientClientId: transfer.recipientClientId,
+        sourceCurrency: transfer.sourceCurrency, destinationCurrency: transfer.destinationCurrency, amount: transfer.amount,
+        commissionBps: transfer.commissionBps, commissionAmount: transfer.commissionAmount, status: transfer.status });
+      const commissionKey = `${date}:${transfer.sourceCurrency}`;
+      const commission = commissionTotals.get(commissionKey) ?? { date, currency: transfer.sourceCurrency, count: 0, commissionAmount: 0, cancelledCount: 0, cancelledCommissionAmount: 0 };
+      if (transfer.status === "cancelled") {
+        commission.cancelledCount++;
+        commission.cancelledCommissionAmount = safeMoney(BigInt(commission.cancelledCommissionAmount) + BigInt(transfer.commissionAmount));
+      } else {
+        commission.count++;
+        commission.commissionAmount = safeMoney(BigInt(commission.commissionAmount) + BigInt(transfer.commissionAmount));
+      }
+      commissionTotals.set(commissionKey, commission);
+      if (transfer.managerCommission) {
+        const manual = transfer.managerCommission;
+        managerCommissionDetails.push({ id: transfer.id, envioReference: transfer.envioReference,
+          createdAt: transfer.createdAt, status: transfer.status, ...manual });
+        // A literal manually entered name is a reporting label, never a user/role lookup.
+        const managerKey = JSON.stringify([date, manual.managerName, manual.currency]);
+        const manager = managerCommissionTotals.get(managerKey) ?? { date, managerName: manual.managerName,
+          currency: manual.currency, count: 0, amount: 0, cancelledCount: 0, cancelledAmount: 0 };
+        if (transfer.status === "cancelled") {
+          manager.cancelledCount++;
+          manager.cancelledAmount = safeMoney(BigInt(manager.cancelledAmount) + BigInt(manual.amount));
+        } else {
+          manager.count++;
+          manager.amount = safeMoney(BigInt(manager.amount) + BigInt(manual.amount));
+        }
+        managerCommissionTotals.set(managerKey, manager);
+      }
     }
     if (transfer.status === "paid" && transfer.paidAt && within(transfer.paidAt)) {
       deliveryTimes.push({ id: transfer.id, envioReference: transfer.envioReference, createdAt: transfer.createdAt, paidAt: transfer.paidAt, elapsedSeconds: Math.max(0, Math.floor((Date.parse(transfer.paidAt) - Date.parse(transfer.createdAt)) / 1000)) });
@@ -308,5 +388,7 @@ export function remittanceReports(state: State, user: User, input: { from: strin
     for (const field of ["sentTotal", "cancelRefund", "paid"] as const) group[field] = safeMoney(BigInt(group[field]) + BigInt(row[field]));
     cashGroups.set(key, group);
   }
-  return { ...input, amounts: [...amounts.values()], deliveryTimes, deliveryTimeSummary, delivered: [...delivered.values()], cash, cashSummary: [...cashGroups.values()] };
+  return { ...input, amounts: [...amounts.values()], commissions: { details: commissionDetails, totals: [...commissionTotals.values()] },
+    managerCommissions: { details: managerCommissionDetails, totals: [...managerCommissionTotals.values()] },
+    deliveryTimes, deliveryTimeSummary, delivered: [...delivered.values()], cash, cashSummary: [...cashGroups.values()] };
 }

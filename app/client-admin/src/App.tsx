@@ -94,6 +94,7 @@ import RemittancesWorkspace from "../../shared/remittances/RemittancesWorkspace"
 import { remittancesApi } from "./remittancesApi";
 import { hasUnresolvedMovementRequest, pendingMovementDraft, useMovementRequest } from "./useMovementRequest";
 import { businessDate, businessTimestamp, collectionCash, currencyCode, currencyName, financeMatches, nativeMoney, nativeTotals, obligationReceived, decimalProductCents, centsInput } from "./adminFinance";
+import { buildDepositComponents, confirmedDepositMatches, depositCashTotal, depositComponentsMatch, depositMethodLabel, nonCashDepositAmount, type NonCashDepositLine } from "./depositComponents";
 import { useChargeImportRequest } from "./useChargeImportRequest";
 import { decimalCents, formatMoney } from "../../shared/remittances/output";
 import { GeoMap, type GeoPoint } from "./GeoMap";
@@ -103,6 +104,8 @@ import { ConnectedSettlements } from "./ConnectedSettlements";
 import { ConnectedLegacyReports } from "./ConnectedLegacyReports";
 import { ConnectedAdminTools, isConnectedAdminTool } from "./ConnectedAdminTools";
 import { ConnectedExchangeRates } from "./ConnectedExchangeRates";
+import { matchesClientSearch, copyPhoneIntoEmptyFields } from "./clientSearch";
+import { unconfirmedCollectionBalances, recentMovementReceipts } from "./collectionAlerts";
 import { locationUnavailable, locationError as gpsError, validLocation } from "../../shared/geolocation";
 
 const collectorUrl = String(import.meta.env.VITE_COLLECTOR_URL || "http://127.0.0.1:5174");
@@ -685,7 +688,7 @@ function MdiWindow({ windowState, onClose, onFocus, onMove, children }: Readonly
   };
   return (
     <section className={`mdi-window ${windowState.isFocused ? "focused" : ""} ${windowState.page === "remittances" ? "remittances-mdi-window" : ""}`} style={{ left: windowState.x, top: windowState.y, width: windowState.width, height: windowState.height, zIndex: windowState.zIndex }} onPointerDownCapture={focusIfNeeded} role="dialog" aria-label={windowState.title}>
-      <div className="mdi-window-titlebar" onMouseDown={startDrag}><span>{windowState.title}</span><button type="button" aria-label={`Cerrar ${windowState.title}`} onMouseDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onClose(windowState.id); }}><X size={15} /></button></div>
+      <div className="mdi-window-titlebar" onMouseDown={startDrag}><span>{windowState.title}</span><button type="button" aria-label={`Cerrar ${windowState.title}`} onMouseDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onClose(windowState.id); }} title={`Cerrar ${windowState.title}`}><X size={15} /></button></div>
       <div className="mdi-window-content">{children}</div><span className="mdi-resize-cue" aria-hidden="true" />
     </section>
   );
@@ -1304,7 +1307,7 @@ function LegacyDialog({ title, onClose, children, className = "", overlayClassNa
       <section className={`legacy-dialog ${className}`} style={{ transform: `translate(${offset.x}px, ${offset.y}px)` }} role="dialog" aria-modal="true" aria-label={title}>
         <div className="legacy-dialog-titlebar" onMouseDown={startDialogDrag}>
           <span>{title}</span>
-          <button type="button" aria-label={`Cerrar ${title}`} onMouseDown={(event) => event.stopPropagation()} onClick={onClose}>X</button>
+          <button type="button" aria-label={`Cerrar ${title}`} onMouseDown={(event) => event.stopPropagation()} onClick={onClose} title={`Cerrar ${title}`}>X</button>
         </div>
         <div className="legacy-dialog-body">{children}</div>
       </section>
@@ -2150,6 +2153,7 @@ function SessionsLegacyView({ snapshot }: Readonly<{ snapshot: Snapshot }>): Rea
 
 
 type ClientLegacyRecord = {
+  preferredCurrency: "DOP" | "USD" | "EUR";
   id: string;
   code: string;
   identification: string;
@@ -2170,12 +2174,13 @@ type ClientLegacyRecord = {
 
 type ClientLegacyDraft = Omit<ClientLegacyRecord, "id" | "active"> & { active: boolean };
 
-type ClientFilterMode = "all" | "identification" | "name" | "zone" | "route";
+type ClientFilterMode = "all" | "identification" | "name" | "zone" | "route" | "search";
 type ClientFinanceTab = "Cargos" | "Cargos Rec." | "Cobros" | "Descargos" | "Descargos Rec." | "Pagos";
 
 const clientFinanceTabs: ClientFinanceTab[] = ["Cargos", "Cargos Rec.", "Cobros", "Descargos", ...(SHOW_RECURRING_PAYOUTS ? ["Descargos Rec." as const] : []), "Pagos"];
 
 const clientRecordFromSnapshot = (client: Client): ClientLegacyRecord => ({
+  preferredCurrency: client.preferredCurrency ?? "DOP",
   id: client.id,
   code: client.code,
   identification: client.identification ?? "",
@@ -2207,6 +2212,7 @@ const nextClientCode = (clients: readonly ClientLegacyRecord[]) => {
 
 function ClientDataDialog({ client, zones, routes, defaultCode = "", onClose, onSave }: Readonly<{ client?: ClientLegacyRecord; zones: readonly string[]; routes: Snapshot["routes"]; defaultCode?: string; onClose: () => void; onSave: (draft: ClientLegacyDraft) => Promise<void> | void }>) {
   const [draft, setDraft] = useState<ClientLegacyDraft>({
+    preferredCurrency: client?.preferredCurrency ?? "DOP",
     code: client?.code ?? defaultCode,
     identification: client?.identification ?? "",
     name: client?.name ?? "",
@@ -2247,12 +2253,14 @@ function ClientDataDialog({ client, zones, routes, defaultCode = "", onClose, on
         <label className="client-form-row"><span>Ubicación:</span><input placeholder="No definida" value={draft.location} onChange={(event) => update("location", event.target.value)} /></label>
         <label className="client-form-row"><span>Zona:</span><select value={draft.zone} onChange={(event) => update("zone", event.target.value)}>{zoneOptions.map((zone) => <option key={zone}>{zone}</option>)}</select></label>
         <label className="client-form-row"><span>Ruta:</span><select value={draft.routeId} onChange={(event) => update("routeId", event.target.value)}>{routes.map((route) => <option key={route.id} value={route.id}>{route.name}</option>)}</select></label>
+        <label className="client-form-row"><span>Moneda preferida:</span><select aria-label="Moneda preferida del cliente" value={draft.preferredCurrency} onChange={(event) => setDraft((current) => ({ ...current, preferredCurrency: event.target.value as ClientLegacyDraft["preferredCurrency"] }))}>{["DOP", "USD", "EUR"].map((currency) => <option key={currency}>{currency}</option>)}</select></label>
         <div className="client-contact-row">
           <label>Teléfono:<input value={draft.phone} onChange={(event) => update("phone", event.target.value)} /></label>
           <label>Celular:<input value={draft.cellular} onChange={(event) => update("cellular", event.target.value)} /></label>
           <label>EMail:<input value={draft.email} onChange={(event) => update("email", event.target.value)} /></label>
         </div>
         <label className="client-form-row"><span>Nota:</span><input value={draft.note} onChange={(event) => update("note", event.target.value)} /></label>
+        <button type="button" title="Completa celular y nota únicamente si están vacíos." disabled={!draft.phone.trim()} onClick={() => setDraft(copyPhoneIntoEmptyFields)}>Copiar teléfono a campos vacíos</button>
         <div className="legacy-dialog-actions"><button type="submit">oK</button><button type="button" onClick={onClose}>Cancelar</button></div>
       </form>
       {error && <LegacyAlertDialog message={error} onClose={() => setError("")} />}
@@ -2261,7 +2269,7 @@ function ClientDataDialog({ client, zones, routes, defaultCode = "", onClose, on
 }
 
 function ClientFinancePager({ page = 1, pages = 1, onPage }: Readonly<{ page?: number; pages?: number; onPage?: (page: number) => void }>) {
-  return <div className="legacy-mdi-pager client-finance-pager"><button type="button" disabled={page <= 1} onClick={() => onPage?.(1)}>|&lt;</button><button type="button" disabled={page <= 1} onClick={() => onPage?.(page - 1)}>&lt;</button><span>Página [ {page} ] de {pages}</span><button type="button" disabled={page >= pages} onClick={() => onPage?.(page + 1)}>&gt;</button><button type="button" disabled={page >= pages} onClick={() => onPage?.(pages)}>&gt;|</button></div>;
+  return <div className="legacy-mdi-pager client-finance-pager"><button type="button" disabled={page <= 1} onClick={() => onPage?.(1)} title="Primera página">|&lt;</button><button type="button" disabled={page <= 1} onClick={() => onPage?.(page - 1)} title="Página anterior">&lt;</button><span>Página [ {page} ] de {pages}</span><button type="button" disabled={page >= pages} onClick={() => onPage?.(page + 1)} title="Página siguiente">&gt;</button><button type="button" disabled={page >= pages} onClick={() => onPage?.(pages)} title="Última página">&gt;|</button></div>;
 }
 
 function ClientFinanceTable({ columns, rows }: Readonly<{ columns: readonly string[]; rows: readonly ReactNode[][] }>) {
@@ -2453,6 +2461,7 @@ function ClientsLegacyView({ snapshot, actorId, onRefresh }: Readonly<{ snapshot
   const [filterMode, setFilterMode] = useState<ClientFilterMode>("all");
   const [identificationFilter, setIdentificationFilter] = useState("");
   const [nameFilter, setNameFilter] = useState("");
+  const [searchFilter, setSearchFilter] = useState("");
   const [zoneFilter, setZoneFilter] = useState("No Definida");
   const [routeFilter, setRouteFilter] = useState(snapshot.routes[0]?.id ?? "");
   const [statusFilter, setStatusFilter] = useState("Activo");
@@ -2467,22 +2476,24 @@ function ClientsLegacyView({ snapshot, actorId, onRefresh }: Readonly<{ snapshot
     setSelectedClientId((selected) => snapshot.clients.some((client) => client.id === selected) ? selected : snapshot.clients[0]?.id ?? "");
   }, [snapshot.clients, snapshot.routes]);
   const zones = Array.from(new Set(["No Definida", ...clientsData.map((client) => client.zone).filter(Boolean), ...snapshot.routes.map((route) => route.sector).filter(Boolean)]));
-  const selectedClient = clientsData.find((client) => client.id === selectedClientId) ?? clientsData[0];
   const visibleClients = clientsData.filter((client) => {
     const statusMatches = statusFilter === "Todos" || (statusFilter === "Activo" ? client.active : !client.active);
     if (!statusMatches) return false;
+    if (filterMode === "search") return matchesClientSearch(client, searchFilter);
     if (filterMode === "identification") return client.identification.toLowerCase().includes(identificationFilter.toLowerCase());
     if (filterMode === "name") return client.name.toLowerCase().includes(nameFilter.toLowerCase());
     if (filterMode === "zone") return client.zone === zoneFilter;
     if (filterMode === "route") return client.routeId === routeFilter;
     return true;
   });
+  const selectedClient = visibleClients.find((client) => client.id === selectedClientId) ?? visibleClients[0];
   const moveSelectedClient = (direction: "first" | "up" | "down" | "last") => {
-    const currentIndex = clientsData.findIndex((client) => client.id === selectedClientId);
+    const currentIndex = clientsData.findIndex((client) => client.id === selectedClient?.id);
     if (currentIndex < 0) return toast.info("Seleccione un cliente.");
     const targetIndexByDirection = { first: 0, up: Math.max(0, currentIndex - 1), down: Math.min(clientsData.length - 1, currentIndex + 1), last: clientsData.length - 1 } satisfies Record<typeof direction, number>;
     const targetIndex = targetIndexByDirection[direction];
     if (targetIndex === currentIndex) return toast.info("El cliente ya está en esa posición.");
+    chooseClient(clientsData[currentIndex].id);
     setClientsData((current) => {
       const reordered = [...current];
       const [selected] = reordered.splice(currentIndex, 1);
@@ -2494,6 +2505,7 @@ function ClientsLegacyView({ snapshot, actorId, onRefresh }: Readonly<{ snapshot
     setFilterMode("all");
     setIdentificationFilter("");
     setNameFilter("");
+    setSearchFilter("");
     setZoneFilter("No Definida");
     setRouteFilter(snapshot.routes[0]?.id ?? "");
     setStatusFilter("Activo");
@@ -2504,6 +2516,7 @@ function ClientsLegacyView({ snapshot, actorId, onRefresh }: Readonly<{ snapshot
     code: draft.code.trim(), name: draft.name.trim(), identification: draft.identification.trim(),
     alias: draft.alias, address: draft.address, sector: draft.zone === "No Definida" ? draft.location : draft.zone,
     routeId: draft.routeId, phone: draft.phone, cellular: draft.cellular, email: draft.email, note: draft.note,
+    preferredCurrency: draft.preferredCurrency,
     ...(coordinates ? { lat: coordinates.lat, lng: coordinates.lng } : draft.lat !== undefined && draft.lng !== undefined ? { lat: draft.lat, lng: draft.lng } : {}),
   });
   const saveClient = async (draft: ClientLegacyDraft) => {
@@ -2555,6 +2568,7 @@ function ClientsLegacyView({ snapshot, actorId, onRefresh }: Readonly<{ snapshot
       <ClientToolbar filtersVisible={filtersVisible} onToggleFilters={() => setFiltersVisible((visible) => !visible)} onFirst={() => moveSelectedClient("first")} onPrevious={() => moveSelectedClient("up")} onNext={() => moveSelectedClient("down")} onLast={() => moveSelectedClient("last")} onNew={() => openClientForm("new")} onEdit={() => selectedClient ? openClientForm("edit") : toast.info("Seleccione un cliente.")} onDelete={() => selectedClient ? setConfirmDelete(true) : toast.info("Seleccione un cliente.")} onRefresh={() => void refreshClients()} onFinance={() => selectedClient ? setFinanceOpen(true) : toast.info("Seleccione un cliente.")} onMap={() => selectedClient ? openMap() : toast.info("Seleccione un cliente.")} onMachines={() => selectedClient ? setMachinesOpen(true) : toast.info("Seleccione un cliente.")} />
       <div className="clients-workspace">
         {filtersVisible && <aside className="clients-filter-panel" aria-label="Filtros de clientes">
+          <label>Buscar código, teléfono o nota:<input aria-label="Buscar clientes por código, teléfono o nota" value={searchFilter} onChange={(event) => { setSearchFilter(event.target.value); setFilterMode("search"); }} /></label>
           <label className="client-radio-line"><input type="radio" name="client-filter" checked={filterMode === "all"} onChange={() => setFilterMode("all")} /> <span>Todos</span></label>
           <label className="client-radio-line"><input type="radio" name="client-filter" checked={filterMode === "identification"} onChange={() => setFilterMode("identification")} /> <span>por Identificación:</span></label><input value={identificationFilter} disabled={filterMode !== "identification"} onChange={(event) => setIdentificationFilter(event.target.value)} />
           <label className="client-radio-line"><input type="radio" name="client-filter" checked={filterMode === "name"} onChange={() => setFilterMode("name")} /> <span>por Nombre:</span></label><input value={nameFilter} disabled={filterMode !== "name"} onChange={(event) => setNameFilter(event.target.value)} />
@@ -2562,7 +2576,7 @@ function ClientsLegacyView({ snapshot, actorId, onRefresh }: Readonly<{ snapshot
           <label className="client-radio-line"><input type="radio" name="client-filter" checked={filterMode === "route"} onChange={() => setFilterMode("route")} /> <span>por Ruta:</span></label><select value={routeFilter} disabled={filterMode !== "route"} onChange={(event) => setRouteFilter(event.target.value)}>{snapshot.routes.map((route) => <option key={route.id} value={route.id}>{route.name}</option>)}</select>
           <label>Estado:<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option>Activo</option><option>Inactivo</option><option>Todos</option></select></label>
         </aside>}
-        <div className="clients-grid-panel"><div className="legacy-mdi-table-wrap"><table className="legacy-mdi-table clients-grid"><thead><tr><th>Código</th><th>Identificación</th><th>Cliente</th><th>Zona</th><th>Ruta</th><th>Teléfono</th><th>Celular</th><th>Activo</th></tr></thead><tbody>{visibleClients.map((client) => { const isSelected = selectedClientId === client.id; return <tr key={client.id} className={isSelected ? "selected-row" : ""} role="button" tabIndex={0} onClick={() => chooseClient(client.id)} onKeyDown={(event) => handleKeyboardActivation(event, () => chooseClient(client.id))}><td><span className={`mdi-row-select ${isSelected ? "selected" : ""}`}>{client.code}</span></td><td>{client.identification || "No registrada"}</td><td>{client.name}</td><td>{client.zone}</td><td>{snapshot.routes.find((route) => route.id === client.routeId)?.name ?? ""}</td><td>{client.phone}</td><td>{client.cellular}</td><td><LegacyCheck checked={client.active} /></td></tr>; })}</tbody></table></div><div className="legacy-footerbar"><span>Cantidad</span><strong>{visibleClients.length}</strong></div></div>
+        <div className="clients-grid-panel"><div className="legacy-mdi-table-wrap"><table className="legacy-mdi-table clients-grid"><thead><tr><th>Código</th><th>Identificación</th><th>Cliente</th><th>Zona</th><th>Ruta</th><th>Teléfono</th><th>Celular</th><th>Activo</th></tr></thead><tbody>{visibleClients.map((client) => { const isSelected = selectedClient?.id === client.id; return <tr key={client.id} className={isSelected ? "selected-row" : ""} role="button" tabIndex={0} onClick={() => chooseClient(client.id)} onKeyDown={(event) => handleKeyboardActivation(event, () => chooseClient(client.id))}><td><span className={`mdi-row-select ${isSelected ? "selected" : ""}`}>{client.code}</span></td><td>{client.identification || "No registrada"}</td><td>{client.name}</td><td>{client.zone}</td><td>{snapshot.routes.find((route) => route.id === client.routeId)?.name ?? ""}</td><td>{client.phone}</td><td>{client.cellular}</td><td><LegacyCheck checked={client.active} /></td></tr>; })}</tbody></table></div><div className="legacy-footerbar"><span>Cantidad</span><strong>{visibleClients.length}</strong></div></div>
       </div>
       {formMode && <ClientDataDialog key={`${clientDialogVersion.current}-${selectedClient?.id ?? ""}`} client={formMode === "edit" ? selectedClient : undefined} zones={zones} routes={snapshot.routes} defaultCode={formMode === "new" ? nextClientCode(clientsData) : ""} onClose={closeClientForm} onSave={saveClient} />}
       {confirmDelete && <LegacyConfirmDialog message={selectedClient?.active ? "¿Inactivar cliente? Se conserva su historial." : "¿Activar cliente?"} onYes={() => void inactivateClient()} onNo={() => setConfirmDelete(false)} />}
@@ -4297,7 +4311,7 @@ function Login({
                 <ShieldCheck size={15} />
                 <span>
                   <strong>Administrador</strong>
-                  <small>Utiliza tu cuenta habilitada.</small>
+                  <small>Este formulario abre el panel administrativo: clientes, cargos, pagos y reportes.</small>
                 </span>
               </div>
               <a
@@ -4309,7 +4323,7 @@ function Login({
                 <Users size={15} />
                 <span>
                   <strong>Terminal del cobrador</strong>
-                  <small>PWA Cobrador · {collectorUrl}</small>
+                  <small>Abre la terminal de ruta para consultar clientes, cobrar y pagar con tu cuenta habilitada.</small>
                 </span>
               </a>
             </div>
@@ -4546,16 +4560,18 @@ export default function App() {
       );
     }
   };
+  const [notificationReceiptId, setNotificationReceiptId] = useState<string | null>(null);
+  const pendingCollectionFunds = snapshot ? unconfirmedCollectionBalances(snapshot.movements) : [];
+  const recentReceipts = snapshot ? recentMovementReceipts(snapshot.movements) : [];
+  const notificationReceipt = snapshot?.movements.find((movement) => movement.id === notificationReceiptId);
   const alertCount = snapshot
     ? snapshot.collectors.filter((c) => c.status !== "active").length +
-      (snapshot.totals.difference !== 0 ? 1 : 0)
+      pendingCollectionFunds.length
     : 0;
   const commandClients =
     snapshot?.clients
       .filter((c) =>
-        `${c.name} ${c.code}`
-          .toLowerCase()
-          .includes(commandQuery.toLowerCase()),
+        matchesClientSearch(c, commandQuery),
       )
       .slice(0, 6) ?? [];
   const commandRoutes =
@@ -4597,7 +4613,7 @@ export default function App() {
                 className="sidebar-collapse icon-button"
                 aria-label={collapsed ? "Expandir menú" : "Contraer menú"}
                 onClick={() => setCollapsed(!collapsed)}
-              >
+               title={collapsed ? "Expandir menú" : "Contraer menú"}>
                 <ChevronLeft size={17} className={collapsed ? "rotate" : ""} />
               </button>
             </div>
@@ -4763,7 +4779,7 @@ export default function App() {
                     className="icon-button mobile-menu-button"
                     aria-label="Abrir navegación"
                     onClick={() => setMobileMenu(true)}
-                  >
+                   title="Abrir navegación">
                     <Menu size={21} />
                   </button>
                   <span className="station-badge compact-station" title={station.name}>
@@ -4799,8 +4815,9 @@ export default function App() {
                 </button>
                 <span className="header-divider" />
                 <button
-                  className="icon-button notification-trigger"
+                  className={`icon-button notification-trigger ${pendingCollectionFunds.length ? "collections-pending" : ""}`}
                   aria-label={`Notificaciones, ${alertCount} pendientes`}
+                  title="Últimos recibos y cobros pendientes de depósito confirmado"
                   onClick={() => setNotificationsOpen(true)}
                 >
                   <Bell size={19} />
@@ -4919,7 +4936,7 @@ export default function App() {
                   className="profile-button"
                   onClick={() => setAccountOpen(true)}
                   aria-label="Abrir cuenta"
-                >
+                 title="Abrir cuenta">
                   <Avatar name={user?.name ?? "Administración"} index={3} />
                   <span className="user-chip-copy">
                     <strong>{user?.name ?? "Administración"}</strong>
@@ -4932,6 +4949,11 @@ export default function App() {
                 </div>
               </div>
             </header>
+            <nav className="desktop-launchers" aria-label="Operaciones principales">
+              <button type="button" className="btn" onClick={() => openMdiWindow("charges", "charges")}>COBROS <small>Cargos</small></button>
+              <button type="button" className="btn" onClick={() => openMdiWindow("payouts", "payouts")}>PAGOS <small>Descargos</small></button>
+              <button type="button" className="btn" onClick={() => openMdiWindow("remittances", "remittances")}>REMESAS</button>
+            </nav>
             <main id="main-content" className="main-content desktop-canvas" tabIndex={-1}>
           {snapshot && mdiWindows.filter((windowState) => isUiPageVisible(windowState.page)).map((windowState) => (
             <MdiWindow
@@ -4952,7 +4974,7 @@ export default function App() {
               ) : windowState.page === "remittances" ? (
                 <RemittancesWorkspace api={remittancesApi} user={effectiveUser} isAdmin={["ADMIN", "SUPERADMIN"].includes(normalizeRole(effectiveUser.role))} />
               ) : isConnectedCatalog(windowState.page) ? (
-                <ConnectedCatalog page={windowState.page} snapshot={snapshot} onRefresh={() => void refresh()} />
+                <ConnectedCatalog page={windowState.page} snapshot={snapshot} actorId={effectiveUser.id} onRefresh={() => void refresh()} />
               ) : isConnectedAdminTool(windowState.page) ? (
                 <ConnectedAdminTools page={windowState.page} snapshot={snapshot} onRefresh={() => void refresh()} />
               ) : windowState.page === "clients" ? (
@@ -4961,6 +4983,7 @@ export default function App() {
                 <ChargesOperationalView
                   snapshot={snapshot}
                   currentUser={effectiveUser}
+                  onOpenRemittances={() => openMdiWindow("remittances", "remittances")}
                   onRefresh={async () => { await refresh(); }}
                 />
               ) : isMdiOperationPage(windowState.page) ? (
@@ -5011,7 +5034,7 @@ export default function App() {
               <Search size={21} />
               <input
                 autoFocus
-                placeholder="Nombre de cliente, código o ruta…"
+                placeholder="Nombre, código, teléfono, nota o ruta."
                 value={commandQuery}
                 onChange={(event) => setCommandQuery(event.target.value)}
               />
@@ -5020,7 +5043,7 @@ export default function App() {
                   className="icon-button small"
                   aria-label="Limpiar búsqueda"
                   onClick={() => setCommandQuery("")}
-                >
+                 title="Limpiar búsqueda">
                   <X size={16} />
                 </button>
               )}
@@ -5088,16 +5111,15 @@ export default function App() {
           >
             {snapshot && (
               <div className="notifications">
-                {snapshot.totals.difference !== 0 && (
+                {pendingCollectionFunds.length > 0 && (
                   <button onClick={() => openMdiWindow("dailySettlements", "daily-settlements")}>
                     <span className="notification-icon amber">
                       <FileCheck2 size={20} />
                     </span>
                     <span>
-                      <strong>Hay efectivo pendiente de cuadre</strong>
+                      <strong>Hay cobros sin depósito confirmado</strong>
                       <p>
-                        {money(snapshot.totals.difference)} por conciliar antes
-                        del cierre.
+                        {pendingCollectionFunds.map((row) => `${snapshot.collectors.find((collector) => collector.id === row.collectorId)?.name ?? "Cobrador"}: ${nativeMoney(row.amount, row.currency)}`).join(" · ")}
                       </p>
                       <small>
                         Revisar cuadre diario
@@ -5106,6 +5128,12 @@ export default function App() {
                     </span>
                   </button>
                 )}
+                <h3>Últimos recibos de cobradores</h3>
+                {recentReceipts.map((movement) => <button key={movement.id} onClick={() => { setNotificationReceiptId(movement.id); setNotificationsOpen(false); }}>
+                  <span className="notification-icon"><ReceiptText size={20} /></span>
+                  <span><strong>{movement.type === "collection" ? "Cobro" : "Pago"} · {snapshot.collectors.find((collector) => collector.id === movement.collectorId)?.name ?? "Cobrador"}</strong><p>{nativeMoney(movement.amount, movement.currency)} · {businessTimestamp(movement.createdAt)}{movement.cancelledAt ? " · Anulado" : ""}</p><small>Ver recibo <ArrowRight size={12} /></small></span>
+                </button>)}
+                {!recentReceipts.length && <p>No hay recibos confirmados disponibles.</p>}
                 {snapshot.collectors
                   .filter((c) => c.status !== "active")
                   .map((collector) => (
@@ -5146,6 +5174,18 @@ export default function App() {
               </div>
             )}
           </Modal>
+          {notificationReceiptId && <Modal open onClose={() => setNotificationReceiptId(null)} title="Recibo confirmado" description="Datos del recibo. Fecha y hora de Santo Domingo.">
+            {notificationReceipt ? <dl className="notification-receipt">
+              <dt>Operación</dt><dd>{notificationReceipt.type === "collection" ? "Cobro" : "Pago"}{notificationReceipt.cancelledAt ? " · ANULADO" : ""}</dd>
+              <dt>Movimiento</dt><dd>{notificationReceipt.id}</dd>
+              <dt>Recibo</dt><dd>{notificationReceipt.receiptToken}</dd>
+              <dt>Cliente</dt><dd>{snapshot?.clients.find((client) => client.id === notificationReceipt.clientId)?.name ?? "No disponible"}</dd>
+              <dt>Cobrador</dt><dd>{snapshot?.collectors.find((collector) => collector.id === notificationReceipt.collectorId)?.name ?? "No disponible"}</dd>
+              <dt>Fecha y hora</dt><dd>{businessTimestamp(notificationReceipt.createdAt)}</dd>
+              <dt>Importe</dt><dd>{nativeMoney(notificationReceipt.amount, notificationReceipt.currency)}</dd>
+              <dt>Concepto</dt><dd>{notificationReceipt.chargeId ? snapshot?.charges.find((charge) => charge.id === notificationReceipt.chargeId)?.concept ?? snapshot?.charges.find((charge) => charge.id === notificationReceipt.chargeId)?.service : snapshot?.payouts.find((payout) => payout.id === notificationReceipt.payoutId)?.concept}</dd>
+            </dl> : <p>El movimiento ya no está disponible en el listado actual.</p>}
+          </Modal>}
           <Modal
             open={helpOpen}
             onClose={() => setHelpOpen(false)}
@@ -5235,6 +5275,7 @@ export default function App() {
               <AccountModal
                 operation={accountOperation}
                 snapshot={snapshot}
+                actorId={effectiveUser.id}
                 onClose={() => setAccountOperation(null)}
                 onComplete={async () => { await refresh(); }}
               />
@@ -5723,6 +5764,7 @@ function CargoDialog({
   onClose,
   onSave,
   onLoadClients,
+  onOpenRemittances,
 }: Readonly<{
   actorId: string;
   charge?: LocalCharge;
@@ -5731,6 +5773,7 @@ function CargoDialog({
   onClose: () => void;
   onSave: (charge: LocalCharge) => Promise<boolean>;
   onLoadClients: () => Promise<Client[]>;
+  onOpenRemittances?: () => void;
 }>) {
   const request = useMovementRequest(actorId, "manual-charge");
   const close = () => { if (!request.busy) onClose(); };
@@ -5769,6 +5812,10 @@ function CargoDialog({
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (request.busy) return;
+    if (!charge && draft.service === "Remesas del Exterior") {
+      setErrorMessage("Registra este envío desde el formulario completo de Remesas.");
+      return;
+    }
     if (!draft.clientId || !selectedClient) {
       setErrorMessage('El campo "Cliente" no puede estar vacío');
       return;
@@ -5811,7 +5858,7 @@ function CargoDialog({
             <label htmlFor="cargo-client-code">Cliente:</label>
             <input id="cargo-client-code" autoFocus value={draft.clientCode} onChange={(event) => updateClientCode(event.target.value)} />
             <input aria-label="Nombre del cliente" value={selectedClient?.name ?? ""} disabled readOnly />
-            <button type="button" aria-label="Buscar cliente" onClick={() => void openClientSearch()}>[...]</button>
+            <button type="button" aria-label="Buscar cliente" onClick={() => void openClientSearch()} title="Buscar cliente">[...]</button>
           </div>
           <div className="cargo-entry-row">
             <label htmlFor="cargo-currency">Moneda:</label>
@@ -5821,7 +5868,14 @@ function CargoDialog({
           </div>
           <div className="cargo-entry-row">
             <label htmlFor="cargo-service">Servicio:</label>
-            <select id="cargo-service" value={draft.service} onChange={(event) => update("service", event.target.value)}>
+            <select id="cargo-service" value={draft.service} onChange={(event) => {
+              if (!charge && event.target.value === "Remesas del Exterior") {
+                if (onOpenRemittances) { onClose(); onOpenRemittances(); }
+                else setErrorMessage("Abre Remesas para registrar el envío completo.");
+                return;
+              }
+              update("service", event.target.value);
+            }}>
               {availableServices.map((service) => <option key={service}>{service}</option>)}
             </select>
           </div>
@@ -5910,7 +5964,7 @@ function ChargeCancelReasonDialog({ onClose, onConfirm, busy }: Readonly<{ onClo
   );
 }
 
-function ChargesOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{ snapshot: Snapshot; currentUser: User; onRefresh: () => Promise<void> }>) {
+function ChargesOperationalView({ snapshot, currentUser, onRefresh, onOpenRemittances }: Readonly<{ snapshot: Snapshot; currentUser: User; onRefresh: () => Promise<void>; onOpenRemittances?: () => void }>) {
   const chargeRequest = useMovementRequest(currentUser.id, "manual-charge");
   const pendingCharge = pendingMovementDraft<{ charge: LocalCharge; editing: boolean }>(currentUser.id, "manual-charge");
   const importRequest = useChargeImportRequest(currentUser.id);
@@ -6076,7 +6130,7 @@ function ChargesOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{
         disableNew={!permissions.canCreate}
         disableEdit={!selectedCharge || !permissions.canEdit}
         disableDelete={!selectedCharge || !permissions.canDelete}
-        extra={<button type="button" title="Subir" disabled={!permissions.canCreate} onClick={() => setUploadOpen(true)}><Upload size={15} /></button>}
+        extra={<><button type="button" title="Subir" disabled={!permissions.canCreate} onClick={() => setUploadOpen(true)}><Upload size={15} /></button>{onOpenRemittances && <button type="button" disabled={!permissions.canCreate} onClick={onOpenRemittances}>Nuevo envío de dinero</button>}</>}
       />
       <div className={`charges-layout ${filtersVisible ? "" : "filters-collapsed"}`}>
         {filtersVisible && (
@@ -6086,7 +6140,7 @@ function ChargesOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{
               <label className="charges-radio-row"><input type="radio" name="charge-filter-mode" checked={mode === "Todos"} onChange={() => setMode("Todos")} /><span>Todos</span></label>
               <div className="charges-filter-group">
                 <label className="charges-radio-row"><input type="radio" name="charge-filter-mode" checked={mode === "por Cliente"} onChange={() => setMode("por Cliente")} /><span>por Cliente:</span></label>
-                <div className="legacy-lookup-field charges-filter-control"><input aria-label="Buscar por cliente" value={clientQuery} disabled={mode !== "por Cliente"} onChange={(event) => setClientQuery(event.target.value)} placeholder="Código o identificación" /><button type="button" aria-label="Seleccionar cliente" disabled={mode !== "por Cliente"} onClick={() => void openFilterClientSearch()}>[...]</button></div>
+                <div className="legacy-lookup-field charges-filter-control"><input aria-label="Buscar por cliente" value={clientQuery} disabled={mode !== "por Cliente"} onChange={(event) => setClientQuery(event.target.value)} placeholder="Código o identificación" /><button type="button" aria-label="Seleccionar cliente" disabled={mode !== "por Cliente"} onClick={() => void openFilterClientSearch()} title="Seleccionar cliente">[...]</button></div>
               </div>
               <div className="charges-filter-group">
                 <label className="charges-radio-row"><input type="radio" name="charge-filter-mode" checked={mode === "Por Zona"} onChange={() => setMode("Por Zona")} /><span>Por Zona:</span></label>
@@ -6123,7 +6177,7 @@ function ChargesOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{
           <div className="legacy-footerbar"><span>Cantidad: <strong>{visibleCharges.length}</strong></span><span>Total: <strong>{nativeTotals(visibleCharges)}</strong></span><span>Recib.: <strong>{nativeTotals(visibleCharges.flatMap(obligationReceived))}</strong></span><span>Pend.: <strong>{nativeTotals(visibleCharges.filter((item) => !item.currencyConflict).map((item) => ({ currency: item.currency, amount: item.amount - item.collected })))}</strong></span></div>
         </section>
       </div>
-      {dialogMode && <CargoDialog actorId={currentUser.id} charge={pendingCharge?.charge ?? (dialogMode === "edit" ? selectedCharge ?? undefined : undefined)} clients={snapshot.clients} businessDate={snapshot.businessDate} onClose={() => setDialogMode(null)} onSave={saveCharge} onLoadClients={loadClients} />}
+      {dialogMode && <CargoDialog actorId={currentUser.id} charge={pendingCharge?.charge ?? (dialogMode === "edit" ? selectedCharge ?? undefined : undefined)} clients={snapshot.clients} businessDate={snapshot.businessDate} onClose={() => setDialogMode(null)} onSave={saveCharge} onLoadClients={loadClients} onOpenRemittances={onOpenRemittances} />}
       {uploadOpen && <CargoUploadDialog onClose={() => setUploadOpen(false)} onUpload={uploadCharges} request={importRequest} />}
       {clientSearchOpen && <ClientSearchSubmodal clients={clientDirectory} onClose={() => setClientSearchOpen(false)} onSelect={(client) => { setClientQuery(client.code); setClientSearchOpen(false); }} />}
       {confirmCancelOpen && <LegacyConfirmDialog message="¿Está seguro que desea cancelar el Cargo?" onYes={() => { setConfirmCancelOpen(false); setCancelReasonOpen(true); }} onNo={() => setConfirmCancelOpen(false)} />}
@@ -6824,7 +6878,7 @@ function LegacyOperationView({
                 <label className="charges-radio-row"><input type="radio" name="collection-filter-mode" value="Todos" checked={mode === "Todos"} onChange={() => setMode("Todos")} /><span>Todos</span></label>
                 <div className="charges-filter-group">
                   <label className="charges-radio-row"><input type="radio" name="collection-filter-mode" value="Por Cliente" checked={mode === "Por Cliente"} onChange={() => setMode("Por Cliente")} /><span>por Cliente:</span></label>
-                  <div className="legacy-lookup-field charges-filter-control"><input aria-label="Buscar por cliente" value={query} disabled={mode !== "Por Cliente"} onChange={(event) => { setQuery(event.target.value); setCollectionClientId(""); }} /><button type="button" aria-label="Seleccionar cliente" disabled={mode !== "Por Cliente"} onClick={() => setCollectionClientSearchOpen(true)}>[...]</button></div>
+                  <div className="legacy-lookup-field charges-filter-control"><input aria-label="Buscar por cliente" value={query} disabled={mode !== "Por Cliente"} onChange={(event) => { setQuery(event.target.value); setCollectionClientId(""); }} /><button type="button" aria-label="Seleccionar cliente" disabled={mode !== "Por Cliente"} onClick={() => setCollectionClientSearchOpen(true)} title="Seleccionar cliente">[...]</button></div>
                 </div>
                 <div className="charges-filter-group">
                   <label className="charges-radio-row"><input type="radio" name="collection-filter-mode" value="Por Cobrador" checked={mode === "Por Cobrador"} onChange={() => setMode("Por Cobrador")} /><span>por Cobrador:</span></label>
@@ -7093,6 +7147,9 @@ type DepositDraft = {
   collectorId: string;
   note: string;
   quantities: Record<number, string>;
+  nonCash?: NonCashDepositLine[];
+  confirmedComponents?: Movement["depositComponents"];
+  confirmedAmount?: number;
 };
 
 const emptyDepositQuantities = (): Record<number, string> =>
@@ -7119,6 +7176,12 @@ function depositDraftFromMovement(movement: Movement, fallbackCurrency = "Peso D
     collectorId: movement.collectorId,
     note: String((movement as Movement & { note?: string }).note ?? ""),
     quantities,
+    nonCash: (movement.depositComponents ?? []).filter((line) => line.method !== "cash").map((line, index) => ({
+      id: `${movement.id}-${index}`, method: line.method as "cheque" | "bank_deposit", amount: centsInput(line.amount),
+      bank: line.bank ?? "", reference: line.reference ?? "",
+    })),
+    confirmedComponents: movement.depositComponents ? structuredClone(movement.depositComponents) : undefined,
+    confirmedAmount: movement.amount,
   };
 }
 
@@ -7135,6 +7198,16 @@ function depositTicketFromDraft(draft: DepositDraft, id: string, snapshot: Snaps
     concept: `${nativeMoney(denominacion, draft.currency)} × ${cantidad}`,
     amount: denominacion * cantidad,
   }));
+  const components = draft.confirmedComponents;
+  const cashAmount = components?.filter((line) => line.method === "cash").reduce((sum, line) => sum + line.amount, 0);
+  if (!lines.length && cashAmount) lines.push({ service: "Efectivo", concept: "Desglose de denominaciones no registrado", amount: cashAmount });
+  for (const line of components ?? []) {
+    if (line.method !== "cash") lines.push({ service: depositMethodLabel(line.method),
+      concept: `Banco: ${line.bank ?? ""} · Referencia: ${line.reference ?? ""}`, amount: line.amount });
+  }
+  if (!lines.length && draft.confirmedAmount !== undefined) lines.push({
+    service: "Depósito confirmado", concept: "Desglose no registrado", amount: draft.confirmedAmount,
+  });
   const collector = snapshot.collectors.find((item) => item.id === draft.collectorId);
   return {
     id,
@@ -7144,11 +7217,12 @@ function depositTicketFromDraft(draft: DepositDraft, id: string, snapshot: Snaps
     clientName: "Depósito de cobrador",
     clientIdentification: "",
     collectorName: collector?.name ?? "",
-    paymentForm: "Depósito",
+    paymentForm: components && new Set(components.map((line) => line.method)).size > 1 ? "Mixto" :
+      components?.[0] ? depositMethodLabel(components[0].method) : "Depósito",
     bank: "No Definido",
     checkNumber: "",
     note: draft.note,
-    amount: depositAmount(draft.quantities),
+    amount: draft.confirmedAmount ?? buildDepositComponents(depositAmount(draft.quantities), draft.nonCash ?? []).amount,
     lines,
   };
 }
@@ -7156,12 +7230,15 @@ function depositTicketFromDraft(draft: DepositDraft, id: string, snapshot: Snaps
 function depositTicketFromRow(row: TableRow, snapshot: Snapshot): CollectionTicketModel {
   const movement = row.__raw as unknown as Movement;
   const draft = depositDraftFromMovement(movement, String(row.currency ?? "Peso Dominicano"));
-  return { ...depositTicketFromDraft(draft, String(row.__id ?? movement.id), snapshot), amount: movement.amount };
+  return { ...depositTicketFromDraft(draft, String(row.__id ?? movement.id), snapshot), amount: movement.amount,
+    note: movement.cancelledAt ? `CANCELADO · ${draft.note}` : draft.note };
 }
 
 function DepositsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{ snapshot: Snapshot; currentUser: User; onRefresh: () => void }>) {
   const depositRequest = useMovementRequest(currentUser.id, "manual-deposit");
   const pendingDeposit = pendingMovementDraft<{ draft: DepositDraft; print: boolean }>(currentUser.id, "manual-deposit");
+  const lifecycleRequest = useMovementRequest(currentUser.id, "deposit-lifecycle");
+  const pendingLifecycle = pendingMovementDraft<{ movement: Movement; action: "aceptar" | "cancelar"; desglose?: { denominacion: number; cantidad: number }[] }>(currentUser.id, "deposit-lifecycle");
   const permissions = permissionsFor(currentUser);
   const [mode, setMode] = useState("Todos");
   const [collectorFilter, setCollectorFilter] = useState("Todas");
@@ -7207,8 +7284,8 @@ function DepositsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
       collector: collector?.name ?? "Cobrador",
       currency: currencyName((raw as Movement & { currency?: string }).currency),
       amount: nativeMoney(raw.amount, (raw as Movement & { currency?: string }).currency),
-      checks: "0",
-      checkAmount: nativeMoney(0, raw.currency),
+      checks: String(raw.depositComponents?.filter((line) => line.method === "cheque").length ?? 0),
+      checkAmount: nativeMoney(raw.depositComponents?.filter((line) => line.method === "cheque").reduce((sum, line) => sum + line.amount, 0) ?? 0, raw.currency),
       active: !raw.cancelledAt,
       accepted: Boolean(raw.acceptedAt),
     };
@@ -7234,7 +7311,9 @@ function DepositsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
   const currentSelection = orderedRows.find((row) => row.__id === selectedRow?.__id) ?? null;
   const currentMovement = currentSelection?.__raw as unknown as Movement | undefined;
   const detailDenominations = currentMovement?.denominations ?? [];
-  const detailsTotal = detailDenominations.reduce((total, item) => total + item.denominacion * item.cantidad, 0);
+  const detailNonCash = currentMovement?.depositComponents?.filter((line) => line.method !== "cash") ?? [];
+  const detailCashWithoutBreakdown = currentMovement?.depositComponents && !detailDenominations.length ? depositCashTotal(currentMovement) : 0;
+  const detailsTotal = currentMovement?.depositComponents ? currentMovement.amount : detailDenominations.reduce((total, item) => total + item.denominacion * item.cantidad, 0);
   const totals = nativeTotals(orderedRows.map((row) => row.__raw as unknown as Movement));
   const moveSelected = (target: "first" | "previous" | "next" | "last") => {
     const id = String(selectedRow?.__id ?? "");
@@ -7261,11 +7340,22 @@ function DepositsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
   };
   const runDepositAction = async (row: TableRow, action: "aceptar" | "cancelar", desglose?: { denominacion: number; cantidad: number }[]) => {
     if (!row.__id) return;
+    if (lifecycleRequest.busy) return;
+    if (pendingLifecycle && (pendingLifecycle.movement.id !== row.__id || pendingLifecycle.action !== action)) {
+      toast.error("Reintenta la acción pendiente antes de seleccionar otro depósito.");
+      return;
+    }
+    const original = pendingLifecycle?.movement ?? row.__raw as unknown as Movement;
+    const frozenBreakdown = pendingLifecycle ? pendingLifecycle.desglose : desglose;
     try {
-      await api(`/depositos/${encodeURIComponent(String(row.__id))}/${action}`, {
-        method: "POST",
-        body: JSON.stringify(action === "aceptar" && desglose?.length ? { desglose } : {}),
-      });
+      const body = action === "aceptar" && frozenBreakdown !== undefined && (frozenBreakdown.length || original.depositComponents)
+        ? { desglose: frozenBreakdown } : {};
+      await lifecycleRequest.run<Movement>(`/depositos/${encodeURIComponent(original.id)}/${action}`, body,
+        { movement: structuredClone(original), action, desglose: frozenBreakdown ? structuredClone(frozenBreakdown) : undefined },
+        (value) => Boolean(value) && value.id === original.id && value.type === "deposit" && value.amount === original.amount &&
+          currencyCode(value.currency) === currencyCode(original.currency) && value.collectorId === original.collectorId &&
+          (original.depositComponents ? depositComponentsMatch(value.depositComponents, original.depositComponents) : value.depositComponents === undefined) &&
+          Boolean(action === "aceptar" ? value.acceptedAt : value.cancelledAt), "POST", "api");
       toast.success(action === "aceptar" ? "Depósito aceptado" : "Depósito cancelado");
       setSelectedRow(null);
       setAcceptTarget(null);
@@ -7308,10 +7398,11 @@ function DepositsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
   const saveDeposit = async (draft: DepositDraft, shouldPrint: boolean) => {
     try {
       if (formTarget !== "new") throw new Error("El depósito registrado es inmutable. Puedes consultar, aceptar o cancelar el movimiento.");
-      const result = await depositRequest.run<{ movement: Movement }>("/depositos", {
-        collectorId: draft.collectorId, amount: depositAmount(draft.quantities), currency: currencyCode(draft.currency),
-        note: draft.note, denominations: depositDenominations(draft.quantities),
-      }, { draft, print: shouldPrint }, (value) => Boolean(value?.movement?.id) && value.movement.type === "deposit" && value.movement.collectorId === draft.collectorId && value.movement.amount === depositAmount(draft.quantities) && currencyCode(value.movement.currency) === currencyCode(draft.currency) && Boolean(businessDate(value.movement.createdAt)), "POST", "api");
+      const resolved = buildDepositComponents(depositAmount(draft.quantities), draft.nonCash ?? []);
+      const body = { collectorId: draft.collectorId, amount: resolved.amount, currency: currencyCode(draft.currency),
+        note: draft.note, denominations: depositDenominations(draft.quantities), depositComponents: resolved.components };
+      const result = await depositRequest.run<{ movement: Movement }>("/depositos", body,
+        { draft: structuredClone(draft), print: shouldPrint }, (value) => confirmedDepositMatches(value?.movement, body), "POST", "api");
       const id = result.movement.id;
       setFormTarget(null);
       toast.success("Depósito guardado.");
@@ -7325,9 +7416,13 @@ function DepositsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
   const formInitial = formMovement ? depositDraftFromMovement(formMovement) : pendingDeposit?.draft;
   const acceptTotal = depositAmount(acceptQuantities);
   const acceptCurrency = (acceptTarget?.__raw as unknown as Movement | undefined)?.currency;
-  const acceptAmount = Number(acceptTarget?.__amount ?? 0);
+  const acceptMovement = acceptTarget?.__raw as unknown as Movement | undefined;
+  const acceptAmount = acceptMovement ? depositCashTotal(acceptMovement) : 0;
+  const validAcceptTotal = Number.isSafeInteger(acceptTotal) && (acceptTotal === acceptAmount || !acceptMovement?.depositComponents && acceptTotal === 0);
   return (
     <>
+      {lifecycleRequest.error && <p role="alert">{lifecycleRequest.error}</p>}
+      {pendingLifecycle && lifecycleRequest.uncertain && <div role="status">La {pendingLifecycle.action === "aceptar" ? "aceptación" : "cancelación"} del depósito {pendingLifecycle.movement.id} no está confirmada. Reintenta la misma acción.<button type="button" disabled={lifecycleRequest.busy} onClick={() => void runDepositAction({ __id: pendingLifecycle.movement.id, __raw: pendingLifecycle.movement as unknown as Record<string, unknown> }, pendingLifecycle.action, pendingLifecycle.desglose)}>Reintentar acción de depósito</button></div>}
       <div className={`charges-view deposits-legacy-view ${flash ? "refresh-flash" : ""}`}>
         <LegacyToolbar
           filtersVisible={filtersVisible}
@@ -7342,10 +7437,10 @@ function DepositsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
           onDelete={() => currentSelection && setCancelConfirmOpen(true)}
           onRefresh={refresh}
           onPrint={openPrint}
-          disableNew={!permissions.canCreate}
+          disableNew={!permissions.canCreate || lifecycleRequest.locked}
           disableEdit={!currentSelection || !permissions.canEdit}
-          disableAccept={!currentSelection || currentSelection.__status !== "Pendiente" || !permissions.canEdit}
-          disableDelete={!currentSelection || currentSelection.__status === "Cancelado" || !permissions.canDelete}
+          disableAccept={!currentSelection || currentSelection.__status !== "Pendiente" || !permissions.canEdit || lifecycleRequest.locked}
+          disableDelete={!currentSelection || currentSelection.__status === "Cancelado" || currentSelection.__status === "Aceptado" || !permissions.canDelete || lifecycleRequest.locked}
           deleteIcon="x"
           deleteTitle="Cancelar depósito"
         />
@@ -7378,7 +7473,7 @@ function DepositsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
           <aside className="legacy-detail-panel deposit-detail-panel" aria-label="Panel de detalles">
             <h2>Panel de Detalles</h2>
             <div className="deposit-detail-meta">{currentSelection ? <><strong>{String(currentSelection.collector ?? "Cobrador")}</strong><span>{String(currentSelection.currency ?? "Peso Dominicano")} · {nativeMoney(Number(currentSelection.__amount ?? 0), currentMovement?.currency)}</span>{(currentMovement as Movement & { note?: string } | undefined)?.note && <small>{(currentMovement as Movement & { note?: string }).note}</small>}</> : <p>Seleccione un depósito para ver sus detalles.</p>}</div>
-            <div className="deposit-detail-table-wrap"><table className="deposit-detail-table"><thead><tr><th>Banco</th><th>Numero</th><th>Importe</th></tr></thead><tbody>{detailDenominations.length ? detailDenominations.map((item) => <tr key={`${item.denominacion}-${item.cantidad}`}><td>Efectivo</td><td>{nativeMoney(item.denominacion, currentMovement?.currency)} × {item.cantidad}</td><td>{nativeMoney(item.denominacion * item.cantidad, currentMovement?.currency)}</td></tr>) : <tr><td colSpan={3} className="deposit-detail-empty">Sin detalle de efectivo.</td></tr>}</tbody><tfoot><tr><td colSpan={2}>Total</td><td>{nativeMoney(detailsTotal, currentMovement?.currency)}</td></tr></tfoot></table></div>
+            <div className="deposit-detail-table-wrap"><table className="deposit-detail-table"><thead><tr><th>Método / Banco</th><th>Referencia / Denominación</th><th>Importe</th></tr></thead><tbody>{detailDenominations.map((item) => <tr key={`${item.denominacion}-${item.cantidad}`}><td>Efectivo</td><td>{nativeMoney(item.denominacion, currentMovement?.currency)} × {item.cantidad}</td><td>{nativeMoney(item.denominacion * item.cantidad, currentMovement?.currency)}</td></tr>)}{detailCashWithoutBreakdown > 0 && <tr><td>Efectivo</td><td>Sin desglose registrado</td><td>{nativeMoney(detailCashWithoutBreakdown, currentMovement?.currency)}</td></tr>}{detailNonCash.map((line, index) => <tr key={`component-${index}`}><td>{depositMethodLabel(line.method)} · {line.bank}</td><td>{line.reference}</td><td>{nativeMoney(line.amount, currentMovement?.currency)}</td></tr>)}{!detailDenominations.length && !detailCashWithoutBreakdown && !detailNonCash.length && <tr><td colSpan={3} className="deposit-detail-empty">Sin desglose registrado.</td></tr>}</tbody><tfoot><tr><td colSpan={2}>Total</td><td>{nativeMoney(detailsTotal, currentMovement?.currency)}</td></tr></tfoot></table></div>
             <div className="deposit-detail-actions"><button type="button" onClick={() => { setDetailRevision((revision) => revision + 1); onRefresh(); toast.success("Detalles refrescados."); }}><RefreshCw size={14} /> Refrescar</button><span className="sr-only">Actualización {detailRevision}</span></div>
           </aside>
         </div>
@@ -7386,8 +7481,8 @@ function DepositsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
       {formTarget && <DepositDataDialog actorId={currentUser.id} snapshot={snapshot} movement={formMovement} initialDraft={formInitial} onClose={() => setFormTarget(null)} onSave={saveDeposit} />}
       {acceptConfirmOpen && <LegacyConfirmDialog message="¿Está seguro que en aceptar el depósito?" onYes={beginAccept} onNo={() => setAcceptConfirmOpen(false)} />}
       {cancelConfirmOpen && <LegacyConfirmDialog message="¿Realmente desea cancelar el registro actual?" onYes={beginCancel} onNo={() => setCancelConfirmOpen(false)} />}
-      {cancelReasonOpen && <LegacyDialog title="Entre un valor..." onClose={() => { setCancelReasonOpen(false); setCancelReason("Digitado por error"); }} className="deposit-cancel-reason-dialog" overlayClassName="collection-receipt-suboverlay"><label className="deposit-dialog-row"><span>Valor:</span><input autoFocus value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} /></label><div className="legacy-dialog-actions centered"><button type="button" onClick={confirmCancel}>oK</button><button type="button" onClick={() => { setCancelReasonOpen(false); setCancelReason("Digitado por error"); }}>Cancelar</button></div></LegacyDialog>}
-      {acceptTarget && <LegacyDialog title="Desglose de denominaciones" onClose={() => setAcceptTarget(null)} className="deposits-accept-dialog"><p>Depósito de {nativeMoney(acceptAmount, acceptCurrency)} — indique los billetes y monedas:</p><div className="deposit-accept-denoms">{DENOMS.map((denomination) => <label key={denomination}>{nativeMoney(denomination, acceptCurrency)}<input type="number" min="0" step="1" value={acceptQuantities[denomination] ?? ""} onChange={(event) => setAcceptQuantities((current) => ({ ...current, [denomination]: event.target.value }))} /></label>)}</div><div className="legacy-footerbar"><span>Desglosado: <strong>{Number.isSafeInteger(acceptTotal) ? nativeMoney(acceptTotal, acceptCurrency) : "Desglose no válido"}</strong> de <strong>{nativeMoney(acceptAmount, acceptCurrency)}</strong></span></div>{(!Number.isSafeInteger(acceptTotal) || (acceptTotal !== 0 && acceptTotal !== acceptAmount)) && <div className="inline-error" role="alert">El desglose debe cuadrar exactamente con el importe.</div>}<div className="legacy-dialog-actions centered"><button type="button" onClick={() => setAcceptTarget(null)}>Cancelar</button><button type="button" disabled={!Number.isSafeInteger(acceptTotal) || (acceptTotal !== 0 && acceptTotal !== acceptAmount)} onClick={() => void runDepositAction(acceptTarget, "aceptar", depositDenominations(acceptQuantities))}>Aceptar depósito</button></div></LegacyDialog>}
+      {cancelReasonOpen && <LegacyDialog title="Entre un valor..." onClose={() => { if (!lifecycleRequest.busy) { setCancelReasonOpen(false); setCancelReason("Digitado por error"); } }} className="deposit-cancel-reason-dialog" overlayClassName="collection-receipt-suboverlay"><label className="deposit-dialog-row"><span>Valor:</span><input autoFocus disabled={lifecycleRequest.locked} value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} /></label><div className="legacy-dialog-actions centered"><button type="button" disabled={lifecycleRequest.busy} onClick={confirmCancel}>{lifecycleRequest.uncertain ? "Reintentar" : "oK"}</button><button type="button" disabled={lifecycleRequest.busy} onClick={() => { setCancelReasonOpen(false); setCancelReason("Digitado por error"); }}>Cancelar</button></div></LegacyDialog>}
+      {acceptTarget && <LegacyDialog title="Desglose de denominaciones" onClose={() => { if (!lifecycleRequest.busy) setAcceptTarget(null); }} className="deposits-accept-dialog"><p>Depósito total: {nativeMoney(Number(acceptTarget.__amount ?? 0), acceptCurrency)}. Efectivo: {nativeMoney(acceptAmount, acceptCurrency)}; indique solo sus billetes y monedas:</p><div className="deposit-accept-denoms">{DENOMS.map((denomination) => <label key={denomination}>{nativeMoney(denomination, acceptCurrency)}<input aria-label={`Aceptar cantidad ${denomination / 100}`} disabled={lifecycleRequest.locked || acceptAmount === 0} type="number" min="0" step="1" value={acceptQuantities[denomination] ?? ""} onChange={(event) => setAcceptQuantities((current) => ({ ...current, [denomination]: event.target.value }))} /></label>)}</div><div className="legacy-footerbar"><span>Efectivo desglosado: <strong>{Number.isSafeInteger(acceptTotal) ? nativeMoney(acceptTotal, acceptCurrency) : "Desglose no válido"}</strong> de <strong>{nativeMoney(acceptAmount, acceptCurrency)}</strong></span></div>{!validAcceptTotal && <div className="inline-error" role="alert">El desglose debe cuadrar exactamente con el efectivo del depósito.</div>}<div className="legacy-dialog-actions centered"><button type="button" disabled={lifecycleRequest.busy} onClick={() => setAcceptTarget(null)}>Cancelar</button><button type="button" disabled={!validAcceptTotal || lifecycleRequest.busy} onClick={() => void runDepositAction(acceptTarget, "aceptar", depositDenominations(acceptQuantities))}>{lifecycleRequest.uncertain ? "Reintentar aceptación" : "Aceptar depósito"}</button></div></LegacyDialog>}
       {printTickets && <CollectionReceiptPrintDialog receipts={printTickets} onClose={() => setPrintTickets(null)} />}
     </>
   );
@@ -7401,13 +7496,21 @@ function DepositDataDialog({ actorId, snapshot, movement, initialDraft, onClose,
   const [collectorId, setCollectorId] = useState(initialDraft?.collectorId ?? snapshot.collectors[0]?.id ?? "");
   const [note, setNote] = useState(initialDraft?.note ?? "");
   const [quantities, setQuantities] = useState<Record<number, string>>(initialDraft?.quantities ?? emptyDepositQuantities());
+  const [nonCash, setNonCash] = useState<NonCashDepositLine[]>(initialDraft?.nonCash ?? []);
   const [errorOpen, setErrorOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const total = movement?.amount ?? depositAmount(quantities);
-  const validTotal = Number.isSafeInteger(total) && total >= 0;
+  const submitting = useRef(false);
+  const cashAmount = movement ? depositCashTotal(movement) : depositAmount(quantities);
+  const resolved = (() => {
+    if (cashAmount === 0 && !nonCash.length) return { amount: 0, error: "" };
+    try { return { amount: buildDepositComponents(cashAmount, nonCash).amount, error: "" }; }
+    catch (error) { return { amount: NaN, error: error instanceof Error ? error.message : "Componentes inválidos." }; }
+  })();
+  const total = movement?.amount ?? resolved.amount;
+  const validTotal = Number.isSafeInteger(total) && total >= 0 && (Boolean(movement) || total <= 1_000_000_000);
   const submit = async (shouldPrint: boolean) => {
-    if (movement || request.busy || busy) return;
-    if (!Number.isSafeInteger(total) || total <= 0) {
+    if (movement || request.busy || busy || submitting.current) return;
+    if (!validTotal || total <= 0 || resolved.error) {
       setErrorOpen(true);
       return;
     }
@@ -7415,18 +7518,23 @@ function DepositDataDialog({ actorId, snapshot, movement, initialDraft, onClose,
       toast.error("Seleccione un cobrador.");
       return;
     }
+    submitting.current = true;
     setBusy(true);
     try {
-      await onSave(pending?.draft ?? { date, currency, collectorId, note, quantities: { ...quantities } }, pending?.print ?? shouldPrint);
+      await onSave(pending?.draft ?? { date, currency, collectorId, note, quantities: { ...quantities }, nonCash: nonCash.map((line) => ({ ...line })) }, pending?.print ?? shouldPrint);
     } finally {
       setBusy(false);
+      submitting.current = false;
     }
   };
   const refreshDenominations = () => {
     const collector = snapshot.collectors.find((item) => item.id === collectorId);
     const loaded = emptyDepositQuantities();
     if (collector && currencyCode(currency)) {
-      let remaining = Math.max(0, collectionCash(snapshot.movements, collector.id, currency));
+      let nonCashTotal = 0;
+      try { nonCashTotal = nonCashDepositAmount(nonCash); }
+      catch (error) { toast.error(error instanceof Error ? error.message : "Completa los componentes del depósito."); return; }
+      let remaining = Math.max(0, collectionCash(snapshot.movements, collector.id, currency) - nonCashTotal);
       for (const denomination of DENOMS) {
         const quantity = Math.floor(remaining / denomination);
         loaded[denomination] = quantity ? String(quantity) : "";
@@ -7444,13 +7552,18 @@ function DepositDataDialog({ actorId, snapshot, movement, initialDraft, onClose,
   return <LegacyDialog title="Datos del Depósito..." onClose={close} className="deposit-data-dialog"><div className="deposit-data-content">{movement && <p role="status">Movimiento confirmado e inmutable. Consulta su importe y desglose; utiliza Aceptar o Cancelar desde el listado.</p>}<fieldset disabled={Boolean(movement) || request.locked} style={{ border: 0, padding: 0, margin: 0, display: "contents" }}>
     <div className="deposit-data-fields">
       <div className="deposit-data-meta-row"><label>Doc:<input value={movement?.id ?? "-1"} readOnly disabled /></label><label>Fecha:<input type="date" value={date} readOnly /></label></div>
-      <label className="deposit-dialog-row"><span>Moneda:</span><select value={currency} onChange={(event) => { setCurrency(event.target.value); setQuantities(emptyDepositQuantities()); }}>{CURRENCIES.map((item) => <option key={item}>{item}</option>)}</select></label>
-      <label className="deposit-dialog-row"><span>Cobrad.:</span><select value={collectorId} onChange={(event) => { setCollectorId(event.target.value); setQuantities(emptyDepositQuantities()); }}>{snapshot.collectors.map((collector) => <option key={collector.id} value={collector.id}>{collector.name}</option>)}</select></label>
+      <label className="deposit-dialog-row"><span>Moneda:</span><select value={currency} onChange={(event) => { setCurrency(event.target.value); setQuantities(emptyDepositQuantities()); setNonCash([]); }}>{CURRENCIES.map((item) => <option key={item}>{item}</option>)}</select></label>
+      <label className="deposit-dialog-row"><span>Cobrad.:</span><select value={collectorId} onChange={(event) => { setCollectorId(event.target.value); setQuantities(emptyDepositQuantities()); setNonCash([]); }}>{snapshot.collectors.map((collector) => <option key={collector.id} value={collector.id}>{collector.name}</option>)}</select></label>
       <label className="deposit-dialog-row"><span>Nota:</span><input value={note} onChange={(event) => setNote(event.target.value)} /></label>
     </div>
     <section className="deposit-denominations-section"><div className="deposit-denominations-toolbar"><strong>Denominaciones</strong><button type="button" onClick={refreshDenominations}><RefreshCw size={14} /> Refrescar</button></div><div className="deposit-denominations-table-wrap"><table className="deposit-denominations-table"><thead><tr><th>Denom.</th><th>Cantidad</th><th>Importe</th></tr></thead><tbody>{DENOMS.map((denomination) => { const quantity = Number(quantities[denomination] ?? 0) || 0; return <tr key={denomination}><td>{depositMoney(denomination, currency)}</td><td><input aria-label={`Cantidad ${denomination / 100}`} type="number" min="0" step="1" value={quantities[denomination] ?? ""} onChange={(event) => setQuantities((current) => ({ ...current, [denomination]: event.target.value }))} /></td><td>{Number.isSafeInteger(denomination * quantity) && quantity >= 0 ? depositMoney(denomination * quantity, currency) : "Cantidad no válida"}</td></tr>; })}</tbody></table></div></section>
-    </fieldset>{request.error && <p role="alert">{request.error}</p>}{request.uncertain && <p role="status">Reintenta este mismo depósito antes de cambiar los datos.</p>}<div className="deposit-data-footer"><label>Total:<input value={validTotal ? depositMoney(total, currency) : "Importe no válido"} readOnly disabled /></label><div className="legacy-dialog-actions"><button type="button" disabled={Boolean(movement) || busy || request.busy} onClick={() => void submit(false)}>{request.uncertain ? "Reintentar" : "Guardar"}</button><button type="button" disabled={Boolean(movement) || busy || request.busy || request.uncertain} onClick={() => void submit(true)}>Guardar e Imp.</button><button type="button" disabled={busy || request.busy} onClick={close}>Cancelar</button></div></div>
-  </div>{errorOpen && <LegacyAlertDialog title="Error" message={'El campo "Total" no contiene un valor real válido'} onClose={() => setErrorOpen(false)} overlayClassName="collection-receipt-suboverlay" />}</LegacyDialog>;
+    <section className="deposit-components-section"><div className="deposit-denominations-toolbar"><strong>Cheques y depósitos bancarios</strong><button type="button" disabled={nonCash.length >= (cashAmount > 0 ? 19 : 20)} onClick={() => setNonCash((lines) => [...lines, { id: crypto.randomUUID(), method: "cheque", amount: "", bank: "", reference: "" }])}>Añadir cheque</button><button type="button" disabled={nonCash.length >= (cashAmount > 0 ? 19 : 20)} onClick={() => setNonCash((lines) => [...lines, { id: crypto.randomUUID(), method: "bank_deposit", amount: "", bank: "", reference: "" }])}>Añadir depósito bancario</button></div>
+      {nonCash.length > 0 && <div className="deposit-components-table-wrap"><table className="data-table dense deposit-components-table"><thead><tr><th>Método</th><th>Importe ({currencyCode(currency)})</th><th>Banco</th><th>Referencia</th><th /></tr></thead><tbody>{nonCash.map((line, index) => <tr key={line.id}><td><select aria-label={`Método componente ${index + 1}`} value={line.method} onChange={(event) => setNonCash((lines) => lines.map((item) => item.id === line.id ? { ...item, method: event.target.value as NonCashDepositLine["method"] } : item))}><option value="cheque">Cheque</option><option value="bank_deposit">Depósito bancario</option></select></td><td><input aria-label={`Importe componente ${index + 1}`} inputMode="decimal" maxLength={30} value={line.amount} onChange={(event) => setNonCash((lines) => lines.map((item) => item.id === line.id ? { ...item, amount: event.target.value } : item))} /></td><td><input aria-label={`Banco componente ${index + 1}`} maxLength={160} value={line.bank} onChange={(event) => setNonCash((lines) => lines.map((item) => item.id === line.id ? { ...item, bank: event.target.value } : item))} /></td><td><input aria-label={`Referencia componente ${index + 1}`} maxLength={160} value={line.reference} onChange={(event) => setNonCash((lines) => lines.map((item) => item.id === line.id ? { ...item, reference: event.target.value } : item))} /></td><td><button type="button" aria-label={`Eliminar componente ${index + 1}`} onClick={() => setNonCash((lines) => lines.filter((item) => item.id !== line.id))}>Eliminar</button></td></tr>)}</tbody></table></div>}
+      <p>Efectivo: {Number.isSafeInteger(cashAmount) ? depositMoney(cashAmount, currency) : "Desglose no válido"}. Los componentes forman un solo depósito en esta moneda.</p>
+      {movement?.depositComponents && cashAmount > 0 && !movement.denominations?.length && <p>Las denominaciones del efectivo no fueron registradas.</p>}
+    </section>
+    </fieldset>{!movement && resolved.error && <p className="inline-error" role="alert">{resolved.error}</p>}{request.error && <p role="alert">{request.error}</p>}{request.uncertain && <p role="status">Reintenta este mismo depósito antes de cambiar los datos.</p>}<div className="deposit-data-footer"><label>Total:<input value={validTotal ? depositMoney(total, currency) : "Importe no válido"} readOnly disabled /></label><div className="legacy-dialog-actions"><button type="button" disabled={Boolean(movement) || busy || request.busy} onClick={() => void submit(false)}>{request.uncertain ? "Reintentar" : "Guardar"}</button><button type="button" disabled={Boolean(movement) || busy || request.busy || request.uncertain} onClick={() => void submit(true)}>Guardar e Imp.</button><button type="button" disabled={busy || request.busy} onClick={close}>Cancelar</button></div></div>
+  </div>{errorOpen && <LegacyAlertDialog title="Error" message={resolved.error || 'El campo "Total" no contiene un valor real válido'} onClose={() => setErrorOpen(false)} overlayClassName="collection-receipt-suboverlay" />}</LegacyDialog>;
 }
 
 function cashDeliveryTicketFromDraft(draft: DepositDraft, id: string, snapshot: Snapshot): CollectionTicketModel {
@@ -7926,7 +8039,7 @@ function PayoutsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{
             <h2>Panel de Filtro</h2>
             <div className="charges-filter-options">
               <label className="charges-radio-row"><input type="radio" name="payout-filter-mode" checked={mode === "Todos"} onChange={() => setMode("Todos")} /><span>Todos</span></label>
-              <div className="charges-filter-group"><label className="charges-radio-row"><input type="radio" name="payout-filter-mode" checked={mode === "por Cliente"} onChange={() => setMode("por Cliente")} /><span>por Cliente:</span></label><div className="legacy-lookup-field charges-filter-control"><input aria-label="Filtrar por cliente" value={clientQuery} disabled={mode !== "por Cliente"} onChange={(event) => { setClientQuery(event.target.value); setFilterClientId(""); }} /><button type="button" aria-label="Seleccionar cliente" disabled={mode !== "por Cliente"} onClick={() => setClientSearchOpen(true)}>[...]</button></div></div>
+              <div className="charges-filter-group"><label className="charges-radio-row"><input type="radio" name="payout-filter-mode" checked={mode === "por Cliente"} onChange={() => setMode("por Cliente")} /><span>por Cliente:</span></label><div className="legacy-lookup-field charges-filter-control"><input aria-label="Filtrar por cliente" value={clientQuery} disabled={mode !== "por Cliente"} onChange={(event) => { setClientQuery(event.target.value); setFilterClientId(""); }} /><button type="button" aria-label="Seleccionar cliente" disabled={mode !== "por Cliente"} onClick={() => setClientSearchOpen(true)} title="Seleccionar cliente">[...]</button></div></div>
               <div className="charges-filter-group"><label className="charges-radio-row"><input type="radio" name="payout-filter-mode" checked={mode === "Por Zona"} onChange={() => setMode("Por Zona")} /><span>Por Zona:</span></label><select className="charges-filter-control" aria-label="Filtrar por zona" value={zone} disabled={mode !== "Por Zona"} onChange={(event) => setZone(event.target.value)}><option>Todas</option>{zones.map((item) => <option key={item}>{item}</option>)}</select></div>
               <div className="charges-filter-group"><label className="charges-radio-row"><input type="radio" name="payout-filter-mode" checked={mode === "Por Ruta"} onChange={() => setMode("Por Ruta")} /><span>Por Ruta:</span></label><select className="charges-filter-control" aria-label="Filtrar por ruta" value={routeId} disabled={mode !== "Por Ruta"} onChange={(event) => setRouteId(event.target.value)}><option value="Todas">Todas</option>{snapshot.routes.map((route) => <option key={route.id} value={route.id}>{route.name}</option>)}</select></div>
             </div>
@@ -8110,7 +8223,7 @@ function PaymentsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
             <h2>Panel de Filtro</h2>
             <div className="charges-filter-options">
               <label className="charges-radio-row"><input type="radio" name="payment-filter-mode" checked={mode === "Todos"} onChange={() => setMode("Todos")} /><span>Todos</span></label>
-              <div className="charges-filter-group"><label className="charges-radio-row"><input type="radio" name="payment-filter-mode" checked={mode === "por Cliente"} onChange={() => setMode("por Cliente")} /><span>por Cliente:</span></label><div className="legacy-lookup-field charges-filter-control"><input aria-label="Filtrar por cliente" value={clientQuery} disabled={mode !== "por Cliente"} onChange={(event) => { setClientQuery(event.target.value); setFilterClientId(""); }} /><button type="button" aria-label="Seleccionar cliente" disabled={mode !== "por Cliente"} onClick={() => setClientSearchOpen(true)}>[...]</button></div></div>
+              <div className="charges-filter-group"><label className="charges-radio-row"><input type="radio" name="payment-filter-mode" checked={mode === "por Cliente"} onChange={() => setMode("por Cliente")} /><span>por Cliente:</span></label><div className="legacy-lookup-field charges-filter-control"><input aria-label="Filtrar por cliente" value={clientQuery} disabled={mode !== "por Cliente"} onChange={(event) => { setClientQuery(event.target.value); setFilterClientId(""); }} /><button type="button" aria-label="Seleccionar cliente" disabled={mode !== "por Cliente"} onClick={() => setClientSearchOpen(true)} title="Seleccionar cliente">[...]</button></div></div>
               <div className="charges-filter-group"><label className="charges-radio-row"><input type="radio" name="payment-filter-mode" checked={mode === "por Cobrador"} onChange={() => setMode("por Cobrador")} /><span>por Cobrador:</span></label><select className="charges-filter-control" aria-label="Filtrar por cobrador" value={collectorId} disabled={mode !== "por Cobrador"} onChange={(event) => setCollectorId(event.target.value)}><option value="Todas">Todos</option>{snapshot.collectors.map((collector) => <option key={collector.id} value={collector.id}>{collector.name}</option>)}</select></div>
               <div className="charges-filter-group"><label className="charges-radio-row"><input type="radio" name="payment-filter-mode" checked={mode === "Por Zona"} onChange={() => setMode("Por Zona")} /><span>Por Zona:</span></label><select className="charges-filter-control" aria-label="Filtrar por zona" value={zone} disabled={mode !== "Por Zona"} onChange={(event) => setZone(event.target.value)}><option>Todas</option>{zones.map((item) => <option key={item}>{item}</option>)}</select></div>
               <div className="charges-filter-group"><label className="charges-radio-row"><input type="radio" name="payment-filter-mode" checked={mode === "Por Ruta"} onChange={() => setMode("Por Ruta")} /><span>Por Ruta:</span></label><select className="charges-filter-control" aria-label="Filtrar por ruta" value={routeId} disabled={mode !== "Por Ruta"} onChange={(event) => setRouteId(event.target.value)}><option value="Todas">Todas</option>{snapshot.routes.map((route) => <option key={route.id} value={route.id}>{route.name}</option>)}</select></div>
@@ -8239,7 +8352,7 @@ function PaymentDataDialog({ actorId, snapshot, onClose, onSaved }: Readonly<{ a
           <div className="collection-receipt-row collection-receipt-client-row">
             <label htmlFor="payment-client-code">Cliente:</label>
             <input id="payment-client-code" value={draft.clientCode} onChange={(event) => resolveClientCode(event.target.value)} aria-label="Código del cliente" />
-            <button type="button" aria-label="Buscar cliente" onClick={() => setClientSearchOpen(true)}>[...]</button>
+            <button type="button" aria-label="Buscar cliente" onClick={() => setClientSearchOpen(true)} title="Buscar cliente">[...]</button>
             <input value={client?.name ?? ""} readOnly disabled aria-label="Nombre del cliente" />
           </div>
           <div className="collection-receipt-row collection-receipt-labeled-row"><label htmlFor="payment-collector">Cobrad.:</label><select id="payment-collector" value={draft.collectorId} onChange={(event) => update("collectorId", event.target.value)}><option value="">No definido</option>{snapshot.collectors.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div>
@@ -8338,7 +8451,7 @@ function PayoutDataDialog({ actorId, snapshot, payout, concepts, onClose, onSave
       <LegacyDialog title="Datos del Descargo..." onClose={close} className="payout-data-dialog">
         <form className="cargo-entry-form payout-entry-form" onSubmit={(event) => void submit(event)}>
           <fieldset disabled={request.locked} style={{ border: 0, padding: 0, margin: 0, display: "contents" }}>
-          <div className="cargo-entry-row cargo-client-row"><label htmlFor="payout-client-code">Cliente:</label><input id="payout-client-code" autoFocus value={draft.clientCode} onChange={(event) => updateClient(event.target.value)} /><button type="button" aria-label="Buscar cliente" onClick={() => setClientSearchOpen(true)}>[...]</button><input aria-label="Nombre del cliente" value={client?.name ?? ""} disabled readOnly /></div>
+          <div className="cargo-entry-row cargo-client-row"><label htmlFor="payout-client-code">Cliente:</label><input id="payout-client-code" autoFocus value={draft.clientCode} onChange={(event) => updateClient(event.target.value)} /><button type="button" aria-label="Buscar cliente" onClick={() => setClientSearchOpen(true)} title="Buscar cliente">[...]</button><input aria-label="Nombre del cliente" value={client?.name ?? ""} disabled readOnly /></div>
           <div className="cargo-entry-row"><label htmlFor="payout-currency">Moneda:</label><select id="payout-currency" value={draft.currency} onChange={(event) => update("currency", event.target.value)}><option>No definida</option><option>Peso Dominicano</option><option>Dólar Americano</option><option>Euro</option></select></div>
           <div className="cargo-entry-row"><label htmlFor="payout-service">Servicio:</label><select id="payout-service" value={draft.service} onChange={(event) => update("service", event.target.value)}>{services.map((service) => <option key={service}>{service}</option>)}</select></div>
           <div className="cargo-entry-row"><label htmlFor="payout-concept">Concepto:</label><select id="payout-concept" value={draft.concept} onChange={(event) => update("concept", event.target.value)}>{payoutConcepts.map((concept) => <option key={concept}>{concept}</option>)}</select></div>
@@ -8990,7 +9103,7 @@ function CollectionReceiptDialog({ snapshot, actorId, onClose, onSaved, onRefres
       <fieldset disabled={request.locked} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
         <div className="collection-receipt-fields">
           <div className="collection-receipt-row collection-receipt-meta-row"><label>Doc:<input value="Nuevo" title="El número se asigna al guardar" readOnly /></label><label>Fecha:<input type="date" value={snapshot.businessDate} readOnly /></label><label>Moneda:<select value={currency} onChange={(event) => { setCurrency(event.target.value); setLines([]); setSelectedLineId(""); setChargePickerOpen(false); setEditingLine(null); }}>{CURRENCIES.map((item) => <option key={item}>{item}</option>)}</select></label></div>
-          <div className="collection-receipt-row collection-receipt-client-row"><label htmlFor="receipt-client-code">Cliente:</label><input id="receipt-client-code" autoFocus value={clientCode} onChange={(event) => resolveClientCode(event.target.value)} /><button type="button" aria-label="Buscar cliente" onClick={() => setClientSearchOpen(true)}>[...]</button><input value={client?.name ?? ""} readOnly aria-label="Nombre del cliente" /></div>
+          <div className="collection-receipt-row collection-receipt-client-row"><label htmlFor="receipt-client-code">Cliente:</label><input id="receipt-client-code" autoFocus value={clientCode} onChange={(event) => resolveClientCode(event.target.value)} /><button type="button" aria-label="Buscar cliente" onClick={() => setClientSearchOpen(true)} title="Buscar cliente">[...]</button><input value={client?.name ?? ""} readOnly aria-label="Nombre del cliente" /></div>
           <div className="collection-receipt-row collection-receipt-labeled-row"><label htmlFor="receipt-collector">Cobrad.:</label><input id="receipt-collector" value={collector?.name ?? "Sin cobrador asignado"} readOnly /></div>
           <div className="collection-receipt-row collection-receipt-labeled-row"><label htmlFor="receipt-payment-form">Forma:</label><input id="receipt-payment-form" value="Efectivo · registrado desde central" readOnly /></div>
         </div>
@@ -9072,15 +9185,15 @@ function ModifyReceiptAmountDialog({
 function ClientSearchSubmodal({ clients, onSelect, onClose }: Readonly<{ clients: Snapshot["clients"]; onSelect: (client: Snapshot["clients"][number]) => void; onClose: () => void; }>) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(clients[0]?.id ?? "");
-  const rows = clients.filter((client) => `${client.code} ${client.id} ${client.name}`.toLowerCase().includes(query.toLowerCase()));
-  const selectedClient = clients.find((client) => client.id === selected) ?? rows[0];
+  const rows = clients.filter((client) => client.active !== false && matchesClientSearch(client, query));
+  const selectedClient = rows.find((client) => client.id === selected) ?? rows[0];
   return (
     <LegacyDialog title="Seleccionar cliente..." onClose={onClose} className="client-search-dialog" overlayClassName="client-search-overlay">
         <label className="legacy-toolbar-search wide">Digite:<input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} /></label>
         <div className="table-scroll legacy-table-scroll">
-          <table className="data-table legacy-data-table dense"><thead><tr><th>Cód.</th><th>Identif.</th><th>Cliente</th></tr></thead><tbody>{rows.map((client) => <tr key={client.id} className={selected === client.id ? "selected-row" : undefined} role="button" tabIndex={0} onClick={() => setSelected(client.id)} onDoubleClick={() => onSelect(client)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelected(client.id))}><td>{client.code}</td><td>{client.id}</td><td>{client.name}</td></tr>)}</tbody></table>
+          <table className="data-table legacy-data-table dense"><thead><tr><th>Cód.</th><th>Identif.</th><th>Cliente</th><th>Teléfono</th></tr></thead><tbody>{rows.map((client) => <tr key={client.id} className={selectedClient?.id === client.id ? "selected-row" : undefined} role="button" tabIndex={0} onClick={() => setSelected(client.id)} onDoubleClick={() => onSelect(client)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelected(client.id))}><td>{client.code}</td><td>{client.identification}</td><td>{client.name}</td><td>{client.phone || client.cellular}</td></tr>)}</tbody></table>
         </div>
-        <div className="legacy-dialog-actions centered"><button type="button" onClick={onClose}>Cancelar</button><button type="button" onClick={() => selectedClient && onSelect(selectedClient)}>oK</button></div>
+        <div className="legacy-dialog-actions centered"><button type="button" onClick={onClose}>Cancelar</button><button type="button" disabled={!selectedClient} onClick={() => selectedClient && onSelect(selectedClient)}>oK</button></div>
     </LegacyDialog>
   );
 }

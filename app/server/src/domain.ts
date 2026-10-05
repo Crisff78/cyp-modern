@@ -60,6 +60,8 @@ export type User = {
 export type Account = {
   id: string;
   name: string;
+  nickname?: string;
+  note?: string;
   email: string;
   role: Role;
   collectorId?: string;
@@ -79,6 +81,7 @@ export type Client = {
   phone: string;
   address: string;
   routeId: string;
+  preferredCurrency?: LedgerCurrency;
   collectionPointId?: string;
   alias?: string;
   sector?: string;
@@ -131,7 +134,16 @@ export type Route = {
   active?: boolean;
 };
 export type Zone = { id: string; name: string; sector: string; number?: string; from?: string; to?: string; active?: boolean };
-export type Service = { id: string; service: string; abbr: string; caption: string; obligated: boolean; fixedAmount: boolean; active: boolean };
+export type Service = {
+  id: string; service: string; abbr: string; caption: string;
+  obligated: boolean; fixedAmount: boolean; active: boolean;
+  // Optional operator-entered references. They do not price obligations or move stock.
+  referencePriceCents?: number | null;
+  referenceCurrency?: LedgerCurrency | null;
+  taxReference?: string | null;
+  benefitReference?: string | null;
+  referenceQuantity?: string | null;
+};
 export type DelayReason = { id: string; reason: string; active: boolean };
 export type RecurringCharge = {
   id: string; clientId: string; routeId?: string; serviceId?: string;
@@ -181,6 +193,12 @@ export type Payout = {
   paid: number;
   status: Charge["status"];
 };
+export type DepositComponent = {
+  method: "cash" | "cheque" | "bank_deposit";
+  amount: number;
+  bank?: string;
+  reference?: string;
+};
 export type Movement = {
   id: string;
   collectorId: string;
@@ -202,6 +220,7 @@ export type Movement = {
   cancelledBy?: string;
   cancellationNote?: string;
   denominations?: Array<{ denominacion: number; cantidad: number }>;
+  depositComponents?: DepositComponent[];
 };
 export type Settlement = {
   id: string;
@@ -365,8 +384,34 @@ export function preview(state: State, collectorId: string, date?: string, curren
     difference: collected - deposited + (officeDelivered - paidToClients),
   };
 }
-function assertDenominations(amount: number, lines?: Array<{ denominacion: number; cantidad: number }>) {
-  if (!lines?.length) return;
+// Components describe one deposit; they do not introduce separate bank balances.
+// Missing components preserve historical cash deposits and their fingerprints.
+function depositCashAmount(amount: number, components?: DepositComponent[]) {
+  if (components === undefined) return amount;
+  if (!Array.isArray(components) || components.length < 1 || components.length > 20)
+    throw new DomainError("DEPOSIT_COMPONENTS_INVALID", "Indica entre 1 y 20 componentes del depósito.", 422);
+  if (!Number.isSafeInteger(amount) || amount <= 0 || amount > MAX_MONEY_AMOUNT)
+    throw new DomainError("DEPOSIT_COMPONENTS_INVALID", "El importe del depósito debe ser un entero positivo seguro en centavos.", 422);
+  let total = 0n, cash = 0n;
+  for (const component of components) {
+    if (!component || !["cash", "cheque", "bank_deposit"].includes(component.method) ||
+      !Number.isSafeInteger(component.amount) || component.amount <= 0 || component.amount > MAX_MONEY_AMOUNT)
+      throw new DomainError("DEPOSIT_COMPONENTS_INVALID", "Cada componente necesita un método e importe positivo seguro en centavos.", 422);
+    if (component.method === "cash") {
+      if (component.bank !== undefined || component.reference !== undefined)
+        throw new DomainError("DEPOSIT_COMPONENTS_INVALID", "El efectivo no utiliza banco ni referencia.", 422);
+      cash += BigInt(component.amount);
+    } else if (typeof component.bank !== "string" || !component.bank.trim() || component.bank.length > 160 ||
+      typeof component.reference !== "string" || !component.reference.trim() || component.reference.length > 160)
+      throw new DomainError("DEPOSIT_COMPONENTS_INVALID", "Indica banco y referencia para cheques y depósitos bancarios (máximo 160 caracteres).", 422);
+    total += BigInt(component.amount);
+  }
+  if (total !== BigInt(amount))
+    throw new DomainError("DEPOSIT_COMPONENTS_MISMATCH", "La suma de los componentes debe coincidir exactamente con el importe del depósito.", 422);
+  return Number(cash);
+}
+function assertDenominations(amount: number, lines?: Array<{ denominacion: number; cantidad: number }>, exactEmpty = false) {
+  if (lines === undefined || (!exactEmpty && !lines.length)) return;
   let total = 0;
   for (const line of lines) {
     const value = line.denominacion * line.cantidad;
@@ -377,7 +422,7 @@ function assertDenominations(amount: number, lines?: Array<{ denominacion: numbe
     total += value;
   }
   if (total !== amount)
-    throw new DomainError("DEPOSIT_BREAKDOWN_MISMATCH", `El desglose suma ${total} centavos y el depósito es ${amount}.`, 422);
+    throw new DomainError("DEPOSIT_BREAKDOWN_MISMATCH", `El desglose de efectivo suma ${total} centavos; se esperan ${amount}.`, 422);
 }
 export function acceptDeposit(
   state: State,
@@ -400,7 +445,8 @@ export function acceptDeposit(
       "No se puede aceptar un depósito cancelado.",
       422,
     );
-  assertDenominations(movement.amount, desglose);
+  const cashAmount = depositCashAmount(movement.amount, movement.depositComponents);
+  assertDenominations(cashAmount, desglose, movement.depositComponents !== undefined);
   const yaAceptado = state.depositEvents.some(
     (e) => e.movementId === movementId && e.action === "accepted",
   );
@@ -748,6 +794,7 @@ export function postMovement(
     currency?: LedgerCurrency;
     note?: string;
     denominations?: Array<{ denominacion: number; cantidad: number }>;
+    depositComponents?: DepositComponent[];
   },
   now = new Date(),
 ) {
@@ -781,7 +828,12 @@ export function postMovement(
     throw new DomainError("INVALID_AMOUNT", "El cobro supera el saldo pendiente.");
   if (payout && (payout.status === "cancelled" || payout.paid + body.amount > payout.amount))
     throw new DomainError("INVALID_AMOUNT", "El pago supera el saldo autorizado.");
-  if (type === "deposit") assertDenominations(body.amount, body.denominations);
+  if (body.depositComponents !== undefined && type !== "deposit")
+    throw new DomainError("DEPOSIT_COMPONENTS_INVALID", "Los componentes solo se permiten en depósitos.", 422);
+  if (type === "deposit") {
+    const cashAmount = depositCashAmount(body.amount, body.depositComponents);
+    assertDenominations(cashAmount, body.denominations, body.depositComponents !== undefined);
+  }
   const collector = state.collectors.find((c) => c.id === collectorId);
   if (!collector)
     throw new DomainError("NOT_FOUND", "Cobrador no encontrado.", 404);
@@ -854,6 +906,7 @@ export function postMovement(
     currency,
     ...(body.note ? { note: body.note } : {}),
     ...(body.denominations ? { denominations: body.denominations } : {}),
+    ...(body.depositComponents ? { depositComponents: structuredClone(body.depositComponents) } : {}),
     createdAt: now.toISOString(),
     actorId: user.id,
     ...(clientId
@@ -1045,7 +1098,7 @@ export function snapshot(state: State, user: User) {
   const routes = state.routes.filter((r) => allowed(r.collectorId));
   const clients = state.clients.filter((c) =>
     routes.some((r) => r.id === c.routeId),
-  );
+  ).map((client) => ({ ...client, preferredCurrency: client.preferredCurrency ?? "DOP" }));
   const movements = state.movements
     .filter((m) => allowed(m.collectorId) && (user.role === "admin" || ledgerCurrency(m.currency) === "DOP"))
     .map(({ actorId, receiptRevoked, ...m }) => ({

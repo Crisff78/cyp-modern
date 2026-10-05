@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   ArrowRight,
   Check,
@@ -8,7 +8,10 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { toast } from "sonner";
-import { api } from "./api";
+import { api, getToken } from "./api";
+import { isMockToken } from "./mock";
+import { operationKey } from "../../shared/remittances/strictApi";
+import { pendingMovementDraft, useMovementRequest } from "./useMovementRequest";
 import { HelpNote, Modal } from "./components";
 import type { PublicAccount, Snapshot } from "./types";
 
@@ -17,7 +20,8 @@ export type AccountOperation =
   | { type: "password"; account: PublicAccount }
   | { type: "status"; account: PublicAccount; status: "active" | "disabled" };
 
-const MIN_LENGTH = 12;
+// Match the public invitation policy (demo-access.ts), never an invitation value.
+const MIN_LENGTH = 10;
 const labelFor = (operation: AccountOperation) =>
   operation.type === "create"
     ? "Nueva cuenta"
@@ -30,11 +34,13 @@ const labelFor = (operation: AccountOperation) =>
 export default function AccountModal({
   operation,
   snapshot,
+  actorId,
   onClose,
   onComplete,
 }: {
   operation: AccountOperation | null;
   snapshot: Snapshot;
+  actorId: string;
   onClose: () => void;
   onComplete: () => Promise<void>;
 }) {
@@ -48,6 +54,7 @@ export default function AccountModal({
       }
       operation={operation}
       snapshot={snapshot}
+      actorId={actorId}
       onClose={onClose}
       onComplete={onComplete}
     />
@@ -57,29 +64,60 @@ export default function AccountModal({
 function AccountForm({
   operation,
   snapshot,
+  actorId,
   onClose,
   onComplete,
 }: {
   operation: AccountOperation;
   snapshot: Snapshot;
+  actorId: string;
   onClose: () => void;
   onComplete: () => Promise<void>;
 }) {
   const collectorName = (id?: string) =>
     snapshot.collectors.find((collector) => collector.id === id)?.name ??
     "Sin asignar";
-  const [name, setName] = useState(""),
-    [email, setEmail] = useState(""),
-    [role, setRole] = useState<"admin" | "collector">("collector"),
-    [collectorId, setCollectorId] = useState(snapshot.collectors[0]?.id ?? ""),
-    [password, setPassword] = useState(""),
-    [busy, setBusy] = useState(false),
+  const scope = operation.type === "create" ? "account-create" : `account-${operation.type}:${operation.account.id}${operation.type === "status" ? `:${operation.status}` : ""}`;
+  const request = useMovementRequest(actorId, scope);
+  const mockInFlight = useRef(false);
+  const [mockBusy, setMockBusy] = useState(false);
+  const busy = request.busy || mockBusy;
+  const locked = request.locked || mockBusy;
+  const pending = pendingMovementDraft<{ name: string; email: string; role: "admin" | "collector"; collectorId: string; nickname: string; note: string; password: string }>(actorId, scope);
+  const [name, setName] = useState(pending?.name ?? ""),
+    [email, setEmail] = useState(pending?.email ?? ""),
+    [role, setRole] = useState<"admin" | "collector">(pending?.role ?? "collector"),
+    [collectorId, setCollectorId] = useState(pending?.collectorId ?? snapshot.collectors[0]?.id ?? ""),
+    [nickname, setNickname] = useState(pending?.nickname ?? ""),
+    [note, setNote] = useState(pending?.note ?? ""),
+    [password, setPassword] = useState(pending?.password ?? ""),
     [error, setError] = useState("");
   const creating = operation.type === "create",
     rotating = operation.type === "password";
+  const close = () => { if (!locked) { request.clear(); onClose(); } };
+
+  async function runAccount<T>(path: string, body: unknown, draft: unknown, valid: (result: T) => boolean): Promise<T> {
+    // Mock operations resolve locally; an unsupported mock route remains a
+    // cancelable error. Preserve any already pending connected intent.
+    if (!request.attempt && isMockToken(getToken())) {
+      if (mockInFlight.current) throw new Error("La operación ya se está enviando.");
+      mockInFlight.current = true;
+      setMockBusy(true);
+      try {
+        const result = await api<T>(path, { method: "POST", headers: { "Idempotency-Key": operationKey() }, body: JSON.stringify(body) });
+        if (!valid(result)) throw new Error("No se pudo confirmar la respuesta del modo de demostración.");
+        return result;
+      } finally {
+        mockInFlight.current = false;
+        setMockBusy(false);
+      }
+    }
+    return request.run<T>(path, body, draft, valid);
+  }
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    if (busy || mockInFlight.current) return;
     if (creating && !name.trim()) return setError("Escribe el nombre.");
     if (creating && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
       return setError("Escribe un correo válido.");
@@ -87,50 +125,37 @@ function AccountForm({
       return setError(
         `La contraseña debe tener al menos ${MIN_LENGTH} caracteres.`,
       );
-    setBusy(true);
     setError("");
     try {
+      const draft = { name, email, role, collectorId, nickname, note, password };
       if (creating) {
-        const account = await api<PublicAccount>("/usuarios", {
-          method: "POST",
-          body: JSON.stringify({ name, email, role, collectorId, password }),
-          headers: { "Idempotency-Key": crypto.randomUUID() },
-        });
+        const account = await runAccount<PublicAccount>("/usuarios", { name, email, role, collectorId, nickname, note, password }, draft, (result) => Boolean(result?.id && result.email));
         toast.success(`Cuenta creada para ${account.email}.`);
       } else if (rotating) {
-        await api(`/usuarios/${operation.account.id}/clave`, {
-          method: "POST",
-          body: JSON.stringify({ password }),
-          headers: { "Idempotency-Key": crypto.randomUUID() },
-        });
+        await runAccount<{ ok: boolean }>(`/usuarios/${operation.account.id}/clave`, { password }, draft, (result) => result?.ok === true);
         toast.success(
           `Contraseña actualizada. Las demás sesiones de ${operation.account.email} se cerraron.`,
         );
       } else {
-        await api(`/usuarios/${operation.account.id}/estado`, {
-          method: "POST",
-          body: JSON.stringify({ status: operation.status }),
-          headers: { "Idempotency-Key": crypto.randomUUID() },
-        });
+        await runAccount<PublicAccount>(`/usuarios/${operation.account.id}/estado`, { status: operation.status }, draft, (result) => result?.id === operation.account.id && result.status === operation.status);
         toast.success(
           operation.status === "disabled"
             ? `${operation.account.email} desactivada.`
             : `${operation.account.email} activada.`,
         );
       }
-      await onComplete();
+      try { await onComplete(); }
+      catch { toast.warning("La operación quedó confirmada. Actualiza el listado; no repitas el guardado."); }
       onClose();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Operación fallida.");
-    } finally {
-      setBusy(false);
     }
   }
 
   return (
     <Modal
       open
-      onClose={onClose}
+      onClose={close}
       title={labelFor(operation)}
       description={
         creating
@@ -143,6 +168,7 @@ function AccountForm({
       }
     >
       <form className="dialog-form" onSubmit={submit}>
+        <fieldset disabled={locked} style={{ border: 0, padding: 0, margin: 0, display: "contents" }}>
         {creating && (
           <>
             <label className="field">
@@ -155,6 +181,8 @@ function AccountForm({
                 required
               />
             </label>
+            <label className="field">Apodo<input maxLength={120} value={nickname} onChange={(event) => setNickname(event.target.value)} /></label>
+            <label className="field">Nota<textarea maxLength={1000} value={note} onChange={(event) => setNote(event.target.value)} rows={2} /></label>
             <label className="field">
               Correo
               <input
@@ -225,15 +253,18 @@ function AccountForm({
               placeholder="Contraseña inicial"
               autoComplete="new-password"
               required
+              minLength={MIN_LENGTH}
             />
           </label>
         )}
-        {error && (
+        </fieldset>
+        {(error || request.error) && (
           <div className="inline-error" role="alert">
             <CircleAlert size={17} />
-            {error}
+            {request.error || error}
           </div>
         )}
+        {request.uncertain && <p role="status">El resultado está pendiente de confirmación. Reintenta la misma operación antes de cambiar datos o cerrar.</p>}
         {(creating || rotating) && (
           <HelpNote>
             Entrega esta contraseña personalmente. El cobrador puede cambiarla
@@ -244,8 +275,8 @@ function AccountForm({
           <button
             type="button"
             className="btn"
-            disabled={busy}
-            onClick={onClose}
+            disabled={locked}
+            onClick={close}
           >
             Cancelar
           </button>
@@ -261,6 +292,8 @@ function AccountForm({
             )}{" "}
             {busy
               ? "Guardando…"
+              : request.uncertain
+                ? "Reintentar misma operación"
               : creating
                 ? "Crear cuenta"
                 : rotating
