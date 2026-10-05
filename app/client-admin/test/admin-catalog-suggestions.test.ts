@@ -27,11 +27,11 @@ const hash = (file: string) => createHash("sha256").update(fs.readFileSync(file)
 
 test("administration suggestions run in real components with a synthetic isolated API", { skip: canRunBrowser ? false : "Installed Windows Edge and Playwright are required; no download attempted." }, async (t) => {
   const output = fs.mkdtempSync(path.join(os.tmpdir(), "cyp-admin-suggestions-"));
-  const ownedSources = ["app/client-admin/src/ConnectedCatalog.tsx", "app/client-admin/src/ConnectedAdminTools.tsx", "app/client-admin/src/ConnectedExchangeRates.tsx", "app/client-admin/src/ConnectedUserPermissionsDialog.tsx", "app/client-admin/src/Users.tsx", "app/server/src/catalog-routes.ts"];
+  const ownedSources = ["app/client-admin/src/ConnectedCatalog.tsx", "app/client-admin/src/CollectorAssignmentsDialog.tsx", "app/client-admin/src/collectorAssignmentsState.ts", "app/client-admin/src/collector-assignments.css", "app/client-admin/src/ConnectedAdminTools.tsx", "app/client-admin/src/ConnectedExchangeRates.tsx", "app/client-admin/src/ConnectedUserPermissionsDialog.tsx", "app/client-admin/src/Users.tsx", "app/server/src/catalog-routes.ts"];
   const before = Object.fromEntries(ownedSources.map((file) => [file, hash(path.join(projectRoot, file))]));
-  const report: Record<string, unknown> = { startedUtc: new Date().toISOString(), sourceBase: "474b49ab09add4a2094626668acc92ad837c0856", runnerSha256: hash(fileURLToPath(import.meta.url)), sourceHashes: before, scope: "Actual connected components in a QA composition; real buildApp/MemoryStore API; no full App or provider claim.", output, cases: [], externalAttemptsBlocked: [], pageErrors: [] };
+  const report: Record<string, unknown> = { startedUtc: new Date().toISOString(), sourceBases: ["655a54e37d0dc91fbc7d20919082f7a26744b07d", "94d38a8bba1b43e0a84bb216d0dd4a35c473a8e9"], runnerSha256: hash(fileURLToPath(import.meta.url)), sourceHashes: before, scope: "Actual connected components in a QA composition; real buildApp/MemoryStore API; no full App or provider claim.", output, cases: [], externalAttemptsBlocked: [], pageErrors: [] };
   const selection = process.env.CYP_QA_CATALOG_CASE ?? "all";
-  assert(["all", "account-modal", "account-mock", "service-reference"].includes(selection), "Only the documented QA case selection is allowed.");
+  assert(["all", "collector-integration", "account-modal", "account-mock", "service-reference"].includes(selection), "Only the documented QA case selection is allowed.");
   report.caseSelection = selection;
   const cases = report.cases as Array<{ id: string; status: string }>;
   const external = report.externalAttemptsBlocked as string[];
@@ -39,6 +39,11 @@ test("administration suggestions run in real components with a synthetic isolate
   const state = seed();
   const initialCollector = state.collectors.find((row) => row.id === "col-1")!;
   Object.assign(initialCollector, { name: "Cobrador sintético QA", ident: "QA-COL-01", cellular: "+1-809-555-0101", accountId: "QA-ACCOUNT" });
+  Object.assign(state.collectors.find((row) => row.id === "col-2")!, { name: "Segundo cobrador sintético QA" });
+  state.zones = ["QA zona inicial", "QA zona adicional", "QA zona otro cobrador"].map((name, index) => ({ id: `qa-zone-${index}`, name, sector: name, number: String(index + 1), from: "Inicio QA", to: "Fin QA", active: true }));
+  Object.assign(state.routes[0], { zoneId: "qa-zone-0", sector: "QA zona inicial" });
+  Object.assign(state.routes[1], { zoneId: "qa-zone-2", sector: "QA zona otro cobrador" });
+  for (let index = 1; index <= 10; index++) state.routes.push({ id: `qa-route-${index}`, name: `QA ruta ${String(index).padStart(2, "0")}`, sector: "QA zona inicial", zoneId: "qa-zone-0", collectorId: "col-1", number: String(index), from: "Desde QA", to: "Hasta QA", active: true });
   state.services = [
     { id: "qa-fixed-active", service: "QA fijo activo", fixedAmount: true, active: true },
     { id: "qa-free-active", service: "QA libre activo", fixedAmount: false, active: true },
@@ -134,12 +139,21 @@ remittancesApi("/snapshot").then(snapshot => { if (new URLSearchParams(location.
     const open = async (view: string) => { await page.goto(`${origin}/?view=${view}`); await (["account", "account-mock"].includes(view) ? page.getByRole("dialog", { name: "Nueva cuenta", exact: true }) : page.getByRole("heading", { name: "QA sintética de Administración" })).waitFor(); };
     const limitsWrites = () => writes.filter((row) => row.pathname.endsWith("/limites"));
     const currentLimits = async () => { const current = (await store.read()).collectors.find((row) => row.id === "col-1")!; return { collectionLimit: current.collectionLimit, payoutLimit: current.payoutLimit }; };
-    const openLimits = async () => { await page.getByRole("button", { name: "Límites del Cobrador", exact: true }).click(); await page.getByRole("button", { name: "Modificar límites", exact: true }).click(); };
+    const openRelation = async (kind: "zones" | "limits" | "routes", collectorName = "Cobrador sintético QA") => {
+      await page.getByRole("row").filter({ has: page.getByText(collectorName, { exact: true }) }).click();
+      const name = { zones: "Zonas del Cobrador", limits: "Límites del Cobrador", routes: "Rutas del Cobrador" }[kind];
+      await page.getByRole("button", { name, exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: `${name}...`, exact: true });
+      await dialog.waitFor();
+      return dialog;
+    };
+    const openLimits = async () => { const dialog = await openRelation("limits"); await dialog.getByRole("button", { name: "Modificar límites operativos DOP", exact: true }).click(); };
     const enterAndReview = async (collection: string, payout: string) => { await page.getByLabel("Límite de cobro (DOP)", { exact: true }).fill(collection); await page.getByLabel("Límite de pago (DOP)", { exact: true }).fill(payout); await page.getByRole("button", { name: "Revisar límites", exact: true }).click(); await page.getByRole("dialog", { name: "Confirmar límites del cobrador...", exact: true }).waitFor(); };
     const run = async (id: string, body: () => Promise<void>) => {
       if (selection === "account-modal" && !id.includes("auxiliary account modal")) return;
       if (selection === "account-mock" && !id.includes("account mock compatibility")) return;
       if (selection === "service-reference" && !id.includes("service manual references")) return;
+      if (selection === "collector-integration" && !id.startsWith("SUG-2.1") && !id.startsWith("PR3 Z/L/R")) return;
       await t.test(id, async () => { try { await body(); cases.push({ id, status: "PASS" }); } catch (error) { cases.push({ id, status: "FAIL" }); throw error; } });
     };
 
@@ -195,6 +209,157 @@ remittancesApi("/snapshot").then(snapshot => { if (new URLSearchParams(location.
       await page.getByRole("button", { name: "Revisar límites", exact: true }).click();
       await page.getByRole("alert").waitFor(); assert.equal(limitsWrites().length, count);
       await page.getByRole("button", { name: "Cancelar", exact: true }).click();
+    });
+    const sessionRows = async (collectorId: string, kind: "zones" | "limits" | "routes") => page.evaluate(({ collectorId, kind }: { collectorId: string; kind: string }) => {
+      const value = sessionStorage.getItem(`cyp-collector-assignments-v1:${encodeURIComponent(collectorId)}:${kind}`);
+      return value === null ? null : JSON.parse(value);
+    }, { collectorId, kind });
+    const operationalState = async () => {
+      const current = await store.read();
+      return structuredClone({ collectors: current.collectors, routes: current.routes, zones: current.zones, charges: current.charges, payouts: current.payouts, movements: current.movements });
+    };
+    await run("PR3 Z/L/R L session currencies survive reload without changing operational DOP limits", async () => {
+      await open("collectors");
+      const beforeState = await operationalState(), count = writes.length;
+      const addLimit = async (dialog: any, currency: string, collection: string, payout: string) => {
+        await dialog.getByRole("button", { name: "Agregar", exact: true }).click();
+        const picker = page.getByRole("dialog", { name: "Seleccionar...", exact: true });
+        await picker.getByLabel("Moneda:", { exact: true }).selectOption(currency);
+        await picker.getByLabel("Lím. de Cobro:", { exact: true }).fill(collection);
+        await picker.getByLabel("Lím. de Pago:", { exact: true }).fill(payout);
+        await picker.getByRole("button", { name: "oK", exact: true }).click();
+      };
+      let dialog = await openRelation("limits");
+      assert.match(await dialog.innerText(), /sesión/i);
+      assert.equal(await dialog.getByRole("button", { name: "Modificar límites operativos DOP", exact: true }).isEnabled(), true);
+      await addLimit(dialog, "USD", "101.01", "51.02");
+      await dialog.getByRole("button", { name: "Cancelar", exact: true }).click();
+      assert.equal(await sessionRows("col-1", "limits"), null);
+      dialog = await openRelation("limits");
+      assert.equal(await dialog.getByRole("row").filter({ hasText: "USD" }).count(), 0);
+      await addLimit(dialog, "DOP", "999.99", "777.77");
+      await addLimit(dialog, "USD", "101.01", "51.02");
+      await addLimit(dialog, "EUR", "202.02", "52.03");
+      await dialog.getByRole("button", { name: "oK", exact: true }).click();
+      await page.getByText("Asignaciones guardadas para esta sesión.", { exact: true }).waitFor();
+      const saved = await sessionRows("col-1", "limits");
+      assert.deepEqual(saved.map((row: any) => [row.id, row.collectionLimit, row.payoutLimit]), [["DOP", 99999, 77777], ["USD", 10101, 5102], ["EUR", 20202, 5203]]);
+      await page.reload();
+      dialog = await openRelation("limits");
+      assert.equal(await dialog.getByRole("row").filter({ hasText: "USD" }).count(), 1);
+      assert.equal(await dialog.getByRole("row").filter({ hasText: "EUR" }).count(), 1);
+      assert.deepEqual(await dialog.getByRole("row").filter({ hasText: "USD" }).getByRole("cell").allTextContents(), ["", "Dólar Americano", "USD", "101.01", "51.02"]);
+      assert.deepEqual(await sessionRows("col-1", "limits"), saved);
+      await addLimit(dialog, "USD", "333.33", "222.22");
+      await dialog.getByRole("button", { name: "Modificar límites operativos DOP", exact: true }).click();
+      const operational = page.getByRole("dialog", { name: "Modificar límites del cobrador...", exact: true });
+      assert.deepEqual(await sessionRows("col-1", "limits"), saved, "Opening the operational editor must not save a pending session draft.");
+      assert.equal(await operational.getByLabel("Límite de cobro (DOP)", { exact: true }).inputValue(), "3210.01");
+      assert.equal(await operational.getByLabel("Límite de pago (DOP)", { exact: true }).inputValue(), "4110.02");
+      await operational.getByRole("button", { name: "Cancelar", exact: true }).click();
+      dialog = await openRelation("limits");
+      await dialog.getByRole("row").filter({ hasText: "USD" }).click();
+      await dialog.getByRole("button", { name: "Eliminar", exact: true }).click();
+      await page.getByRole("dialog", { name: "Confirm", exact: true }).getByRole("button", { name: "No", exact: true }).click();
+      assert.equal(await dialog.getByRole("row").filter({ hasText: "USD" }).count(), 1);
+      await dialog.getByRole("button", { name: "Eliminar", exact: true }).click();
+      await page.getByRole("dialog", { name: "Confirm", exact: true }).getByRole("button", { name: "Sí", exact: true }).click();
+      await dialog.getByRole("button", { name: "Cancelar", exact: true }).click();
+      assert.deepEqual(await sessionRows("col-1", "limits"), saved);
+      dialog = await openRelation("limits", "Segundo cobrador sintético QA");
+      assert.equal(await dialog.getByRole("row").filter({ hasText: "USD" }).count(), 0);
+      assert.equal(await dialog.getByRole("row").filter({ hasText: "EUR" }).count(), 0);
+      assert.equal(await sessionRows("col-2", "limits"), null);
+      await dialog.getByRole("button", { name: "Cancelar", exact: true }).click();
+      assert.equal(writes.length, count);
+      assert.deepEqual(await operationalState(), beforeState);
+    });
+    await run("PR3 Z/L/R Z draft cancellation, duplicate rejection and collector isolation remain session-only", async () => {
+      await open("collectors");
+      const beforeState = await operationalState(), count = writes.length;
+      const addZone = async (dialog: any) => {
+        await dialog.getByRole("button", { name: "Agregar", exact: true }).click();
+        const picker = page.getByRole("dialog", { name: "Seleccionar...", exact: true });
+        await picker.getByRole("row").filter({ hasText: "QA zona adicional" }).click();
+        await picker.getByRole("button", { name: "oK", exact: true }).click();
+      };
+      let dialog = await openRelation("zones");
+      await dialog.getByRole("button", { name: "Agregar", exact: true }).waitFor({ state: "visible" });
+      await addZone(dialog);
+      assert.equal(await dialog.getByRole("row").filter({ hasText: "QA zona adicional" }).count(), 1);
+      await dialog.getByRole("button", { name: "Cancelar", exact: true }).click();
+      assert.equal(await sessionRows("col-1", "zones"), null);
+      dialog = await openRelation("zones");
+      assert.equal(await dialog.getByRole("row").filter({ hasText: "QA zona adicional" }).count(), 0);
+      await addZone(dialog);
+      await dialog.getByRole("button", { name: "oK", exact: true }).click();
+      await page.getByText("Asignaciones guardadas para esta sesión.", { exact: true }).waitFor();
+      const saved = await sessionRows("col-1", "zones");
+      assert.deepEqual(saved.map((row: any) => row.id), ["qa-zone-0", "qa-zone-1"]);
+      dialog = await openRelation("zones");
+      await dialog.getByRole("button", { name: "Agregar", exact: true }).click();
+      const picker = page.getByRole("dialog", { name: "Seleccionar...", exact: true });
+      await picker.getByRole("row").filter({ hasText: "QA zona adicional" }).click();
+      await picker.getByRole("button", { name: "oK", exact: true }).click();
+      await picker.getByRole("alert").filter({ hasText: "Este registro ya está asignado al cobrador." }).waitFor();
+      await picker.getByRole("button", { name: "Cancelar", exact: true }).click();
+      await dialog.getByRole("row").filter({ hasText: "QA zona adicional" }).click();
+      await dialog.getByRole("button", { name: "Eliminar", exact: true }).click();
+      await page.getByRole("dialog", { name: "Confirm", exact: true }).getByRole("button", { name: "Sí", exact: true }).click();
+      await dialog.getByRole("button", { name: "Cancelar", exact: true }).click();
+      assert.deepEqual(await sessionRows("col-1", "zones"), saved);
+      dialog = await openRelation("zones", "Segundo cobrador sintético QA");
+      assert.equal(await dialog.getByRole("row").filter({ hasText: "QA zona adicional" }).count(), 0);
+      assert.equal(await dialog.getByRole("row").filter({ hasText: "QA zona otro cobrador" }).count(), 1);
+      await dialog.getByRole("button", { name: "Cancelar", exact: true }).click();
+      await page.reload(); dialog = await openRelation("zones");
+      assert.equal(await dialog.getByRole("row").filter({ hasText: "QA zona adicional" }).count(), 1);
+      await dialog.getByRole("button", { name: "Cancelar", exact: true }).click();
+      assert.equal(writes.length, count);
+      assert.deepEqual(await operationalState(), beforeState);
+    });
+    await run("PR3 Z/L/R R paging, refresh and saved removal never reassign API routes", async () => {
+      await open("collectors");
+      const beforeState = await operationalState(), count = writes.length;
+      let dialog = await openRelation("routes");
+      assert.equal(await dialog.getByRole("row").count(), 11, "First page has one header and ten assignments.");
+      assert.equal(await dialog.getByRole("spinbutton", { name: "Página", exact: true }).inputValue(), "1");
+      await dialog.getByRole("button", { name: "Página siguiente", exact: true }).click();
+      assert.equal(await dialog.getByRole("spinbutton", { name: "Página", exact: true }).inputValue(), "2");
+      const last = dialog.getByRole("row").filter({ hasText: "QA ruta 10" });
+      await last.click();
+      await dialog.getByRole("button", { name: "Eliminar", exact: true }).click();
+      await page.getByRole("dialog", { name: "Confirm", exact: true }).getByRole("button", { name: "No", exact: true }).click();
+      assert.equal(await last.count(), 1);
+      await dialog.getByRole("button", { name: "Eliminar", exact: true }).click();
+      await page.getByRole("dialog", { name: "Confirm", exact: true }).getByRole("button", { name: "Sí", exact: true }).click();
+      await dialog.getByRole("button", { name: "Refrescar", exact: true }).click();
+      await dialog.getByRole("button", { name: "Página siguiente", exact: true }).click();
+      assert.equal(await last.count(), 1, "Refresh discards an unsaved removal.");
+      await last.click(); await dialog.getByRole("button", { name: "Eliminar", exact: true }).click();
+      await page.getByRole("dialog", { name: "Confirm", exact: true }).getByRole("button", { name: "Sí", exact: true }).click();
+      await dialog.getByRole("button", { name: "oK", exact: true }).click();
+      await page.getByText("Asignaciones guardadas para esta sesión.", { exact: true }).waitFor();
+      const saved = await sessionRows("col-1", "routes");
+      assert.equal(saved.length, 10); assert.equal(saved.some((row: any) => row.id === "qa-route-10"), false);
+      await page.reload(); dialog = await openRelation("routes");
+      assert.equal(await dialog.getByRole("button", { name: "Página siguiente", exact: true }).isDisabled(), true);
+      assert.equal(await dialog.getByRole("row").filter({ hasText: "QA ruta 10" }).count(), 0);
+      await dialog.getByRole("button", { name: "Agregar", exact: true }).click();
+      const picker = page.getByRole("dialog", { name: "Seleccionar...", exact: true });
+      const otherRoute = state.routes.find((row) => row.id === "route-2")!;
+      await picker.getByRole("row").filter({ hasText: otherRoute.name }).click();
+      await picker.getByRole("button", { name: "oK", exact: true }).click();
+      await dialog.getByRole("button", { name: "oK", exact: true }).click();
+      await page.getByText("Asignaciones guardadas para esta sesión.", { exact: true }).waitFor();
+      assert.equal((await sessionRows("col-1", "routes")).some((row: any) => row.id === "route-2"), true);
+      dialog = await openRelation("routes", "Segundo cobrador sintético QA");
+      assert.equal(await dialog.getByRole("row").filter({ hasText: otherRoute.name }).count(), 1);
+      assert.equal(await dialog.getByRole("row").filter({ hasText: "QA ruta 01" }).count(), 0);
+      await dialog.getByRole("button", { name: "Cancelar", exact: true }).click();
+      assert.equal(await sessionRows("col-2", "routes"), null);
+      assert.equal(writes.length, count);
+      assert.deepEqual(await operationalState(), beforeState);
     });
     await run("SUG-2.4 fixed amount and activity show four independent combinations", async () => {
       await open("servicesProducts"); await page.getByText("QA fijo activo", { exact: true }).waitFor();
@@ -342,7 +507,7 @@ remittancesApi("/snapshot").then(snapshot => { if (new URLSearchParams(location.
     report.sourceHashesAfter = after;
     report.sourcesStable = true;
     report.writes = writes;
-    report.functionalStatus = cases.length === (selection === "all" ? 12 : 1) && cases.every((row) => row.status === "PASS") ? "PASS" : "FAIL";
+    report.functionalStatus = cases.length === (selection === "all" ? 15 : selection === "collector-integration" ? 7 : 1) && cases.every((row) => row.status === "PASS") ? "PASS" : "FAIL";
     report.isolation = "All HTTP served on the owned loopback listener; all backend writes in MemoryStore. External browser attempts were blocked and reported separately.";
   } finally {
     await context?.close(); report.contextClosed = true;

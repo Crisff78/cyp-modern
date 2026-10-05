@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from
 import { KeyRound, ShieldCheck, Users, Wallet } from "lucide-react";
 import { LegacyToolbar, LegacyDialog, LegacyCheck, LegacyDenseTable } from "./LegacyConnectedUi";
 import { ConnectedUserPermissionsDialog } from "./ConnectedUserPermissionsDialog";
+import { CollectorAssignmentsDialog } from "./CollectorAssignmentsDialog";
+import type { CollectorAssignment } from "./collectorAssignmentsState";
 import { remittancesApi } from "./remittancesApi";
 import { pendingMovementDraft, useMovementRequest } from "./useMovementRequest";
 import { decimalCents, formatMoney } from "../../shared/remittances/output";
@@ -26,6 +28,11 @@ const moneyString = (value: unknown) => typeof value === "number" ? `${Math.trun
 const active = (row: RecordRow) => row.active !== false && row.status !== "disabled";
 // Match the public invitation policy (demo-access.ts), never an invitation value.
 const MIN_ACCOUNT_PASSWORD_LENGTH = 10;
+const assignmentText = (value: unknown) => typeof value === "string" || typeof value === "number" ? String(value) : "";
+const areaAssignment = (row: { id: string; name: string; number?: unknown; from?: unknown; to?: unknown }): CollectorAssignment => ({
+  id: row.id, name: row.name, number: assignmentText(row.number) || row.id,
+  from: assignmentText(row.from), to: assignmentText(row.to),
+});
 
 export function ConnectedCatalog({ page, snapshot, actorId, onRefresh }: { page: CatalogPage; snapshot: Snapshot; actorId: string; onRefresh: () => void }) {
   const definition = definitions[page];
@@ -60,6 +67,12 @@ export function ConnectedCatalog({ page, snapshot, actorId, onRefresh }: { page:
     finally { setLoading(false); }
   }, [definition.path]);
   useEffect(() => { void refresh(); }, [refresh]);
+  const loadAssignmentOptions = useCallback(async (): Promise<readonly CollectorAssignment[]> => {
+    if (relation !== "zones" && relation !== "routes") return [];
+    const result = await remittancesApi<RecordRow[]>(relation === "zones" ? "/zonas" : "/rutas");
+    if (!Array.isArray(result)) throw new Error("El servidor no devolvió un catálogo válido.");
+    return result.map((row) => areaAssignment({ id: row.id, name: assignmentText(row.name), number: row.number, from: row.from, to: row.to }));
+  }, [relation]);
 
   const collectorOptions = snapshot.collectors.map((row) => ({ value: row.id, label: row.name }));
   const fields: Field[] = page === "collectors" ? [
@@ -297,20 +310,28 @@ export function ConnectedCatalog({ page, snapshot, actorId, onRefresh }: { page:
       <label className="recurring-charge-row recurring-charge-labeled-row"><span>Nota:</span>{control("note")}</label>
     </>;
   };
-  const relatedRoutes = snapshot.routes.filter((row) => row.collectorId === relationRow?.id);
-  const relatedZones = Array.from(new Map(relatedRoutes.map((route) => {
-    const zone = snapshot.zones?.find((item) => item.id === route.zoneId);
-    return [zone?.id ?? route.sector, { name: zone?.name ?? route.sector }];
-  })).values());
+  const relatedRoutes = snapshot.routes.filter((row) => row.collectorId === relationRow?.id || row.id === relationRow?.routeId);
+  const relatedZones = (snapshot.zones ?? []).filter((zone) => relatedRoutes.some((route) => route.zoneId === zone.id || (!route.zoneId && route.sector === zone.sector)));
+  let assignmentInitial: readonly CollectorAssignment[] = [];
+  if (relation === "zones") assignmentInitial = relatedZones.map(areaAssignment);
+  if (relation === "routes") assignmentInitial = relatedRoutes.map(areaAssignment);
+  if (relation === "limits" && relationRow) assignmentInitial = [{ id: "DOP", number: "DOP", name: "Peso Dominicano", from: "", to: "", collectionLimit: Number(relationRow.collectionLimit ?? 0), payoutLimit: Number(relationRow.payoutLimit ?? 0) }];
+  const saveAssignments = (rows: readonly CollectorAssignment[]) => {
+    if (!relationRow || !relation) return;
+    const collectorId = relationRow.id;
+    const kind = relation;
+    // Session-only metadata never enters catalog API payloads or financial risk checks.
+    setRecords((current) => current.map((row) => row.id === collectorId ? {
+      ...row, sessionAssignments: { ...(row.sessionAssignments as Record<string, unknown> | undefined), [kind]: rows },
+    } : row));
+    setMessage("Asignaciones guardadas para esta sesión.");
+  };
   const relatedClients = snapshot.clients.filter((row) => row.routeId === relationRow?.id);
   const collector = snapshot.collectors.find((row) => row.id === relationRow?.id);
   const relationTitles = { zones: "Zonas del Cobrador...", limits: "Límites del Cobrador...", routes: "Rutas del Cobrador...", balances: "Balances de Efectivo del Cobrador", clients: "Clientes de la Ruta...", permissions: "Permisos del Usuario..." };
   const relationContent = (): ReactNode => {
     if (!relationRow) return null;
-    if (relation === "zones") return <><LegacyDenseTable columns={["Nro.", "Zona"]} rows={relatedZones.map((row, index) => [index + 1, row.name])} /><p className="catalog-scope-note">Zonas de sus rutas actuales. Las asignaciones se administran desde Rutas.</p></>;
-    if (relation === "routes") return <><LegacyDenseTable columns={["Nro.", "Ruta", "Zona"]} rows={relatedRoutes.map((row, index) => [index + 1, row.name, row.sector])} /><p className="catalog-scope-note">El cobrador responsable se modifica desde Rutas.</p></>;
     if (relation === "clients") return <><LegacyDenseTable columns={["Nro.", "Código", "Cliente", "Teléfono"]} rows={relatedClients.map((row, index) => [index + 1, row.code, row.name, row.phone ?? ""])} /><p className="catalog-scope-note">La asignación de cada cliente se modifica desde Clientes.</p></>;
-    if (relation === "limits") return <><LegacyDenseTable columns={["Moneda", "Abrev.", "Límite de Cobro", "Límite de Pago"]} rows={[["Peso Dominicano", "DOP", formatMoney(Number(relationRow.collectionLimit ?? 0), "DOP"), formatMoney(Number(relationRow.payoutLimit ?? 0), "DOP")]]} /><div className="legacy-relation-toolbar"><button type="button" disabled={busy || loading} onClick={() => { setMessage(""); setLimitsTarget(relationRow); setRelation(null); }}>Modificar límites</button></div></>;
     if (relation === "balances") return <><LegacyDenseTable columns={["Jornada", "Moneda", "Efectivo actual"]} rows={collector ? [[snapshot.businessDate, "DOP", formatMoney(collector.cashInHand, "DOP")]] : []} /><p className="catalog-scope-note">Saldo actual registrado. El detalle de cada jornada se consulta en Cuadres Diarios.</p></>;
     return null;
   };
@@ -362,7 +383,8 @@ export function ConnectedCatalog({ page, snapshot, actorId, onRefresh }: { page:
     {toggleTarget && <LegacyDialog title="Confirmar" className="legacy-confirm-dialog catalog-legacy-dialog" onClose={() => { if (!busy) setToggleTarget(null); }}><div className="legacy-confirm-content"><span className="legacy-question-icon">?</span><p>¿{active(toggleTarget) ? "Inactivar" : "Reactivar"} {text(toggleTarget, definition.label)}?</p></div><p className="catalog-scope-note">El historial se conserva.</p>{formError && <p role="alert">{formError}</p>}<div className="legacy-dialog-actions centered"><button type="button" disabled={busy} onClick={() => void toggle()}>{busy ? "Guardando…" : "Sí"}</button><button type="button" disabled={busy} onClick={() => setToggleTarget(null)}>No</button></div></LegacyDialog>}
     {passwordTarget && <LegacyDialog title="Cambiar clave de usuario..." className="legacy-password-dialog catalog-legacy-dialog" onClose={() => { if (!busy) setPasswordTarget(null); }}><form className="legacy-user-form" onSubmit={changePassword}><label className="legacy-form-row"><span>Clave:</span><input autoFocus type="password" disabled={busy} required minLength={MIN_ACCOUNT_PASSWORD_LENGTH} autoComplete="new-password" value={String(draft.password ?? "")} onChange={(event) => setDraft((current) => ({ ...current, password: event.target.value }))} /></label><label className="legacy-form-row"><span>Confirmación:</span><input type="password" disabled={busy} required autoComplete="new-password" value={String(draft.confirmation ?? "")} onChange={(event) => setDraft((current) => ({ ...current, confirmation: event.target.value }))} /></label><small>Mínimo {MIN_ACCOUNT_PASSWORD_LENGTH} caracteres.</small>{formError && <p role="alert">{formError}</p>}<div className="legacy-dialog-actions centered"><button type="submit" disabled={busy}>{busy ? "Guardando…" : "oK"}</button><button type="button" disabled={busy} onClick={() => setPasswordTarget(null)}>Cancelar</button></div></form></LegacyDialog>}
     {relation === "permissions" && relationRow && <ConnectedUserPermissionsDialog key={relationRow.id} userId={relationRow.id} userName={text(relationRow, "name") || text(relationRow, "email") || relationRow.id} role={text(relationRow, "role")} onClose={() => setRelation(null)} />}
-    {relation && relation !== "permissions" && relationRow && <LegacyDialog title={relationTitles[relation]} className="catalog-relation-dialog" onClose={() => setRelation(null)}><div className="legacy-relation-manager">{relationContent()}<div className="legacy-relation-footer"><span>{text(relationRow, "name")}</span><button type="button" onClick={() => setRelation(null)}>Cerrar</button></div></div></LegacyDialog>}
+    {(relation === "zones" || relation === "limits" || relation === "routes") && relationRow && <CollectorAssignmentsDialog key={`${relationRow.id}:${relation}`} collectorId={relationRow.id} collectorName={text(relationRow, "name")} kind={relation} initial={assignmentInitial} loadOptions={loadAssignmentOptions} onSave={saveAssignments} onClose={() => setRelation(null)} onModifyOperationalLimits={relation === "limits" ? () => { if (!busy && !loading) { setMessage(""); setLimitsTarget(relationRow); setRelation(null); } } : undefined} />}
+    {(relation === "clients" || relation === "balances") && relationRow && <LegacyDialog title={relationTitles[relation]} className="catalog-relation-dialog" onClose={() => setRelation(null)}><div className="legacy-relation-manager">{relationContent()}<div className="legacy-relation-footer"><span>{text(relationRow, "name")}</span><button type="button" onClick={() => setRelation(null)}>Cerrar</button></div></div></LegacyDialog>}
     {clientPicker && <LegacyDialog title="Buscar Cliente..." className="catalog-client-picker" onClose={() => setClientPicker(null)}><div className="legacy-dialog-form"><label>Buscar:<input autoFocus value={clientQuery} onChange={(event) => setClientQuery(event.target.value)} /></label><div className="legacy-mdi-table-wrap"><table className="legacy-mdi-table"><thead><tr><th>Código</th><th>Cliente</th><th>Identificación</th></tr></thead><tbody>{clientOptions.map((client) => <tr key={client.id} className={pickedClientId === client.id ? "selected-row" : ""} tabIndex={0} aria-selected={pickedClientId === client.id} onClick={() => setPickedClientId(client.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setPickedClientId(client.id); } }}><td>{client.code}</td><td>{client.name}</td><td>{client.identification}</td></tr>)}</tbody></table></div><div className="legacy-dialog-actions centered"><button type="button" disabled={!pickedClientId} onClick={pickClient}>oK</button><button type="button" onClick={() => setClientPicker(null)}>Cancelar</button></div></div></LegacyDialog>}
   </section>;
 }

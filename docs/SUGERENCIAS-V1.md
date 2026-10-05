@@ -8,6 +8,11 @@ Los límites del cobrador se guardan mediante `/api/cobradores/:id/limites`, con
 solo `collectionLimit` y `payoutLimit`. El diálogo muestra el valor anterior y
 el propuesto antes de confirmar; no modifica los datos personales del cobrador.
 
+Los submodales Z/L/R conservan las asignaciones y límites por moneda de la
+sesión del navegador. No modifican las asignaciones ni los límites operativos
+de la API. En L, «Modificar límites operativos DOP» abre el diálogo persistido
+descrito arriba, sin guardar el borrador de sesión. Son acciones separadas.
+
 Cada cliente puede tener `preferredCurrency`; DOP es el valor histórico y de
 alta por defecto. Las preferencias del remitente y destinatario son distintas.
 Buscar por teléfono no identifica a una persona de forma única. Copiar teléfono
@@ -49,6 +54,6 @@ no a un informe de devoluciones por fecha de cancelación.
 
 Las migraciones 017–021 son aditivas; no cambian importes del ledger ni rellenan
 horas, contactos o comisiones desconocidos. Antes de publicar, se deben acreditar
-tipados, builds, suites, navegador y PostgreSQL aislado para estos cambios. La
-validación TestSprite exigida por las instrucciones del repositorio es un control
-independiente y requiere una configuración autorizada disponible.
+tipados, builds, suites, navegador y PostgreSQL aislado para estos cambios.
+TestSprite está retirado de la ejecución y de los criterios de aprobación por
+instrucción explícita del usuario.
