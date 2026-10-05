@@ -224,7 +224,7 @@ remittancesApi("/snapshot").then(snapshot => { if (new URLSearchParams(location.
       const addLimit = async (dialog: any, currency: string, collection: string, payout: string) => {
         await dialog.getByRole("button", { name: "Agregar", exact: true }).click();
         const picker = page.getByRole("dialog", { name: "Seleccionar...", exact: true });
-        await picker.getByLabel("Moneda:", { exact: true }).selectOption(currency);
+        await picker.getByLabel(/^Moneda:/).selectOption(currency);
         await picker.getByLabel("Lím. de Cobro:", { exact: true }).fill(collection);
         await picker.getByLabel("Lím. de Pago:", { exact: true }).fill(payout);
         await picker.getByRole("button", { name: "oK", exact: true }).click();
