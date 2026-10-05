@@ -2851,6 +2851,9 @@ strong {
   body {
     background: white !important;
   }
+  body {
+    min-width: 0;
+  }
   .no-print,
   [data-sonner-toaster] {
     display: none !important;
