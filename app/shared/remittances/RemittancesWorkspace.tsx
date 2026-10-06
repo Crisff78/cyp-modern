@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { operationKey, StrictApiError, type StrictApi } from "./strictApi";
-import type { Cash, Currency, Quotation, Rate, RemittanceSnapshot, Report, Transfer } from "./types";
+import type { Cash, Currency, Quotation, Rate, RemittanceContact, RemittanceSnapshot, Report, Transfer } from "./types";
 import { decimalCents, exportSections, formatDate, formatMoney, printSections, type OutputSection } from "./output";
 import { clientCurrency, clientLabel, commissionSections, contactRows, eligibleClients, LatestRequestGate, managerCommissionMatches, managerCommissionRows, managerCommissionSections, matchingClients, parseManagerCommission, quoteHistoryRows, rateMoment, selectRemittanceClient, type ClientSide, type RemittanceClient } from "./suggestions";
 import "./remittances.css";
@@ -9,6 +9,7 @@ import { INPUT_LIMITS, isDecimalDraft, validateText } from "../inputRules";
 import { RateRegistrationTime } from "./RateRegistrationTime";
 import { confirmedRateInput, rateInputDraft, RATE_INPUT_MAX_LENGTH } from "./rateInput";
 import { confirmedRateResponse } from "./rateResponse";
+import { useClientContact } from "./useClientContact";
 
 type Tab = "envios" | "recibos" | "tasas" | "caja" | "reportes";
 type Actor = { id: string; name: string };
@@ -49,7 +50,15 @@ function DataTable({ section }: { section: OutputSection }) {
   return <div className="remittance-table-wrap"><table className="remittance-table"><caption>{section.title}</caption><thead><tr>{section.columns.map((column) => <th scope="col" key={column}>{column}</th>)}</tr></thead><tbody>{section.rows.map((row, index) => <tr key={index}>{row.map((cell, cellIndex) => <td key={cellIndex} data-label={section.columns[cellIndex]}>{cell}</td>)}</tr>)}{!section.rows.length && <tr><td colSpan={section.columns.length}>No hay resultados para esta consulta.</td></tr>}</tbody></table></div>;
 }
 
-export function ClientPicker({ api, side, senderId, label, clients, value, query, onQuery, onSelect }: { api: StrictApi; side: ClientSide; senderId: string; label: string; clients: RemittanceClient[]; value: string; query: string; onQuery: (value: string) => void; onSelect: (client: RemittanceClient) => void }) {
+function ContactDetails({ contact, label }: { contact: RemittanceContact; label: string }) {
+  return <dl className="remittance-summary remittance-contact" aria-label={`Datos de contacto del ${label.toLocaleLowerCase()}`}>
+    <div><dt>Teléfono</dt><dd>{contact.phone || "No registrado"}</dd></div>
+    <div><dt>Celular</dt><dd>{contact.cellular || "No registrado"}</dd></div>
+    <div><dt>Dirección</dt><dd>{contact.address || "No registrada"}</dd></div>
+  </dl>;
+}
+
+export function ClientPicker({ api, side, senderId, label, clients, value, query, onQuery, onSelect, contactState }: { api: StrictApi; side: ClientSide; senderId: string; label: string; clients: RemittanceClient[]; value: string; query: string; onQuery: (value: string) => void; onSelect: (client: RemittanceClient) => void; contactState?: ReturnType<typeof useClientContact> }) {
   const id = useId();
   const [expanded, setExpanded] = useState(false);
   const [highlight, setHighlight] = useState(-1);
@@ -87,6 +96,9 @@ export function ClientPicker({ api, side, senderId, label, clients, value, query
     {expanded && lookupError && <p role="alert">{lookupError}</p>}
     {expanded && lookup?.query === query && lookup.hasMore && <p role="status">Hay más coincidencias. Escribe más caracteres para acotar la búsqueda.</p>}
     <span className="remittance-client-selection" aria-live="polite">{selected ? `Seleccionado: ${clientLabel(selected)}` : "Selecciona un resultado para usar este cliente."}</span>
+    {selected && contactState?.loading && <p className="remittance-help" role="status">Cargando teléfono y dirección…</p>}
+    {selected && contactState?.error && <p className="remittance-error" role="alert">{contactState.error} Usa Actualizar para volver a cargar.</p>}
+    {selected && contactState?.contact && <ContactDetails contact={contactState.contact} label={label} />}
   </div>;
 }
 
@@ -104,6 +116,8 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   const [status, setStatus] = useState("all");
   const [formOpen, setFormOpen] = useState(false);
   const [draft, setDraft] = useState<Draft>({ senderClientId: "", recipientClientId: "", sendingUserId: user.id, sourceCurrency: "DOP", destinationCurrency: "DOP", amount: "", commission: "0", note: "", managerInfo: false, managerName: "", managerAmount: "", managerCurrency: "" });
+  const senderContact = useClientContact(api, formOpen ? draft.senderClientId : "", "sender", "", snapshot);
+  const recipientContact = useClientContact(api, formOpen ? draft.recipientClientId : "", "recipient", draft.senderClientId, snapshot);
   const [senderSearch, setSenderSearch] = useState("");
   const [recipientSearch, setRecipientSearch] = useState("");
   const [quote, setQuote] = useState<Quotation | null>(null);
@@ -232,6 +246,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
 
   function confirmCreate() {
     if (!quote) return;
+    if (!senderContact.contact || !recipientContact.contact) { setError("Espera a que se carguen el teléfono y la dirección de ambos clientes. Si hubo un error, pulsa Actualizar y vuelve a cotizar."); return; }
     let managerCommission;
     try {
       validateText(draft.note, "La nota", INPUT_LIMITS.freeNote, { multiline: true });
@@ -246,7 +261,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
       senderClientId: draft.senderClientId, recipientClientId: draft.recipientClientId,
       ...(isAdmin ? { sendingUserId: draft.sendingUserId } : {}), sourceCurrency: quote.sourceCurrency, destinationCurrency: quote.destinationCurrency,
       amount: quote.amount, commissionBps: quote.commissionBps, quote: quote.quote, note: draft.note.trim(), ...(managerCommission ? { managerCommission } : {}),
-    }, description: <><p><strong>{clientName(draft.senderClientId)}</strong> envía a <strong>{clientName(draft.recipientClientId)}</strong>.</p><QuoteDetails quote={quote} />{managerCommission && <DataTable section={{ title: "Comisión del gestor (información manual)", columns: ["Dato", "Valor"], rows: managerCommissionRows(managerCommission) }} />}<p>Operador: {operatorName(draft.sendingUserId)}. Registrado por: {user.name}.</p><p>Confirma después de recibir el total del remitente. La tasa queda guardada para este envío.</p></> });
+    }, description: <><p><strong>{senderContact.contact.name}</strong> envía a <strong>{recipientContact.contact.name}</strong>.</p><h3>Remitente</h3><ContactDetails contact={senderContact.contact} label="Remitente" /><h3>Destinatario</h3><ContactDetails contact={recipientContact.contact} label="Destinatario" /><p className="remittance-help">Datos actuales de las fichas de clientes. El comprobante conserva la copia guardada al registrar el envío.</p><QuoteDetails quote={quote} />{managerCommission && <DataTable section={{ title: "Comisión del gestor (información manual)", columns: ["Dato", "Valor"], rows: managerCommissionRows(managerCommission) }} />}<p>Operador: {operatorName(draft.sendingUserId)}. Registrado por: {user.name}.</p><p>Confirma después de recibir el total del remitente. La tasa queda guardada para este envío.</p></> });
   }
 
   function prepareRate(event: FormEvent) {
@@ -328,8 +343,8 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
         <div className="remittance-toolbar"><label>Buscar<input type="search" maxLength={INPUT_LIMITS.name} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Referencia o cliente" /></label><label>Estado<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">Todos</option><option value="pending">Pendientes</option><option value="paid">Pagados</option><option value="cancelled">Cancelados</option></select></label>{tab === "envios" && <button type="button" className="remittance-primary" disabled={busy || uncertain} onClick={() => { if (formOpen) closeForm(); else { setFormOpen(true); clearErrors(); } }}>{formOpen ? "Cancelar nuevo envío" : "Nuevo envío"}</button>}</div>
         {tab === "envios" && formOpen && <form className="remittance-panel" onSubmit={(event) => void requestQuote(event)}>
           <h2>Nuevo envío</h2><fieldset disabled={working || uncertain} className="remittance-form-grid">
-            <ClientPicker api={api} side="sender" senderId="" label="Remitente" clients={eligibleClients(snapshot.clients, "sender", draft.senderClientId)} value={draft.senderClientId} query={senderSearch} onQuery={(value) => { setSenderSearch(value); updateDraft("senderClientId", ""); }} onSelect={(client) => chooseClient("sender", client)} />
-            <ClientPicker api={api} side="recipient" senderId={draft.senderClientId} label="Destinatario" clients={eligibleClients(snapshot.clients, "recipient", draft.senderClientId)} value={draft.recipientClientId} query={recipientSearch} onQuery={(value) => { setRecipientSearch(value); updateDraft("recipientClientId", ""); }} onSelect={(client) => chooseClient("recipient", client)} />
+            <ClientPicker api={api} side="sender" senderId="" label="Remitente" clients={eligibleClients(snapshot.clients, "sender", draft.senderClientId)} value={draft.senderClientId} query={senderSearch} onQuery={(value) => { setSenderSearch(value); updateDraft("senderClientId", ""); }} onSelect={(client) => chooseClient("sender", client)} contactState={senderContact} />
+            <ClientPicker api={api} side="recipient" senderId={draft.senderClientId} label="Destinatario" clients={eligibleClients(snapshot.clients, "recipient", draft.senderClientId)} value={draft.recipientClientId} query={recipientSearch} onQuery={(value) => { setRecipientSearch(value); updateDraft("recipientClientId", ""); }} onSelect={(client) => chooseClient("recipient", client)} contactState={recipientContact} />
             {isAdmin && <label>Operador del envío<select required value={draft.sendingUserId} onChange={(event) => updateDraft("sendingUserId", event.target.value)}>{snapshot.operators.map((operator) => <option key={operator.id} value={operator.id}>{operator.name}</option>)}</select></label>}
             <label>Moneda del remitente<select value={draft.sourceCurrency} onChange={(event) => updateDraft("sourceCurrency", event.target.value as Currency)}>{snapshot.currencies.map((currency) => <option key={currency}>{currency}</option>)}</select></label>
             <label>Monto a enviar ({draft.sourceCurrency})<input required inputMode="decimal" maxLength={moneyInputLength} value={draft.amount} onChange={(event) => updateDraft("amount", event.target.value)} placeholder="0.00" /></label>
