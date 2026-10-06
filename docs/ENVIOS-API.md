@@ -58,6 +58,13 @@ intermedios y rechaza resultados fuera del rango seguro.
   destinatario; solo `canSendFrom` habilita remitente. `transfers` contiene la unión
   de operaciones visibles por origen propio/ruta y recepción por ruta destino.
   Admin ve todas. Cajas: admin todas; cobrador solo propias.
+- `GET /envios/clientes/:id/contacto?side=sender|recipient&senderId=...`
+  devuelve `{id,code,name,phone,cellular,address}` del cliente seleccionado.
+  Requiere sesión de operador, cliente activo y ruta propia para remitentes de
+  cobrador. El destinatario puede pertenecer a otra ruta, pero debe ser distinto
+  de `senderId`. No devuelve notas, documentos ni un índice global de contactos.
+  Formulario y confirmación muestran estos datos actuales; el POST captura la
+  copia definitiva en servidor y el comprobante usa los contactos guardados.
 - `GET /envios` → `TransferView[]` visibles como envíos propios/ruta origen.
 - `GET /envios/recibos` → `TransferView[]` visibles por ruta destino (admin todas).
 - `POST /envios/tasas` admin: `{currency,rate:string,date:'YYYY-MM-DD'}` → `Rate`.
@@ -97,6 +104,13 @@ El código operativo aleatorio es referencia, nunca permiso de acceso.
 - `POST /envios/cajas/:id/cerrar` self/admin:
   `{countedAmount}` → `CashView`. Solo abierta; contado debe igualar esperado.
   Cerrada bloquea movimientos. Puede cerrarse una caja anterior antes de abrir hoy.
+
+En la interfaz administrativa: Envíos de Dinero → Caja → operador del envío →
+moneda de origen → efectivo inicial → Revisar apertura → Confirmar.
+La fecha viene del servidor; 0 es válido si la caja comienza sin efectivo.
+Una caja ya cerrada en la fecha actual no puede reabrirse. Para entregar un
+recibo se requiere caja abierta del usuario que paga en la moneda de destino,
+con fondos suficientes; no se usa la caja de cobros ni se mezclan monedas.
 
 `expected = openingAmount + sentTotal - cancelRefund - paid` por caja/moneda.
 No se cruzan fondos con cobros ni se suman monedas. Cada apertura, envío, pago,

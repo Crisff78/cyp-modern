@@ -1,5 +1,23 @@
 # Cierre de las cuatro sugerencias parciales
 
+## Contactos visibles al registrar remesas (4.2) — 6 de octubre de 2026
+
+Al seleccionar remitente y destinatario, el formulario muestra su teléfono,
+celular y dirección desde la ficha del cliente. La confirmación presenta ambos
+contactos antes de registrar. Los datos son de solo lectura: se corrigen en
+Clientes. Un dato vacío se muestra como "No registrado" o "No registrada".
+La consulta autenticada devuelve únicamente el contacto elegido; el catálogo
+general y la búsqueda siguen sin publicar un índice de teléfonos/direcciones.
+Cambiar o borrar la selección retira el contacto anterior y descarta respuestas
+tardías. La confirmación espera a que se carguen ambos contactos.
+
+Al guardar, el servidor ya conserva una copia de ambos contactos en el envío.
+Detalle e impresión usan esa copia, aunque luego se cambie la ficha del cliente.
+Los envíos históricos sin copia indican "No guardado en esta operación";
+no se completan con datos actuales que no existían al registrar.
+No se añadieron ni ejecutaron pruebas locales en este ajuste. La impresión
+física continúa fuera de alcance.
+
 ## Hora visible en alta, edición y confirmación — 6 de octubre de 2026
 
 El campo Hora muestra el reloj actual del formulario en America/Santo_Domingo,
