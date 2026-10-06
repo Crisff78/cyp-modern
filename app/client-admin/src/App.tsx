@@ -2221,7 +2221,7 @@ export function ClientDataDialog({ client, zones, routes, defaultCode = "", onCl
     address: client?.address ?? "",
     location: client?.location ?? "",
     zone: client?.zone ?? "No Definida",
-    routeId: client?.routeId ?? routes[0]?.id ?? "",
+    routeId: client?.routeId ?? "",
     phone: client?.phone ?? "",
     cellular: client?.cellular ?? "",
     email: client?.email ?? "",
@@ -2258,6 +2258,9 @@ export function ClientDataDialog({ client, zones, routes, defaultCode = "", onCl
       validateText(draft.alias, "Conocido por", INPUT_LIMITS.name);
       validateText(draft.address, "Dirección", INPUT_LIMITS.address);
       validateText(draft.location, "Ubicación", INPUT_LIMITS.name);
+      if (!routes.some((route) => route.id === draft.routeId)) {
+        throw new Error("Selecciona una ruta válida antes de guardar el cliente.");
+      }
       validatePhone(draft.phone, "Teléfono");
       validatePhone(draft.cellular, "Celular");
       validateEmail(draft.email);
@@ -2278,7 +2281,7 @@ export function ClientDataDialog({ client, zones, routes, defaultCode = "", onCl
         <label className="client-form-row"><span>Dirección:</span><input maxLength={INPUT_LIMITS.address} value={draft.address} onChange={(event) => update("address", event.target.value)} /></label>
         <label className="client-form-row"><span>Ubicación:</span><input maxLength={INPUT_LIMITS.name} placeholder="No definida" value={draft.location} onChange={(event) => update("location", event.target.value)} /></label>
         <label className="client-form-row"><span>Zona:</span><select value={draft.zone} onChange={(event) => update("zone", event.target.value)}>{zoneOptions.map((zone) => <option key={zone}>{zone}</option>)}</select></label>
-        <label className="client-form-row"><span>Ruta:</span><select value={draft.routeId} onChange={(event) => update("routeId", event.target.value)}>{routes.map((route) => <option key={route.id} value={route.id}>{route.name}</option>)}</select></label>
+        <label className="client-form-row"><span>Ruta:</span><select required aria-label="Ruta del cliente" value={draft.routeId} onChange={(event) => update("routeId", event.target.value)}><option value="">No definida</option>{routes.map((route) => <option key={route.id} value={route.id}>{route.name}</option>)}</select></label>
         <label className="client-form-row"><span>Moneda preferida:</span><select aria-label="Moneda preferida del cliente" value={draft.preferredCurrency} onChange={(event) => setDraft((current) => ({ ...current, preferredCurrency: event.target.value as ClientLegacyDraft["preferredCurrency"] }))}>{["DOP", "USD", "EUR"].map((currency) => <option key={currency}>{currency}</option>)}</select></label>
         <div className="client-contact-row">
           <label>Teléfono:<input type="tel" maxLength={INPUT_LIMITS.phone} value={draft.phone} onChange={(event) => update("phone", event.target.value)} /></label>
@@ -9342,7 +9345,7 @@ function QuickRecordModal({
   const [note, setNote] = useState(String(raw.note ?? ""));
   const [address, setAddress] = useState(String(raw.address ?? ""));
   const [routeId, setRouteId] = useState(
-    String(raw.routeId ?? snapshot.routes[0]?.id ?? ""),
+    String(raw.routeId ?? (isClient ? "" : snapshot.routes[0]?.id) ?? ""),
   );
   const save = async (event: FormEvent) => {
     event.preventDefault();
@@ -9354,6 +9357,10 @@ function QuickRecordModal({
     }
     if (!name.trim()) {
       setError("El nombre o concepto es requerido.");
+      return;
+    }
+    if (isClient && !snapshot.routes.some((route) => route.id === routeId)) {
+      setError("Selecciona una ruta válida antes de guardar el cliente.");
       return;
     }
     setBusy(true);
@@ -9437,7 +9444,8 @@ function QuickRecordModal({
             </label>
             <label className="field">
               Ruta
-              <select value={routeId} onChange={(event) => setRouteId(event.target.value)}>
+              <select required value={routeId} onChange={(event) => setRouteId(event.target.value)}>
+                <option value="">No definida</option>
                 {snapshot.routes.map((route) => (
                   <option value={route.id} key={route.id}>
                     {route.name}

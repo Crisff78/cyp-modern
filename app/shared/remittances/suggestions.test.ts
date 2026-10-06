@@ -67,7 +67,7 @@ test("rate moments display Dominican day/hour and retain unavailable history wit
   const legacy = quoteHistoryRows({ date: "2026-10-04", sourceRate: "1.000000", destinationRate: "0.500000" }, "DOP", "EUR");
   assert.deepEqual(legacy[0], ["Fecha de tasa", "2026-10-04"]);
   assert.equal(legacy[1][1], "Hora no disponible");
-  assert.equal(legacy[2][1], "DOP: referencia fija 1");
+  assert.equal(legacy[2][1], "DOP: sin hora registrada");
   assert.equal(legacy[3][1], "Hora no disponible");
 });
 

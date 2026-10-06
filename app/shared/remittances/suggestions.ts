@@ -52,8 +52,8 @@ export function quoteHistoryRows(quote: Quote, sourceCurrency: Currency, destina
   return [
     ["Fecha de tasa", quote.date],
     ["Cotización confirmada", rateMoment(quote.quotedAt)],
-    ["Cambio de tasa de origen", sourceCurrency === "DOP" ? "DOP: referencia fija 1" : rateMoment(quote.sourceRateChangedAt)],
-    ["Cambio de tasa de destino", destinationCurrency === "DOP" ? "DOP: referencia fija 1" : rateMoment(quote.destinationRateChangedAt)],
+    ["Cambio de tasa de origen", sourceCurrency === "DOP" && !quote.sourceRateChangedAt ? "DOP: sin hora registrada" : rateMoment(quote.sourceRateChangedAt)],
+    ["Cambio de tasa de destino", destinationCurrency === "DOP" && !quote.destinationRateChangedAt ? "DOP: sin hora registrada" : rateMoment(quote.destinationRateChangedAt)],
   ];
 }
 

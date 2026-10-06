@@ -72,7 +72,7 @@ export function ConnectedExchangeRates({ actorId, isAdmin }: { actorId: string; 
         <thead><tr><th>Fecha</th><th>Moneda</th><th>Abrev</th><th>Tasa</th><th>Último cambio (America/Santo_Domingo)</th></tr></thead>
         <tbody>{rates.map((rate) => <tr key={rate.id} role="button" tabIndex={0} className={selected?.id === rate.id ? "selected-row" : ""}
           onClick={() => setSelectedId(rate.id)} onDoubleClick={() => rate.date === snapshot?.businessDate && open(rate)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedId(rate.id))}>
-          <td><span className={`mdi-row-select ${selected?.id === rate.id ? "selected" : ""}`}>{rate.date}</span></td><td>{names[rate.currency]}</td><td>{rate.currency}</td><td>{rate.rate}</td><td>{rate.currency === "DOP" ? "Referencia fija 1" : rateMoment(rate.updatedAt)}</td>
+          <td><span className={`mdi-row-select ${selected?.id === rate.id ? "selected" : ""}`}>{rate.date}</span></td><td>{names[rate.currency]}</td><td>{rate.currency}</td><td>{rate.rate}</td><td>{rateMoment(rate.updatedAt)}</td>
         </tr>)}{!rates.length && <tr><td colSpan={5}>{loading ? "Cargando tasas…" : "No hay tasas guardadas."}</td></tr>}</tbody>
       </table>
     </div>

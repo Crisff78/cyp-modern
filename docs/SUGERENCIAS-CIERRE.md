@@ -1,5 +1,26 @@
 # Cierre de las cuatro sugerencias parciales
 
+## Hora visible en alta, edición y confirmación — 6 de octubre de 2026
+
+El campo Hora muestra el reloj actual del formulario en America/Santo_Domingo,
+con segundos, para todas las monedas. Se actualiza mientras está abierto y no
+forma parte del importe ni del JSON enviado. La hora efectiva del registro sigue
+asignándose en el servidor para cada cambio real; un guardado sin cambios y los
+reintentos conservan su marca existente.
+El último cambio registrado se muestra aparte. DOP ya no oculta una marca real
+con el texto "Referencia fija 1", tanto en formularios como en tablas y detalles.
+Los registros antiguos o referencias virtuales sin marca siguen indicando que
+no tienen hora registrada. No se inventan timestamps ni se cambia la tasa DOP 1.
+
+## Ajuste de Ruta al crear clientes — 6 de octubre de 2026
+
+El alta de clientes inicia en "No definida" y no selecciona la primera ruta
+del catálogo. Se conserva la ruta del cliente al editar. Antes de guardar se
+debe elegir una ruta válida, conforme al contrato existente de la API y su base
+de datos; el valor vacío es un estado inicial del formulario. El formulario
+rápido de clientes en modo mock utiliza el mismo comportamiento. No se cambian
+las asignaciones guardadas ni se añaden migraciones.
+
 Base revisada: `main` y `codex/public-browser-demo` en
 `6df34267ff11d522ba6a65768d97939532c89a8d`. Corrección por Codex, 5 de octubre
 de 2026 (hora dominicana). La auditoría anterior revisó 28 puntos y encontró
