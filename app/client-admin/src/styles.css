@@ -4304,9 +4304,8 @@ table {
   font-size: 9px;
 }
 .login-bottom {
-  bottom: 28px;
-  left: 0;
-  right: 0;
+  position: static;
+  margin-top: 20px;
   justify-content: center;
   color: #64748b;
 }
