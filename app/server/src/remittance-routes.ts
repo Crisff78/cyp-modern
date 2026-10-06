@@ -8,13 +8,14 @@ import {
   currencies, openRemittanceCash, payRemittance, quoteRemittance, remittanceReports,
   remittanceSnapshot, setDailyRate, transferView,
 } from "./remittances.js";
+import { boundedId, freeText, singleLine } from "./input-validation.js";
 
 type Mutate = <T, P = Record<string, string>>(
   path: string, summary: string, schema: z.ZodType<T>,
   fn: (state: State, user: User, body: T, params: P) => unknown,
 ) => void;
 type Describe = (method: string, path: string, summary: string, schema?: z.ZodType, isPublic?: boolean) => void;
-const id = z.string().min(1).max(80);
+const id = boundedId;
 const currency = z.enum(currencies);
 const amount = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const bps = z.number().int().min(0).max(10000);
@@ -32,7 +33,7 @@ export function registerRemittanceRoutes(
   get("/api/envios/snapshot", "Estado de envíos, tasas y cajas por moneda", async (req) =>
     remittanceSnapshot(await store.read(), user(req), systemOperators));
   get("/api/envios/clientes/buscar", "Buscar clientes de remesas por código, nombre o teléfono sin devolver notas", async (req) => {
-    const input = z.object({ query: z.string().trim().min(1).max(160), side: z.enum(["sender", "recipient"]), senderId: id.optional() }).strict().parse(req.query);
+    const input = z.object({ query: singleLine(160, 1), side: z.enum(["sender", "recipient"]), senderId: id.optional() }).strict().parse(req.query);
     return searchRemittanceClients(await store.read(), user(req), input.query, input.side, input.senderId);
   });
   for (const [path, filter] of [["/api/envios", canSeeOutgoing], ["/api/envios/recibos", canSeeReceipt]] as const)
@@ -57,15 +58,15 @@ export function registerRemittanceRoutes(
       sourceRateChangedAt: z.iso.datetime().optional(), destinationRateChangedAt: z.iso.datetime().optional(),
     }).strict(),
     managerCommission: z.object({
-      managerName: z.string().trim().min(1).max(160).refine((value) => value.length <= 160, "El nombre del gestor excede 160 caracteres."),
+      managerName: singleLine(160, 1),
       amount, currency,
     }).strict().optional(),
-    note: z.string().trim().max(2000).default(""),
+    note: freeText(2000).default(""),
   }).strict(), (state, actor, input) => createRemittance(state, actor, input, systemOperators));
   mutate("/api/envios/:id/pagar", "Pagar recibo completo", z.object({}).strict(),
     (state, actor, _input, params) => payRemittance(state, actor, params.id));
   mutate("/api/envios/:id/cancelar", "Cancelar envío pendiente y devolver principal más comisión",
-    z.object({ reason: z.string().trim().min(1).max(500) }).strict(),
+    z.object({ reason: freeText(500, 1) }).strict(),
     (state, actor, input, params) => cancelRemittance(state, actor, params.id, input.reason));
   mutate("/api/envios/cajas/abrir", "Abrir caja de envíos por operador y moneda", z.object({
     operatorId: id, currency, openingAmount: amount,

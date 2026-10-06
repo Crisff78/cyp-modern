@@ -4,6 +4,7 @@ import { LegacyCheck, LegacyDenseTable, LegacyDialog, LegacyToolbar, handleKeybo
 import { clearToken } from "./api";
 import { remittancesApi } from "./remittancesApi";
 import { StrictApiError } from "../../shared/remittances/strictApi";
+import { INPUT_LIMITS, validatePhone, validateText } from "../../shared/inputRules";
 import type { Snapshot } from "./types";
 import "./connected-admin-tools.css";
 
@@ -76,22 +77,24 @@ export function ConnectedAdminTools({ page, snapshot, onRefresh }: { page: Admin
     setDraft(nextDraft); setLinks(row ? stationIds(row) : []); setSelectedLink(row ? stationIds(row)[0] ?? "" : ""); setAddingStation(false);
   };
   const fields: Field[] = page === "stations" ? [
-    { key: "number", label: "Número", required: true, maxLength: 80 }, { key: "name", label: "Estación", required: true }, { key: "deviceId", label: "Identificador del dispositivo (si se conoce)" },
-    { key: "description", label: "Descripción", multiline: true, maxLength: 1000 }, { key: "group", label: "Grupo de estación" }, { key: "type", label: "Tipo" },
-    { key: "license", label: "Licencia registrada (opcional)" }, { key: "version", label: "Versión registrada (opcional)" }, { key: "active", label: "Activa", boolean: true },
-  ] : page === "groups" ? [{ key: "name", label: "Nombre del grupo", required: true }] : page === "pcps" ? [
-    { key: "number", label: "Número", required: true, maxLength: 80 }, { key: "name", label: "Nombre del PCP", required: true },
+    { key: "number", label: "Número", required: true, maxLength: INPUT_LIMITS.id }, { key: "name", label: "Estación", required: true, maxLength: INPUT_LIMITS.name }, { key: "deviceId", label: "Identificador del dispositivo (si se conoce)", maxLength: INPUT_LIMITS.name },
+    { key: "description", label: "Descripción", multiline: true, maxLength: INPUT_LIMITS.userNote }, { key: "group", label: "Grupo de estación", maxLength: INPUT_LIMITS.name }, { key: "type", label: "Tipo", maxLength: INPUT_LIMITS.name },
+    { key: "license", label: "Licencia registrada (opcional)", maxLength: INPUT_LIMITS.name }, { key: "version", label: "Versión registrada (opcional)", maxLength: INPUT_LIMITS.name }, { key: "active", label: "Activa", boolean: true },
+  ] : page === "groups" ? [{ key: "name", label: "Nombre del grupo", required: true, maxLength: INPUT_LIMITS.name }] : page === "pcps" ? [
+    { key: "number", label: "Número", required: true, maxLength: INPUT_LIMITS.id }, { key: "name", label: "Nombre del PCP", required: true, maxLength: INPUT_LIMITS.name },
     { key: "groupId", label: "Grupo", required: true, options: groups.map((row) => ({ value: row.id, label: value(row, "name") })) },
-    { key: "address", label: "Dirección", maxLength: 500 }, { key: "phone", label: "Teléfono", maxLength: 40 }, { key: "active", label: "Activo", boolean: true },
+    { key: "address", label: "Dirección", maxLength: 500 }, { key: "phone", label: "Teléfono", maxLength: INPUT_LIMITS.phone }, { key: "active", label: "Activo", boolean: true },
   ] : [
     { key: "clientId", label: "Cliente", required: true, options: snapshot.clients.filter((client) => client.active !== false).map((client) => ({ value: client.id, label: `${client.code} · ${client.name}` })) },
     { key: "collectorId", label: "Cobrador responsable", required: true, options: snapshot.collectors.filter((collector) => collector.active !== false && snapshot.routes.some((route) => route.collectorId === collector.id && snapshot.clients.some((client) => client.id === draft.clientId && client.routeId === route.id))).map((collector) => ({ value: collector.id, label: collector.name })) },
     { key: "delayReasonId", label: "Motivo de atraso (opcional)", options: reasons.filter((row) => row.active !== false).map((row) => ({ value: row.id, label: value(row, "reason") })) },
-    { key: "forCollection", label: "Solicitud para cobro", boolean: true }, { key: "note", label: "Detalle de la solicitud", required: true, multiline: true, maxLength: 2000 },
+    { key: "forCollection", label: "Solicitud para cobro", boolean: true }, { key: "note", label: "Detalle de la solicitud", required: true, multiline: true, maxLength: INPUT_LIMITS.note },
   ];
   const payload = (source: Draft) => {
     const result: Record<string, string | boolean> = {};
     for (const field of fields) {
+      if (!field.boolean) validateText(String(source[field.key] ?? ""), field.label, field.maxLength ?? INPUT_LIMITS.name, { required: field.required, multiline: field.multiline });
+      if (field.key === "phone") validatePhone(String(source[field.key] ?? ""), field.label);
       const item = field.boolean ? Boolean(source[field.key]) : String(source[field.key] ?? "").trim();
       if (field.required && !item) throw new Error(`Completa ${field.label.toLocaleLowerCase()}.`);
       if (field.key === "delayReasonId" && !item) continue;
@@ -106,7 +109,7 @@ export function ConnectedAdminTools({ page, snapshot, onRefresh }: { page: Admin
       let path = definition.path, body: Record<string, unknown> = {}, text = "Datos guardados correctamente.";
       if (dialog.type === "edit") { if (dialog.row) path += `/${encodeURIComponent(dialog.row.id)}`; body = payload(draft); }
       if (dialog.type === "stations" && dialog.row) { path += `/${encodeURIComponent(dialog.row.id)}/estaciones`; body = { stationIds: links }; text = "Estaciones del PCP guardadas."; }
-      if (dialog.type === "resolve" && dialog.row) { path += `/${encodeURIComponent(dialog.row.id)}/resolver`; body = { status: draft.status, note: draft.note }; text = "Decisión registrada."; }
+      if (dialog.type === "resolve" && dialog.row) { validateText(String(draft.note ?? ""), "Motivo", INPUT_LIMITS.note, { required: true, multiline: true }); path += `/${encodeURIComponent(dialog.row.id)}/resolver`; body = { status: draft.status, note: draft.note }; text = "Decisión registrada."; }
       if (dialog.type === "confirm" && dialog.row) {
         path += `/${encodeURIComponent(dialog.row.id)}`;
         if (dialog.action === "delete") { path += "/eliminar"; text = "Grupo eliminado."; }
@@ -181,7 +184,7 @@ export function ConnectedAdminTools({ page, snapshot, onRefresh }: { page: Admin
     : page === "traces" ? <><td>{dateTime(row.createdAt)}</td><td className="legacy-admin-trace-cell">{row.action === "session.started" ? "Inicio de sesión" : row.action === "mutation.completed" ? "Cambio guardado" : value(row, "action")} · {value(row, "resource")} · Usuario: {value(row, "actorId")}{row.resourceId ? " · Referencia: " + value(row, "resourceId") : ""}</td></>
     : <><td>{dateTime(row.createdAt)}</td><td>{collectorLabel(row)}</td><td>{clientFor(row)?.code ?? "—"}</td><td title={row.forCollection ? "Solicitud para cobro" : "Otra solicitud"}>{clientLabel(row)}</td><td>{clientFor(row)?.phone || "—"}</td><td>{clientFor(row)?.cellular || "—"}</td><td>{states[value(row, "status")] ?? value(row, "status")}</td></>;
   const fieldFor = (key: string) => fields.find((field) => field.key === key);
-  const input = (key: string, className?: string, autoFocus = false) => <input aria-label={fieldFor(key)?.label ?? key} className={className} autoFocus={autoFocus} value={String(draft[key] ?? "")} required={fieldFor(key)?.required} maxLength={fieldFor(key)?.maxLength ?? 160} disabled={locked} onChange={(event) => updateDraft(key, event.target.value)} />;
+  const input = (key: string, className?: string, autoFocus = false) => <input aria-label={fieldFor(key)?.label ?? key} className={className} autoFocus={autoFocus} type={key === "phone" ? "tel" : "text"} inputMode={key === "phone" ? "tel" : undefined} value={String(draft[key] ?? "")} required={fieldFor(key)?.required} maxLength={fieldFor(key)?.maxLength ?? INPUT_LIMITS.name} disabled={locked} onChange={(event) => updateDraft(key, event.target.value)} />;
   const selectInput = (key: string) => <select aria-label={fieldFor(key)?.label ?? key} value={String(draft[key] ?? "")} required={fieldFor(key)?.required} disabled={locked} onChange={(event) => updateDraft(key, event.target.value)}><option value="">{fieldFor(key)?.required ? "Seleccione..." : "Sin seleccionar"}</option>{fieldFor(key)?.options?.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>;
   const check = (key: string, label: string) => <label className="legacy-admin-checkbox"><input type="checkbox" checked={Boolean(draft[key])} disabled={locked} onChange={(event) => updateDraft(key, event.target.checked)} />{label}</label>;
   const formMessages = <>{formError && <p className="legacy-admin-feedback error" role="alert">{formError}</p>}{uncertain && <p className="legacy-admin-note">El resultado está pendiente de confirmación. Reintenta con estos mismos datos antes de cerrar.</p>}</>;

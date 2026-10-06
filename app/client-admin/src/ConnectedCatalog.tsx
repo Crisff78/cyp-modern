@@ -7,6 +7,7 @@ import type { CollectorAssignment } from "./collectorAssignmentsState";
 import { remittancesApi } from "./remittancesApi";
 import { pendingMovementDraft, useMovementRequest } from "./useMovementRequest";
 import { decimalCents, formatMoney } from "../../shared/remittances/output";
+import { INPUT_LIMITS, assertCentsLimit, isDecimalDraft, isIntegerDraft, parseDay, validateEmail, validatePhone, validateText } from "../../shared/inputRules";
 import type { Snapshot } from "./types";
 import "./connected-catalog.css";
 
@@ -23,7 +24,7 @@ const definitions: Record<CatalogPage, { title: string; path: string; label: str
 export const isConnectedCatalog = (page: string): page is CatalogPage => Object.hasOwn(definitions, page);
 type RecordRow = { id: string; [key: string]: unknown };
 type Draft = Record<string, string | boolean>;
-type Field = { key: string; label: string; type?: "money" | "number" | "date" | "password" | "boolean"; required?: boolean; maxLength?: number; options?: { value: string; label: string }[] };
+type Field = { key: string; label: string; type?: "money" | "number" | "date" | "password" | "boolean" | "email" | "tel"; required?: boolean; multiline?: boolean; maxLength?: number; options?: { value: string; label: string }[] };
 const moneyString = (value: unknown) => typeof value === "number" ? `${Math.trunc(value / 100)}.${String(value % 100).padStart(2, "0")}` : "0.00";
 const active = (row: RecordRow) => row.active !== false && row.status !== "disabled";
 // Match the public invitation policy (demo-access.ts), never an invitation value.
@@ -76,27 +77,27 @@ export function ConnectedCatalog({ page, snapshot, actorId, onRefresh }: { page:
 
   const collectorOptions = snapshot.collectors.map((row) => ({ value: row.id, label: row.name }));
   const fields: Field[] = page === "collectors" ? [
-    { key: "name", label: "Nombre", required: true }, { key: "ident", label: "Código / identificación" }, { key: "cellular", label: "Celular" }, { key: "accountId", label: "Cuenta" },
-    { key: "collectionLimit", label: "Límite de cobro (DOP)", type: "money", required: true }, { key: "payoutLimit", label: "Límite de pago (DOP)", type: "money", required: true },
+    { key: "name", label: "Nombre", required: true, maxLength: INPUT_LIMITS.name }, { key: "ident", label: "Código / identificación", maxLength: INPUT_LIMITS.name }, { key: "cellular", label: "Celular", type: "tel", maxLength: INPUT_LIMITS.phone }, { key: "accountId", label: "Cuenta", maxLength: INPUT_LIMITS.name },
+    { key: "collectionLimit", label: "Límite de cobro (DOP)", type: "money", required: true, maxLength: 11 }, { key: "payoutLimit", label: "Límite de pago (DOP)", type: "money", required: true, maxLength: 11 },
   ] : page === "routes" ? [
-    { key: "number", label: "Número" }, { key: "name", label: "Nombre", required: true }, { key: "sector", label: "Sector / zona", required: true }, { key: "collectorId", label: "Cobrador", required: true, options: collectorOptions }, { key: "from", label: "Desde" }, { key: "to", label: "Hasta" },
+    { key: "number", label: "Número", maxLength: INPUT_LIMITS.name }, { key: "name", label: "Nombre", required: true, maxLength: INPUT_LIMITS.name }, { key: "sector", label: "Sector / zona", required: true, maxLength: INPUT_LIMITS.name }, { key: "collectorId", label: "Cobrador", required: true, maxLength: INPUT_LIMITS.id, options: collectorOptions }, { key: "from", label: "Desde", maxLength: INPUT_LIMITS.name }, { key: "to", label: "Hasta", maxLength: INPUT_LIMITS.name },
   ] : page === "zones" ? [
-    { key: "number", label: "Número" }, { key: "name", label: "Nombre", required: true }, { key: "sector", label: "Sector" }, { key: "from", label: "Desde" }, { key: "to", label: "Hasta" },
+    { key: "number", label: "Número", maxLength: INPUT_LIMITS.name }, { key: "name", label: "Nombre", required: true, maxLength: INPUT_LIMITS.name }, { key: "sector", label: "Sector", maxLength: INPUT_LIMITS.name }, { key: "from", label: "Desde", maxLength: INPUT_LIMITS.name }, { key: "to", label: "Hasta", maxLength: INPUT_LIMITS.name },
   ] : page === "servicesProducts" ? [
-    { key: "service", label: "Servicio", required: true }, { key: "abbr", label: "Abreviatura" }, { key: "caption", label: "Descripción" }, { key: "fixedAmount", label: "Usa importe fijo", type: "boolean" }, { key: "obligated", label: "Cobro obligatorio", type: "boolean" },
-    { key: "referencePriceCents", label: "Precio de referencia", type: "money" },
+    { key: "service", label: "Servicio", required: true, maxLength: INPUT_LIMITS.name }, { key: "abbr", label: "Abreviatura", maxLength: INPUT_LIMITS.name }, { key: "caption", label: "Descripción", maxLength: INPUT_LIMITS.name }, { key: "fixedAmount", label: "Usa importe fijo", type: "boolean" }, { key: "obligated", label: "Cobro obligatorio", type: "boolean" },
+    { key: "referencePriceCents", label: "Precio de referencia", type: "money", maxLength: 11 },
     { key: "referenceCurrency", label: "Moneda del precio de referencia", options: ["DOP", "USD", "EUR"].map((value) => ({ value, label: value })) },
     { key: "taxReference", label: "Impuestos de referencia (indica unidad)", maxLength: 160 },
     { key: "benefitReference", label: "Beneficio de referencia (indica unidad)", maxLength: 160 },
-    { key: "referenceQuantity", label: "Cantidad de referencia (indica unidad)", maxLength: 64 },
-  ] : page === "delayReasons" ? [{ key: "reason", label: "Motivo", required: true }] : page === "users" ? [
-    { key: "nickname", label: "Apodo", maxLength: 120 }, { key: "note", label: "Nota", maxLength: 1000 },
-    { key: "name", label: "Nombre", required: true }, { key: "email", label: "Correo", required: true }, { key: "role", label: "Rol", required: true, options: [{ value: "admin", label: "Administrador" }, { value: "collector", label: "Cobrador" }] }, { key: "collectorId", label: "Cobrador asociado", options: collectorOptions, required: draft.role === "collector" }, ...(editing === "new" ? [{ key: "password", label: `Contraseña inicial (mínimo ${MIN_ACCOUNT_PASSWORD_LENGTH} caracteres)`, type: "password" as const, required: true }] : []),
+    { key: "referenceQuantity", label: "Cantidad de referencia (indica unidad)", maxLength: INPUT_LIMITS.quantity },
+  ] : page === "delayReasons" ? [{ key: "reason", label: "Motivo", required: true, maxLength: INPUT_LIMITS.name }] : page === "users" ? [
+    { key: "nickname", label: "Apodo", maxLength: INPUT_LIMITS.userNickname }, { key: "note", label: "Nota", maxLength: INPUT_LIMITS.userNote, multiline: true },
+    { key: "name", label: "Nombre", required: true, maxLength: INPUT_LIMITS.name }, { key: "email", label: "Correo", type: "email", required: true, maxLength: INPUT_LIMITS.email }, { key: "role", label: "Rol", required: true, options: [{ value: "admin", label: "Administrador" }, { value: "collector", label: "Cobrador" }] }, { key: "collectorId", label: "Cobrador asociado", options: collectorOptions, required: draft.role === "collector" }, ...(editing === "new" ? [{ key: "password", label: `Contraseña inicial (mínimo ${MIN_ACCOUNT_PASSWORD_LENGTH} caracteres)`, type: "password" as const, required: true, maxLength: INPUT_LIMITS.password }] : []),
   ] : [
-    { key: "clientId", label: "Cliente", required: true, options: snapshot.clients.map((row) => ({ value: row.id, label: row.name })) }, { key: "service", label: "Servicio", required: true }, { key: "concept", label: "Concepto", required: true },
+    { key: "clientId", label: "Cliente", required: true, options: snapshot.clients.map((row) => ({ value: row.id, label: row.name })) }, { key: "service", label: "Servicio", required: true, maxLength: INPUT_LIMITS.name }, { key: "concept", label: "Concepto", required: true, maxLength: INPUT_LIMITS.name },
     { key: "startDate", label: "Fecha inicial", type: "date", required: true }, { key: "endDate", label: "Fecha final", type: "date" },
     { key: "frequency", label: "Frecuencia", required: true, options: ["No Definida", "Diaria", "Bidiaria", "Semanal", "Quincenal", "Mensual", "Trimestral", "Cuatrimestral", "Semestral", "Anual"].map((value) => ({ value, label: value })) },
-    { key: "day1", label: "Primer día", type: "number" }, { key: "day2", label: "Segundo día", type: "number" }, { key: "amount", label: "Importe (DOP)", type: "money", required: true }, { key: "note", label: "Nota" },
+    { key: "day1", label: "Primer día", type: "number", maxLength: 2 }, { key: "day2", label: "Segundo día", type: "number", maxLength: 2 }, { key: "amount", label: "Importe (DOP)", type: "money", required: true, maxLength: 11 }, { key: "note", label: "Nota", maxLength: INPUT_LIMITS.note, multiline: true },
   ];
   const open = (record: RecordRow | "new") => {
     if (busy) return;
@@ -111,15 +112,19 @@ export function ConnectedCatalog({ page, snapshot, actorId, onRefresh }: { page:
     for (const field of fields) {
       const valueForField = value[field.key] ?? "";
       if (field.required && String(valueForField).trim() === "") throw new Error(`Completa ${field.label.toLowerCase()}.`);
+      if (field.type !== "boolean" && field.type !== "password") validateText(String(valueForField), field.label, field.maxLength ?? INPUT_LIMITS.name, { required: field.required, multiline: field.multiline });
+      if (field.type === "tel") validatePhone(String(valueForField), field.label, { required: field.required });
+      if (field.type === "email") validateEmail(String(valueForField), field.label, { required: field.required });
+      if (field.type === "password" && String(valueForField).length > INPUT_LIMITS.password) throw new Error(`La contraseña admite un máximo de ${INPUT_LIMITS.password} caracteres.`);
       if (page === "servicesProducts" && ["referencePriceCents", "referenceCurrency", "taxReference", "benefitReference", "referenceQuantity"].includes(field.key) && String(valueForField).trim() === "") payload[field.key] = null;
       else if (field.key === "referencePriceCents") {
         const cents = decimalCents(String(valueForField), true);
         if (cents > 1_000_000_000) throw new Error("El precio de referencia debe ser de hasta 10,000,000.00 en su moneda.");
         payload[field.key] = cents;
       }
-      else if (field.type === "money") payload[field.key] = decimalCents(String(valueForField || "0"));
-      else if (field.type === "number") { const n = Number(valueForField || "0"); if (!Number.isSafeInteger(n)) throw new Error(`Revisa ${field.label.toLowerCase()}.`); payload[field.key] = n; }
-      else payload[field.key] = field.type === "boolean" ? Boolean(valueForField) : String(valueForField).trim();
+      else if (field.type === "money") payload[field.key] = assertCentsLimit(decimalCents(String(valueForField || "0")), field.label);
+      else if (field.type === "number") payload[field.key] = parseDay(String(valueForField), field.label);
+      else payload[field.key] = field.type === "boolean" ? Boolean(valueForField) : field.type === "password" ? String(valueForField) : String(valueForField).trim();
     }
     if (page === "servicesProducts" && (payload.referencePriceCents != null) !== (payload.referenceCurrency != null)) throw new Error("El precio de referencia requiere su moneda; borra ambos para dejarlo vacío.");
     if (page === "users") {
@@ -153,6 +158,7 @@ export function ConnectedCatalog({ page, snapshot, actorId, onRefresh }: { page:
   const changePassword = async (event: FormEvent) => {
     event.preventDefault(); if (!passwordTarget || busy) return;
     if (String(draft.password ?? "").length < MIN_ACCOUNT_PASSWORD_LENGTH) { setFormError(`La contraseña necesita al menos ${MIN_ACCOUNT_PASSWORD_LENGTH} caracteres.`); return; }
+    if (String(draft.password ?? "").length > INPUT_LIMITS.password || String(draft.confirmation ?? "").length > INPUT_LIMITS.password) { setFormError(`La contraseña admite un máximo de ${INPUT_LIMITS.password} caracteres.`); return; }
     if (draft.password !== draft.confirmation) { setFormError("La confirmación no coincide con la clave."); return; }
     setBusy(true); setFormError("");
     try { await remittancesApi(`/usuarios/${encodeURIComponent(passwordTarget.id)}/clave`, { method: "POST", body: JSON.stringify({ password: draft.password }) }); setDraft({}); await complete("Contraseña actualizada correctamente."); }
@@ -237,7 +243,14 @@ export function ConnectedCatalog({ page, snapshot, actorId, onRefresh }: { page:
     const common = { "aria-label": label ?? field.label, disabled: busy, required: field.required, maxLength: field.maxLength, className };
     if (field.type === "boolean") return <input {...common} type="checkbox" checked={Boolean(draft[key])} onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.checked }))} />;
     if (field.options) return <select {...common} value={String(draft[key] ?? "")} onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))}><option value="">Selecciona…</option>{field.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>;
-    return <input {...common} type={field.type === "date" || field.type === "password" ? field.type : "text"} inputMode={field.type === "money" ? "decimal" : field.type === "number" ? "numeric" : undefined} autoComplete={field.type === "password" ? "new-password" : "off"} value={String(draft[key] ?? "")} onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))} />;
+    return <input {...common} type={field.type === "date" || field.type === "password" || field.type === "email" || field.type === "tel" ? field.type : "text"} inputMode={field.type === "money" ? "decimal" : field.type === "number" ? "numeric" : field.type === "tel" ? "tel" : undefined} autoComplete={field.type === "password" ? "new-password" : "off"} value={String(draft[key] ?? "")} onChange={(event) => {
+      const next = event.target.value;
+      setDraft((current) => {
+        const shrinking = next.length < String(current[key] ?? "").length;
+        if (!shrinking && ((field.type === "money" && !isDecimalDraft(next, { wholeDigits: 8 })) || (field.type === "number" && !isIntegerDraft(next)))) return current;
+        return { ...current, [key]: next };
+      });
+    }} />;
   };
   const formTitles: Record<CatalogPage, string> = {
     collectors: "Datos de Cobrador...", routes: "Datos de Ruta...", zones: "Datos de la Zona...",
@@ -381,7 +394,7 @@ export function ConnectedCatalog({ page, snapshot, actorId, onRefresh }: { page:
       <form className={formClasses[page]} onSubmit={submit}>{formContent()}{formError && <p role="alert">{formError}</p>}<div className="legacy-dialog-actions centered"><button type="submit" disabled={busy}>{busy ? "Guardando…" : "oK"}</button><button type="button" disabled={busy} onClick={() => setEditing(null)}>Cancelar</button></div></form>
     </LegacyDialog>}
     {toggleTarget && <LegacyDialog title="Confirmar" className="legacy-confirm-dialog catalog-legacy-dialog" onClose={() => { if (!busy) setToggleTarget(null); }}><div className="legacy-confirm-content"><span className="legacy-question-icon">?</span><p>¿{active(toggleTarget) ? "Inactivar" : "Reactivar"} {text(toggleTarget, definition.label)}?</p></div><p className="catalog-scope-note">El historial se conserva.</p>{formError && <p role="alert">{formError}</p>}<div className="legacy-dialog-actions centered"><button type="button" disabled={busy} onClick={() => void toggle()}>{busy ? "Guardando…" : "Sí"}</button><button type="button" disabled={busy} onClick={() => setToggleTarget(null)}>No</button></div></LegacyDialog>}
-    {passwordTarget && <LegacyDialog title="Cambiar clave de usuario..." className="legacy-password-dialog catalog-legacy-dialog" onClose={() => { if (!busy) setPasswordTarget(null); }}><form className="legacy-user-form" onSubmit={changePassword}><label className="legacy-form-row"><span>Clave:</span><input autoFocus type="password" disabled={busy} required minLength={MIN_ACCOUNT_PASSWORD_LENGTH} autoComplete="new-password" value={String(draft.password ?? "")} onChange={(event) => setDraft((current) => ({ ...current, password: event.target.value }))} /></label><label className="legacy-form-row"><span>Confirmación:</span><input type="password" disabled={busy} required autoComplete="new-password" value={String(draft.confirmation ?? "")} onChange={(event) => setDraft((current) => ({ ...current, confirmation: event.target.value }))} /></label><small>Mínimo {MIN_ACCOUNT_PASSWORD_LENGTH} caracteres.</small>{formError && <p role="alert">{formError}</p>}<div className="legacy-dialog-actions centered"><button type="submit" disabled={busy}>{busy ? "Guardando…" : "oK"}</button><button type="button" disabled={busy} onClick={() => setPasswordTarget(null)}>Cancelar</button></div></form></LegacyDialog>}
+    {passwordTarget && <LegacyDialog title="Cambiar clave de usuario..." className="legacy-password-dialog catalog-legacy-dialog" onClose={() => { if (!busy) setPasswordTarget(null); }}><form className="legacy-user-form" onSubmit={changePassword}><label className="legacy-form-row"><span>Clave:</span><input autoFocus type="password" disabled={busy} required minLength={MIN_ACCOUNT_PASSWORD_LENGTH} maxLength={INPUT_LIMITS.password} autoComplete="new-password" value={String(draft.password ?? "")} onChange={(event) => setDraft((current) => ({ ...current, password: event.target.value }))} /></label><label className="legacy-form-row"><span>Confirmación:</span><input type="password" disabled={busy} required maxLength={INPUT_LIMITS.password} autoComplete="new-password" value={String(draft.confirmation ?? "")} onChange={(event) => setDraft((current) => ({ ...current, confirmation: event.target.value }))} /></label><small>Mínimo {MIN_ACCOUNT_PASSWORD_LENGTH} caracteres.</small>{formError && <p role="alert">{formError}</p>}<div className="legacy-dialog-actions centered"><button type="submit" disabled={busy}>{busy ? "Guardando…" : "oK"}</button><button type="button" disabled={busy} onClick={() => setPasswordTarget(null)}>Cancelar</button></div></form></LegacyDialog>}
     {relation === "permissions" && relationRow && <ConnectedUserPermissionsDialog key={relationRow.id} userId={relationRow.id} userName={text(relationRow, "name") || text(relationRow, "email") || relationRow.id} role={text(relationRow, "role")} onClose={() => setRelation(null)} />}
     {(relation === "zones" || relation === "limits" || relation === "routes") && relationRow && <CollectorAssignmentsDialog key={`${relationRow.id}:${relation}`} collectorId={relationRow.id} collectorName={text(relationRow, "name")} kind={relation} initial={assignmentInitial} loadOptions={loadAssignmentOptions} onSave={saveAssignments} onClose={() => setRelation(null)} onModifyOperationalLimits={relation === "limits" ? () => { if (!busy && !loading) { setMessage(""); setLimitsTarget(relationRow); setRelation(null); } } : undefined} />}
     {(relation === "clients" || relation === "balances") && relationRow && <LegacyDialog title={relationTitles[relation]} className="catalog-relation-dialog" onClose={() => setRelation(null)}><div className="legacy-relation-manager">{relationContent()}<div className="legacy-relation-footer"><span>{text(relationRow, "name")}</span><button type="button" onClick={() => setRelation(null)}>Cerrar</button></div></div></LegacyDialog>}
@@ -403,6 +416,8 @@ function CollectorLimitsDialog({ actorId, collector, onClose, onSaved }: { actor
     setFormError("");
     try {
       const submitted = pendingMovementDraft<CollectorLimitsDraft>(actorId, scope) ?? draft;
+      validateText(submitted.collectionLimit, "Límite de cobro", 11, { required: true });
+      validateText(submitted.payoutLimit, "Límite de pago", 11, { required: true });
       const payload = { collectionLimit: decimalCents(submitted.collectionLimit), payoutLimit: decimalCents(submitted.payoutLimit) };
       if (payload.collectionLimit > 1_000_000_000 || payload.payoutLimit > 1_000_000_000) throw new Error("Cada límite debe ser positivo y no superar DOP 10,000,000.00.");
       if (!reviewing) { setReviewing(true); return; }
@@ -410,13 +425,14 @@ function CollectorLimitsDialog({ actorId, collector, onClose, onSaved }: { actor
       await onSaved(saved);
     } catch (failure) { setFormError(failure instanceof Error ? failure.message : "No se pudieron guardar los límites."); }
   };
+  const previewLimit = (value: string) => { try { return formatMoney(decimalCents(value), "DOP"); } catch { return "Importe no válido"; } };
   return <LegacyDialog title={reviewing ? "Confirmar límites del cobrador..." : "Modificar límites del cobrador..."} className="collector-form-dialog catalog-legacy-dialog" onClose={close}>
     <form className="legacy-dialog-form" onSubmit={submit}>
       <p>Cobrador: <strong>{String(collector.name ?? "")}</strong> · Código: {String(collector.ident ?? collector.id)}</p>
       <p className="catalog-scope-note">Este formulario solo modifica los límites. Nombre, contacto, cuenta, actividad y ruta se conservan.</p>
-      {reviewing ? <><LegacyDenseTable columns={["Límite", "Antes", "Después"]} rows={[["Cobro", formatMoney(draft.previousCollectionLimit, "DOP"), formatMoney(decimalCents(draft.collectionLimit), "DOP")], ["Pago", formatMoney(draft.previousPayoutLimit, "DOP"), formatMoney(decimalCents(draft.payoutLimit), "DOP")]]} /><p>Confirma estos cambios para el cobrador indicado.</p></> : <fieldset disabled={request.locked} className="legacy-config-fieldset"><legend>Límites en DOP</legend>
-        <label>Cobro:<input autoFocus required aria-label="Límite de cobro (DOP)" inputMode="decimal" value={draft.collectionLimit} onChange={(event) => setDraft((current) => ({ ...current, collectionLimit: event.target.value }))} /></label>
-        <label>Pago:<input required aria-label="Límite de pago (DOP)" inputMode="decimal" value={draft.payoutLimit} onChange={(event) => setDraft((current) => ({ ...current, payoutLimit: event.target.value }))} /></label>
+      {reviewing ? <><LegacyDenseTable columns={["Límite", "Antes", "Después"]} rows={[["Cobro", formatMoney(draft.previousCollectionLimit, "DOP"), previewLimit(draft.collectionLimit)], ["Pago", formatMoney(draft.previousPayoutLimit, "DOP"), previewLimit(draft.payoutLimit)]]} /><p>Confirma estos cambios para el cobrador indicado.</p></> : <fieldset disabled={request.locked} className="legacy-config-fieldset"><legend>Límites en DOP</legend>
+        <label>Cobro:<input autoFocus required aria-label="Límite de cobro (DOP)" inputMode="decimal" maxLength={11} value={draft.collectionLimit} onChange={(event) => { const next = event.target.value; if (isDecimalDraft(next, { wholeDigits: 8 }) || next.length < draft.collectionLimit.length) setDraft((current) => ({ ...current, collectionLimit: next })); }} /></label>
+        <label>Pago:<input required aria-label="Límite de pago (DOP)" inputMode="decimal" maxLength={11} value={draft.payoutLimit} onChange={(event) => { const next = event.target.value; if (isDecimalDraft(next, { wholeDigits: 8 }) || next.length < draft.payoutLimit.length) setDraft((current) => ({ ...current, payoutLimit: next })); }} /></label>
       </fieldset>}
       {(request.error || formError) && <p role="alert">{request.error || formError}</p>}
       {request.uncertain && <p role="status">El resultado está pendiente de confirmación. Reintenta los mismos límites antes de cambiar los datos o cerrar.</p>}

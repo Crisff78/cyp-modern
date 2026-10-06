@@ -4,20 +4,21 @@ import { z } from "zod";
 import { assertAdmin, DomainError, ledgerCurrency, MAX_MONEY_AMOUNT, supportedLedgerCurrency, type State, type User, type Zone } from "./domain.js";
 import type { Store } from "./store.js";
 import { frequencyCodes } from "./catalog-store.js";
+import { boundedId, freeText, phone, recurringDay, singleLine } from "./input-validation.js";
 
 type Mutate = <T, P = Record<string, string>>(
   path: string, summary: string, schema: z.ZodType<T>,
   fn: (state: State, user: User, body: T, params: P) => unknown,
 ) => void;
 type Describe = (method: string, path: string, summary: string, schema?: z.ZodType, isPublic?: boolean) => void;
-const id = z.string().min(1).max(80);
-const name = z.string().trim().min(1).max(160);
-const short = z.string().trim().max(160);
+const id = boundedId;
+const name = singleLine(160, 1);
+const short = singleLine(160);
 const amount = z.number().int().positive().max(1_000_000_000);
 const zoneBody = z.object({ name, sector: short.optional(), number: short.optional(), from: short.optional(), to: short.optional(), active: z.boolean().optional() }).strict();
 const routeBody = z.object({ name, sector: short, collectorId: id, zoneId: id.optional(), number: short.optional(), from: short.optional(), to: short.optional(), active: z.boolean().optional() }).strict();
 const collectorBody = z.object({
-  name, ident: short.optional(), cellular: z.string().trim().max(40).optional(), accountId: short.optional(),
+  name, ident: short.optional(), cellular: phone.optional(), accountId: short.optional(),
   routeId: id.optional(), collectionLimit: amount.optional(), payoutLimit: amount.optional(), active: z.boolean().optional(),
 }).strict();
 const collectorLimitsBody = z.object({ collectionLimit: amount, payoutLimit: amount }).strict();
@@ -25,18 +26,18 @@ const serviceBody = z.object({
   service: name, abbr: short.default(""), caption: short.default(""), obligated: z.boolean(), active: z.boolean(), fixedAmount: z.boolean().optional(),
   referencePriceCents: z.number().int().min(0).max(MAX_MONEY_AMOUNT).nullable().optional(),
   referenceCurrency: z.enum(["DOP", "USD", "EUR"]).nullable().optional(),
-  taxReference: z.string().trim().min(1).max(160).nullable().optional(),
-  benefitReference: z.string().trim().min(1).max(160).nullable().optional(),
-  referenceQuantity: z.string().trim().min(1).max(64).nullable().optional(),
+  taxReference: singleLine(160, 1).nullable().optional(),
+  benefitReference: singleLine(160, 1).nullable().optional(),
+  referenceQuantity: singleLine(64, 1).nullable().optional(),
 }).strict();
 const reasonBody = z.object({ reason: name, active: z.boolean() }).strict();
 const recurringBody = z.object({
   clientId: id, routeId: id.optional(), serviceId: id.optional(), startDate: z.iso.date(),
   endDate: z.union([z.iso.date(), z.literal("")]).default(""), frequency: name,
-  day1: z.union([z.string().max(40), z.number().int().min(0).max(31)]).default(""),
-  day2: z.union([z.string().max(40), z.number().int().min(0).max(31)]).default(""),
-  currency: z.string().trim().min(1).max(40).refine((value) => supportedLedgerCurrency(value) !== undefined, "Selecciona DOP, USD o EUR.").transform(ledgerCurrency).default("DOP"), service: name, concept: short.default(""),
-  useConceptAmount: z.boolean().default(false), amount, note: z.string().trim().max(2000).default(""), active: z.boolean(),
+  day1: recurringDay.default(""),
+  day2: recurringDay.default(""),
+  currency: singleLine(40, 1).refine((value) => supportedLedgerCurrency(value) !== undefined, "Selecciona DOP, USD o EUR.").transform(ledgerCurrency).default("DOP"), service: name, concept: short.default(""),
+  useConceptAmount: z.boolean().default(false), amount, note: freeText(2000).default(""), active: z.boolean(),
 }).strict();
 function requireRow<T extends { id: string }>(rows: T[], rowId: string, label: string): T {
   const row = rows.find((item) => item.id === rowId);

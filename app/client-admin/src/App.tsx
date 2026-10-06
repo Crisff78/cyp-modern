@@ -97,6 +97,7 @@ import { businessDate, businessTimestamp, collectionCash, currencyCode, currency
 import { buildDepositComponents, confirmedDepositMatches, depositCashTotal, depositComponentsMatch, depositMethodLabel, nonCashDepositAmount, type NonCashDepositLine } from "./depositComponents";
 import { useChargeImportRequest } from "./useChargeImportRequest";
 import { decimalCents, formatMoney } from "../../shared/remittances/output";
+import { INPUT_LIMITS, assertCentsLimit, validateText, validatePhone, validateEmail } from "../../shared/inputRules";
 import { GeoMap, type GeoPoint } from "./GeoMap";
 import { MonitorGeoMap } from "./MonitorGeoMap";
 import { ConnectedCatalog, isConnectedCatalog } from "./ConnectedCatalog";
@@ -2250,26 +2251,41 @@ export function ClientDataDialog({ client, zones, routes, defaultCode = "", onCl
       setError("Indica la cédula o el pasaporte del cliente.");
       return;
     }
-    await onSave(draft);
+    try {
+      validateText(draft.code, "Código", INPUT_LIMITS.id, { required: true });
+      validateText(draft.identification, "Cédula / pasaporte", INPUT_LIMITS.id, { required: !client });
+      validateText(draft.name, "Cliente", INPUT_LIMITS.name, { required: true });
+      validateText(draft.alias, "Conocido por", INPUT_LIMITS.name);
+      validateText(draft.address, "Dirección", INPUT_LIMITS.address);
+      validateText(draft.location, "Ubicación", INPUT_LIMITS.name);
+      validatePhone(draft.phone, "Teléfono");
+      validatePhone(draft.cellular, "Celular");
+      validateEmail(draft.email);
+      validateText(draft.note, "Nota", INPUT_LIMITS.note, { multiline: true });
+      setError("");
+      await onSave(draft);
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "Revisa los datos del cliente.");
+    }
   };
   return (
     <LegacyDialog title="Datos del Cliente..." onClose={onClose} className="client-form-dialog">
       <form className="client-form" onSubmit={submit}>
-        <label className="client-form-row"><span>Código:</span><input autoFocus value={draft.code} onChange={(event) => update("code", event.target.value)} /></label>
+        <label className="client-form-row"><span>Código:</span><input autoFocus maxLength={INPUT_LIMITS.id} value={draft.code} onChange={(event) => update("code", event.target.value)} /></label>
         <label className="client-form-row"><span>Cédula / pasaporte:</span><input required={!client} maxLength={80} placeholder="Número del documento" value={draft.identification} onChange={(event) => update("identification", event.target.value)} /></label>
-        <label className="client-form-row"><span>Cliente:</span><input value={draft.name} onChange={(event) => update("name", event.target.value)} /></label>
-        <label className="client-form-row"><span>Conocido por:</span><input value={draft.alias} onChange={(event) => update("alias", event.target.value)} /></label>
-        <label className="client-form-row"><span>Dirección:</span><input value={draft.address} onChange={(event) => update("address", event.target.value)} /></label>
-        <label className="client-form-row"><span>Ubicación:</span><input placeholder="No definida" value={draft.location} onChange={(event) => update("location", event.target.value)} /></label>
+        <label className="client-form-row"><span>Cliente:</span><input maxLength={INPUT_LIMITS.name} value={draft.name} onChange={(event) => update("name", event.target.value)} /></label>
+        <label className="client-form-row"><span>Conocido por:</span><input maxLength={INPUT_LIMITS.name} value={draft.alias} onChange={(event) => update("alias", event.target.value)} /></label>
+        <label className="client-form-row"><span>Dirección:</span><input maxLength={INPUT_LIMITS.address} value={draft.address} onChange={(event) => update("address", event.target.value)} /></label>
+        <label className="client-form-row"><span>Ubicación:</span><input maxLength={INPUT_LIMITS.name} placeholder="No definida" value={draft.location} onChange={(event) => update("location", event.target.value)} /></label>
         <label className="client-form-row"><span>Zona:</span><select value={draft.zone} onChange={(event) => update("zone", event.target.value)}>{zoneOptions.map((zone) => <option key={zone}>{zone}</option>)}</select></label>
         <label className="client-form-row"><span>Ruta:</span><select value={draft.routeId} onChange={(event) => update("routeId", event.target.value)}>{routes.map((route) => <option key={route.id} value={route.id}>{route.name}</option>)}</select></label>
         <label className="client-form-row"><span>Moneda preferida:</span><select aria-label="Moneda preferida del cliente" value={draft.preferredCurrency} onChange={(event) => setDraft((current) => ({ ...current, preferredCurrency: event.target.value as ClientLegacyDraft["preferredCurrency"] }))}>{["DOP", "USD", "EUR"].map((currency) => <option key={currency}>{currency}</option>)}</select></label>
         <div className="client-contact-row">
-          <label>Teléfono:<input value={draft.phone} onChange={(event) => update("phone", event.target.value)} /></label>
-          <label>Celular:<input value={draft.cellular} onChange={(event) => update("cellular", event.target.value)} /></label>
-          <label>EMail:<input value={draft.email} onChange={(event) => update("email", event.target.value)} /></label>
+          <label>Teléfono:<input type="tel" maxLength={INPUT_LIMITS.phone} value={draft.phone} onChange={(event) => update("phone", event.target.value)} /></label>
+          <label>Celular:<input type="tel" maxLength={INPUT_LIMITS.phone} value={draft.cellular} onChange={(event) => update("cellular", event.target.value)} /></label>
+          <label>EMail:<input type="email" maxLength={INPUT_LIMITS.email} value={draft.email} onChange={(event) => update("email", event.target.value)} /></label>
         </div>
-        <label className="client-form-row"><span>Nota:</span><input value={draft.note} onChange={(event) => update("note", event.target.value)} /></label>
+        <label className="client-form-row"><span>Nota:</span><input maxLength={INPUT_LIMITS.note} value={draft.note} onChange={(event) => update("note", event.target.value)} /></label>
         <button type="button" title="Completa celular y nota únicamente si están vacíos." disabled={!draft.phone.trim()} onClick={() => setDraft(copyPhoneIntoEmptyFields)}>Copiar teléfono a campos vacíos</button>
         {!client && <button type="button" disabled={!draft.phone.trim()} onClick={usePhoneAsCode}>Usar teléfono como código</button>}
         <div className="legacy-dialog-actions"><button type="submit">oK</button><button type="button" onClick={onClose}>Cancelar</button></div>
@@ -2377,22 +2393,37 @@ function ClientMapDialog({ client, onClose, onSave }: Readonly<{ client: ClientL
 
 type ClientMachineDraft = Pick<ClientMachine, "number" | "entry" | "exit" | "value" | "percentage">;
 
+const validMachineCounter = (value: string) => {
+  if (value === "") return true;
+  if (value.length > 100 || !/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(value) || !Number.isFinite(Number(value))) return false;
+  const [whole, fraction = ""] = value.split(".");
+  const integer = BigInt(whole || "0"), maximum = BigInt(Number.MAX_SAFE_INTEGER);
+  return integer < maximum || (integer === maximum && !/[1-9]/.test(fraction));
+};
+
 function ClientMachineFormDialog({ actorId, clientId, machine, defaultNumber, onClose, onSave }: Readonly<{ actorId: string; clientId: string; machine?: ClientMachine; defaultNumber: number; onClose: () => void; onSave: (draft: ClientMachineDraft) => Promise<boolean> }>) {
   const request = useMovementRequest(actorId, `machine-${clientId}`);
   const pending = pendingMovementDraft<{ draft: ClientMachineDraft; machineId?: string }>(actorId, `machine-${clientId}`);
-  const [draft, setDraft] = useState<ClientMachineDraft>(pending?.draft ?? { number: machine?.number ?? defaultNumber, entry: machine?.entry ?? "", exit: machine?.exit ?? "", value: machine?.value ?? 0, percentage: machine?.percentage ?? 0 });
+  const [draft, setDraft] = useState(() => {
+    const source = pending?.draft ?? { number: machine?.number ?? defaultNumber, entry: machine?.entry ?? "", exit: machine?.exit ?? "", value: machine?.value ?? 0, percentage: machine?.percentage ?? 0 };
+    return { number: String(source.number), entry: source.entry, exit: source.exit, value: String(source.value), percentage: String(source.percentage) };
+  });
   const [saving, setSaving] = useState(false);
-  const update = (field: keyof ClientMachineDraft, value: string) => setDraft((current) => ({ ...current, [field]: field === "entry" || field === "exit" ? value : Number(value) }));
+  const update = (field: keyof ClientMachineDraft, value: string) => setDraft((current) => ({ ...current, [field]: value }));
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (request.busy) return;
-    if (!Number.isInteger(draft.number) || draft.number < 1) return toast.error("El número de tragamonedas debe ser mayor que cero.");
-    if (!Number.isFinite(draft.value) || draft.value < 0 || !Number.isFinite(draft.percentage) || draft.percentage < 0 || draft.percentage > 100) return toast.error("Revisa el valor y el porciento.");
+    const number = Number(draft.number), value = Number(draft.value), percentage = Number(draft.percentage);
+    if (!/^\d+$/.test(draft.number) || !Number.isInteger(number) || number < 1 || number > 2_147_483_647) return toast.error("El número de tragamonedas debe ser un entero entre 1 y 2147483647.");
+    if (!Number.isFinite(value) || value < 0 || value > 1_000_000_000 || !Number.isFinite(percentage) || percentage < 0 || percentage > 100 || !/^\d+(?:\.\d{1,4})?$/.test(draft.value) || !/^\d+(?:\.\d{1,4})?$/.test(draft.percentage)) return toast.error("Revisa el valor y el porciento: admiten hasta cuatro decimales.");
+    for (const [label, counter] of [["Entrada", draft.entry], ["Salida", draft.exit]]) {
+      if (!validMachineCounter(counter)) return toast.error(`${label} debe ser un número válido dentro del rango seguro.`);
+    }
     setSaving(true);
-    try { if (await onSave(draft)) onClose(); } finally { setSaving(false); }
+    try { if (await onSave({ ...draft, number, value, percentage })) onClose(); } finally { setSaving(false); }
   };
   const close = () => { if (!request.busy) onClose(); };
-  return <LegacyDialog title="Tragamonedas..." onClose={close} className="client-machine-form-dialog"><form className="client-machine-form" onSubmit={(event) => void submit(event)}><fieldset disabled={request.locked} style={{ border: 0, padding: 0, margin: 0, display: "contents" }}><label>Nro.:<input type="number" min="1" value={draft.number} onChange={(event) => update("number", event.target.value)} /></label><label>Entrada:<input value={draft.entry} onChange={(event) => update("entry", event.target.value)} /></label><label>Salida:<input value={draft.exit} onChange={(event) => update("exit", event.target.value)} /></label><label>Valor Mon.:<input type="number" min="0" step="0.0001" value={draft.value} onChange={(event) => update("value", event.target.value)} /></label><label>Porciento:<input type="number" min="0" max="100" step="0.01" value={draft.percentage} onChange={(event) => update("percentage", event.target.value)} /></label></fieldset>{request.error && <p role="alert">{request.error}</p>}{request.uncertain && <p role="status">Reintenta el mismo registro para recuperar su confirmación.</p>}<div className="legacy-dialog-actions centered"><button type="submit" disabled={saving || request.busy}>{saving ? "Guardando…" : request.uncertain ? "Reintentar" : "oK"}</button><button type="button" disabled={request.busy} onClick={close}>Cancelar</button></div></form></LegacyDialog>;
+  return <LegacyDialog title="Tragamonedas..." onClose={close} className="client-machine-form-dialog"><form className="client-machine-form" onSubmit={(event) => void submit(event)}><fieldset disabled={request.locked} style={{ border: 0, padding: 0, margin: 0, display: "contents" }}><label>Nro.:<input type="number" min="1" max="2147483647" step="1" value={draft.number} onChange={(event) => update("number", event.target.value)} /></label><label>Entrada:<input inputMode="decimal" maxLength={100} value={draft.entry} onChange={(event) => update("entry", event.target.value)} /></label><label>Salida:<input inputMode="decimal" maxLength={100} value={draft.exit} onChange={(event) => update("exit", event.target.value)} /></label><label>Valor Mon.:<input type="number" min="0" max="1000000000" step="0.0001" value={draft.value} onChange={(event) => update("value", event.target.value)} /></label><label>Porciento:<input type="number" min="0" max="100" step="0.0001" value={draft.percentage} onChange={(event) => update("percentage", event.target.value)} /></label></fieldset>{request.error && <p role="alert">{request.error}</p>}{request.uncertain && <p role="status">Reintenta el mismo registro para recuperar su confirmación.</p>}<div className="legacy-dialog-actions centered"><button type="submit" disabled={saving || request.busy}>{saving ? "Guardando…" : request.uncertain ? "Reintentar" : "oK"}</button><button type="button" disabled={request.busy} onClick={close}>Cancelar</button></div></form></LegacyDialog>;
 }
 
 function ClientMachineLogsDialog({ client, machines, logs, onClose, onRefresh }: Readonly<{ client: ClientLegacyRecord; machines: readonly ClientMachine[]; logs: readonly ClientMachineLog[]; onClose: () => void; onRefresh: () => Promise<void> }>) {
@@ -2988,8 +3019,8 @@ function ChangePasswordDialog({ onClose, onSave }: Readonly<{ onClose: () => voi
   return (
     <LegacyDialog title="Cambiar clave de usuario..." onClose={onClose} className="legacy-password-dialog">
       <form className="legacy-user-form" onSubmit={submit}>
-        <label className="legacy-form-row"><span>Clave:</span><input autoFocus type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
-        <label className="legacy-form-row"><span>Confirmación:</span><input type="password" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} /></label>
+        <label className="legacy-form-row"><span>Clave:</span><input autoFocus type="password" maxLength={INPUT_LIMITS.password} value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+        <label className="legacy-form-row"><span>Confirmación:</span><input type="password" maxLength={INPUT_LIMITS.password} value={confirmation} onChange={(event) => setConfirmation(event.target.value)} /></label>
         <div className="legacy-dialog-actions"><button type="submit">oK</button><button type="button" onClick={onClose}>Cancelar</button></div>
       </form>
       {error && <LegacyAlertDialog message={error} onClose={() => setError("")} />}
@@ -3948,6 +3979,46 @@ const SYSTEM_CONFIG_DEFAULTS: Record<string, string | number | boolean> = {
   "gps.longitud": "-70.68701171875",
 };
 
+const CONFIG_TEXT_LIMITS: Record<string, number> = {
+  "general.empresa": 160, "general.direccion": 500, "general.telefono": 40,
+  "general.correo": 200, "general.fax": 40, "general.licencia": 160, "general.moneda": 40,
+  "cargos.servicioTm": 160, "cargos.conceptoTm": 160,
+  "impresion.url": 500, "impresion.listadoUrl": 500,
+  "impresion.nombre": 160, "impresion.listadoNombre": 160,
+};
+
+function validateSystemConfigInputs(config: Record<string, string | number | boolean>) {
+  for (const [key, maximum] of Object.entries(CONFIG_TEXT_LIMITS)) {
+    if (!Object.hasOwn(config, key)) continue;
+    if (typeof config[key] !== "string") throw new Error(`${key}: escribe un texto.`);
+    if ((config[key] as string).length > maximum) throw new Error(`${key}: usa como máximo ${maximum} caracteres.`);
+    validateText(config[key] as string, key, maximum);
+  }
+  validatePhone(String(config["general.telefono"] ?? ""), "Teléfono");
+  validatePhone(String(config["general.fax"] ?? ""), "Fax");
+  validateEmail(String(config["general.correo"] ?? ""));
+  for (const [key, initial] of Object.entries(SYSTEM_CONFIG_DEFAULTS)) {
+    if (typeof initial === "boolean" && Object.hasOwn(config, key) && typeof config[key] !== "boolean") throw new Error(`${key}: selecciona verdadero o falso.`);
+  }
+  for (const [key, min, max, integer, empty] of [
+    ["cobros.porcientoCdc", 0, 100, false, false],
+    ["impresion.puerto", 1, 65535, true, true],
+    ["impresion.listadoPuerto", 1, 65535, true, true],
+    ["gps.latitud", -90, 90, false, true],
+    ["gps.longitud", -180, 180, false, true],
+  ] as const) {
+    if (!Object.hasOwn(config, key)) continue;
+    const value = config[key], text = String(value), number = Number(value);
+    if (empty && value === "") continue;
+    if (typeof value !== "string" && typeof value !== "number" || text.length > 80 || typeof value === "string" && !(integer ? /^\d+$/ : /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/).test(text) || !Number.isFinite(number) || number < min || number > max || integer && !Number.isInteger(number)) throw new Error(`${key}: indica ${integer ? "un entero" : "un número"} entre ${min} y ${max}.`);
+    if (key === "cobros.porcientoCdc") {
+      if (typeof value === "string" && (value.split(".")[1]?.length ?? 0) > 4) throw new Error("El porcentaje CDC admite hasta cuatro decimales.");
+      const [coefficient, exponent = "0"] = String(number).toLowerCase().split("e");
+      if ((coefficient.split(".")[1]?.length ?? 0) - Number(exponent) > 4) throw new Error("El porcentaje CDC admite hasta cuatro decimales.");
+    }
+  }
+}
+
 function LegacyCodifierView({ page, snapshot, onRefresh, onAccount }: Readonly<{ page: Page; snapshot: Snapshot; onRefresh: () => void; onAccount: (operation: AccountOperation) => void }>) {
   const [configTab, setConfigTab] = useState("General");
   const [printTab, setPrintTab] = useState<"Listados" | "Recibos">("Listados");
@@ -3994,6 +4065,7 @@ function LegacyCodifierView({ page, snapshot, onRefresh, onAccount }: Readonly<{
     const generation = cfgGeneration.current;
     const config = { ...systemCfg };
     try {
+      validateSystemConfigInputs(config);
       await api("/configuracion", {
         method: "POST",
         body: JSON.stringify({ config }),
@@ -4036,6 +4108,7 @@ function LegacyCodifierView({ page, snapshot, onRefresh, onAccount }: Readonly<{
     const CheckLine = ({ label, checked, disabled = false, onChange }: Readonly<{ label: string; checked: boolean; disabled?: boolean; onChange: (value: boolean) => void }>) => <label className={`legacy-check-line ${disabled || cfgLocked ? "disabled" : ""}`}><input type="checkbox" checked={checked} disabled={disabled || cfgLocked} onChange={(event) => onChange(event.target.checked)} /><span>{label}</span></label>;
     const fld = (key: string) => ({
       value: String(systemCfg[key] ?? ""),
+      maxLength: CONFIG_TEXT_LIMITS[key] ?? 80,
       disabled: cfgLocked,
       onChange: (event: { target: { value: string } }) =>
         setSystemCfg((current) => ({ ...current, [key]: event.target.value })),
@@ -4278,6 +4351,7 @@ function Login({
               <input
                 type="text"
                 autoComplete="username"
+                maxLength={INPUT_LIMITS.email}
                 required
                 placeholder="admin@cyp.local"
                 value={email}
@@ -4289,6 +4363,7 @@ function Login({
               <input
                 type="password"
                 autoComplete="current-password"
+                maxLength={INPUT_LIMITS.password}
                 required
                 minLength={8}
                 placeholder="Tu contraseña"
@@ -5836,7 +5911,12 @@ function CargoDialog({
       return;
     }
     let exactAmount: number;
-    try { exactAmount = decimalProductCents(draft.amount, draft.quantity); } catch (error) { setErrorMessage(error instanceof Error ? error.message : "Importe no válido."); return; }
+    try {
+      validateText(draft.service, "Servicio", INPUT_LIMITS.name, { required: true });
+      validateText(draft.concept, "Concepto", INPUT_LIMITS.name);
+      validateText(draft.note, "Nota", INPUT_LIMITS.note, { multiline: true });
+      exactAmount = assertCentsLimit(decimalProductCents(draft.amount, draft.quantity), "Importe total");
+    } catch (error) { setErrorMessage(error instanceof Error ? error.message : "Importe no válido."); return; }
     setSaving(true);
     try {
       const saved = await onSave({
@@ -5867,7 +5947,7 @@ function CargoDialog({
           <fieldset disabled={request.locked} style={{ border: 0, padding: 0, margin: 0, display: "contents" }}>
           <div className="cargo-entry-row cargo-client-row">
             <label htmlFor="cargo-client-code">Cliente:</label>
-            <input id="cargo-client-code" autoFocus value={draft.clientCode} onChange={(event) => updateClientCode(event.target.value)} />
+            <input id="cargo-client-code" maxLength={INPUT_LIMITS.id} autoFocus value={draft.clientCode} onChange={(event) => updateClientCode(event.target.value)} />
             <input aria-label="Nombre del cliente" value={selectedClient?.name ?? ""} disabled readOnly />
             <button type="button" aria-label="Buscar cliente" onClick={() => void openClientSearch()} title="Buscar cliente">[...]</button>
           </div>
@@ -5892,7 +5972,7 @@ function CargoDialog({
           </div>
           <div className="cargo-entry-row">
             <label htmlFor="cargo-concept">Concepto:</label>
-            <input id="cargo-concept" value={draft.concept} onChange={(event) => update("concept", event.target.value)} />
+            <input id="cargo-concept" maxLength={INPUT_LIMITS.name} value={draft.concept} onChange={(event) => update("concept", event.target.value)} />
           </div>
           <div className="cargo-entry-row cargo-amount-row">
             <label htmlFor="cargo-amount">Importe:</label>
@@ -5902,7 +5982,7 @@ function CargoDialog({
           </div>
           <div className="cargo-entry-row">
             <label htmlFor="cargo-note">Nota:</label>
-            <input id="cargo-note" value={draft.note} onChange={(event) => update("note", event.target.value)} />
+            <input id="cargo-note" maxLength={INPUT_LIMITS.note} value={draft.note} onChange={(event) => update("note", event.target.value)} />
           </div>
           </fieldset>
           {request.error && <p role="alert">{request.error}</p>}
@@ -7521,6 +7601,8 @@ function DepositDataDialog({ actorId, snapshot, movement, initialDraft, onClose,
   const validTotal = Number.isSafeInteger(total) && total >= 0 && (Boolean(movement) || total <= 1_000_000_000);
   const submit = async (shouldPrint: boolean) => {
     if (movement || request.busy || busy || submitting.current) return;
+    try { validateText(pending?.draft.note ?? note, "Nota", INPUT_LIMITS.note, { multiline: true }); }
+    catch (failure) { toast.error(failure instanceof Error ? failure.message : "Revisa la nota."); return; }
     if (!validTotal || total <= 0 || resolved.error) {
       setErrorOpen(true);
       return;
@@ -7565,9 +7647,9 @@ function DepositDataDialog({ actorId, snapshot, movement, initialDraft, onClose,
       <div className="deposit-data-meta-row"><label>Doc:<input value={movement?.id ?? "-1"} readOnly disabled /></label><label>Fecha:<input type="date" value={date} readOnly /></label></div>
       <label className="deposit-dialog-row"><span>Moneda:</span><select value={currency} onChange={(event) => { setCurrency(event.target.value); setQuantities(emptyDepositQuantities()); setNonCash([]); }}>{CURRENCIES.map((item) => <option key={item}>{item}</option>)}</select></label>
       <label className="deposit-dialog-row"><span>Cobrad.:</span><select value={collectorId} onChange={(event) => { setCollectorId(event.target.value); setQuantities(emptyDepositQuantities()); setNonCash([]); }}>{snapshot.collectors.map((collector) => <option key={collector.id} value={collector.id}>{collector.name}</option>)}</select></label>
-      <label className="deposit-dialog-row"><span>Nota:</span><input value={note} onChange={(event) => setNote(event.target.value)} /></label>
+      <label className="deposit-dialog-row"><span>Nota:</span><input maxLength={INPUT_LIMITS.note} value={note} onChange={(event) => setNote(event.target.value)} /></label>
     </div>
-    <section className="deposit-denominations-section"><div className="deposit-denominations-toolbar"><strong>Denominaciones</strong><button type="button" onClick={refreshDenominations}><RefreshCw size={14} /> Refrescar</button></div><div className="deposit-denominations-table-wrap"><table className="deposit-denominations-table"><thead><tr><th>Denom.</th><th>Cantidad</th><th>Importe</th></tr></thead><tbody>{DENOMS.map((denomination) => { const quantity = Number(quantities[denomination] ?? 0) || 0; return <tr key={denomination}><td>{depositMoney(denomination, currency)}</td><td><input aria-label={`Cantidad ${denomination / 100}`} type="number" min="0" step="1" value={quantities[denomination] ?? ""} onChange={(event) => setQuantities((current) => ({ ...current, [denomination]: event.target.value }))} /></td><td>{Number.isSafeInteger(denomination * quantity) && quantity >= 0 ? depositMoney(denomination * quantity, currency) : "Cantidad no válida"}</td></tr>; })}</tbody></table></div></section>
+    <section className="deposit-denominations-section"><div className="deposit-denominations-toolbar"><strong>Denominaciones</strong><button type="button" onClick={refreshDenominations}><RefreshCw size={14} /> Refrescar</button></div><div className="deposit-denominations-table-wrap"><table className="deposit-denominations-table"><thead><tr><th>Denom.</th><th>Cantidad</th><th>Importe</th></tr></thead><tbody>{DENOMS.map((denomination) => { const quantity = Number(quantities[denomination] ?? 0) || 0; return <tr key={denomination}><td>{depositMoney(denomination, currency)}</td><td><input aria-label={`Cantidad ${denomination / 100}`} type="number" min="0" max="1000000000" step="1" value={quantities[denomination] ?? ""} onChange={(event) => setQuantities((current) => ({ ...current, [denomination]: event.target.value }))} /></td><td>{Number.isSafeInteger(denomination * quantity) && quantity >= 0 ? depositMoney(denomination * quantity, currency) : "Cantidad no válida"}</td></tr>; })}</tbody></table></div></section>
     <section className="deposit-components-section"><div className="deposit-denominations-toolbar"><strong>Cheques y depósitos bancarios</strong><button type="button" disabled={nonCash.length >= (cashAmount > 0 ? 19 : 20)} onClick={() => setNonCash((lines) => [...lines, { id: crypto.randomUUID(), method: "cheque", amount: "", bank: "", reference: "" }])}>Añadir cheque</button><button type="button" disabled={nonCash.length >= (cashAmount > 0 ? 19 : 20)} onClick={() => setNonCash((lines) => [...lines, { id: crypto.randomUUID(), method: "bank_deposit", amount: "", bank: "", reference: "" }])}>Añadir depósito bancario</button></div>
       {nonCash.length > 0 && <div className="deposit-components-table-wrap"><table className="data-table dense deposit-components-table"><thead><tr><th>Método</th><th>Importe ({currencyCode(currency)})</th><th>Banco</th><th>Referencia</th><th /></tr></thead><tbody>{nonCash.map((line, index) => <tr key={line.id}><td><select aria-label={`Método componente ${index + 1}`} value={line.method} onChange={(event) => setNonCash((lines) => lines.map((item) => item.id === line.id ? { ...item, method: event.target.value as NonCashDepositLine["method"] } : item))}><option value="cheque">Cheque</option><option value="bank_deposit">Depósito bancario</option></select></td><td><input aria-label={`Importe componente ${index + 1}`} inputMode="decimal" maxLength={30} value={line.amount} onChange={(event) => setNonCash((lines) => lines.map((item) => item.id === line.id ? { ...item, amount: event.target.value } : item))} /></td><td><input aria-label={`Banco componente ${index + 1}`} maxLength={160} value={line.bank} onChange={(event) => setNonCash((lines) => lines.map((item) => item.id === line.id ? { ...item, bank: event.target.value } : item))} /></td><td><input aria-label={`Referencia componente ${index + 1}`} maxLength={160} value={line.reference} onChange={(event) => setNonCash((lines) => lines.map((item) => item.id === line.id ? { ...item, reference: event.target.value } : item))} /></td><td><button type="button" aria-label={`Eliminar componente ${index + 1}`} onClick={() => setNonCash((lines) => lines.filter((item) => item.id !== line.id))}>Eliminar</button></td></tr>)}</tbody></table></div>}
       <p>Efectivo: {Number.isSafeInteger(cashAmount) ? depositMoney(cashAmount, currency) : "Desglose no válido"}. Los componentes forman un solo depósito en esta moneda.</p>
@@ -7799,7 +7881,9 @@ function CashDeliveryDataDialog({ actorId, snapshot, onClose, onSave }: Readonly
   };
   const submit = async (shouldPrint: boolean) => {
     if (request.busy || busy) return;
-    if (!Number.isSafeInteger(total) || total <= 0) {
+    try { validateText(pending?.draft.note ?? note, "Nota", INPUT_LIMITS.note, { multiline: true }); }
+    catch (failure) { toast.error(failure instanceof Error ? failure.message : "Revisa la nota."); return; }
+    if (!Number.isSafeInteger(total) || total <= 0 || total > 1_000_000_000) {
       setErrorOpen(true);
       return;
     }
@@ -7821,7 +7905,7 @@ function CashDeliveryDataDialog({ actorId, snapshot, onClose, onSave }: Readonly
       <div className="deposit-data-meta-row"><label>Doc:<input value="-1" readOnly disabled /></label><label>Fecha:<input type="date" value={date} readOnly /></label></div>
       <label className="deposit-dialog-row"><span>Moneda:</span><select value={currency} onChange={(event) => { setCurrency(event.target.value); setQuantities(emptyDepositQuantities()); }}>{CURRENCIES.map((item) => <option key={item}>{item}</option>)}</select></label>
       <label className="deposit-dialog-row"><span>Cobrad.:</span><select value={collectorId} onChange={(event) => { setCollectorId(event.target.value); setQuantities(emptyDepositQuantities()); }}><option value="">Seleccione</option>{snapshot.collectors.map((collector) => <option key={collector.id} value={collector.id}>{collector.name}</option>)}</select></label>
-      <label className="deposit-dialog-row"><span>Nota:</span><input value={note} onChange={(event) => setNote(event.target.value)} /></label>
+      <label className="deposit-dialog-row"><span>Nota:</span><input maxLength={INPUT_LIMITS.note} value={note} onChange={(event) => setNote(event.target.value)} /></label>
     </div>
     <section className="deposit-denominations-section"><div className="deposit-denominations-toolbar"><strong>Denominaciones</strong><button type="button" onClick={refreshDenominations}><RefreshCw size={14} /> Refrescar</button></div><div className="deposit-denominations-table-wrap"><table className="deposit-denominations-table"><thead><tr><th>Denom.</th><th>Cantidad</th><th>Importe</th></tr></thead><tbody>{DENOMS.map((denomination) => { const quantity = Number(quantities[denomination] ?? 0) || 0; return <tr key={denomination}><td>{depositMoney(denomination, currency)}</td><td><span className="deposit-denomination-quantity">{quantity}</span></td><td>{depositMoney(denomination * quantity, currency)}</td></tr>; })}</tbody></table></div></section>
     </fieldset>
@@ -8399,12 +8483,19 @@ function PaymentPayoutPickerDialog({ payouts, onClose, onSelect }: Readonly<{ pa
 function PaymentAmountDialog({ line, maxAmount, onClose, onSave }: Readonly<{ line: PaymentDetailLine; maxAmount: number; onClose: () => void; onSave: (amount: number) => void }>) {
   const [amount, setAmount] = useState((line.amount / 100).toFixed(2));
   const [error, setError] = useState("");
-  const submit = (event: FormEvent) => { event.preventDefault(); const cents = Math.round(Number(amount) * 100); if (!Number.isSafeInteger(cents) || cents <= 0) { setError("El importe debe ser mayor a cero."); return; } if (cents > maxAmount) { setError("El importe supera el saldo autorizado pendiente."); return; } onSave(cents); };
-  return <LegacyDialog title="Modificar Importe..." onClose={onClose} className="collection-receipt-modify-dialog" overlayClassName="collection-receipt-suboverlay"><form className="collection-receipt-modify-form" onSubmit={submit}><label>Importe:<input autoFocus type="number" min="0.01" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} /></label>{error && <div className="collection-receipt-error" role="alert">{error}</div>}<div className="legacy-dialog-actions centered"><button type="button" onClick={onClose}>Cancelar</button><button type="submit">oK</button></div></form></LegacyDialog>;
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    try {
+      const cents = assertCentsLimit(decimalCents(amount), "Importe");
+      if (cents > maxAmount) { setError("El importe supera el saldo autorizado pendiente."); return; }
+      onSave(cents);
+    } catch (failure) { setError(failure instanceof Error ? failure.message : "Importe no válido."); }
+  };
+  return <LegacyDialog title="Modificar Importe..." onClose={onClose} className="collection-receipt-modify-dialog" overlayClassName="collection-receipt-suboverlay"><form className="collection-receipt-modify-form" onSubmit={submit}><label>Importe:<input autoFocus type="number" min="0.01" max="10000000" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} /></label>{error && <div className="collection-receipt-error" role="alert">{error}</div>}<div className="legacy-dialog-actions centered"><button type="button" onClick={onClose}>Cancelar</button><button type="submit">oK</button></div></form></LegacyDialog>;
 }
 
 function PaymentCancelNoteDialog({ note, onChange, onClose, onConfirm }: Readonly<{ note: string; onChange: (value: string) => void; onClose: () => void; onConfirm: () => void }>) {
-  return <LegacyDialog title="Entre un valor..." onClose={onClose} className="collection-flow-dialog collection-cancel-reason-dialog" overlayClassName="collection-receipt-suboverlay"><label className="collection-flow-field">Nota:<input autoFocus value={note} onChange={(event) => onChange(event.target.value)} /></label><div className="legacy-dialog-actions centered"><button type="button" onClick={onConfirm}>oK</button><button type="button" onClick={onClose}>Cancelar</button></div></LegacyDialog>;
+  return <LegacyDialog title="Entre un valor..." onClose={onClose} className="collection-flow-dialog collection-cancel-reason-dialog" overlayClassName="collection-receipt-suboverlay"><label className="collection-flow-field">Nota:<input autoFocus maxLength={500} value={note} onChange={(event) => onChange(event.target.value)} /></label><div className="legacy-dialog-actions centered"><button type="button" onClick={onConfirm}>oK</button><button type="button" onClick={onClose}>Cancelar</button></div></LegacyDialog>;
 }
 
 function PayoutDataDialog({ actorId, snapshot, payout, concepts, onClose, onSave }: Readonly<{ actorId: string; snapshot: Snapshot; payout?: PayoutViewRecord; concepts: string[]; onClose: () => void; onSave: (draft: PayoutFormDraft) => Promise<boolean> }>) {
@@ -8444,6 +8535,11 @@ function PayoutDataDialog({ actorId, snapshot, payout, concepts, onClose, onSave
       setErrorMessage('El campo "Concepto" no puede estar vacío');
       return;
     }
+    try {
+      validateText(draft.concept, "Concepto", INPUT_LIMITS.name, { required: true });
+      validateText(draft.note, "Nota", INPUT_LIMITS.note, { multiline: true });
+      assertCentsLimit(decimalProductCents(draft.price, draft.quantity), "Importe total");
+    } catch (failure) { setErrorMessage(failure instanceof Error ? failure.message : "Revisa el importe."); return; }
     if (!Number.isFinite(total) || total <= 0) {
       setErrorMessage("El importe total debe ser mayor a cero.");
       return;
@@ -8462,12 +8558,12 @@ function PayoutDataDialog({ actorId, snapshot, payout, concepts, onClose, onSave
       <LegacyDialog title="Datos del Descargo..." onClose={close} className="payout-data-dialog">
         <form className="cargo-entry-form payout-entry-form" onSubmit={(event) => void submit(event)}>
           <fieldset disabled={request.locked} style={{ border: 0, padding: 0, margin: 0, display: "contents" }}>
-          <div className="cargo-entry-row cargo-client-row"><label htmlFor="payout-client-code">Cliente:</label><input id="payout-client-code" autoFocus value={draft.clientCode} onChange={(event) => updateClient(event.target.value)} /><button type="button" aria-label="Buscar cliente" onClick={() => setClientSearchOpen(true)} title="Buscar cliente">[...]</button><input aria-label="Nombre del cliente" value={client?.name ?? ""} disabled readOnly /></div>
+          <div className="cargo-entry-row cargo-client-row"><label htmlFor="payout-client-code">Cliente:</label><input id="payout-client-code" maxLength={INPUT_LIMITS.id} autoFocus value={draft.clientCode} onChange={(event) => updateClient(event.target.value)} /><button type="button" aria-label="Buscar cliente" onClick={() => setClientSearchOpen(true)} title="Buscar cliente">[...]</button><input aria-label="Nombre del cliente" value={client?.name ?? ""} disabled readOnly /></div>
           <div className="cargo-entry-row"><label htmlFor="payout-currency">Moneda:</label><select id="payout-currency" value={draft.currency} onChange={(event) => update("currency", event.target.value)}><option>No definida</option><option>Peso Dominicano</option><option>Dólar Americano</option><option>Euro</option></select></div>
           <div className="cargo-entry-row"><label htmlFor="payout-service">Servicio:</label><select id="payout-service" value={draft.service} onChange={(event) => update("service", event.target.value)}>{services.map((service) => <option key={service}>{service}</option>)}</select></div>
           <div className="cargo-entry-row"><label htmlFor="payout-concept">Concepto:</label><select id="payout-concept" value={draft.concept} onChange={(event) => update("concept", event.target.value)}>{payoutConcepts.map((concept) => <option key={concept}>{concept}</option>)}</select></div>
           <div className="cargo-entry-row cargo-amount-row"><label htmlFor="payout-price">Importe:</label><label>Precio<input id="payout-price" type="number" min="0" step="0.01" value={draft.price} onChange={(event) => update("price", event.target.value)} /></label><label>Cantidad<input type="number" min="0" step="0.01" value={draft.quantity} onChange={(event) => update("quantity", event.target.value)} /></label><label>Total<input type="number" value={centsInput(totalCents)} disabled readOnly /></label></div>
-          <div className="cargo-entry-row"><label htmlFor="payout-note">Nota:</label><input id="payout-note" value={draft.note} onChange={(event) => update("note", event.target.value)} /></div>
+          <div className="cargo-entry-row"><label htmlFor="payout-note">Nota:</label><input id="payout-note" maxLength={INPUT_LIMITS.note} value={draft.note} onChange={(event) => update("note", event.target.value)} /></div>
           </fieldset>
           {errorMessage && <div className="inline-error" role="alert">{errorMessage}</div>}
           {request.error && <p role="alert">{request.error}</p>}{request.uncertain && <p role="status">Reintenta este mismo descargo antes de cambiar los datos.</p>}
@@ -8841,7 +8937,7 @@ function ChargeDataModal({
           <label className="field">Tasa/Multiplicador<input type="number" min="0.01" step="0.01" value={rate} onChange={(event) => setRate(event.target.value)} required /></label>
           <label className="field">Total Calculado<input value={(total / 100).toFixed(2)} readOnly disabled /></label>
         </div>
-        <label className="field">Nota<textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Nota libre del cargo" /></label>
+        <label className="field">Nota<textarea maxLength={INPUT_LIMITS.note} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Nota libre del cargo" /></label>
         {error && <div className="inline-error" role="alert">{error}</div>}
         <div className="dialog-actions"><button type="button" className="btn" disabled={busy} onClick={onClose}>Cancelar</button><button className="btn primary" disabled={busy}>{busy ? "Guardando..." : "Guardar (oK)"}</button></div>
       </form>
@@ -9114,7 +9210,7 @@ function CollectionReceiptDialog({ snapshot, actorId, onClose, onSaved, onRefres
       <fieldset disabled={request.locked} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
         <div className="collection-receipt-fields">
           <div className="collection-receipt-row collection-receipt-meta-row"><label>Doc:<input value="Nuevo" title="El número se asigna al guardar" readOnly /></label><label>Fecha:<input type="date" value={snapshot.businessDate} readOnly /></label><label>Moneda:<select value={currency} onChange={(event) => { setCurrency(event.target.value); setLines([]); setSelectedLineId(""); setChargePickerOpen(false); setEditingLine(null); }}>{CURRENCIES.map((item) => <option key={item}>{item}</option>)}</select></label></div>
-          <div className="collection-receipt-row collection-receipt-client-row"><label htmlFor="receipt-client-code">Cliente:</label><input id="receipt-client-code" autoFocus value={clientCode} onChange={(event) => resolveClientCode(event.target.value)} /><button type="button" aria-label="Buscar cliente" onClick={() => setClientSearchOpen(true)} title="Buscar cliente">[...]</button><input value={client?.name ?? ""} readOnly aria-label="Nombre del cliente" /></div>
+          <div className="collection-receipt-row collection-receipt-client-row"><label htmlFor="receipt-client-code">Cliente:</label><input id="receipt-client-code" maxLength={INPUT_LIMITS.id} autoFocus value={clientCode} onChange={(event) => resolveClientCode(event.target.value)} /><button type="button" aria-label="Buscar cliente" onClick={() => setClientSearchOpen(true)} title="Buscar cliente">[...]</button><input value={client?.name ?? ""} readOnly aria-label="Nombre del cliente" /></div>
           <div className="collection-receipt-row collection-receipt-labeled-row"><label htmlFor="receipt-collector">Cobrad.:</label><input id="receipt-collector" value={collector?.name ?? "Sin cobrador asignado"} readOnly /></div>
           <div className="collection-receipt-row collection-receipt-labeled-row"><label htmlFor="receipt-payment-form">Forma:</label><input id="receipt-payment-form" value="Efectivo · registrado desde central" readOnly /></div>
         </div>
@@ -9179,13 +9275,13 @@ function ModifyReceiptAmountDialog({
   const [error, setError] = useState("");
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    try { onSave(decimalCents(amount)); }
+    try { onSave(assertCentsLimit(decimalCents(amount), "Importe")); }
     catch (failure) { setError(failure instanceof Error ? failure.message : "El importe no es válido."); }
   };
   return (
     <LegacyDialog title="Modificar Importe..." onClose={onClose} className="collection-receipt-modify-dialog" overlayClassName="collection-receipt-suboverlay">
       <form className="collection-receipt-modify-form" onSubmit={submit}>
-        <label>Importe:<input autoFocus type="number" min="0.01" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} /></label>
+        <label>Importe:<input autoFocus type="number" min="0.01" max="10000000" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} /></label>
         {error && <div className="collection-receipt-error" role="alert">{error}</div>}
         <div className="legacy-dialog-actions centered"><button type="button" onClick={onClose}>Cancelar</button><button type="submit">oK</button></div>
       </form>
@@ -9351,7 +9447,7 @@ function QuickRecordModal({
             </label>
             <label className="field">
               Nota
-              <textarea value={note} onChange={(event) => setNote(event.target.value)} />
+              <textarea maxLength={INPUT_LIMITS.note} value={note} onChange={(event) => setNote(event.target.value)} />
             </label>
           </>
         )}

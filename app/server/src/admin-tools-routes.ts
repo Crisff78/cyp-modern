@@ -7,20 +7,22 @@ import {
   createAuthorizationRequest, endOwnAuthSession, getAdminTools, requireAdminRow, resolveAuthorizationRequest,
   revokeAuthSession, sessionStatus, uniqueAdminValue,
 } from "./admin-tools.js";
+import { freeText, phone, singleLine } from "./input-validation.js";
 
 type Mutate = <T, P = Record<string, string>>(path: string, summary: string, schema: z.ZodType<T>, fn: (state: State, actor: User, body: T, params: P) => unknown) => void;
 type Describe = (method: string, path: string, summary: string, schema?: z.ZodType, isPublic?: boolean) => void;
-const id = z.string().trim().min(1).max(80);
-const name = z.string().trim().min(1).max(160);
-const short = z.string().trim().max(160).default("");
-const stationBody = z.object({ name, number: id, deviceId: short, description: z.string().trim().max(1000).default(""),
+// Keep the existing normalization of body references in administrative tools.
+const id = singleLine(80, 1);
+const name = singleLine(160, 1);
+const short = singleLine(160).default("");
+const stationBody = z.object({ name, number: singleLine(80, 1), deviceId: short, description: freeText(1000).default(""),
   group: short, type: short, license: short, version: short, active: z.boolean().default(true) }).strict();
-const pcpBody = z.object({ name, number: id, groupId: id, address: z.string().trim().max(500).default(""), phone: z.string().trim().max(40).default(""), active: z.boolean().default(true) }).strict();
+const pcpBody = z.object({ name, number: singleLine(80, 1), groupId: id, address: singleLine(500).default(""), phone: phone.default(""), active: z.boolean().default(true) }).strict();
 const groupBody = z.object({ name }).strict();
-const requestBody = z.object({ clientId: id, collectorId: id, delayReasonId: id.optional(), forCollection: z.boolean(), note: z.string().trim().min(1).max(2000) }).strict();
-const resolutionBody = z.object({ status: z.enum(["approved", "rejected", "cancelled"]), note: z.string().trim().min(1).max(2000) }).strict();
-const filters = z.object({ from: z.iso.date().optional(), to: z.iso.date().optional(), q: z.string().trim().max(160).default(""),
-  status: z.string().max(20).optional(), limit: z.coerce.number().int().min(1).max(100).default(50), offset: z.coerce.number().int().min(0).max(1_000_000).default(0) }).strict()
+const requestBody = z.object({ clientId: id, collectorId: id, delayReasonId: id.optional(), forCollection: z.boolean(), note: freeText(2000, 1) }).strict();
+const resolutionBody = z.object({ status: z.enum(["approved", "rejected", "cancelled"]), note: freeText(2000, 1) }).strict();
+const filters = z.object({ from: z.iso.date().optional(), to: z.iso.date().optional(), q: singleLine(160).default(""),
+  status: singleLine(20).optional(), limit: z.coerce.number().int().min(1).max(100).default(50), offset: z.coerce.number().int().min(0).max(1_000_000).default(0) }).strict()
   .refine((input) => !input.from || !input.to || input.from <= input.to, { message: "La fecha final debe ser igual o posterior a la inicial." });
 function inDateRange(value: string, from?: string, to?: string) {
   const day = businessDate(new Date(value));

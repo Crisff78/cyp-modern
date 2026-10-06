@@ -553,8 +553,8 @@ remittancesApi("/snapshot").then(snapshot => { if (new URLSearchParams(location.
       const count = writes.length;
       await price.fill("123.45"); await dialog.getByRole("button", { name: "oK", exact: true }).click();
       await dialog.getByRole("alert").filter({ hasText: "El precio de referencia requiere su moneda" }).waitFor(); assert.equal(writes.length, count);
-      await currency.selectOption("USD"); await price.fill("900719925474099.99");
-      await dialog.getByRole("button", { name: "oK", exact: true }).click(); await dialog.getByRole("alert").filter({ hasText: "fuera del rango" }).waitFor(); assert.equal(writes.length, count);
+      await currency.selectOption("USD"); await price.fill("10000000.01");
+      await dialog.getByRole("button", { name: "oK", exact: true }).click(); await dialog.getByRole("alert").filter({ hasText: "El precio de referencia debe ser de hasta 10,000,000.00 en su moneda." }).waitFor(); assert.equal(writes.length, count);
       await price.fill("123.45");
       await dialog.getByLabel("Impuestos de referencia (indica unidad)", { exact: true }).fill("18 % anotado");
       await dialog.getByLabel("Beneficio de referencia (indica unidad)", { exact: true }).fill("20 USD por unidad");

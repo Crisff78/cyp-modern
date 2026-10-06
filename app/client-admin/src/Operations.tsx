@@ -9,6 +9,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { amountToCents, api, money } from "./api";
+import { INPUT_LIMITS, assertCentsLimit, validateText } from "../../shared/inputRules";
+import { decimalCents } from "../../shared/remittances/output";
 import { HelpNote, Modal } from "./components";
 import type { Snapshot } from "./types";
 
@@ -81,11 +83,20 @@ function OperationForm({
     delivery:
       "Efectivo inicial entregado al cobrador para realizar pagos en calle.",
   };
+  const recurringTotal = (() => {
+    if (!recurring) return null;
+    try {
+      const cents = assertCentsLimit(decimalCents(amount), "Importe");
+      const total = BigInt(cents) * BigInt(operation.clientIds?.length ?? 0);
+      return total <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(total) : null;
+    } catch { return null; }
+  })();
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     setError("");
     try {
-      const cents = amountToCents(amount);
+      const cents = assertCentsLimit(amountToCents(amount), "Importe");
+      if (!office) validateText(concept, "Concepto", INPUT_LIMITS.name, { required: true });
       const body = JSON.stringify(
         office
           ? { collectorId, amount: cents }
@@ -223,7 +234,7 @@ function OperationForm({
                 inputMode="decimal"
                 type="number"
                 min="0.01"
-                max="100000000"
+                max="10000000"
                 step="0.01"
                 value={amount}
                 onChange={(event) => setAmount(event.target.value)}
@@ -258,14 +269,11 @@ function OperationForm({
             </span>
           </label>
         )}
-        {recurring && amount && Number(amount) > 0 && (
+        {recurring && recurringTotal !== null && (
           <div className="form-total">
             <span>Total a generar</span>
             <strong>
-              {money(
-                Math.round(Number(amount) * 100) *
-                  (operation.clientIds?.length ?? 0),
-              )}
+              {money(recurringTotal)}
             </strong>
           </div>
         )}

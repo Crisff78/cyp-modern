@@ -15,8 +15,11 @@ import { api, ApiError, getToken, money } from "./api";
 import type { Operation } from "./types";
 import { browserPaymentIntents, confirmedPaymentReceipt, intentStorageKey, type IntentScope, type PaymentIntent } from "./services/paymentIntents";
 import { isMockToken, mockLedgerId } from "./mock";
+import { assertCentsLimit, isDecimalDraft, isIntegerDraft } from "../../shared/inputRules";
+import { decimalCents } from "../../shared/remittances/output";
 
 const denominations = [2000, 1000, 500, 200, 100, 50, 25, 10, 5, 1];
+const maximumAmount = 1_000_000_000;
 export function CollectionSheet({
   actorId,
   operation,
@@ -73,7 +76,10 @@ export function CollectionSheet({
   }, [scope]);
   const [breakdown, setBreakdown] = useState(false);
   const [bills, setBills] = useState<Record<number, number>>({});
-  const amount = Math.round(Number(value || "0") * 100);
+  const amount = useMemo(() => {
+    try { return assertCentsLimit(decimalCents(value, true), "El importe", maximumAmount); }
+    catch { return null; }
+  }, [value]);
   const breakdownTotal = useMemo(
     () =>
       Object.entries(bills).reduce(
@@ -84,8 +90,9 @@ export function CollectionSheet({
   );
   const collecting = operation.kind === "collection";
   const Icon = collecting ? ArrowDownLeft : ArrowUpRight;
+  const validAttempt = !!attempt && Number.isSafeInteger(attempt.amount) && attempt.amount > 0 && attempt.amount <= maximumAmount;
   const valid =
-    Number.isSafeInteger(amount) &&
+    amount !== null &&
     amount > 0 &&
     amount <= operation.outstanding &&
     (!breakdown || breakdownTotal === amount);
@@ -99,14 +106,14 @@ export function CollectionSheet({
       return;
     }
     const next = replace ? (key === "." ? "0." : key) : `${value}${key}`;
-    if (/^\d{0,8}(\.\d{0,2})?$/.test(next)) {
+    if (isDecimalDraft(next, { wholeDigits: 8 })) {
       setValue(next);
       setReplace(false);
     }
   }
 
   async function confirm(beginAnother = false) {
-    if (inFlight.current || !online || (!valid && !attempt)) return;
+    if (inFlight.current || !online || (attempt ? !validAttempt : !valid)) return;
     inFlight.current = true;
     setBusy(true);
     setError("");
@@ -116,8 +123,10 @@ export function CollectionSheet({
       if (sessionStorage.getItem(`cyp-attempt-${operation.kind}-${operation.id}`))
         throw new Error("Existe una referencia pendiente de una versión anterior. Consulta su recibo con la oficina antes de registrar otra operación.");
       const result = await browserPaymentIntents().confirm<{ receipt: { token: string } }>(
-        scope, amount,
+        scope, amount ?? 0,
         async (active) => {
+          assertCentsLimit(active.amount, "El importe guardado", maximumAmount);
+          if (active.amount <= 0) throw new Error("La referencia guardada no contiene un importe válido.");
           if (!mounted.current || getToken() !== authorizedToken)
             throw new ApiError("La sesión cambió. Vuelve a entrar con la cuenta original para resolver esta referencia.", 401);
           setAttempt(active);
@@ -221,11 +230,12 @@ export function CollectionSheet({
               <input
                 id="collection-amount"
                 inputMode="decimal"
+                maxLength={11}
                 value={value}
                 readOnly={!!attempt || busy}
                 onFocus={() => setReplace(true)}
                 onChange={(e) => {
-                  if (/^\d{0,8}(\.\d{0,2})?$/.test(e.target.value)) {
+                  if (isDecimalDraft(e.target.value, { wholeDigits: 8 })) {
                     setValue(e.target.value);
                     setReplace(false);
                   }
@@ -300,17 +310,17 @@ export function CollectionSheet({
                   <input
                     aria-label={`Cantidad de ${bill} pesos`}
                     inputMode="numeric"
-                    type="number"
-                    min="0"
-                    step="1"
+                    type="text"
+                    pattern="[0-9]*"
+                    maxLength={String(Math.floor(maximumAmount / (bill * 100))).length}
                     value={bills[bill] || ""}
                     disabled={busy || !!attempt}
-                    onChange={(e) =>
-                      setBills({
-                        ...bills,
-                        [bill]: Math.max(0, Math.floor(Number(e.target.value))),
-                      })
-                    }
+                    onChange={(e) => {
+                      const maximum = Math.floor(maximumAmount / (bill * 100));
+                      const count = e.target.value;
+                      if (isIntegerDraft(count, String(maximum).length) && Number(count) <= maximum)
+                        setBills({ ...bills, [bill]: Number(count) });
+                    }}
                   />
                 </label>
               ))}
@@ -330,9 +340,14 @@ export function CollectionSheet({
               Sin conexión. Los movimientos se habilitarán al reconectar.
             </p>
           )}
-          {amount > operation.outstanding && (
+          {amount !== null && amount > operation.outstanding && (
             <p className="inline-error">
               El importe supera el saldo pendiente.
+            </p>
+          )}
+          {(amount === null || (attempt && !validAttempt)) && value && (
+            <p className="inline-error">
+              Escribe un importe válido, con hasta dos decimales y un máximo de RD$ 10,000,000.00.
             </p>
           )}
           {error && (
@@ -342,7 +357,7 @@ export function CollectionSheet({
           )}
           <button
             className="primary confirm-payment"
-            disabled={busy || !online || (!valid && !attempt)}
+            disabled={busy || !online || (attempt ? !validAttempt : !valid)}
             onClick={() => void confirm()}
           >
             {busy ? (
@@ -358,7 +373,7 @@ export function CollectionSheet({
             {!attempt && <strong>{money(amount || 0)}</strong>}
           </button>
           {attempt?.status === "confirmed" && (
-            <button className="secondary" disabled={busy || !online} onClick={() => void confirm(true)}>
+            <button className="secondary" disabled={busy || !online || !validAttempt} onClick={() => void confirm(true)}>
               Registrar otro {collecting ? "cobro" : "pago"} con dinero nuevo
             </button>
           )}

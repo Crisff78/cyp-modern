@@ -57,6 +57,7 @@ import { remittancesApi } from "./remittancesApi";
 import { isMockToken } from "./mock";
 import { GeoMap } from "../../client-admin/src/GeoMap";
 import { locationUnavailable, locationError, validLocation } from "../../shared/geolocation";
+import { INPUT_LIMITS, validateText } from "../../shared/inputRules";
 import { transformRouteToMap } from "./services/mapAdapter";
 import { businessDay as localDay, timeLabel } from "./services/dates";
 import { pocketBalances } from "./services/pocket";
@@ -631,6 +632,9 @@ function Login({
     setBusy(true);
     setError("");
     try {
+      validateText(email, "Usuario / Email", INPUT_LIMITS.email, { required: true });
+      if (!password || password.length > INPUT_LIMITS.password)
+        throw new Error(`Escribe una contraseña de hasta ${INPUT_LIMITS.password} caracteres.`);
       const result = await api<{ token: string; user: User }>("/auth/login", {
         method: "POST",
         body: JSON.stringify({
@@ -723,6 +727,7 @@ function Login({
               type="text"
               required
               autoComplete="username"
+              maxLength={INPUT_LIMITS.email}
               placeholder="usuario@empresa.com"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
@@ -735,6 +740,7 @@ function Login({
                 type={showPassword ? "text" : "password"}
                 required
                 autoComplete="current-password"
+                maxLength={INPUT_LIMITS.password}
                 placeholder="Tu contraseña"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
@@ -1157,6 +1163,7 @@ function RouteView({
         <input
           placeholder="Buscar cliente o servicio"
           aria-label="Buscar cliente o servicio"
+          maxLength={INPUT_LIMITS.name}
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />
@@ -1481,6 +1488,7 @@ function ReceiptsView({
         <Search size={19} />
         <input
           aria-label="Buscar recibo"
+          maxLength={INPUT_LIMITS.name}
           placeholder="Buscar cliente o referencia"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
