@@ -58,7 +58,8 @@ export function registerRemittanceRoutes(
       sourceRateChangedAt: z.iso.datetime().optional(), destinationRateChangedAt: z.iso.datetime().optional(),
     }).strict(),
     managerCommission: z.object({
-      managerName: singleLine(160, 1),
+      managerName: singleLine(160, 1)
+        .refine((value) => value.length <= 160, "El nombre del gestor excede 160 caracteres."),
       amount, currency,
     }).strict().optional(),
     note: freeText(2000).default(""),
