@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { LegacyDialog, LegacyToolbar, handleKeyboardActivation } from "./LegacyConnectedUi";
 import { pendingMovementDraft, useMovementRequest } from "./useMovementRequest";
 import { remittancesApi } from "./remittancesApi";
-import { INPUT_LIMITS, isDecimalDraft, isPositiveRate } from "../../shared/inputRules";
+import { confirmedRateInput, rateInputDraft, RATE_INPUT_MAX_LENGTH } from "../../shared/remittances/rateInput";
+import { confirmedRateResponse } from "../../shared/remittances/rateResponse";
 import type { Currency, Rate, RemittanceSnapshot } from "../../shared/remittances/types";
 import { RateRegistrationTime } from "../../shared/remittances/RateRegistrationTime";
 import { rateMoment } from "../../shared/remittances/suggestions";
@@ -45,17 +46,17 @@ export function ConnectedExchangeRates({ actorId, isAdmin }: { actorId: string; 
   const review = (event: FormEvent) => {
     event.preventDefault();
     if (!draft || request.locked) return;
-    if (!isPositiveRate(draft.rate)) {
-      setFormError("Escribe una tasa positiva con hasta doce enteros y seis decimales."); return;
-    }
+    try { setDraft({ ...draft, rate: confirmedRateInput(draft.rate) }); }
+    catch (failure) { setFormError(failure instanceof Error ? failure.message : "Revisa la tasa."); return; }
     setFormError(""); setReviewing(true);
   };
   const save = async () => {
     if (!draft || request.busy || !isAdmin) return;
-    if (!isPositiveRate(draft.rate)) { setFormError("Escribe una tasa positiva con hasta doce enteros y seis decimales."); return; }
+    try { confirmedRateInput(draft.rate); }
+    catch (failure) { setFormError(failure instanceof Error ? failure.message : "Revisa la tasa."); return; }
     setFormError("");
     try {
-      await request.run<Rate>("/envios/tasas", draft, draft, (result) => Boolean(result?.id && result.currency === draft.currency && result.date === draft.date && result.rate));
+      await request.run<Rate>("/envios/tasas", draft, draft, (result) => { confirmedRateResponse(result, draft); return true; });
       setDraft(null); setReviewing(false); setNotice("Tasa del día guardada. Los envíos anteriores conservan su tasa.");
       await refresh();
     } catch { /* The request retains its submitted draft and a reusable key when the outcome is uncertain. */ }
@@ -91,7 +92,7 @@ export function ConnectedExchangeRates({ actorId, isAdmin }: { actorId: string; 
         <label className="exchange-rate-row"><span className="exchange-rate-label">Moneda:</span><select value={draft.currency} onChange={(event) => setDraft({ ...draft, currency: event.target.value as Currency, rate: event.target.value === "DOP" ? "1.000000" : "" })}>{(snapshot?.currencies ?? []).map((code) => <option key={code} value={code}>{names[code]}</option>)}</select></label>
         <label className="exchange-rate-row exchange-date-row"><span className="exchange-rate-label">Fecha:</span><input type="date" value={draft.date} readOnly /></label>
         <RateRegistrationTime rate={rates.find((row) => row.currency === draft.currency && row.date === draft.date)} className="exchange-rate-row" labelClassName="exchange-rate-label" />
-        <label className="exchange-rate-row"><span className="exchange-rate-label">Tasa:</span><input aria-label="Tasa" required inputMode="decimal" maxLength={INPUT_LIMITS.rate} value={draft.rate} readOnly={draft.currency === "DOP"} onChange={(event) => { const next = event.target.value; if (isDecimalDraft(next, { wholeDigits: 12, decimalDigits: 6 }) || next.length < draft.rate.length) setDraft({ ...draft, rate: next }); }} /></label>
+        <label className="exchange-rate-row"><span className="exchange-rate-label">Tasa:</span><input aria-label="Tasa" required inputMode="decimal" maxLength={RATE_INPUT_MAX_LENGTH} value={draft.rate} readOnly={draft.currency === "DOP"} onChange={(event) => { setDraft({ ...draft, rate: rateInputDraft(event.target.value) }); setFormError(""); }} /></label>
         {formError && <p role="alert">{formError}</p>}
         <div className="legacy-dialog-actions centered exchange-rate-actions"><button type="submit">Revisar tasa</button><button type="button" onClick={close}>Cancelar</button></div>
       </form>}
