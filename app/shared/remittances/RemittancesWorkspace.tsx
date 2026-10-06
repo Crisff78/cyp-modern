@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { operationKey, StrictApiError, type StrictApi } from "./strictApi";
-import type { Cash, Currency, Quotation, RemittanceSnapshot, Report, Transfer } from "./types";
+import type { Cash, Currency, Quotation, Rate, RemittanceSnapshot, Report, Transfer } from "./types";
 import { decimalCents, exportSections, formatDate, formatMoney, printSections, type OutputSection } from "./output";
 import { clientCurrency, clientLabel, commissionSections, contactRows, eligibleClients, LatestRequestGate, managerCommissionMatches, managerCommissionRows, managerCommissionSections, matchingClients, parseManagerCommission, quoteHistoryRows, rateMoment, selectRemittanceClient, type ClientSide, type RemittanceClient } from "./suggestions";
 import "./remittances.css";
 import { formatCrossRate } from "./crossRate";
-import { INPUT_LIMITS, isDecimalDraft, isPositiveRate, validateText } from "../inputRules";
+import { INPUT_LIMITS, isDecimalDraft, validateText } from "../inputRules";
 import { RateRegistrationTime } from "./RateRegistrationTime";
+import { confirmedRateInput, rateInputDraft, RATE_INPUT_MAX_LENGTH } from "./rateInput";
+import { confirmedRateResponse } from "./rateResponse";
 
 type Tab = "envios" | "recibos" | "tasas" | "caja" | "reportes";
 type Actor = { id: string; name: string };
@@ -190,6 +192,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
     pendingByActor.set(user.id, confirmation);
     try {
       const result = await api<Transfer>(confirmation.path, { method: "POST", headers: { "Idempotency-Key": confirmation.idempotencyKey! }, body: JSON.stringify(confirmation.body) });
+      if (confirmation.kind === "rate") confirmedRateResponse(result, confirmation.body as Pick<Rate, "currency" | "date" | "rate">);
       if (confirmation.kind === "create" && !managerCommissionMatches(confirmation.body.managerCommission as Transfer["managerCommission"], result?.managerCommission)) throw new StrictApiError("La respuesta no confirmó la información del gestor. Conservamos los datos: reintenta esta misma operación sin cambiarlos.", 200, true, "REMITTANCE_CONFIRMATION_INVALID");
       pendingByActor.delete(user.id);
       setNotice("Operación registrada correctamente.");
@@ -249,8 +252,11 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   function prepareRate(event: FormEvent) {
     event.preventDefault();
     if (!snapshot) return;
-    if (!isPositiveRate(rate.value)) { setError("Escribe una tasa positiva con hasta doce dígitos enteros y seis decimales."); return; }
-    confirm({ title: "Guardar tasa del día", path: "/envios/tasas", kind: "rate", body: { currency: rate.currency, rate: rate.value, date: snapshot.businessDate }, description: <><p>1 {rate.currency} = <strong>{rate.value} DOP</strong> para {snapshot.businessDate}. Los envíos anteriores conservan su tasa.</p><RateRegistrationTime rate={snapshot.rates.find((row) => row.currency === rate.currency && row.date === snapshot.businessDate)} /></> });
+    let value: string;
+    try { value = confirmedRateInput(rate.value); }
+    catch (failure) { setError(failureMessage(failure)); return; }
+    setError(""); setRate({ ...rate, value });
+    confirm({ title: "Guardar tasa del día", path: "/envios/tasas", kind: "rate", body: { currency: rate.currency, rate: value, date: snapshot.businessDate }, description: <><p>1 {rate.currency} = <strong>{value} DOP</strong> para {snapshot.businessDate}. Los envíos anteriores conservan su tasa.</p><RateRegistrationTime rate={snapshot.rates.find((row) => row.currency === rate.currency && row.date === snapshot.businessDate)} /></> });
   }
 
   function prepareOpening(event: FormEvent) {
@@ -345,7 +351,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
         <div className="remittance-table-wrap"><table className="remittance-table remittance-transfer-table"><caption>{tab === "recibos" ? "Recepción de dinero" : "Listado de envíos"} · {list.length}</caption><thead><tr><th>Referencia</th><th>Fecha</th><th>Remitente → destinatario</th><th>Total recibido</th><th>A entregar</th><th>Estado</th></tr></thead><tbody>{list.map((transfer) => <tr key={transfer.id}><td data-label="Referencia"><button type="button" className="remittance-link" onClick={() => { setDetailId(transfer.id); setCancelReason(""); }}>{tab === "recibos" ? transfer.reciboReference : transfer.envioReference}</button><small>{transfer.operatingCode}</small></td><td data-label="Fecha">{formatDate(transfer.createdAt)}</td><td data-label="Clientes">{clientName(transfer.senderClientId)}<br />→ {clientName(transfer.recipientClientId)}</td><td data-label="Total recibido">{money(transfer.totalAmount, transfer.sourceCurrency)}</td><td data-label="A entregar">{money(transfer.receiveAmount, transfer.destinationCurrency)}</td><td data-label="Estado"><span className={`remittance-status ${transfer.status}`}>{statusText[transfer.status]}</span></td></tr>)}{!list.length && <tr><td colSpan={6}>No hay {tab === "envios" ? "envíos" : "recibos"} para estos filtros.</td></tr>}</tbody></table></div>
       </>}
       {tab === "tasas" && isAdmin && <>
-        <form className="remittance-panel" onSubmit={prepareRate}><h2>Tasa</h2><p>Fecha: {snapshot.businessDate}. DOP vale 1. Las demás monedas necesitan tasa de hoy. Cada cambio queda en el historial; los envíos anteriores conservan su tasa.</p><fieldset disabled={working} className="remittance-form-grid"><label>Moneda<select value={rate.currency} onChange={(event) => setRate({ currency: event.target.value as Currency, value: event.target.value === "DOP" ? "1.000000" : "" })}>{snapshot.currencies.map((currency) => <option key={currency}>{currency}</option>)}</select></label><label>Tasa<input required aria-describedby="remittance-rate-unit" inputMode="decimal" maxLength={INPUT_LIMITS.rate} value={rate.value} readOnly={rate.currency === "DOP"} onChange={(event) => { if (isDecimalDraft(event.target.value, { wholeDigits: 12, decimalDigits: 6 })) setRate((current) => ({ ...current, value: event.target.value })); }} placeholder="0.000000" /><span id="remittance-rate-unit">1 {rate.currency} = esta tasa en DOP</span></label><RateRegistrationTime rate={snapshot.rates.find((row) => row.currency === rate.currency && row.date === snapshot.businessDate)} /></fieldset><button className="remittance-primary" disabled={working}>Revisar tasa</button></form>
+        <form className="remittance-panel" onSubmit={prepareRate}><h2>Tasa</h2><p>Fecha: {snapshot.businessDate}. DOP vale 1. Las demás monedas necesitan tasa de hoy. Cada cambio queda en el historial; los envíos anteriores conservan su tasa.</p><fieldset disabled={working} className="remittance-form-grid"><label>Moneda<select value={rate.currency} onChange={(event) => setRate({ currency: event.target.value as Currency, value: event.target.value === "DOP" ? "1.000000" : "" })}>{snapshot.currencies.map((currency) => <option key={currency}>{currency}</option>)}</select></label><label>Tasa<input required aria-describedby="remittance-rate-unit" inputMode="decimal" maxLength={RATE_INPUT_MAX_LENGTH} value={rate.value} readOnly={rate.currency === "DOP"} onChange={(event) => { setRate((current) => ({ ...current, value: rateInputDraft(event.target.value) })); setError(""); }} placeholder="0.000000" /><span id="remittance-rate-unit">1 {rate.currency} = esta tasa en DOP</span></label><RateRegistrationTime rate={snapshot.rates.find((row) => row.currency === rate.currency && row.date === snapshot.businessDate)} /></fieldset><button className="remittance-primary" disabled={working}>Revisar tasa</button></form>
         <DataTable section={{ title: "Tasas vigentes", columns: ["Fecha", "Moneda", "Tasa", "Último cambio (America/Santo_Domingo)"], rows: snapshot.rates.map((row) => [row.date, row.currency, row.rate, rateMoment(row.updatedAt)]) }} />
         <DataTable section={{ title: "Historial de cambios de tasa", columns: ["Fecha de operación", "Moneda", "Tasa", "Fecha y hora (America/Santo_Domingo)", "Registrado por"], rows: (snapshot.rateHistory ?? []).map((row) => [row.date, row.currency, row.rate, rateMoment(row.createdAt), operatorName(row.actorId)]) }} />
       </>}
