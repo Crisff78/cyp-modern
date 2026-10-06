@@ -11,6 +11,7 @@ import {
   timingSafeEqual,
 } from "node:crypto";
 import { z } from "zod";
+import { emailOrEmpty, phoneOrEmpty } from "./contact-schemas.js";
 import {
   acceptDeposit,
   assertAdmin,
@@ -116,14 +117,14 @@ const depositBody = transferBody.extend({ depositComponents: z.array(depositComp
 const clientBody = z.object({
   name: text,
   code: singleLine(80, 1),
-  phone: phone.default(""),
+  phone: phone.pipe(phoneOrEmpty).default(""),
   address: singleLine(240).default(""),
   routeId: id,
   preferredCurrency: z.enum(ledgerCurrencies).optional(),
   alias: singleLine(160).default(""),
   sector: singleLine(160).default(""),
-  cellular: phone.default(""),
-  email: optionalEmail.default(""),
+  cellular: phone.pipe(phoneOrEmpty).default(""),
+  email: optionalEmail.pipe(emailOrEmpty).default(""),
   note: freeText(2000).default(""),
   identification: singleLine(80).default(""),
   lat: z.number().min(-90).max(90).optional(),

@@ -4,7 +4,9 @@ import { z } from "zod";
 import { assertAdmin, DomainError, ledgerCurrency, MAX_MONEY_AMOUNT, supportedLedgerCurrency, type State, type User, type Zone } from "./domain.js";
 import type { Store } from "./store.js";
 import { frequencyCodes } from "./catalog-store.js";
-import { boundedId, freeText, phone, recurringDay, singleLine } from "./input-validation.js";
+import { boundedId, freeText, phone, singleLine } from "./input-validation.js";
+import { phoneOrEmpty } from "./contact-schemas.js";
+import contracts from "../../shared/input-contracts.json" with { type: "json" };
 
 type Mutate = <T, P = Record<string, string>>(
   path: string, summary: string, schema: z.ZodType<T>,
@@ -18,7 +20,7 @@ const amount = z.number().int().positive().max(1_000_000_000);
 const zoneBody = z.object({ name, sector: short.optional(), number: short.optional(), from: short.optional(), to: short.optional(), active: z.boolean().optional() }).strict();
 const routeBody = z.object({ name, sector: short, collectorId: id, zoneId: id.optional(), number: short.optional(), from: short.optional(), to: short.optional(), active: z.boolean().optional() }).strict();
 const collectorBody = z.object({
-  name, ident: short.optional(), cellular: phone.optional(), accountId: short.optional(),
+  name, ident: short.optional(), cellular: phone.pipe(phoneOrEmpty).optional(), accountId: short.optional(),
   routeId: id.optional(), collectionLimit: amount.optional(), payoutLimit: amount.optional(), active: z.boolean().optional(),
 }).strict();
 const collectorLimitsBody = z.object({ collectionLimit: amount, payoutLimit: amount }).strict();
@@ -31,14 +33,23 @@ const serviceBody = z.object({
   referenceQuantity: singleLine(64, 1).nullable().optional(),
 }).strict();
 const reasonBody = z.object({ reason: name, active: z.boolean() }).strict();
+const monthDay = z.number().int().min(contracts.recurringDay.min).max(contracts.recurringDay.max);
+const recurringDay = z.union([
+  monthDay,
+  z.string().regex(new RegExp(contracts.recurringDay.numericStringPattern), "Escribe un día numérico de 1 a 31.").transform(Number).pipe(monthDay),
+]).nullable().default(null);
 const recurringBody = z.object({
   clientId: id, routeId: id.optional(), serviceId: id.optional(), startDate: z.iso.date(),
   endDate: z.union([z.iso.date(), z.literal("")]).default(""), frequency: name,
-  day1: recurringDay.default(""),
-  day2: recurringDay.default(""),
+  day1: recurringDay,
+  day2: recurringDay,
   currency: singleLine(40, 1).refine((value) => supportedLedgerCurrency(value) !== undefined, "Selecciona DOP, USD o EUR.").transform(ledgerCurrency).default("DOP"), service: name, concept: short.default(""),
   useConceptAmount: z.boolean().default(false), amount, note: freeText(2000).default(""), active: z.boolean(),
-}).strict();
+}).strict().superRefine((body, context) => {
+  if (body.frequency !== "No Definida") return;
+  for (const key of ["day1", "day2"] as const) if (body[key] !== null)
+    context.addIssue({ code: "custom", path: [key], message: "El día debe quedar vacío cuando la frecuencia no está definida." });
+});
 function requireRow<T extends { id: string }>(rows: T[], rowId: string, label: string): T {
   const row = rows.find((item) => item.id === rowId);
   if (!row) throw new DomainError("NOT_FOUND", `${label} no encontrado.`, 404);
@@ -160,7 +171,8 @@ export function registerCatalogRoutes(app: FastifyInstance, store: Store, user: 
       if (!service.active && (!current || current.serviceId !== service.id)) throw new DomainError("SERVICE_INACTIVE", "Selecciona un servicio activo.", 409);
       if (!Object.hasOwn(frequencyCodes, input.frequency)) throw new DomainError("FREQUENCY_INVALID", "Selecciona una frecuencia válida.", 422);
       if (input.endDate && input.endDate < input.startDate) throw new DomainError("DATE_RANGE", "La fecha final debe ser igual o posterior a la inicial.", 422);
-      const values = { ...input, serviceId: service.id, routeId: client.routeId, day1: String(input.day1), day2: String(input.day2) };
+      // Legacy PostgreSQL columns are NOT NULL text; keep that storage representation.
+      const values = { ...input, serviceId: service.id, routeId: client.routeId, day1: input.day1 === null ? "" : String(input.day1), day2: input.day2 === null ? "" : String(input.day2) };
       if (current) { Object.assign(current, values); return current; }
       const recurring = { id: randomUUID(), registeredAt: new Date().toISOString(), ...values };
       state.recurringCharges.push(recurring); return recurring;

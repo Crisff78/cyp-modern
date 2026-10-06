@@ -1,3 +1,5 @@
+import { encodeCsvCell } from "../csv";
+
 export const formatMoney = (cents: number, currency: string) => {
   const exact = BigInt(cents);
   const absolute = exact < 0n ? -exact : exact;
@@ -24,11 +26,7 @@ export function printSections(title: string, sections: OutputSection[], subtitle
   window.setTimeout(() => popup.print(), 250);
 }
 export function exportSections(filename: string, sections: OutputSection[]) {
-  const cell = (value: unknown) => {
-    const text = String(value ?? "");
-    const safe = /^\s*[=+@\-]/.test(text) || /^[\t\r\n]/.test(text) ? `'${text}` : text;
-    return `"${safe.replace(/"/g, '""')}"`;
-  };
+  const cell = (value: unknown) => encodeCsvCell(value, ";", true);
   const content = sections.flatMap((section) => [[section.title], section.columns, ...section.rows, []]).map((row) => row.map(cell).join(";")).join("\r\n");
   const url = URL.createObjectURL(new Blob(["\ufeff", content], { type: "text/csv;charset=utf-8" }));
   const link = document.createElement("a");

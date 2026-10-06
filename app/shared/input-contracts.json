@@ -1,0 +1,5 @@
+{
+  "phone": { "maxLength": 40, "minDigits": 8, "maxDigits": 15 },
+  "email": { "maxLength": 200 },
+  "recurringDay": { "min": 1, "max": 31, "numericStringPattern": "^[0-9]{1,2}$" }
+}

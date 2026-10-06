@@ -22,13 +22,10 @@ import {
   Sparkline,
 } from "./components";
 import type { Collector, Page, Snapshot } from "./types";
+import { encodeCsvCell } from "../../shared/csv";
 
 export function exportCsv(filename: string, rows: (string | number)[][]) {
-  const safe = (value: string | number) => {
-    let text = String(value);
-    if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
-    return `"${text.replaceAll('"', '""')}"`;
-  };
+  const safe = (value: string | number) => encodeCsvCell(value, ",", true);
   const blob = new Blob(
     ["\uFEFF", rows.map((row) => row.map(safe).join(",")).join("\r\n")],
     { type: "text/csv;charset=utf-8;" },

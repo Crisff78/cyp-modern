@@ -1,0 +1,140 @@
+[
+  {
+    "name": "Cliente acepta nombre legítimo con apóstrofo y contactos malformados",
+    "url": "/api/clientes",
+    "status": 200,
+    "expected": 200,
+    "error": null
+  },
+  {
+    "name": "Cliente rechaza nombre vacío",
+    "url": "/api/clientes",
+    "status": 400,
+    "expected": 400,
+    "error": "name: Too small: expected string to have >=1 characters"
+  },
+  {
+    "name": "Cliente rechaza nombre mayor de 160",
+    "url": "/api/clientes",
+    "status": 400,
+    "expected": 400,
+    "error": "name: Too big: expected string to have <=160 characters"
+  },
+  {
+    "name": "GPS rechaza latitud fuera de rango",
+    "url": "/api/tracking",
+    "status": 400,
+    "expected": 400,
+    "error": "lat: Too big: expected number to be <=90"
+  },
+  {
+    "name": "Configuración acepta claves y tipos arbitrarios",
+    "url": "/api/configuracion",
+    "status": 200,
+    "expected": 200,
+    "error": null
+  },
+  {
+    "name": "Cargo rechaza importe de texto",
+    "url": "/api/cargos",
+    "status": 400,
+    "expected": 400,
+    "error": "amount: Invalid input: expected number, received string"
+  },
+  {
+    "name": "Cargo rechaza centavos fraccionados",
+    "url": "/api/cargos",
+    "status": 400,
+    "expected": 400,
+    "error": "amount: Invalid input: expected int, received number"
+  },
+  {
+    "name": "Cargo rechaza moneda ajena al catálogo",
+    "url": "/api/cargos",
+    "status": 400,
+    "expected": 400,
+    "error": "currency: Selecciona DOP, USD o EUR."
+  },
+  {
+    "name": "Cargo rechaza fecha inexistente",
+    "url": "/api/cargos",
+    "status": 400,
+    "expected": 400,
+    "error": "dueDate: Invalid ISO date"
+  },
+  {
+    "name": "Cargo rechaza propiedades desconocidas",
+    "url": "/api/cargos",
+    "status": 400,
+    "expected": 400,
+    "error": ": Unrecognized key: \"extra\""
+  },
+  {
+    "name": "Tasa rechaza texto arbitrario",
+    "url": "/api/envios/tasas",
+    "status": 422,
+    "expected": 422,
+    "error": "La tasa debe ser positiva y tener hasta seis decimales."
+  },
+  {
+    "name": "Servicio ficticio creado para verificar recurrencia",
+    "url": "/api/servicios",
+    "status": 200,
+    "expected": 200,
+    "error": null
+  },
+  {
+    "name": "Grupo ficticio creado para verificar PCP",
+    "url": "/api/grupos-pcp",
+    "status": 200,
+    "expected": 200,
+    "error": null
+  },
+  {
+    "name": "Cargo recurrente admite días de texto fuera del dominio",
+    "url": "/api/cargos-recurrentes",
+    "status": 200,
+    "expected": 200,
+    "error": null
+  },
+  {
+    "name": "Estación admite número y tipo de texto sin catálogo",
+    "url": "/api/estaciones",
+    "status": 200,
+    "expected": 200,
+    "error": null
+  },
+  {
+    "name": "PCP admite número alfanumérico y teléfono sin formato",
+    "url": "/api/pcps",
+    "status": 200,
+    "expected": 200,
+    "error": null
+  },
+  {
+    "name": "Cuenta de usuario rechaza correo malformado",
+    "url": "/api/usuarios",
+    "status": 400,
+    "expected": 400,
+    "error": "email: Escribe un correo válido."
+  },
+  {
+    "name": "Texto con apariencia de SQL no se interpreta como un cliente",
+    "url": "/api/cargos",
+    "status": 404,
+    "expected": 404,
+    "error": "Cliente no encontrado."
+  },
+  {
+    "name": "CSV de reportes conserva prefijo de fórmula",
+    "source": "app/client-admin/src/App.tsx:1007",
+    "output": "=1+1",
+    "interpretation": "Riesgo de fórmula al abrir en una hoja de cálculo; no SQL"
+  },
+  {
+    "name": "Texto SQL de zona se envía como parámetro separado",
+    "source": "app/server/src/catalog-store.ts:37",
+    "parameterized": true,
+    "databaseExecuted": false
+  }
+]

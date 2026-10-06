@@ -98,6 +98,7 @@ import { buildDepositComponents, confirmedDepositMatches, depositCashTotal, depo
 import { useChargeImportRequest } from "./useChargeImportRequest";
 import { decimalCents, formatMoney } from "../../shared/remittances/output";
 import { INPUT_LIMITS, assertCentsLimit, validateText, validatePhone, validateEmail } from "../../shared/inputRules";
+import { encodeCsvCell } from "../../shared/csv";
 import { GeoMap, type GeoPoint } from "./GeoMap";
 import { MonitorGeoMap } from "./MonitorGeoMap";
 import { ConnectedCatalog, isConnectedCatalog } from "./ConnectedCatalog";
@@ -1006,8 +1007,7 @@ function reportAmount(value: number) {
 }
 
 function csvCell(value: string, delimiter: string) {
-  const escaped = value.replace(/"/g, '""');
-  return escaped.includes(delimiter) || /["\r\n]/.test(escaped) ? `"${escaped}"` : escaped;
+  return encodeCsvCell(value, delimiter);
 }
 
 function rtfText(value: string) {

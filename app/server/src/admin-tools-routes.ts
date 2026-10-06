@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
+import { phoneOrEmpty } from "./contact-schemas.js";
 import { assertAdmin, businessDate, DomainError, type State, type User } from "./domain.js";
 import type { Store } from "./store.js";
 import {
@@ -17,7 +18,7 @@ const name = singleLine(160, 1);
 const short = singleLine(160).default("");
 const stationBody = z.object({ name, number: singleLine(80, 1), deviceId: short, description: freeText(1000).default(""),
   group: short, type: short, license: short, version: short, active: z.boolean().default(true) }).strict();
-const pcpBody = z.object({ name, number: singleLine(80, 1), groupId: id, address: singleLine(500).default(""), phone: phone.default(""), active: z.boolean().default(true) }).strict();
+const pcpBody = z.object({ name, number: singleLine(80, 1), groupId: id, address: singleLine(500).default(""), phone: phone.pipe(phoneOrEmpty).default(""), active: z.boolean().default(true) }).strict();
 const groupBody = z.object({ name }).strict();
 const requestBody = z.object({ clientId: id, collectorId: id, delayReasonId: id.optional(), forCollection: z.boolean(), note: freeText(2000, 1) }).strict();
 const resolutionBody = z.object({ status: z.enum(["approved", "rejected", "cancelled"]), note: freeText(2000, 1) }).strict();

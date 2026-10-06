@@ -8,6 +8,7 @@ import { remittancesApi } from "./remittancesApi";
 import { pendingMovementDraft, useMovementRequest } from "./useMovementRequest";
 import { decimalCents, formatMoney } from "../../shared/remittances/output";
 import { INPUT_LIMITS, assertCentsLimit, isDecimalDraft, isIntegerDraft, parseDay, validateEmail, validatePhone, validateText } from "../../shared/inputRules";
+import { recurringDayFromInput } from "../../shared/recurringDays";
 import type { Snapshot } from "./types";
 import "./connected-catalog.css";
 
@@ -123,6 +124,7 @@ export function ConnectedCatalog({ page, snapshot, actorId, onRefresh }: { page:
         payload[field.key] = cents;
       }
       else if (field.type === "money") payload[field.key] = assertCentsLimit(decimalCents(String(valueForField || "0")), field.label);
+      else if (page === "recurringCharges" && (field.key === "day1" || field.key === "day2")) payload[field.key] = value.frequency === "No Definida" ? null : recurringDayFromInput(valueForField);
       else if (field.type === "number") payload[field.key] = parseDay(String(valueForField), field.label);
       else payload[field.key] = field.type === "boolean" ? Boolean(valueForField) : field.type === "password" ? String(valueForField) : String(valueForField).trim();
     }
@@ -150,7 +152,7 @@ export function ConnectedCatalog({ page, snapshot, actorId, onRefresh }: { page:
       let payload: Record<string, unknown>;
       if (page === "collectors") { path += "/actividad"; payload = { active: !active(toggleTarget) }; }
       else if (page === "users") { path += "/estado"; payload = { status: active(toggleTarget) ? "disabled" : "active" }; }
-      else { payload = {}; for (const field of fields) if (toggleTarget[field.key] !== undefined) payload[field.key] = toggleTarget[field.key]; payload.active = !active(toggleTarget); if (page === "recurringCharges") { payload.currency = "DOP"; payload.useConceptAmount = Boolean(toggleTarget.useConceptAmount); } }
+      else { payload = {}; for (const field of fields) if (toggleTarget[field.key] !== undefined) payload[field.key] = toggleTarget[field.key]; payload.active = !active(toggleTarget); if (page === "recurringCharges") { payload.currency = "DOP"; payload.useConceptAmount = Boolean(toggleTarget.useConceptAmount); for (const key of ["day1", "day2"]) payload[key] = toggleTarget.frequency === "No Definida" ? null : recurringDayFromInput(toggleTarget[key]); } }
       await remittancesApi(path, { method: "POST", body: JSON.stringify(payload) }); await complete("Estado actualizado correctamente.");
     } catch (failure) { setFormError(failure instanceof Error ? failure.message : "No se pudo cambiar el estado."); }
     finally { setBusy(false); }
@@ -240,7 +242,14 @@ export function ConnectedCatalog({ page, snapshot, actorId, onRefresh }: { page:
   const control = (key: string, label?: string, className?: string): ReactNode => {
     const field = fields.find((item) => item.key === key);
     if (!field) return null;
-    const common = { "aria-label": label ?? field.label, disabled: busy, required: field.required, minLength: field.type === "password" ? MIN_ACCOUNT_PASSWORD_LENGTH : undefined, maxLength: field.maxLength, className };
+    const common = {
+      "aria-label": label ?? field.label,
+      disabled: busy || (page === "recurringCharges" && (key === "day1" || key === "day2") && draft.frequency === "No Definida"),
+      required: field.required,
+      minLength: field.type === "password" ? MIN_ACCOUNT_PASSWORD_LENGTH : undefined,
+      maxLength: field.maxLength,
+      className,
+    };
     if (field.type === "boolean") return <input {...common} type="checkbox" checked={Boolean(draft[key])} onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.checked }))} />;
     if (field.options) return <select {...common} value={String(draft[key] ?? "")} onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))}><option value="">Selecciona…</option>{field.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>;
     return <input {...common} type={field.type === "date" || field.type === "password" || field.type === "email" || field.type === "tel" ? field.type : "text"} inputMode={field.type === "money" ? "decimal" : field.type === "number" ? "numeric" : field.type === "tel" ? "tel" : undefined} autoComplete={field.type === "password" ? "new-password" : "off"} value={String(draft[key] ?? "")} onChange={(event) => {
