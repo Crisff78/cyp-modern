@@ -1,0 +1,43 @@
+# Cierre de las cuatro sugerencias parciales
+
+Base revisada: `main` y `codex/public-browser-demo` en
+`6df34267ff11d522ba6a65768d97939532c89a8d`. Corrección por Codex, 5 de octubre
+de 2026 (hora dominicana). La auditoría anterior revisó 28 puntos y encontró
+estos cuatro parciales; los otros 24 conservan su alcance acordado.
+
+| Punto | Implementación | Comprobación |
+|---|---|---|
+| 2.3 | Editar una estación y cambiar Activa abre la confirmación antes de enviar. Cancelar/X conserva todo el borrador; guardar sin cambiar estado no agrega confirmación. | Componentes reales y API MemoryStore aislada: ambos estados, cancelación, todos los campos, doble clic y respuesta perdida sin duplicar body, clave ni auditoría. |
+| 3.1 | Buscar clientes reconoce teléfonos formateados en nota. Al crear, “Usar teléfono como código” toma el teléfono validado; escribir luego otro teléfono no modifica el código elegido. | Regresiones de notas, números independientes, formatos de Haití, valores inválidos y conservación de identidad/documento. |
+| 4.1 | Cotización y detalle muestran `1 origen = destino`, o `≈` cuando la presentación se redondea. | División BigInt, doce cifras significativas, valores extremos, iguales, repetidos e inválidos; presentación real de Workspace exacta y aproximada. |
+| 6.4 | Campo grande busca teléfono, celular o teléfono escrito en nota además de código/nombre. El servidor devuelve IDs limitados; no publica las notas ni un índice global de contactos. | Autenticación, alcance de remitente/destinatario, selección explícita de clientes distintos con un mismo teléfono, teclado, consultas tardías, errores y respuestas JSON inválidas. |
+
+El teléfono funciona como código operativo cuando se elige esa acción. Sigue
+siendo obligatorio registrar la cédula/pasaporte al crear; el ID interno no cambia.
+La búsqueda de contactos en Remesas requiere al menos tres dígitos y reconoce
+números de 7 a 15 dígitos. Administración conserva sus búsquedas cortas y por
+texto. Palabras y separadores evitan unir dos números independientes en la nota;
+un número en texto libre produce candidatos, nunca una identidad automática.
+
+La tasa cruzada es una presentación de las tasas de la cotización, no una fórmula
+nueva. Principal, comisión, importe recibido y moneda permanecen calculados y
+validados por el servidor. Las comisiones del gestor continúan siendo manuales.
+
+## Verificación y límites
+
+- Pruebas locales del servidor, Administración y Cobrador sobre ejemplos
+  ficticios aislados; tipados y compilaciones de los tres paquetes.
+- Las pruebas de PostgreSQL dependen de un entorno aislado explícito. Las
+  omitidas se registran como omitidas; no se habilita una base compartida para
+  hacerlas pasar. Estos cambios no agregan migraciones.
+- Se conservan Z/L/R, los límites operativos DOP, los diseños y controles,
+  la impresión de 58/80 mm y las reglas existentes de idempotencia.
+- TestSprite e impresión física quedan excluidos. GPS físico confirmado por
+  el usuario, sin nueva prueba del asistente. Punto 2.2 conserva el ID de estación
+  de solo lectura; no añade identificación física ni emisión de licencias.
+- La revisión y los casos automatizados no certifican el 100 % de la aplicación
+  ni garantizan la ausencia de otros errores.
+
+La publicación se vincula al commit verificado: PR hacia `main`, CI, merge del
+head exacto y avance sin force de la rama de demo. Render ya existe y despliega
+esa rama automáticamente; no se crea otro servicio ni se cambia su configuración.

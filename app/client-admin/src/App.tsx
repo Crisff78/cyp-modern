@@ -104,7 +104,7 @@ import { ConnectedSettlements } from "./ConnectedSettlements";
 import { ConnectedLegacyReports } from "./ConnectedLegacyReports";
 import { ConnectedAdminTools, isConnectedAdminTool } from "./ConnectedAdminTools";
 import { ConnectedExchangeRates } from "./ConnectedExchangeRates";
-import { matchesClientSearch, copyPhoneIntoEmptyFields } from "./clientSearch";
+import { matchesClientSearch, copyPhoneIntoEmptyFields, clientCodeFromPhone } from "./clientSearch";
 import { unconfirmedCollectionBalances, recentMovementReceipts } from "./collectionAlerts";
 import { locationUnavailable, locationError as gpsError, validLocation } from "../../shared/geolocation";
 
@@ -2210,7 +2210,7 @@ const nextClientCode = (clients: readonly ClientLegacyRecord[]) => {
   return String(maxCode + 1).padStart(width, "0");
 };
 
-function ClientDataDialog({ client, zones, routes, defaultCode = "", onClose, onSave }: Readonly<{ client?: ClientLegacyRecord; zones: readonly string[]; routes: Snapshot["routes"]; defaultCode?: string; onClose: () => void; onSave: (draft: ClientLegacyDraft) => Promise<void> | void }>) {
+export function ClientDataDialog({ client, zones, routes, defaultCode = "", onClose, onSave }: Readonly<{ client?: ClientLegacyRecord; zones: readonly string[]; routes: Snapshot["routes"]; defaultCode?: string; onClose: () => void; onSave: (draft: ClientLegacyDraft) => Promise<void> | void }>) {
   const [draft, setDraft] = useState<ClientLegacyDraft>({
     preferredCurrency: client?.preferredCurrency ?? "DOP",
     code: client?.code ?? defaultCode,
@@ -2230,6 +2230,16 @@ function ClientDataDialog({ client, zones, routes, defaultCode = "", onClose, on
   const [error, setError] = useState("");
   const zoneOptions = ["No Definida", ...zones.filter((zone) => zone !== "No Definida")];
   const update = (field: keyof ClientLegacyDraft, value: string | boolean) => setDraft((current) => ({ ...current, [field]: value }));
+  const usePhoneAsCode = () => {
+    if (client) return;
+    try {
+      const code = clientCodeFromPhone(draft.phone);
+      setDraft((current) => ({ ...current, code }));
+      setError("");
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "Escribe un teléfono válido antes de usarlo como código.");
+    }
+  };
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (!draft.name.trim()) {
@@ -2261,6 +2271,7 @@ function ClientDataDialog({ client, zones, routes, defaultCode = "", onClose, on
         </div>
         <label className="client-form-row"><span>Nota:</span><input value={draft.note} onChange={(event) => update("note", event.target.value)} /></label>
         <button type="button" title="Completa celular y nota únicamente si están vacíos." disabled={!draft.phone.trim()} onClick={() => setDraft(copyPhoneIntoEmptyFields)}>Copiar teléfono a campos vacíos</button>
+        {!client && <button type="button" disabled={!draft.phone.trim()} onClick={usePhoneAsCode}>Usar teléfono como código</button>}
         <div className="legacy-dialog-actions"><button type="submit">oK</button><button type="button" onClick={onClose}>Cancelar</button></div>
       </form>
       {error && <LegacyAlertDialog message={error} onClose={() => setError("")} />}

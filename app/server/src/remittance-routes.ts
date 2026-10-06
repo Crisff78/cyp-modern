@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { assertAdmin, DomainError, type State, type User } from "./domain.js";
 import type { Store } from "./store.js";
+import { searchRemittanceClients } from "./remittance-client-search.js";
 import {
   canSeeOutgoing, canSeeReceipt, cancelRemittance, closeRemittanceCash, createRemittance,
   currencies, openRemittanceCash, payRemittance, quoteRemittance, remittanceReports,
@@ -30,6 +31,10 @@ export function registerRemittanceRoutes(
   };
   get("/api/envios/snapshot", "Estado de envíos, tasas y cajas por moneda", async (req) =>
     remittanceSnapshot(await store.read(), user(req), systemOperators));
+  get("/api/envios/clientes/buscar", "Buscar clientes de remesas por código, nombre o teléfono sin devolver notas", async (req) => {
+    const input = z.object({ query: z.string().trim().min(1).max(160), side: z.enum(["sender", "recipient"]), senderId: id.optional() }).strict().parse(req.query);
+    return searchRemittanceClients(await store.read(), user(req), input.query, input.side, input.senderId);
+  });
   for (const [path, filter] of [["/api/envios", canSeeOutgoing], ["/api/envios/recibos", canSeeReceipt]] as const)
     get(path, "Consultar envíos o recibos autorizados", async (req) => {
       const state = await store.read(), actor = user(req);

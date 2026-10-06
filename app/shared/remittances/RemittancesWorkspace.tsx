@@ -4,6 +4,7 @@ import type { Cash, Currency, Quotation, RemittanceSnapshot, Report, Transfer } 
 import { decimalCents, exportSections, formatDate, formatMoney, printSections, type OutputSection } from "./output";
 import { clientCurrency, clientLabel, commissionSections, contactRows, eligibleClients, LatestRequestGate, managerCommissionMatches, managerCommissionRows, managerCommissionSections, matchingClients, parseManagerCommission, quoteHistoryRows, rateMoment, selectRemittanceClient, type ClientSide, type RemittanceClient } from "./suggestions";
 import "./remittances.css";
+import { formatCrossRate } from "./crossRate";
 
 type Tab = "envios" | "recibos" | "tasas" | "caja" | "reportes";
 type Actor = { id: string; name: string };
@@ -27,12 +28,14 @@ function Dialog({ title, children, onClose, locked = false }: { title: string; c
 }
 
 function QuoteDetails({ quote }: { quote: Quotation }) {
+  const crossRate = formatCrossRate(quote.quote.sourceRate, quote.quote.destinationRate);
   return <dl className="remittance-summary">
     <div><dt>Principal</dt><dd>{money(quote.amount, quote.sourceCurrency)}</dd></div>
     <div><dt>Comisión ({quote.commissionBps / 100}%)</dt><dd>{money(quote.commissionAmount, quote.sourceCurrency)}</dd></div>
     <div className="remittance-total"><dt>Total que paga el remitente</dt><dd>{money(quote.totalAmount, quote.sourceCurrency)}</dd></div>
     <div className="remittance-total"><dt>Recibe el destinatario</dt><dd>{money(quote.receiveAmount, quote.destinationCurrency)}</dd></div>
     <div><dt>Tasas del {quote.quote.date}</dt><dd>1 {quote.sourceCurrency} = {quote.quote.sourceRate} DOP<br />1 {quote.destinationCurrency} = {quote.quote.destinationRate} DOP</dd></div>
+    <div><dt>Tasa de origen a destino</dt><dd>1 {quote.sourceCurrency} {crossRate.approximate ? "≈" : "="} {crossRate.text} {quote.destinationCurrency}{crossRate.approximate && <small> (tasa mostrada redondeada)</small>}</dd></div>
     <div><dt>Hora de cotización</dt><dd>{rateMoment(quote.quote.quotedAt)}</dd></div>
   </dl>;
 }
@@ -41,11 +44,30 @@ function DataTable({ section }: { section: OutputSection }) {
   return <div className="remittance-table-wrap"><table className="remittance-table"><caption>{section.title}</caption><thead><tr>{section.columns.map((column) => <th scope="col" key={column}>{column}</th>)}</tr></thead><tbody>{section.rows.map((row, index) => <tr key={index}>{row.map((cell, cellIndex) => <td key={cellIndex} data-label={section.columns[cellIndex]}>{cell}</td>)}</tr>)}{!section.rows.length && <tr><td colSpan={section.columns.length}>No hay resultados para esta consulta.</td></tr>}</tbody></table></div>;
 }
 
-function ClientPicker({ label, clients, value, query, onQuery, onSelect }: { label: string; clients: RemittanceClient[]; value: string; query: string; onQuery: (value: string) => void; onSelect: (client: RemittanceClient) => void }) {
+export function ClientPicker({ api, side, senderId, label, clients, value, query, onQuery, onSelect }: { api: StrictApi; side: ClientSide; senderId: string; label: string; clients: RemittanceClient[]; value: string; query: string; onQuery: (value: string) => void; onSelect: (client: RemittanceClient) => void }) {
   const id = useId();
   const [expanded, setExpanded] = useState(false);
   const [highlight, setHighlight] = useState(-1);
-  const matches = matchingClients(clients, query);
+  const [lookup, setLookup] = useState<{ query: string; ids: string[]; hasMore: boolean } | null>(null);
+  const [lookupError, setLookupError] = useState("");
+  const [lookupBusy, setLookupBusy] = useState(false);
+  useEffect(() => {
+    let retired = false;
+    setLookup(null); setLookupError(""); setLookupBusy(Boolean(query.trim()));
+    if (!query.trim()) return () => { retired = true; };
+    const timer = window.setTimeout(async () => {
+      try {
+        const input = new URLSearchParams({ query: query.trim(), side, ...(senderId ? { senderId } : {}) });
+        const result = await api<{ ids: string[]; hasMore: boolean }>(`/envios/clientes/buscar?${input}`);
+        if (!result || !Array.isArray(result.ids) || result.ids.length > 100 || result.ids.some((id) => typeof id !== "string" || !id || id.length > 80) || typeof result.hasMore !== "boolean")
+          throw new Error("La búsqueda devolvió una respuesta inválida. Reintenta la búsqueda.");
+        if (!retired) setLookup({ ...result, query });
+      } catch (failure) { if (!retired) setLookupError(failure instanceof Error ? failure.message : "No pudimos buscar por teléfono. Reintenta la búsqueda."); }
+      finally { if (!retired) setLookupBusy(false); }
+    }, 200);
+    return () => { retired = true; window.clearTimeout(timer); };
+  }, [api, side, senderId, query]);
+  const matches = lookup?.query === query ? clients.filter((client) => lookup.ids.includes(client.id)) : matchingClients(clients, query);
   const visible = matches.slice(0, 20);
   const selected = clients.find((client) => client.id === value);
   const choose = (client: RemittanceClient) => { onSelect(client); setExpanded(false); setHighlight(-1); };
@@ -54,8 +76,11 @@ function ClientPicker({ label, clients, value, query, onQuery, onSelect }: { lab
       if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); setExpanded(true); setHighlight((current) => Math.min(Math.max(current + (event.key === "ArrowDown" ? 1 : -1), 0), Math.max(visible.length - 1, 0))); }
       if (event.key === "Enter" && expanded) { event.preventDefault(); if (visible[Math.max(highlight, 0)]) choose(visible[Math.max(highlight, 0)]); }
       if (event.key === "Escape" && expanded) { event.preventDefault(); setExpanded(false); }
-    }} placeholder="Código telefónico o nombre del cliente" /></label>
+    }} maxLength={160} placeholder="Teléfono, código o nombre del cliente" /></label>
     {expanded && <div className="remittance-client-options" id={`${id}-options`} role="listbox" aria-label={`Clientes para ${label.toLocaleLowerCase()}`}>{visible.map((client, index) => <button type="button" key={client.id} id={`${id}-${index}`} role="option" aria-selected={client.id === value} className={index === highlight ? "highlighted" : undefined} onMouseDown={(event) => event.preventDefault()} onClick={() => choose(client)}>{clientLabel(client)}<small>Moneda habitual: {clientCurrency(client)}</small></button>)}{!visible.length && <p role="status">No hay clientes disponibles que coincidan.</p>}{matches.length > visible.length && <p>Escribe más caracteres para acotar los {matches.length} resultados.</p>}</div>}
+    {expanded && lookupBusy && <p role="status">Buscando contactos…</p>}
+    {expanded && lookupError && <p role="alert">{lookupError}</p>}
+    {expanded && lookup?.query === query && lookup.hasMore && <p role="status">Hay más coincidencias. Escribe más caracteres para acotar la búsqueda.</p>}
     <span className="remittance-client-selection" aria-live="polite">{selected ? `Seleccionado: ${clientLabel(selected)}` : "Selecciona un resultado para usar este cliente."}</span>
   </div>;
 }
@@ -269,8 +294,8 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
         <div className="remittance-toolbar"><label>Buscar<input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Referencia o cliente" /></label><label>Estado<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">Todos</option><option value="pending">Pendientes</option><option value="paid">Pagados</option><option value="cancelled">Cancelados</option></select></label>{tab === "envios" && <button type="button" className="remittance-primary" disabled={busy || uncertain} onClick={() => { if (formOpen) closeForm(); else { setFormOpen(true); clearErrors(); } }}>{formOpen ? "Cancelar nuevo envío" : "Nuevo envío"}</button>}</div>
         {tab === "envios" && formOpen && <form className="remittance-panel" onSubmit={(event) => void requestQuote(event)}>
           <h2>Nuevo envío</h2><fieldset disabled={working || uncertain} className="remittance-form-grid">
-            <ClientPicker label="Remitente" clients={eligibleClients(snapshot.clients, "sender", draft.senderClientId)} value={draft.senderClientId} query={senderSearch} onQuery={(value) => { setSenderSearch(value); updateDraft("senderClientId", ""); }} onSelect={(client) => chooseClient("sender", client)} />
-            <ClientPicker label="Destinatario" clients={eligibleClients(snapshot.clients, "recipient", draft.senderClientId)} value={draft.recipientClientId} query={recipientSearch} onQuery={(value) => { setRecipientSearch(value); updateDraft("recipientClientId", ""); }} onSelect={(client) => chooseClient("recipient", client)} />
+            <ClientPicker api={api} side="sender" senderId="" label="Remitente" clients={eligibleClients(snapshot.clients, "sender", draft.senderClientId)} value={draft.senderClientId} query={senderSearch} onQuery={(value) => { setSenderSearch(value); updateDraft("senderClientId", ""); }} onSelect={(client) => chooseClient("sender", client)} />
+            <ClientPicker api={api} side="recipient" senderId={draft.senderClientId} label="Destinatario" clients={eligibleClients(snapshot.clients, "recipient", draft.senderClientId)} value={draft.recipientClientId} query={recipientSearch} onQuery={(value) => { setRecipientSearch(value); updateDraft("recipientClientId", ""); }} onSelect={(client) => chooseClient("recipient", client)} />
             {isAdmin && <label>Operador del envío<select required value={draft.sendingUserId} onChange={(event) => updateDraft("sendingUserId", event.target.value)}>{snapshot.operators.map((operator) => <option key={operator.id} value={operator.id}>{operator.name}</option>)}</select></label>}
             <label>Moneda del remitente<select value={draft.sourceCurrency} onChange={(event) => updateDraft("sourceCurrency", event.target.value as Currency)}>{snapshot.currencies.map((currency) => <option key={currency}>{currency}</option>)}</select></label>
             <label>Principal ({draft.sourceCurrency})<input required inputMode="decimal" value={draft.amount} onChange={(event) => updateDraft("amount", event.target.value)} placeholder="0.00" /></label>
