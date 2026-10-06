@@ -1,5 +1,17 @@
 # Cierre de las cuatro sugerencias parciales
 
+## Hora visible en alta, edición y confirmación — 6 de octubre de 2026
+
+El campo Hora muestra el reloj actual del formulario en America/Santo_Domingo,
+con segundos, para todas las monedas. Se actualiza mientras está abierto y no
+forma parte del importe ni del JSON enviado. La hora efectiva del registro sigue
+asignándose en el servidor para cada cambio real; un guardado sin cambios y los
+reintentos conservan su marca existente.
+El último cambio registrado se muestra aparte. DOP ya no oculta una marca real
+con el texto "Referencia fija 1", tanto en formularios como en tablas y detalles.
+Los registros antiguos o referencias virtuales sin marca siguen indicando que
+no tienen hora registrada. No se inventan timestamps ni se cambia la tasa DOP 1.
+
 ## Ajuste de Ruta al crear clientes — 6 de octubre de 2026
 
 El alta de clientes inicia en "No definida" y no selecciona la primera ruta

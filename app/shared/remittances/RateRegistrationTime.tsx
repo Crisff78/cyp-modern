@@ -1,5 +1,6 @@
-import { useId } from "react";
+import { useEffect, useId, useState } from "react";
 import type { Rate } from "./types";
+import { rateMoment } from "./suggestions";
 
 const registrationTime = new Intl.DateTimeFormat("es-DO", {
   timeZone: "America/Santo_Domingo",
@@ -11,14 +12,14 @@ const registrationTime = new Intl.DateTimeFormat("es-DO", {
 
 export function RateRegistrationTime({ rate, className, labelClassName }: { rate?: Rate; className?: string; labelClassName?: string }) {
   const noteId = useId();
-  let value = "Se asigna al guardar";
-  if (rate?.currency === "DOP") value = "Referencia fija 1";
-  else if (rate) {
-    const timestamp = typeof rate.updatedAt === "string" ? new Date(rate.updatedAt) : null;
-    value = timestamp && Number.isFinite(timestamp.getTime()) ? registrationTime.format(timestamp) : "Hora no disponible";
-  }
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  const hasRecordedTime = typeof rate?.updatedAt === "string" && Number.isFinite(Date.parse(rate.updatedAt));
   return <>
-    <label className={className}><span className={labelClassName}>Hora:</span><input type="text" readOnly aria-label="Hora del último cambio de tasa" aria-describedby={noteId} value={value} /></label>
-    <p id={noteId} className="rate-registration-note">America/Santo_Domingo. La hora de cada cambio se registra automáticamente al confirmar.</p>
+    <label className={className}><span className={labelClassName}>Hora:</span><input type="text" readOnly aria-label="Hora actual del formulario" aria-describedby={noteId} value={registrationTime.format(now)} /></label>
+    <p id={noteId} className="rate-registration-note">Hora actual (America/Santo_Domingo). La hora de cada cambio la registra el servidor.<br />Último cambio registrado: {hasRecordedTime ? rateMoment(rate.updatedAt) : "Sin hora registrada"}.</p>
   </>;
 }
