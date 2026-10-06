@@ -25,6 +25,12 @@ validados por el servidor. Las comisiones del gestor continúan siendo manuales.
 
 ## Verificación y límites
 
+Actualización del punto 2.8, 6 de octubre de 2026: por solicitud de Rardiel,
+la clave de las cuentas admite un mínimo de 3 caracteres al crear o restablecer.
+Los formularios y la API aplican ese mínimo; el ingreso administrativo admite
+esas claves. El máximo sigue en 200 caracteres y las claves no se recortan.
+Se conservan hash, permisos, invalidación de sesiones e idempotencia.
+
 - Pruebas locales del servidor, Administración y Cobrador sobre ejemplos
   ficticios aislados; tipados y compilaciones de los tres paquetes.
 - Las pruebas de PostgreSQL dependen de un entorno aislado explícito. Las

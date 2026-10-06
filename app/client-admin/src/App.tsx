@@ -4365,7 +4365,7 @@ function Login({
                 autoComplete="current-password"
                 maxLength={INPUT_LIMITS.password}
                 required
-                minLength={8}
+                minLength={3}
                 placeholder="Tu contraseña"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}

@@ -496,17 +496,18 @@ remittancesApi("/snapshot").then(snapshot => { if (new URLSearchParams(location.
       const saved = writes.findLast((row) => row.pathname === "/api/envios/tasas")!;
       assert.equal(saved.status, 200); assert.equal(saved.body.rate, "0.005000");
     });
-    await run("SUG-2.8/2.9 account metadata and the authorized ten-character minimum", async () => {
+    await run("SUG-2.8/2.9 account metadata and the authorized three-character minimum", async () => {
       await open("users"); await page.getByTitle("Nuevo", { exact: true }).click();
       const dialog = page.getByRole("dialog", { name: "Datos de Usuario...", exact: true });
       await dialog.getByLabel("Nombre", { exact: true }).fill("Cuenta sintética QA");
       await dialog.getByLabel("Correo", { exact: true }).fill("qa-catalog@example.invalid");
       await dialog.getByLabel("Apodo", { exact: true }).fill("QA apodo"); await dialog.getByLabel("Nota", { exact: true }).fill("Nota sintética conservada");
       await dialog.getByLabel("Cobrador asociado", { exact: true }).selectOption("col-1");
-      const password = dialog.getByLabel("Contraseña inicial (mínimo 10 caracteres)", { exact: true });
-      await password.fill("Qa1234567"); const count = writes.length;
-      await dialog.getByRole("button", { name: "oK", exact: true }).click(); await dialog.getByRole("alert").waitFor(); assert.equal(writes.length, count);
-      await password.fill("Qa12345678"); await dialog.getByRole("button", { name: "oK", exact: true }).click();
+      const password = dialog.getByLabel("Contraseña inicial (mínimo 3 caracteres)", { exact: true });
+      await password.fill("Qa"); const count = writes.length;
+      assert.equal(await password.evaluate((input: HTMLInputElement) => input.checkValidity()), false);
+      await dialog.getByRole("button", { name: "oK", exact: true }).click(); assert.equal(writes.length, count);
+      await password.fill("Qa3"); await dialog.getByRole("button", { name: "oK", exact: true }).click();
       await page.getByText("Datos guardados correctamente.", { exact: true }).waitFor();
       const created = (await store.read()).accounts.find((row) => row.email === "qa-catalog@example.invalid")!;
       assert.equal(created.nickname, "QA apodo"); assert.equal(created.note, "Nota sintética conservada"); assert.equal(created.role, "collector");
@@ -518,13 +519,13 @@ remittancesApi("/snapshot").then(snapshot => { if (new URLSearchParams(location.
       await dialog.getByLabel("Correo", { exact: true }).fill("qa-modal@example.invalid");
       await dialog.getByLabel("Apodo", { exact: true }).fill("QA modal");
       await dialog.getByLabel("Nota", { exact: true }).fill("Nota de modal sintética");
-      const password = dialog.getByLabel("Contraseña (10 caracteres mínimo)", { exact: true });
-      await password.fill("Qa1234567");
+      const password = dialog.getByLabel("Contraseña (3 caracteres mínimo)", { exact: true });
+      await password.fill("Qa");
       assert.equal(await password.evaluate((input: HTMLInputElement) => input.checkValidity()), false);
       const count = writes.length;
       await dialog.getByRole("button", { name: "Crear cuenta", exact: true }).click();
       assert.equal(writes.length, count);
-      await password.fill("Qa12345678");
+      await password.fill("Qa3");
       loseNextAccountResponse = true;
       await dialog.getByRole("button", { name: "Crear cuenta", exact: true }).click();
       await dialog.getByRole("button", { name: "Reintentar misma operación", exact: true }).waitFor();
@@ -535,7 +536,7 @@ remittancesApi("/snapshot").then(snapshot => { if (new URLSearchParams(location.
       await dialog.getByRole("button", { name: "Reintentar misma operación", exact: true }).evaluate((button: HTMLButtonElement) => { button.click(); button.click(); });
       await page.getByText("Ventana cerrada", { exact: true }).waitFor();
       const attempts = writes.slice(count).filter((row) => row.pathname === "/api/usuarios");
-      assert.equal(attempts.length, 2); assert.equal(attempts[0].key, attempts[1].key); assert.deepEqual(attempts[0].body, attempts[1].body); assert.equal(attempts[0].body.passwordLength, 10);
+      assert.equal(attempts.length, 2); assert.equal(attempts[0].key, attempts[1].key); assert.deepEqual(attempts[0].body, attempts[1].body); assert.equal(attempts[0].body.passwordLength, 3);
       const accounts = (await store.read()).accounts.filter((row) => row.email === "qa-modal@example.invalid");
       assert.equal(accounts.length, 1); assert.equal(accounts[0].nickname, "QA modal"); assert.equal(accounts[0].note, "Nota de modal sintética");
     });
@@ -580,7 +581,7 @@ remittancesApi("/snapshot").then(snapshot => { if (new URLSearchParams(location.
       const dialog = page.getByRole("dialog", { name: "Nueva cuenta", exact: true });
       await dialog.getByLabel("Nombre", { exact: true }).fill("Cuenta mock sintética");
       await dialog.getByLabel("Correo", { exact: true }).fill("qa-mock@example.invalid");
-      await dialog.getByLabel("Contraseña (10 caracteres mínimo)", { exact: true }).fill("Qa12345678");
+      await dialog.getByLabel("Contraseña (3 caracteres mínimo)", { exact: true }).fill("Qa3");
       const count = writes.length;
       await dialog.getByRole("button", { name: "Crear cuenta", exact: true }).click();
       await dialog.getByRole("alert").filter({ hasText: "Ruta mock no implementada para esta vista." }).waitFor();

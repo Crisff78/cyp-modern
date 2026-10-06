@@ -21,8 +21,8 @@ export type AccountOperation =
   | { type: "password"; account: PublicAccount }
   | { type: "status"; account: PublicAccount; status: "active" | "disabled" };
 
-// Match the public invitation policy (demo-access.ts), never an invitation value.
-const MIN_LENGTH = 10;
+// Match the account password policy enforced by the API.
+const MIN_LENGTH = 3;
 const labelFor = (operation: AccountOperation) =>
   operation.type === "create"
     ? "Nueva cuenta"
@@ -122,7 +122,7 @@ function AccountForm({
     if (creating && !name.trim()) return setError("Escribe el nombre.");
     if (creating && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
       return setError("Escribe un correo válido.");
-    if ((creating || rotating) && password.length < MIN_LENGTH)
+    if ((creating || rotating) && Array.from(password).length < MIN_LENGTH)
       return setError(
         `La contraseña debe tener al menos ${MIN_LENGTH} caracteres.`,
       );

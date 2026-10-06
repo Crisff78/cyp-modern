@@ -18,10 +18,12 @@ alta por defecto. Las preferencias del remitente y destinatario son distintas.
 Buscar por teléfono no identifica a una persona de forma única. Copiar teléfono
 a celular o nota es una acción explícita que conserva los valores ya escritos.
 
-Las cuentas tienen `nickname` y `note` informativos. La longitud mínima aprobada
-para crear o cambiar una contraseña es 10, como la política pública de invitación
-en `demo-access.ts` y `DEMO-PUBLICA.md`. El login de cuentas existentes y el mínimo
-14 del bootstrap no demo mantienen su comportamiento.
+Las cuentas tienen `nickname` y `note` informativos. Por solicitud de Rardiel del
+6 de octubre de 2026, la longitud mínima para crear o cambiar una contraseña es
+3 caracteres Unicode, sin recortar espacios; el máximo sigue en 200. El formulario
+de ingreso administrativo admite estas claves. La API de login autentica la clave
+existente. El mínimo 14 del bootstrap no demo y la política de invitación pública
+conservan su configuración independiente.
 
 Los servicios pueden registrar `referencePriceCents` y `referenceCurrency`
 juntos, `taxReference`, `benefitReference` y `referenceQuantity`. Son referencias

@@ -683,7 +683,7 @@ test("account provisioning: create, login, scope, password rotation and disable"
       ).statusCode,
       422,
     );
-    // Weak passwords are rejected.
+    // Passwords below the configured minimum are rejected.
     assert.equal(
       (
         await post("/api/usuarios", {
@@ -691,7 +691,7 @@ test("account provisioning: create, login, scope, password rotation and disable"
           email: collectorEmail,
           role: "collector",
           collectorId: "col-1",
-          password: "corta",
+          password: "ab",
         })
       ).statusCode,
       400,
