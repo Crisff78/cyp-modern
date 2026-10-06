@@ -80,6 +80,14 @@ intermedios y rechaza resultados fuera del rango seguro.
   El remitente debe pertenecer a la ruta del operador si este es cobrador.
   Necesita caja abierta del operador en moneda origen y fecha actual.
 
+Al confirmar el alta, la interfaz valida la respuesta persistida y pregunta
+«¿Quieres imprimir el recibo?». Imprimir reutiliza el mismo comprobante del
+detalle, con los contactos y tasas guardados; No imprimir solo cierra la pregunta.
+Una respuesta incierta conserva el formulario y la clave para reintentar, sin
+ofrecer impresión hasta confirmar el resultado. Un error al actualizar el listado
+no pierde el comprobante confirmado. Si se bloquea la ventana de impresión, la
+pregunta conserva el recibo y muestra el aviso para volver a imprimir, sin otro POST.
+
 ## Pago y cancelación
 
 - `POST /envios/:id/pagar` con `{}` → `TransferView`. Pago único y completo,
