@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type R
 import { operationKey, StrictApiError, type StrictApi } from "./strictApi";
 import type { Cash, Currency, Quotation, Rate, RemittanceContact, RemittanceSnapshot, Report, Transfer } from "./types";
 import { decimalCents, exportSections, formatDate, formatMoney, printSections, type OutputSection } from "./output";
-import { clientCurrency, clientLabel, commissionSections, contactRows, eligibleClients, LatestRequestGate, managerCommissionMatches, managerCommissionRows, managerCommissionSections, matchingClients, parseManagerCommission, quoteHistoryRows, rateMoment, selectRemittanceClient, type ClientSide, type RemittanceClient } from "./suggestions";
+import { clientCurrency, clientLabel, commissionSections, contactRows, eligibleClients, LatestRequestGate, managerCommissionRows, managerCommissionSections, matchingClients, parseManagerCommission, quoteHistoryRows, rateMoment, selectRemittanceClient, type ClientSide, type RemittanceClient } from "./suggestions";
 import "./remittances.css";
 import { formatCrossRate } from "./crossRate";
 import { INPUT_LIMITS, isDecimalDraft, validateText } from "../inputRules";
@@ -10,6 +10,7 @@ import { RateRegistrationTime } from "./RateRegistrationTime";
 import { confirmedRateInput, rateInputDraft, RATE_INPUT_MAX_LENGTH } from "./rateInput";
 import { confirmedRateResponse } from "./rateResponse";
 import { useClientContact } from "./useClientContact";
+import { confirmedCreatedTransfer } from "./createdTransferResponse";
 
 type Tab = "envios" | "recibos" | "tasas" | "caja" | "reportes";
 type Actor = { id: string; name: string };
@@ -128,6 +129,8 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   const [confirmation, setConfirmation] = useState<Confirmation | null>(() => pendingByActor.get(user.id) ?? null);
   const [uncertain, setUncertain] = useState(() => pendingByActor.has(user.id));
   const [confirmationError, setConfirmationError] = useState("");
+  const [printTransfer, setPrintTransfer] = useState<Transfer | null>(null);
+  const [receiptPrintError, setReceiptPrintError] = useState("");
   const [rate, setRate] = useState({ currency: "USD" as Currency, value: "" });
   const [opening, setOpening] = useState({ operatorId: user.id, currency: "DOP" as Currency, amount: "0" });
   const [closing, setClosing] = useState<Cash | null>(null);
@@ -184,6 +187,12 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   const confirm = (action: Confirmation) => { setConfirmation({ ...action, idempotencyKey: operationKey() }); setConfirmationError(""); setUncertain(false); setNotice(""); };
   const failureMessage = (failure: unknown) => failure instanceof Error ? failure.message : "No pudimos completar la operación.";
   const runOutput = (action: () => void) => { try { action(); setOutputError(""); } catch (failure) { setOutputError(failureMessage(failure)); } };
+  const closePrintPrompt = () => { setPrintTransfer(null); setReceiptPrintError(""); };
+  const printSavedReceipt = () => {
+    if (!printTransfer) return;
+    try { printSections(`Comprobante ${printTransfer.envioReference}`, transferOutput(printTransfer)); closePrintPrompt(); }
+    catch (failure) { setReceiptPrintError(failureMessage(failure)); }
+  };
   useEffect(() => {
     if (!snapshot) return;
     const invalidSender = Boolean(draft.senderClientId && !eligibleClients(snapshot.clients, "sender", draft.senderClientId).some((client) => client.id === draft.senderClientId));
@@ -207,13 +216,14 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
     try {
       const result = await api<Transfer>(confirmation.path, { method: "POST", headers: { "Idempotency-Key": confirmation.idempotencyKey! }, body: JSON.stringify(confirmation.body) });
       if (confirmation.kind === "rate") confirmedRateResponse(result, confirmation.body as Pick<Rate, "currency" | "date" | "rate">);
-      if (confirmation.kind === "create" && !managerCommissionMatches(confirmation.body.managerCommission as Transfer["managerCommission"], result?.managerCommission)) throw new StrictApiError("La respuesta no confirmó la información del gestor. Conservamos los datos: reintenta esta misma operación sin cambiarlos.", 200, true, "REMITTANCE_CONFIRMATION_INVALID");
+      const savedTransfer = confirmation.kind === "create" ? confirmedCreatedTransfer(result, confirmation.body, user.id) : null;
       pendingByActor.delete(user.id);
       setNotice("Operación registrada correctamente.");
       if (confirmation.kind === "create") { setFormOpen(false); setQuote(null); setDraft((current) => ({ ...current, amount: "", note: "", managerInfo: false, managerName: "", managerAmount: "", managerCurrency: "" })); }
       if (confirmation.kind === "close") { setClosing(null); setCounted(""); }
       if (confirmation.kind === "cancel") setCancelReason("");
       setConfirmation(null); setUncertain(false); setReport(null);
+      if (savedTransfer) { setPrintTransfer(savedTransfer); setReceiptPrintError(""); }
       await refresh();
     } catch (failure) {
       setConfirmationError(failureMessage(failure));
@@ -390,5 +400,11 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
     </Dialog>}
     {closing && <Dialog title={`Contar caja ${closing.currency}`} onClose={() => setClosing(null)}><form onSubmit={prepareClosing}><p>{operatorName(closing.operatorId)} · {closing.date}</p><p>Esperado: <strong>{money(closing.expected, closing.currency)}</strong></p><label>Efectivo contado<input autoFocus required inputMode="decimal" maxLength={moneyInputLength} value={counted} onChange={(event) => { if (isDecimalDraft(event.target.value)) setCounted(event.target.value); }} /></label>{error && <p role="alert" className="remittance-error">{error}</p>}<button className="remittance-primary" type="submit">Revisar cierre</button></form></Dialog>}
     {confirmation && <Dialog title={confirmation.title} onClose={() => setConfirmation(null)} locked={busy || uncertain}>{confirmation.description}{confirmationError && <p className="remittance-error" role="alert">{confirmationError}</p>}{uncertain && <p>No cambies los datos ni cierres esta ventana. El reintento usa la misma referencia de operación.</p>}<div className="remittance-actions"><button type="button" disabled={busy || uncertain} onClick={() => setConfirmation(null)}>Volver</button><button type="button" className={confirmation.kind === "cancel" ? "remittance-danger" : "remittance-primary"} disabled={busy} onClick={() => void submitConfirmation()}>{busy ? "Registrando…" : uncertain ? "Reintentar misma operación" : "Confirmar"}</button></div></Dialog>}
+    {printTransfer && <Dialog title="¿Quieres imprimir el recibo?" onClose={closePrintPrompt}>
+      <p>El envío <strong>{printTransfer.envioReference}</strong> quedó registrado correctamente. Recibo: <strong>{printTransfer.reciboReference}</strong>.</p>
+      <p>Puedes imprimirlo ahora o más tarde desde el detalle del envío.</p>
+      {receiptPrintError && <p className="remittance-error" role="alert">{receiptPrintError}</p>}
+      <div className="remittance-actions"><button type="button" onClick={closePrintPrompt}>No imprimir</button><button type="button" className="remittance-primary" onClick={printSavedReceipt}>Imprimir</button></div>
+    </Dialog>}
   </section>;
 }
