@@ -27,11 +27,11 @@ const hash = (file: string) => createHash("sha256").update(fs.readFileSync(file)
 
 test("administration suggestions run in real components with a synthetic isolated API", { skip: canRunBrowser ? false : "Installed Windows Edge and Playwright are required; no download attempted." }, async (t) => {
   const output = fs.mkdtempSync(path.join(os.tmpdir(), "cyp-admin-suggestions-"));
-  const ownedSources = ["app/client-admin/src/ConnectedCatalog.tsx", "app/client-admin/src/CollectorAssignmentsDialog.tsx", "app/client-admin/src/collectorAssignmentsState.ts", "app/client-admin/src/collector-assignments.css", "app/client-admin/src/ConnectedAdminTools.tsx", "app/client-admin/src/ConnectedExchangeRates.tsx", "app/client-admin/src/ConnectedUserPermissionsDialog.tsx", "app/client-admin/src/Users.tsx", "app/server/src/catalog-routes.ts"];
+  const selection = process.env.CYP_QA_CATALOG_CASE ?? "all";
+  const ownedSources = selection === "station-status" ? ["app/client-admin/src/ConnectedAdminTools.tsx"] : ["app/client-admin/src/ConnectedCatalog.tsx", "app/client-admin/src/CollectorAssignmentsDialog.tsx", "app/client-admin/src/collectorAssignmentsState.ts", "app/client-admin/src/collector-assignments.css", "app/client-admin/src/ConnectedAdminTools.tsx", "app/client-admin/src/ConnectedExchangeRates.tsx", "app/client-admin/src/ConnectedUserPermissionsDialog.tsx", "app/client-admin/src/Users.tsx", "app/server/src/catalog-routes.ts"];
   const before = Object.fromEntries(ownedSources.map((file) => [file, hash(path.join(projectRoot, file))]));
   const report: Record<string, unknown> = { startedUtc: new Date().toISOString(), sourceBases: ["655a54e37d0dc91fbc7d20919082f7a26744b07d", "94d38a8bba1b43e0a84bb216d0dd4a35c473a8e9"], runnerSha256: hash(fileURLToPath(import.meta.url)), sourceHashes: before, scope: "Actual connected components in a QA composition; real buildApp/MemoryStore API; no full App or provider claim.", output, cases: [], externalAttemptsBlocked: [], pageErrors: [] };
-  const selection = process.env.CYP_QA_CATALOG_CASE ?? "all";
-  assert(["all", "collector-integration", "account-modal", "account-mock", "service-reference"].includes(selection), "Only the documented QA case selection is allowed.");
+  assert(["all", "collector-integration", "account-modal", "account-mock", "service-reference", "station-status"].includes(selection), "Only the documented QA case selection is allowed.");
   report.caseSelection = selection;
   const cases = report.cases as Array<{ id: string; status: string }>;
   const external = report.externalAttemptsBlocked as string[];
@@ -63,7 +63,9 @@ test("administration suggestions run in real components with a synthetic isolate
   const writes: Array<{ pathname: string; status: number; key?: string; body: Record<string, unknown> }> = [];
   let loseNextLimitsResponse = false;
   let loseNextAccountResponse = false;
+  let loseNextStationResponse = false;
   let delayNextLimitsResponse = false;
+  let delayNextStationResponse = false;
   let browser: any, context: any, server: ReturnType<typeof createServer> | undefined;
   try {
     const fixture = path.join(output, "fixture.tsx");
@@ -106,6 +108,7 @@ remittancesApi("/snapshot").then(snapshot => { if (new URLSearchParams(location.
           if (request.method === "POST" && pathname.endsWith("/limites")) {
             if (delayNextLimitsResponse) { delayNextLimitsResponse = false; await new Promise((resolve) => setTimeout(resolve, 300)); }
           }
+          if (request.method === "POST" && pathname === `/api/estaciones/${stationId}` && delayNextStationResponse) { delayNextStationResponse = false; await new Promise((resolve) => setTimeout(resolve, 300)); }
           response.writeHead(result.statusCode, { "Content-Type": "application/json; charset=utf-8" }); response.end(result.body); return;
         }
         if (pathname === "/") { response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }); response.end(html); return; }
@@ -124,9 +127,10 @@ remittancesApi("/snapshot").then(snapshot => { if (new URLSearchParams(location.
     await context.route("**/*", async (route: any) => {
       const target = new URL(route.request().url());
       if (target.origin !== origin) { external.push(target.origin); return route.abort("blockedbyclient"); }
-      if (route.request().method() === "POST" && ((target.pathname.endsWith("/limites") && loseNextLimitsResponse) || (target.pathname === "/api/usuarios" && loseNextAccountResponse))) {
+      if (route.request().method() === "POST" && ((target.pathname.endsWith("/limites") && loseNextLimitsResponse) || (target.pathname === "/api/usuarios" && loseNextAccountResponse) || (target.pathname === `/api/estaciones/${stationId}` && loseNextStationResponse))) {
         loseNextLimitsResponse = false;
         loseNextAccountResponse = false;
+        loseNextStationResponse = false;
         const confirmed = await route.fetch();
         assert.equal(confirmed.status(), 200, "The synthetic backend must commit before dropping its response.");
         await confirmed.dispose();
@@ -154,6 +158,7 @@ remittancesApi("/snapshot").then(snapshot => { if (new URLSearchParams(location.
       if (selection === "account-mock" && !id.includes("account mock compatibility")) return;
       if (selection === "service-reference" && !id.includes("service manual references")) return;
       if (selection === "collector-integration" && !id.startsWith("SUG-2.1") && !id.startsWith("PR3 Z/L/R")) return;
+      if (selection === "station-status" && !id.includes("station")) return;
       await t.test(id, async () => { try { await body(); cases.push({ id, status: "PASS" }); } catch (error) { cases.push({ id, status: "FAIL" }); throw error; } });
     };
 
@@ -386,6 +391,91 @@ remittancesApi("/snapshot").then(snapshot => { if (new URLSearchParams(location.
       assert.match(await page.getByRole("dialog").innerText(), /Activar la estación Estación sintética QA \(código QA-STATION-01\)/);
       await page.getByRole("button", { name: "Confirmar", exact: true }).click(); await page.getByTitle("Inactivar", { exact: true }).waitFor();
     });
+    const currentStation = async () => (await store.read()).adminTools.stations.find((row) => row.id === stationId)!;
+    const openStationEditor = async () => {
+      await open("stations");
+      await page.getByRole("row").filter({ hasText: (await currentStation()).name }).click();
+      await page.getByTitle("Editar", { exact: true }).click();
+      return page.getByRole("dialog", { name: "Datos de la Estación de PCP", exact: true });
+    };
+    const stationFields = {
+      "Estación": "Estación QA editada", "Número": "QA-STATION-EDIT", "Identificador del dispositivo (si se conoce)": "QA-DEVICE-EDIT",
+      "Descrip.:": "Descripción sintética editada", "Grupo de estación": "QA-GROUP", "Tipo": "QA-TYPE",
+      "Licencia registrada (opcional)": "QA-LICENSE", "Versión registrada (opcional)": "QA-VERSION",
+    };
+    const expectedStationBody = { name: stationFields.Estación, number: stationFields.Número, deviceId: stationFields["Identificador del dispositivo (si se conoce)"], description: stationFields["Descrip.:"], group: stationFields["Grupo de estación"], type: stationFields.Tipo, license: stationFields["Licencia registrada (opcional)"], version: stationFields["Versión registrada (opcional)"], active: false };
+    const stationField = (dialog: any, label: string) => dialog.getByLabel(label === "Descrip.:" ? /^Descrip\.:/ : label, { exact: label !== "Descrip.:" });
+    const stationWrites = () => writes.filter((row) => row.pathname === `/api/estaciones/${stationId}`);
+    await run("SUG-2.3 station edit cancellation and close preserve the draft; unchanged status saves normally", async () => {
+      const dialog = await openStationEditor(), before = structuredClone(await currentStation()), count = stationWrites().length;
+      for (const [label, entry] of Object.entries(stationFields)) await stationField(dialog, label).fill(entry);
+      await dialog.getByRole("checkbox", { name: "Activa", exact: true }).uncheck();
+      await dialog.getByRole("button", { name: "oK", exact: true }).click();
+      const confirmation = page.getByRole("dialog", { name: "Confirmación", exact: true });
+      await confirmation.waitFor(); assert.match(await confirmation.innerText(), /Inactivar la estación Estación QA editada \(código QA-STATION-EDIT\)/);
+      assert.equal(stationWrites().length, count); assert.deepEqual(await currentStation(), before);
+      await confirmation.getByRole("button", { name: "Cancelar", exact: true }).click();
+      for (const [label, entry] of Object.entries(stationFields)) assert.equal(await stationField(dialog, label).inputValue(), entry);
+      assert.equal(await dialog.getByRole("checkbox", { name: "Activa", exact: true }).isChecked(), false);
+      await dialog.getByRole("button", { name: "oK", exact: true }).click();
+      await confirmation.getByRole("button", { name: "Cerrar Confirmación", exact: true }).click();
+      for (const [label, entry] of Object.entries(stationFields)) assert.equal(await stationField(dialog, label).inputValue(), entry);
+      assert.equal(await dialog.getByRole("checkbox", { name: "Activa", exact: true }).isChecked(), false);
+      assert.equal(stationWrites().length, count); assert.deepEqual(await currentStation(), before);
+      await dialog.getByRole("checkbox", { name: "Activa", exact: true }).check();
+      await dialog.getByRole("button", { name: "oK", exact: true }).click();
+      await page.getByText("Datos guardados correctamente.", { exact: true }).waitFor();
+      assert.equal(await confirmation.count(), 0); assert.equal(stationWrites().length, count + 1);
+      assert.deepEqual(await currentStation(), { id: stationId, ...expectedStationBody, active: true });
+    });
+    await run("SUG-2.3 station edit confirms both transitions with all fields and one intent", async () => {
+      const dialog = await openStationEditor(), before = await operationalState(), count = stationWrites().length;
+      for (const [label, entry] of Object.entries(stationFields)) await stationField(dialog, label).fill(entry);
+      await dialog.getByRole("checkbox", { name: "Activa", exact: true }).uncheck();
+      await dialog.getByRole("button", { name: "oK", exact: true }).click();
+      const confirmation = page.getByRole("dialog", { name: "Confirmación", exact: true });
+      await confirmation.waitFor(); assert.equal(stationWrites().length, count);
+      delayNextStationResponse = true;
+      await confirmation.getByRole("button", { name: "Confirmar", exact: true }).evaluate((button: HTMLButtonElement) => { button.click(); button.click(); });
+      await page.getByText("Datos guardados correctamente.", { exact: true }).waitFor();
+      const first = stationWrites().at(-1)!;
+      assert.equal(stationWrites().length, count + 1); assert.equal(first.status, 200); assert.match(first.key!, /^[a-f0-9]{32}$/); assert.deepEqual(first.body, expectedStationBody);
+      assert.deepEqual(await currentStation(), { id: stationId, ...expectedStationBody });
+      assert.deepEqual(await operationalState(), before);
+      const activate = await openStationEditor(); await activate.getByRole("checkbox", { name: "Activa", exact: true }).check();
+      await activate.getByRole("button", { name: "oK", exact: true }).click();
+      assert.match(await confirmation.innerText(), /Activar la estación Estación QA editada/);
+      await confirmation.getByRole("button", { name: "Confirmar", exact: true }).click();
+      await page.getByText("Datos guardados correctamente.", { exact: true }).waitFor();
+      const second = stationWrites().at(-1)!;
+      assert.deepEqual(second.body, { ...expectedStationBody, active: true }); assert.notEqual(second.key, first.key);
+      assert.equal((await currentStation()).active, true); assert.deepEqual(await operationalState(), before);
+    });
+    await run("SUG-2.3 station edit and toolbar retain the body and key after a lost committed response", async () => {
+      const dialog = await openStationEditor(), count = stationWrites().length;
+      await stationField(dialog, "Descrip.:").fill("Borrador sintético confirmado una vez");
+      await dialog.getByRole("checkbox", { name: "Activa", exact: true }).uncheck();
+      await dialog.getByRole("button", { name: "oK", exact: true }).click();
+      const confirmation = page.getByRole("dialog", { name: "Confirmación", exact: true });
+      loseNextStationResponse = true; await confirmation.getByRole("button", { name: "Confirmar", exact: true }).click();
+      await confirmation.getByRole("button", { name: "Reintentar", exact: true }).waitFor();
+      assert.equal(stationWrites().length, count + 1); assert.equal((await currentStation()).active, false);
+      const committed = structuredClone(await store.read());
+      assert.equal(await confirmation.getByRole("button", { name: "Cancelar", exact: true }).isDisabled(), true);
+      await confirmation.getByRole("button", { name: "Cerrar Confirmación", exact: true }).click(); assert.equal(await confirmation.count(), 1);
+      await confirmation.getByRole("button", { name: "Reintentar", exact: true }).click();
+      await page.getByText("Datos guardados correctamente.", { exact: true }).waitFor();
+      const attempts = stationWrites().slice(count); assert.equal(attempts.length, 2); assert.equal(attempts[0].key, attempts[1].key); assert.deepEqual(attempts[0].body, attempts[1].body);
+      assert.deepEqual(await store.read(), committed, "Retry must not repeat the station mutation or its audit event.");
+      const toolbarCount = stationWrites().length;
+      await page.getByTitle("Activar", { exact: true }).click(); await confirmation.waitFor();
+      loseNextStationResponse = true; await confirmation.getByRole("button", { name: "Confirmar", exact: true }).click();
+      await confirmation.getByRole("button", { name: "Reintentar", exact: true }).waitFor();
+      const toolbarCommitted = structuredClone(await store.read());
+      await confirmation.getByRole("button", { name: "Reintentar", exact: true }).click(); await page.getByText("Estado actualizado.", { exact: true }).waitFor();
+      const toolbarAttempts = stationWrites().slice(toolbarCount); assert.equal(toolbarAttempts.length, 2); assert.equal(toolbarAttempts[0].key, toolbarAttempts[1].key); assert.deepEqual(toolbarAttempts[0].body, toolbarAttempts[1].body); assert.notEqual(toolbarAttempts[0].key, attempts[0].key);
+      assert.equal((await currentStation()).active, true); assert.deepEqual(await store.read(), toolbarCommitted);
+    });
     await run("SUG-2.6/2.10 panels explain administrative scope without granting roles", async () => {
       const count = writes.length;
       await open("authorizationRequests"); await page.getByText(/Solicitudes de revisión administrativa de un cliente/).waitFor();
@@ -507,7 +597,7 @@ remittancesApi("/snapshot").then(snapshot => { if (new URLSearchParams(location.
     report.sourceHashesAfter = after;
     report.sourcesStable = true;
     report.writes = writes;
-    report.functionalStatus = cases.length === (selection === "all" ? 15 : selection === "collector-integration" ? 7 : 1) && cases.every((row) => row.status === "PASS") ? "PASS" : "FAIL";
+    report.functionalStatus = cases.length === (selection === "all" ? 18 : selection === "collector-integration" ? 7 : selection === "station-status" ? 4 : 1) && cases.every((row) => row.status === "PASS") ? "PASS" : "FAIL";
     report.isolation = "All HTTP served on the owned loopback listener; all backend writes in MemoryStore. External browser attempts were blocked and reported separately.";
   } finally {
     await context?.close(); report.contextClosed = true;

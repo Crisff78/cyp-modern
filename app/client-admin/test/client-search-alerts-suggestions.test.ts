@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { matchesClientSearch, copyPhoneIntoEmptyFields } from "../src/clientSearch.js";
+import { matchesClientSearch, copyPhoneIntoEmptyFields, clientCodeFromPhone } from "../src/clientSearch.js";
 import { unconfirmedCollectionBalances, recentMovementReceipts } from "../src/collectionAlerts.js";
 import type { Movement } from "../src/types.js";
 
@@ -12,6 +12,32 @@ test("client search accepts notes, exact codes, accents and formatted internatio
 test("a shared phone finds both distinct clients without changing codes or identity", () => {
   const clients = Object.freeze([Object.freeze({ code: "A", name: "Primero", phone: "50912345678" }), Object.freeze({ code: "B", name: "Segundo", phone: "50912345678" })]);
   assert.deepEqual(clients.filter((client) => matchesClientSearch(client, "+509 12345678")).map((client) => client.code), ["A", "B"]);
+});
+test("client lookup normalizes a Haiti phone stored only in a note without joining independent numbers", () => {
+  const client = Object.freeze({ id: "synthetic-client", code: "MANUAL-01", phone: "", cellular: "", note: "Contacto Haití: +509 (41) 23-4567. Entrega mañana." });
+  for (const query of ["50941234567", "+509 41 23 4567", "41234567", "haiti"])
+    assert.equal(matchesClientSearch(client, query), true, query);
+  for (const note of ["12345678 y 87654321", "12345678, 87654321", "12345678; 87654321", "12345678 / 87654321", "12345678\n87654321", "12345678 87654321"])
+    assert.equal(matchesClientSearch({ ...client, note }, "56788765"), false, note);
+  const twoPhones = { ...client, note: "+509 41234567 / +509 87654321" };
+  assert.equal(matchesClientSearch(twoPhones, "50941234567"), true);
+  assert.equal(matchesClientSearch(twoPhones, "50987654321"), true);
+  assert.equal(matchesClientSearch({ ...client, note: "1234567 - 7654321" }, "45677654"), false);
+  assert.equal(client.id, "synthetic-client");
+  assert.equal(client.code, "MANUAL-01");
+});
+test("an explicit phone code accepts international formatting and rejects incomplete or non-phone input", () => {
+  assert.equal(clientCodeFromPhone(" +509 (41) 23-4567 "), "+50941234567");
+  assert.equal(clientCodeFromPhone("(809) 555-1234"), "8095551234");
+  assert.equal(clientCodeFromPhone("41234567"), "41234567");
+  for (const phone of ["", "123456", "1234567890123456", "tel: 41234567", "+509+41234567", "41234567\n87654321", "HT-42"])
+    assert.throws(() => clientCodeFromPhone(phone));
+  const draft = Object.freeze({ id: "separate-real-id", code: "MANUAL-01", identification: "SYN-DOC", phone: "+509 41234567", cellular: "", note: "" });
+  const selectedCode = clientCodeFromPhone(draft.phone);
+  assert.equal(selectedCode, "+50941234567");
+  assert.equal(draft.id, "separate-real-id");
+  assert.equal(draft.identification, "SYN-DOC");
+  assert.equal(draft.code, "MANUAL-01");
 });
 test("explicit phone copy completes only empty fields and preserves entered notes exactly", () => {
   const original = Object.freeze({ phone: "+509 12345678", cellular: "809-123", note: "  Mantener nota  ", preferredCurrency: "EUR" });

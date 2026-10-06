@@ -46,6 +46,18 @@ las aperturas directas. El código y los registros se conservan. La constante
 
 ## Publicación
 
+### Actualizar la demo existente
+
+El servicio `cyp-modern-demo` publica automáticamente la rama
+`codex/public-browser-demo`. Para actualizarlo, comprobar el estado actual,
+abrir un PR hacia `main`, esperar CI y fusionar el commit revisado. Después,
+avanzar la rama de demo al merge mediante fast-forward, sin `force`, y verificar
+que CI y el deployment exitoso pertenecen al mismo SHA. Reutilizar Render/Neon
+existentes. La comprobación pública es de lectura; las pruebas con escritura
+se ejecutan en entornos aislados con ejemplos ficticios.
+
+### Crear una instalación nueva
+
 1. Revisa y fusiona la rama de la demo en `main`.
 2. En la cuenta de Render que ya tiene conectado `Crisff78/cyp-modern`, crea un
    **Blueprint Instance** para ese repositorio y la rama `main`.

@@ -35,6 +35,7 @@ export function ConnectedAdminTools({ page, snapshot, onRefresh }: { page: Admin
   const [dialog, setDialog] = useState<Dialog | null>(null), [draft, setDraft] = useState<Draft>({}), [formError, setFormError] = useState(""), [links, setLinks] = useState<string[]>([]);
   const [selectedId, setSelectedId] = useState(""), [filtersVisible, setFiltersVisible] = useState(true), [groupFilter, setGroupFilter] = useState(""), [userFilter, setUserFilter] = useState(false);
   const [selectedLink, setSelectedLink] = useState(""), [addingStation, setAddingStation] = useState(false), [stationChoice, setStationChoice] = useState(""), [uncertain, setUncertain] = useState(false);
+  const [stationStatusReview, setStationStatusReview] = useState(false);
   const requestVersion = useRef(0), pendingRequest = useRef<{ path: string; body: string } | null>(null), instanceId = useId();
   const locked = busy || uncertain;
   const refresh = useCallback(async () => {
@@ -59,10 +60,10 @@ export function ConnectedAdminTools({ page, snapshot, onRefresh }: { page: Admin
     finally { if (version === requestVersion.current) setLoading(false); }
   }, [definition.path, paged, page, applied, offset]);
   useEffect(() => { void refresh(); return () => { requestVersion.current += 1; }; }, [refresh]);
-  const close = () => { if (!locked) { setDialog(null); setDraft({}); setFormError(""); setAddingStation(false); } };
+  const close = () => { if (!locked) { if (stationStatusReview) { setStationStatusReview(false); setFormError(""); return; } setDialog(null); setDraft({}); setFormError(""); setAddingStation(false); } };
   const open = (next: Dialog) => {
     if (locked || loading) return;
-    pendingRequest.current = null; setUncertain(false);
+    pendingRequest.current = null; setUncertain(false); setStationStatusReview(false);
     setDialog(next); setFormError(""); setMessage("");
     const row = next.row;
     const nextDraft: Draft = { name: "", number: "", groupId: groups[0]?.id ?? "", active: true, forCollection: true, note: "", status: "approved" };
@@ -112,12 +113,15 @@ export function ConnectedAdminTools({ page, snapshot, onRefresh }: { page: Admin
         else if (dialog.action === "close") { path += "/cerrar"; text = "Sesión cerrada."; }
         else { body = payload({ ...Object.fromEntries(Object.entries(dialog.row).filter(([, item]) => typeof item === "string" || typeof item === "boolean")), active: dialog.action === "activate" } as Draft); text = "Estado actualizado."; }
       }
+      if (page === "stations" && dialog.type === "edit" && dialog.row && body.active !== (dialog.row.active !== false) && !stationStatusReview && !pendingRequest.current) {
+        setStationStatusReview(true); return;
+      }
       const request = pendingRequest.current ?? { path, body: JSON.stringify(body) };
       pendingRequest.current = request;
       await remittancesApi(request.path, { method: "POST", body: request.body });
       pendingRequest.current = null; setUncertain(false);
       if (dialog.action === "close" && dialog.row?.current) { clearToken(); window.location.reload(); return; }
-      setDialog(null); setDraft({}); setMessage(text); await refresh(); onRefresh();
+      setDialog(null); setDraft({}); setStationStatusReview(false); setMessage(text); await refresh(); onRefresh();
     } catch (failure) {
       const resultUncertain = failure instanceof StrictApiError && failure.uncertain;
       setUncertain(resultUncertain); if (!resultUncertain) pendingRequest.current = null;
@@ -225,9 +229,9 @@ export function ConnectedAdminTools({ page, snapshot, onRefresh }: { page: Admin
     </tr>)}{!visible.length && <tr><td className="legacy-admin-empty" colSpan={headers.length}>{loading ? "Cargando…" : error ? "No se pudo cargar el listado." : "No hay registros para estos filtros."}</td></tr>}</tbody>
   </table></div></div>;
   const totalPages = Math.max(1, Math.ceil(total / 50));
-  const dialogTitle = dialog?.type === "stations" ? "Estaciones del PCP..." : dialog?.type === "resolve" ? "Resolver solicitud" : dialog?.type === "detail" ? "Detalle de la solicitud" : dialog?.type === "confirm" ? "Confirmación" : page === "stations" ? "Datos de la Estación de PCP" : page === "groups" ? "Nombre del Grupo..." : page === "pcps" ? "Datos del PCP..." : "Solicitud de autorización";
-  const dialogClass = dialog?.type === "stations" ? "pcp-stations-dialog" : dialog?.type === "confirm" ? "legacy-confirm-dialog" : page === "stations" ? "pcp-station-dialog" : page === "groups" ? "legacy-select-dialog" : page === "pcps" ? "pcp-data-dialog" : "authorization-form-dialog";
-  const formClass = dialog?.type === "stations" ? "legacy-relation-manager legacy-admin-relations" : page === "stations" && dialog?.type === "edit" ? "legacy-dialog-form pcp-station-form" : page === "pcps" && dialog?.type === "edit" ? "legacy-dialog-form pcp-data-form legacy-pcp-form" : page === "authorizationRequests" ? "authorization-form" : "legacy-dialog-form";
+  const dialogTitle = dialog?.type === "stations" ? "Estaciones del PCP..." : dialog?.type === "resolve" ? "Resolver solicitud" : dialog?.type === "detail" ? "Detalle de la solicitud" : dialog?.type === "confirm" || stationStatusReview ? "Confirmación" : page === "stations" ? "Datos de la Estación de PCP" : page === "groups" ? "Nombre del Grupo..." : page === "pcps" ? "Datos del PCP..." : "Solicitud de autorización";
+  const dialogClass = dialog?.type === "stations" ? "pcp-stations-dialog" : dialog?.type === "confirm" || stationStatusReview ? "legacy-confirm-dialog" : page === "stations" ? "pcp-station-dialog" : page === "groups" ? "legacy-select-dialog" : page === "pcps" ? "pcp-data-dialog" : "authorization-form-dialog";
+  const formClass = dialog?.type === "stations" ? "legacy-relation-manager legacy-admin-relations" : page === "stations" && dialog?.type === "edit" && !stationStatusReview ? "legacy-dialog-form pcp-station-form" : page === "pcps" && dialog?.type === "edit" ? "legacy-dialog-form pcp-data-form legacy-pcp-form" : page === "authorizationRequests" ? "authorization-form" : "legacy-dialog-form";
   return <section className={"connected-admin-tools legacy-mdi-view " + layout + "-mdi-view"} aria-label={definition.title} aria-busy={loading}>
     {toolbar}
     {page === "authorizationRequests" && <p className="legacy-admin-note">Solicitudes de revisión administrativa de un cliente y su cobrador responsable. Registra el motivo, consulta la solicitud y resuélvela como aprobada, rechazada o anulada. La decisión queda en el historial; no registra cobros o pagos ni amplía límites o permisos.</p>}
@@ -249,7 +253,7 @@ export function ConnectedAdminTools({ page, snapshot, onRefresh }: { page: Admin
         <p className="legacy-admin-note">La decisión administrativa no crea pagos ni modifica límites de efectivo.</p>
         <div className="legacy-dialog-actions centered">{dialog.row.status === "pending" && <button type="button" onClick={() => open({ type: "resolve", row: dialog.row })}>Resolver</button>}<button type="button" onClick={close}>Cerrar</button></div>
       </div> : <form className={formClass} onSubmit={submit}>
-        {dialog.type === "edit" && page === "stations" && <>
+        {dialog.type === "edit" && page === "stations" && !stationStatusReview && <>
           <div className="legacy-tabs compact"><button type="button" className="active">General</button></div>
           <fieldset className="legacy-config-fieldset station-general-fieldset"><legend>General</legend>
             <span className="station-internal-id" title={dialog.row?.id}>ID: {dialog.row?.id ?? "Nuevo"}</span>
@@ -291,7 +295,8 @@ export function ConnectedAdminTools({ page, snapshot, onRefresh }: { page: Admin
           <p className="legacy-admin-note">La decisión quedará registrada y no podrá editarse después. No crea pagos ni modifica límites de efectivo.</p>
         </>}
         {dialog.type === "confirm" && <div className="legacy-confirm-content"><span className="legacy-question-icon">?</span><p>{dialog.action === "close" ? dialog.row?.current ? "Tu sesión se cerrará y tendrás que iniciar sesión de nuevo." : "Se cerrará la sesión de " + (dialog.row ? value(dialog.row, "userName") : "este usuario") + ". Su token dejará de permitir acceso." : dialog.action === "delete" ? "El grupo se eliminará si no tiene PCPs asociados." : page === "stations" && dialog.row ? `¿${dialog.action === "activate" ? "Activar" : "Inactivar"} la estación ${value(dialog.row, "name")} (código ${value(dialog.row, "number")})? Su historial y asociaciones se conservan.` : "El registro quedará " + (dialog.action === "activate" ? "activo" : "inactivo") + "."}</p></div>}
-        {dialog.type !== "stations" && <>{formMessages}{actions(dialog.type === "confirm" ? "Confirmar" : "oK")}</>}
+        {stationStatusReview && <div className="legacy-confirm-content"><span className="legacy-question-icon">?</span><p>¿{draft.active ? "Activar" : "Inactivar"} la estación {String(draft.name ?? "")} (código {String(draft.number ?? "")})? Su historial y asociaciones se conservan.</p><p>También se guardarán los demás cambios del formulario. Cancelar vuelve a los datos sin guardarlos.</p></div>}
+        {dialog.type !== "stations" && <>{formMessages}{actions(dialog.type === "confirm" || stationStatusReview ? "Confirmar" : "oK")}</>}
       </form>}
     </LegacyDialog>}
     {dialog?.type === "stations" && addingStation && <LegacyDialog title="Seleccionar..." onClose={() => { if (!locked) setAddingStation(false); }} className="legacy-select-dialog legacy-admin-dialog">
