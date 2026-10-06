@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNod
 import { RefreshCw } from "lucide-react";
 import { LegacyDialog, handleKeyboardActivation } from "./LegacyConnectedUi";
 import { loadCollectorAssignments, parseLimit, saveCollectorAssignments, type AssignmentKind, type CollectorAssignment } from "./collectorAssignmentsState";
+import { isDecimalDraft } from "../../shared/inputRules";
 import "./collector-assignments.css";
 
 const titles: Record<AssignmentKind, string> = {
@@ -84,8 +85,8 @@ function LimitPicker({ rows, onSelect, onClose }: Readonly<{
   return <LegacyDialog title="Seleccionar..." className="collector-assignment-limit-picker" onClose={onClose}>
     <form className="collector-assignment-limit-form" onSubmit={submit}>
       <label>Moneda:<select autoFocus value={currency} onChange={(event) => changeCurrency(event.target.value)}>{currencies.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-      <label>Lím. de Cobro:<input type="text" inputMode="decimal" value={collectionLimit} onChange={(event) => setCollectionLimit(event.target.value)} /></label>
-      <label>Lím. de Pago:<input type="text" inputMode="decimal" value={payoutLimit} onChange={(event) => setPayoutLimit(event.target.value)} /></label>
+      <label>Lím. de Cobro:<input type="text" inputMode="decimal" maxLength={17} value={collectionLimit} onChange={(event) => { const next = event.target.value; if (isDecimalDraft(next) || next.length < collectionLimit.length) setCollectionLimit(next); }} /></label>
+      <label>Lím. de Pago:<input type="text" inputMode="decimal" maxLength={17} value={payoutLimit} onChange={(event) => { const next = event.target.value; if (isDecimalDraft(next) || next.length < payoutLimit.length) setPayoutLimit(next); }} /></label>
       {rows.some((row) => row.id === currency) && <small>Los valores reemplazarán los límites de esta moneda al aceptar.</small>}
       {error && <p role="alert" className="collector-assignment-error">{error}</p>}
       <div className="legacy-dialog-actions centered"><button type="submit">oK</button><button type="button" onClick={onClose}>Cancelar</button></div>

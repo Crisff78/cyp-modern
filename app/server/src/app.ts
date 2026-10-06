@@ -54,6 +54,7 @@ import { registerDemoAccess, type DemoAccessConfig } from "./demo-access.js";
 import { assertAuthSession, createAuthSession, recordMutationTrace, revokeUserSessions } from "./admin-tools.js";
 import { registerAdminToolsRoutes } from "./admin-tools-routes.js";
 import { legacyFinancialFingerprintBody } from "./financial-currency-compat.js";
+import { boundedId, fourDecimalNumber, freeText, machineCounter, optionalEmail, phone, singleLine, systemConfigInput } from "./input-validation.js";
 
 type Config = {
   store: Store;
@@ -67,19 +68,19 @@ type Config = {
   adminPassword?: string;
 };
 const money = z.number().int().positive().max(MAX_MONEY_AMOUNT);
-const currency = z.string().trim().min(1).max(40)
+const currency = singleLine(40, 1)
   .refine((value) => supportedLedgerCurrency(value) !== undefined, "Selecciona DOP, USD o EUR.")
   .transform(ledgerCurrency);
-const id = z.string().min(1).max(80),
-  text = z.string().trim().min(1).max(160),
+const id = boundedId,
+  text = singleLine(160, 1),
   date = z.iso.date();
 const chargeBody = z
   .object({
     clientId: id,
     service: text,
-    concept: z.string().trim().max(160).default(""),
+    concept: singleLine(160).default(""),
     currency: currency.default("DOP"),
-    note: z.string().trim().max(2000).default(""),
+    note: freeText(2000).default(""),
     amount: money,
     dueDate: date,
     required: z.boolean().default(false),
@@ -98,13 +99,13 @@ const payoutBody = z
   .strict();
 const transferBody = z.object({
   collectorId: id, amount: money, currency: currency.default("DOP"),
-  note: z.string().trim().max(2000).optional(),
+  note: freeText(2000).optional(),
   denominations: z.array(z.object({ denominacion: z.number().int().positive(), cantidad: z.number().int().min(0) }).strict()).max(100).optional(),
 }).strict();
 const nonCashComponent = {
   amount: money,
-  bank: z.string().trim().min(1).max(160),
-  reference: z.string().trim().min(1).max(160),
+  bank: singleLine(160, 1),
+  reference: singleLine(160, 1),
 };
 const depositComponent = z.discriminatedUnion("method", [
   z.object({ method: z.literal("cash"), amount: money }).strict(),
@@ -114,17 +115,17 @@ const depositComponent = z.discriminatedUnion("method", [
 const depositBody = transferBody.extend({ depositComponents: z.array(depositComponent).min(1).max(20).optional() });
 const clientBody = z.object({
   name: text,
-  code: z.string().trim().min(1).max(80),
-  phone: z.string().trim().max(40).default(""),
-  address: z.string().trim().max(240).default(""),
+  code: singleLine(80, 1),
+  phone: phone.default(""),
+  address: singleLine(240).default(""),
   routeId: id,
   preferredCurrency: z.enum(ledgerCurrencies).optional(),
-  alias: z.string().trim().max(160).default(""),
-  sector: z.string().trim().max(160).default(""),
-  cellular: z.string().trim().max(40).default(""),
-  email: z.string().trim().max(200).default(""),
-  note: z.string().trim().max(2000).default(""),
-  identification: z.string().trim().max(80).default(""),
+  alias: singleLine(160).default(""),
+  sector: singleLine(160).default(""),
+  cellular: phone.default(""),
+  email: optionalEmail.default(""),
+  note: freeText(2000).default(""),
+  identification: singleLine(80).default(""),
   lat: z.number().min(-90).max(90).optional(),
   lng: z.number().min(-180).max(180).optional(),
 }).strict().refine((body) => (body.lat === undefined) === (body.lng === undefined), {
@@ -135,15 +136,15 @@ const newClientBody = clientBody.refine((body) => body.identification.length > 0
   message: "Indica la cédula o el pasaporte del cliente.",
 });
 const clientMachineBody = z.object({
-  number: z.number().int().positive(),
-  entry: z.string().trim().max(100).default(""),
-  exit: z.string().trim().max(100).default(""),
-  value: z.number().min(0).max(1_000_000_000),
-  percentage: z.number().min(0).max(100),
+  number: z.number().int("El número de máquina debe ser entero.").positive("El número de máquina debe ser positivo.").max(2_147_483_647, "El número de máquina no puede superar 2147483647."),
+  entry: machineCounter.default(""),
+  exit: machineCounter.default(""),
+  value: fourDecimalNumber(1_000_000_000),
+  percentage: fourDecimalNumber(100),
 }).strict();
 const loginBody = z
   .object({
-    email: z.string().trim().min(1).max(200),
+    email: singleLine(200, 1),
     password: z.string().min(1).max(200),
   })
   .strict();
@@ -355,8 +356,12 @@ export async function buildApp(config: Config) {
     fn: (state: State, u: User, body: T, params: P) => unknown,
   ) => {
     describe("post", path, summary, schema);
+    const paramsSchema = z.object(Object.fromEntries(
+      [...path.matchAll(/:([A-Za-z]+)/g)].map((match) => [match[1], id]),
+    )).strict();
     app.post(path, async (req) => {
       const body = schema.parse(req.body),
+        params = paramsSchema.parse(req.params ?? {}) as P,
         u = user(req),
         key = req.headers["idempotency-key"];
       if (typeof key !== "string" || key.length < 8 || key.length > 100)
@@ -384,7 +389,7 @@ export async function buildApp(config: Config) {
             );
           return existing.response;
         }
-        const response = fn(state, u, body, (req.params ?? {}) as P);
+        const response = fn(state, u, body, params);
         recordMutationTrace(state, u, path, req.params, response);
         state.idempotency.push({
           id: scope,
@@ -487,8 +492,8 @@ export async function buildApp(config: Config) {
   const accountBody = z
     .object({
       name: text,
-      nickname: z.string().trim().max(120).optional(),
-      note: z.string().trim().max(1000).optional(),
+      nickname: singleLine(120).optional(),
+      note: freeText(1000).optional(),
       email: emailField,
       role: z.enum(["admin", "collector"]),
       collectorId: id.optional(),
@@ -862,13 +867,20 @@ export async function buildApp(config: Config) {
       if (!machine) throw new DomainError("MACHINE_NOT_FOUND", "Máquina tragamonedas no encontrada.", 404);
       if (s.clientMachines.some((item) => item.id !== machine.id && item.clientId === params.id && item.number === b.number))
         throw new DomainError("MACHINE_NUMBER_EXISTS", "El número de máquina ya existe.", 409);
+      const entryDifference = Number(b.entry) - Number(machine.entry),
+        exitDifference = Number(b.exit) - Number(machine.exit),
+        difference = entryDifference - exitDifference,
+        charge = b.value * b.percentage / 100;
+      if ([entryDifference, exitDifference, difference].some((value) => !Number.isFinite(value) || Math.abs(value) > Number.MAX_SAFE_INTEGER) ||
+        !Number.isFinite(charge) || charge < 0 || charge > MAX_MONEY_AMOUNT)
+        throw new DomainError("MACHINE_COUNTER_RANGE", "Revisa los contadores actuales y anteriores: las diferencias deben estar dentro del rango seguro. No se guardó la máquina ni su registro.", 422);
       const registeredAt = new Date().toISOString();
       s.clientMachineLogs.push({
         id: randomUUID(), clientId: params.id, machineId: machine.id, registeredAt,
-        previousEntry: machine.entry, entry: b.entry, entryDifference: String(Number(b.entry) - Number(machine.entry)),
-        previousExit: machine.exit, exit: b.exit, exitDifference: String(Number(b.exit) - Number(machine.exit)),
-        difference: String((Number(b.entry) - Number(machine.entry)) - (Number(b.exit) - Number(machine.exit))),
-        currency: "DOP", amount: b.value, percentage: b.percentage, charge: b.value * b.percentage / 100,
+        previousEntry: machine.entry, entry: b.entry, entryDifference: String(entryDifference),
+        previousExit: machine.exit, exit: b.exit, exitDifference: String(exitDifference),
+        difference: String(difference),
+        currency: "DOP", amount: b.value, percentage: b.percentage, charge,
         modifiedAt: registeredAt,
       });
       Object.assign(machine, b, { updatedAt: registeredAt });
@@ -1044,7 +1056,7 @@ export async function buildApp(config: Config) {
       };
     },
   );
-  const movementCancellationBody = z.object({ reason: z.string().trim().min(1).max(500) }).strict();
+  const movementCancellationBody = z.object({ reason: freeText(500, 1) }).strict();
   for (const [path, type] of [
     ["/api/cobros/:id/cancelar", "collection"],
     ["/api/pagos/:id/cancelar", "payout"],
@@ -1063,7 +1075,7 @@ export async function buildApp(config: Config) {
   mutate(
     "/api/configuracion",
     "Guardar configuración general",
-    z.object({ config: z.record(z.string(), z.unknown()) }).strict(),
+    z.object({ config: systemConfigInput }).strict(),
     (s, u, b) => saveSystemConfigData(s, u, b.config),
   );
   app.get<{ Params: { id: string } }>(
@@ -1083,6 +1095,7 @@ export async function buildApp(config: Config) {
         .array(
           z.object({ denominacion: z.number(), cantidad: z.number() }).strict(),
         )
+        .max(100, "El desglose admite hasta 100 filas.")
         .optional(),
     })
     .strict();
@@ -1100,8 +1113,8 @@ export async function buildApp(config: Config) {
   );
   const importChargeRow = z
     .object({
-      identificacion: z.string().trim().min(1).max(80),
-      servicio: z.string().trim().min(1).max(160),
+      identificacion: singleLine(80, 1),
+      servicio: singleLine(160, 1),
       importe: z.number(),
       fecha: z.iso.date().optional(),
       requerido: z.boolean().optional(),
@@ -1110,10 +1123,10 @@ export async function buildApp(config: Config) {
     .strict();
   const importPayoutRow = z
     .object({
-      identificacion: z.string().trim().min(1).max(80),
-      concepto: z.string().trim().min(1).max(160),
+      identificacion: singleLine(80, 1),
+      concepto: singleLine(160, 1),
       importe: z.number(),
-      cobrador: z.string().trim().min(1).max(80).optional(),
+      cobrador: singleLine(80, 1).optional(),
       moneda: currency.optional(),
     })
     .strict();
@@ -1321,7 +1334,7 @@ export async function buildApp(config: Config) {
   ).parameters = [
     { in: "path", name: "token", required: true, schema: { type: "string" } },
   ];
-  const cancelBody = z.object({ id, reason: z.string().trim().max(500).default("") }).strict();
+  const cancelBody = z.object({ id, reason: freeText(500).default("") }).strict();
   for (const [path, key] of [
     ["/api/cargos/cancelar", "charges"],
     ["/api/descargos/cancelar", "payouts"],

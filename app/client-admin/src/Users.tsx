@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { api, getToken } from "./api";
 import { isMockToken } from "./mock";
 import { operationKey } from "../../shared/remittances/strictApi";
+import { INPUT_LIMITS, validateEmail, validateText } from "../../shared/inputRules";
 import { pendingMovementDraft, useMovementRequest } from "./useMovementRequest";
 import { HelpNote, Modal } from "./components";
 import type { PublicAccount, Snapshot } from "./types";
@@ -127,6 +128,13 @@ function AccountForm({
       );
     setError("");
     try {
+      if (creating) {
+        validateText(name, "Nombre", INPUT_LIMITS.name, { required: true });
+        validateEmail(email, "Correo", { required: true });
+        validateText(nickname, "Apodo", INPUT_LIMITS.userNickname);
+        validateText(note, "Nota", INPUT_LIMITS.userNote, { multiline: true });
+      }
+      if ((creating || rotating) && password.length > INPUT_LIMITS.password) throw new Error(`La contraseña admite un máximo de ${INPUT_LIMITS.password} caracteres.`);
       const draft = { name, email, role, collectorId, nickname, note, password };
       if (creating) {
         const account = await runAccount<PublicAccount>("/usuarios", { name, email, role, collectorId, nickname, note, password }, draft, (result) => Boolean(result?.id && result.email));
@@ -178,11 +186,12 @@ function AccountForm({
                 onChange={(event) => setName(event.target.value)}
                 placeholder="Nombre de la persona"
                 autoComplete="name"
+                maxLength={INPUT_LIMITS.name}
                 required
               />
             </label>
-            <label className="field">Apodo<input maxLength={120} value={nickname} onChange={(event) => setNickname(event.target.value)} /></label>
-            <label className="field">Nota<textarea maxLength={1000} value={note} onChange={(event) => setNote(event.target.value)} rows={2} /></label>
+            <label className="field">Apodo<input maxLength={INPUT_LIMITS.userNickname} value={nickname} onChange={(event) => setNickname(event.target.value)} /></label>
+            <label className="field">Nota<textarea maxLength={INPUT_LIMITS.userNote} value={note} onChange={(event) => setNote(event.target.value)} rows={2} /></label>
             <label className="field">
               Correo
               <input
@@ -191,6 +200,7 @@ function AccountForm({
                 onChange={(event) => setEmail(event.target.value)}
                 placeholder="correo@empresa.com"
                 autoComplete="email"
+                maxLength={INPUT_LIMITS.email}
                 required
               />
             </label>
@@ -254,6 +264,7 @@ function AccountForm({
               autoComplete="new-password"
               required
               minLength={MIN_LENGTH}
+              maxLength={INPUT_LIMITS.password}
             />
           </label>
         )}
