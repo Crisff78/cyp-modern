@@ -487,7 +487,7 @@ export async function buildApp(config: Config) {
   const emailField = z.email("Escribe un correo válido.").max(200);
   const passwordField = z
     .string()
-    .min(10, "La contraseña debe tener al menos 10 caracteres.")
+    .min(3, "La contraseña debe tener al menos 3 caracteres.")
     .max(200);
   const accountBody = z
     .object({

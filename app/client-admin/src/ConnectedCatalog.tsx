@@ -27,8 +27,8 @@ type Draft = Record<string, string | boolean>;
 type Field = { key: string; label: string; type?: "money" | "number" | "date" | "password" | "boolean" | "email" | "tel"; required?: boolean; multiline?: boolean; maxLength?: number; options?: { value: string; label: string }[] };
 const moneyString = (value: unknown) => typeof value === "number" ? `${Math.trunc(value / 100)}.${String(value % 100).padStart(2, "0")}` : "0.00";
 const active = (row: RecordRow) => row.active !== false && row.status !== "disabled";
-// Match the public invitation policy (demo-access.ts), never an invitation value.
-const MIN_ACCOUNT_PASSWORD_LENGTH = 10;
+// Match the account password policy enforced by the API.
+const MIN_ACCOUNT_PASSWORD_LENGTH = 3;
 const assignmentText = (value: unknown) => typeof value === "string" || typeof value === "number" ? String(value) : "";
 const areaAssignment = (row: { id: string; name: string; number?: unknown; from?: unknown; to?: unknown }): CollectorAssignment => ({
   id: row.id, name: row.name, number: assignmentText(row.number) || row.id,
@@ -129,7 +129,7 @@ export function ConnectedCatalog({ page, snapshot, actorId, onRefresh }: { page:
     if (page === "servicesProducts" && (payload.referencePriceCents != null) !== (payload.referenceCurrency != null)) throw new Error("El precio de referencia requiere su moneda; borra ambos para dejarlo vacío.");
     if (page === "users") {
       if (payload.role === "admin") delete payload.collectorId;
-      if (editing === "new" && String(payload.password).length < MIN_ACCOUNT_PASSWORD_LENGTH) throw new Error(`La contraseña necesita al menos ${MIN_ACCOUNT_PASSWORD_LENGTH} caracteres.`);
+      if (editing === "new" && Array.from(String(payload.password)).length < MIN_ACCOUNT_PASSWORD_LENGTH) throw new Error(`La contraseña necesita al menos ${MIN_ACCOUNT_PASSWORD_LENGTH} caracteres.`);
     } else payload.active = editing === "new" || !editing ? true : active(editing);
     if (page === "recurringCharges") { payload.currency = "DOP"; payload.useConceptAmount = editing && editing !== "new" ? Boolean(editing.useConceptAmount) : false; }
     return payload;
@@ -157,7 +157,7 @@ export function ConnectedCatalog({ page, snapshot, actorId, onRefresh }: { page:
   };
   const changePassword = async (event: FormEvent) => {
     event.preventDefault(); if (!passwordTarget || busy) return;
-    if (String(draft.password ?? "").length < MIN_ACCOUNT_PASSWORD_LENGTH) { setFormError(`La contraseña necesita al menos ${MIN_ACCOUNT_PASSWORD_LENGTH} caracteres.`); return; }
+    if (Array.from(String(draft.password ?? "")).length < MIN_ACCOUNT_PASSWORD_LENGTH) { setFormError(`La contraseña necesita al menos ${MIN_ACCOUNT_PASSWORD_LENGTH} caracteres.`); return; }
     if (String(draft.password ?? "").length > INPUT_LIMITS.password || String(draft.confirmation ?? "").length > INPUT_LIMITS.password) { setFormError(`La contraseña admite un máximo de ${INPUT_LIMITS.password} caracteres.`); return; }
     if (draft.password !== draft.confirmation) { setFormError("La confirmación no coincide con la clave."); return; }
     setBusy(true); setFormError("");
@@ -240,7 +240,7 @@ export function ConnectedCatalog({ page, snapshot, actorId, onRefresh }: { page:
   const control = (key: string, label?: string, className?: string): ReactNode => {
     const field = fields.find((item) => item.key === key);
     if (!field) return null;
-    const common = { "aria-label": label ?? field.label, disabled: busy, required: field.required, maxLength: field.maxLength, className };
+    const common = { "aria-label": label ?? field.label, disabled: busy, required: field.required, minLength: field.type === "password" ? MIN_ACCOUNT_PASSWORD_LENGTH : undefined, maxLength: field.maxLength, className };
     if (field.type === "boolean") return <input {...common} type="checkbox" checked={Boolean(draft[key])} onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.checked }))} />;
     if (field.options) return <select {...common} value={String(draft[key] ?? "")} onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))}><option value="">Selecciona…</option>{field.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>;
     return <input {...common} type={field.type === "date" || field.type === "password" || field.type === "email" || field.type === "tel" ? field.type : "text"} inputMode={field.type === "money" ? "decimal" : field.type === "number" ? "numeric" : field.type === "tel" ? "tel" : undefined} autoComplete={field.type === "password" ? "new-password" : "off"} value={String(draft[key] ?? "")} onChange={(event) => {

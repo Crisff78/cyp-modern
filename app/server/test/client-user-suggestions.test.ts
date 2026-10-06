@@ -229,29 +229,29 @@ test("2.9 existing security edit still rotates version and revokes sessions", as
   assert.equal((await get("/api/auth/me", token)).statusCode, 401);
 });
 
-test("2.8 approved ten-character minimum applies to provisioning and reset, preserving auth safeguards", async (t) => {
+test("2.8 approved three-character minimum applies to provisioning and reset, preserving auth safeguards", async (t) => {
   const { app, store, post, login, get, adminToken } = await setup(t);
-  const nine = "SynPass9!";
-  const ten = "SynPass10!";
-  assert.equal(nine.length, 9);
-  assert.equal(ten.length, 10);
+  const two = "Sy";
+  const three = "Syn";
+  assert.equal(two.length, 2);
+  assert.equal(three.length, 3);
   const before = await store.read();
-  const weak = await post("/api/usuarios", accountBody({ password: nine }));
+  const weak = await post("/api/usuarios", accountBody({ password: two }));
   assert.equal(weak.statusCode, 400, weak.body);
   assert.deepEqual(await store.read(), before);
-  const created = await post("/api/usuarios", accountBody({ password: ten }));
+  const created = await post("/api/usuarios", accountBody({ password: three }));
   assert.equal(created.statusCode, 200, created.body);
   const id = created.json().id;
-  const accountToken = await login(accountBody().email, ten);
+  const accountToken = await login(accountBody().email, three);
   const original = await store.read();
-  const invalidReset = await post(`/api/usuarios/${id}/clave`, { password: nine });
+  const invalidReset = await post(`/api/usuarios/${id}/clave`, { password: two });
   assert.equal(invalidReset.statusCode, 400, invalidReset.body);
   assert.deepEqual(await store.read(), original);
   assert.equal((await get("/api/auth/me", accountToken)).statusCode, 200);
   const key = randomUUID();
-  const reset = await post(`/api/usuarios/${id}/clave`, { password: "NewPass10!" }, key);
+  const reset = await post(`/api/usuarios/${id}/clave`, { password: "New" }, key);
   assert.equal(reset.statusCode, 200, reset.body);
-  const replay = await post(`/api/usuarios/${id}/clave`, { password: "NewPass10!" }, key);
+  const replay = await post(`/api/usuarios/${id}/clave`, { password: "New" }, key);
   assert.deepEqual(replay.json(), reset.json());
   const prior = original.accounts.find((row) => row.id === id)!;
   const current = (await store.read()).accounts.find((row) => row.id === id)!;
@@ -263,12 +263,12 @@ test("2.8 approved ten-character minimum applies to provisioning and reset, pres
   assert.equal(current.collectorId, prior.collectorId);
   assert.equal((await get("/api/auth/me", accountToken)).statusCode, 401);
   assert.equal((await get("/api/auth/me", adminToken)).statusCode, 200);
-  assert.equal((await app.inject({ method: "POST", url: "/api/auth/login", payload: { email: prior.email, password: ten } })).statusCode, 401);
-  const newToken = await login(prior.email, "NewPass10!");
+  assert.equal((await app.inject({ method: "POST", url: "/api/auth/login", payload: { email: prior.email, password: three } })).statusCode, 401);
+  const newToken = await login(prior.email, "New");
   assert.equal((await get("/api/auth/me", newToken)).statusCode, 200);
   // The independently configured bootstrap admin retains its fourteen-character guard.
   await assert.rejects(buildApp({ store: new MemoryStore(seed()), secret: "synthetic-client-user-test-secret-at-least32", demo: false,
-    origins: [], collectorUrl: "http://127.0.0.1:5174", adminEmail: "bootstrap@example.invalid", adminPassword: ten }), /14/);
+    origins: [], collectorUrl: "http://127.0.0.1:5174", adminEmail: "bootstrap@example.invalid", adminPassword: "SynPass10!" }), /14/);
 });
 
 test("2.9 and 3.2 preference mutations do not expand collector permissions", async (t) => {
