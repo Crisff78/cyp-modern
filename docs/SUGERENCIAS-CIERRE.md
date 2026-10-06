@@ -1,5 +1,14 @@
 # Cierre de las cuatro sugerencias parciales
 
+## Ajuste de Ruta al crear clientes — 6 de octubre de 2026
+
+El alta de clientes inicia en "No definida" y no selecciona la primera ruta
+del catálogo. Se conserva la ruta del cliente al editar. Antes de guardar se
+debe elegir una ruta válida, conforme al contrato existente de la API y su base
+de datos; el valor vacío es un estado inicial del formulario. El formulario
+rápido de clientes en modo mock utiliza el mismo comportamiento. No se cambian
+las asignaciones guardadas ni se añaden migraciones.
+
 Base revisada: `main` y `codex/public-browser-demo` en
 `6df34267ff11d522ba6a65768d97939532c89a8d`. Corrección por Codex, 5 de octubre
 de 2026 (hora dominicana). La auditoría anterior revisó 28 puntos y encontró

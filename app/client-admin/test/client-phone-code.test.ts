@@ -84,6 +84,7 @@ createRoot(document.getElementById("root")).render(<ClientDataDialog client={cli
       await open(); assert.equal(await field("Código:").inputValue(), "00042");
       assert.equal(await field("Moneda preferida del cliente").inputValue(), "DOP");
       await field("Cliente:").fill("Cliente QA nuevo"); await field("Cédula / pasaporte:").fill("SYN-DOC-CREATE");
+      await field("Ruta del cliente").selectOption("qa-route");
       await field("Moneda preferida del cliente").selectOption("USD"); await field("Teléfono:").fill("+509 (41)23-4567");
       assert.equal(await field("Código:").inputValue(), "00042", "Entering a phone alone must not change the code.");
       await usePhone().click(); assert.equal(await field("Código:").inputValue(), "+50941234567");
@@ -99,6 +100,7 @@ createRoot(document.getElementById("root")).render(<ClientDataDialog client={cli
     });
     await t.test("manual code remains unchanged as phone changes before and after the explicit action", async () => {
       await open(); await field("Cliente:").fill("Cliente QA manual"); await field("Cédula / pasaporte:").fill("SYN-DOC-MANUAL");
+      await field("Ruta del cliente").selectOption("qa-route");
       await field("Código:").fill("MANUAL-01"); await field("Teléfono:").fill("+509 (41)23-4567");
       assert.equal(await field("Código:").inputValue(), "MANUAL-01");
       await usePhone().click(); assert.equal(await field("Código:").inputValue(), "+50941234567");
