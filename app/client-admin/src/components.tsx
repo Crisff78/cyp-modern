@@ -46,6 +46,7 @@ export function Modal({
   sheet = false,
   className = "",
   overlayClassName = "",
+  onCloseAutoFocus,
 }: {
   open: boolean;
   onClose: () => void;
@@ -55,6 +56,7 @@ export function Modal({
   sheet?: boolean;
   className?: string;
   overlayClassName?: string;
+  onCloseAutoFocus?: (event: Event) => void;
 }) {
   return (
     <Dialog.Root
@@ -67,6 +69,7 @@ export function Modal({
         <Dialog.Overlay className={`dialog-overlay ${overlayClassName}`} />
         <Dialog.Content
           className={`${sheet ? "sheet" : "dialog"} ${className}`}
+          onCloseAutoFocus={onCloseAutoFocus}
         >
           <div className="dialog-heading">
             <div>

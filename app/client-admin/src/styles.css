@@ -1813,6 +1813,11 @@ table {
   padding-bottom: 20px;
   border-bottom: 1px solid var(--border);
 }
+/* Receipt dialogs keep the notification sheet mounted behind their own layer. */
+.notifications-menu-overlay { z-index: 30000; }
+.notifications-menu { z-index: 30001; }
+.notification-receipt-overlay { z-index: 30002; }
+.notification-receipt-dialog { z-index: 30003; }
 .field {
   display: flex;
   flex-direction: column;
@@ -4224,6 +4229,32 @@ table {
   gap: 10px;
   min-height: 46px !important;
   border-radius: 9px;
+}
+.login-access-options {
+  display: grid;
+  gap: 12px;
+  margin-top: 26px;
+}
+.login-access-options .demo-role-action {
+  min-height: 70px;
+  padding: 14px;
+}
+.login-access-options .demo-role-action strong { font-size: 13px; }
+.login-access-options .demo-role-action small { font-size: 11px; }
+.login-access-options .demo-role-action > svg { flex-shrink: 0; }
+.login-back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  margin-top: 14px;
+}
+.login-instructions {
+  margin-top: 8px;
+  color: #64748b;
+  font-size: 13px;
+  text-align: center;
 }
 .cancel-login {
   margin-top: 9px;

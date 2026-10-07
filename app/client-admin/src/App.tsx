@@ -4265,6 +4265,7 @@ function Login({
 }>) {
   const [email, setEmail] = useState(""),
     [password, setPassword] = useState(""),
+    [showCredentials, setShowCredentials] = useState(false),
     [busy, setBusy] = useState(false),
     [blockedCollector, setBlockedCollector] = useState(false),
     [error, setError] = useState("");
@@ -4352,84 +4353,103 @@ function Login({
           <strong className="login-subtitle">
             Control Operativo y Cuadres
           </strong>
-          <p>Ingrese sus credenciales para continuar.</p>
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              void login();
-            }}
-          >
-            <label className="field">
-              Usuario / Correo
-              <input
-                type="text"
-                autoComplete="username"
-                maxLength={INPUT_LIMITS.email}
-                required
-                placeholder="admin@cyp.local"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-              />
-            </label>
-            <label className="field">
-              Contraseña
-              <input
-                type="password"
-                autoComplete="current-password"
-                maxLength={INPUT_LIMITS.password}
-                required
-                minLength={3}
-                placeholder="Tu contraseña"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-              />
-            </label>
-            {error && (
-              <div className="inline-error" role="alert">
-                <CircleAlert size={17} />
-                {error}
-              </div>
-            )}
-            <button className="btn primary full login-submit" disabled={busy}>
-              {busy ? (
-                <LoaderCircle className="spin" size={18} />
-              ) : (
-                <>
-                  Iniciar Sesión
-                  <ArrowRight size={18} />
-                </>
-              )}
-            </button>
-          </form>
-          <div className="login-divider">
-            <span>Acceso a la aplicación</span>
-          </div>
-          <div className="demo-access-panel static-demo-access">
-            <div>
-              <div className="demo-role-action as-info">
+          {showCredentials ? (
+            <>
+              <p className="login-instructions">Ingrese sus credenciales para continuar.</p>
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void login();
+                }}
+              >
+                <label className="field">
+                  Usuario / Correo
+                  <input
+                    type="text"
+                    autoComplete="username"
+                    maxLength={INPUT_LIMITS.email}
+                    autoFocus
+                    required
+                    placeholder="admin@cyp.local"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                  />
+                </label>
+                <label className="field">
+                  Contraseña
+                  <input
+                    type="password"
+                    autoComplete="current-password"
+                    maxLength={INPUT_LIMITS.password}
+                    required
+                    minLength={3}
+                    placeholder="Tu contraseña"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                  />
+                </label>
+                {error && (
+                  <div className="inline-error" role="alert">
+                    <CircleAlert size={17} />
+                    {error}
+                  </div>
+                )}
+                <button className="btn primary full login-submit" disabled={busy}>
+                  {busy ? (
+                    <LoaderCircle className="spin" size={18} />
+                  ) : (
+                    <>
+                      Iniciar Sesión
+                      <ArrowRight size={18} />
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  className="text-button login-back"
+                  disabled={busy}
+                  onClick={() => {
+                    setShowCredentials(false);
+                    setEmail("");
+                    setPassword("");
+                    setError("");
+                  }}
+                >
+                  <ChevronLeft size={15} /> Volver
+                </button>
+              </form>
+              <p className="demo-disclaimer">
+                Accede con las credenciales que te facilitó el administrador.
+              </p>
+            </>
+          ) : (
+            <div className="login-access-options">
+              <button
+                type="button"
+                className="demo-role-action"
+                onClick={() => setShowCredentials(true)}
+              >
                 <ShieldCheck size={15} />
                 <span>
                   <strong>Administrador</strong>
-                  <small>Este formulario abre el panel administrativo: clientes, cargos, pagos y reportes.</small>
+                  <small>
+                    Este formulario abre el panel administrativo: clientes, cargos, pagos y
+                    reportes.
+                  </small>
                 </span>
-              </div>
-              <a
-                className="demo-role-action"
-                href={collectorUrl}
-                target="_blank"
-                rel="noreferrer"
-              >
+              </button>
+              <a className="demo-role-action" href={collectorUrl}>
                 <Users size={15} />
                 <span>
                   <strong>Terminal del cobrador</strong>
-                  <small>Abre la terminal de ruta para consultar clientes, cobrar y pagar con tu cuenta habilitada.</small>
+                  <small>
+                    Abre la terminal de ruta para consultar clientes, cobrar y pagar con tu
+                    cuenta habilitada.
+                  </small>
                 </span>
               </a>
             </div>
-          </div>
-          <p className="demo-disclaimer">
-            Accede con las credenciales que te facilitó el administrador.
-          </p>
+          )}
         </div>
         <div className="login-bottom">
           <ShieldCheck size={14} /> Cobros y Pagos Móviles
@@ -4665,6 +4685,7 @@ export default function App() {
     }
   };
   const [notificationReceiptId, setNotificationReceiptId] = useState<string | null>(null);
+  const notificationReceiptTrigger = useRef<HTMLButtonElement | null>(null);
   const pendingCollectionFunds = snapshot ? unconfirmedCollectionBalances(snapshot.movements) : [];
   const recentReceipts = snapshot ? recentMovementReceipts(snapshot.movements) : [];
   const notificationReceipt = snapshot?.movements.find((movement) => movement.id === notificationReceiptId);
@@ -5208,9 +5229,13 @@ export default function App() {
           </Modal>
           <Modal
             open={notificationsOpen}
-            onClose={() => setNotificationsOpen(false)}
+            onClose={() => {
+              if (!notificationReceiptId) setNotificationsOpen(false);
+            }}
             title="Tu operación al día"
             description="Atiende lo que necesita una mirada más cercana."
+            className="notifications-menu"
+            overlayClassName="notifications-menu-overlay"
             sheet
           >
             {snapshot && (
@@ -5233,7 +5258,10 @@ export default function App() {
                   </button>
                 )}
                 <h3>Últimos recibos de cobradores</h3>
-                {recentReceipts.map((movement) => <button key={movement.id} onClick={() => { setNotificationReceiptId(movement.id); setNotificationsOpen(false); }}>
+                {recentReceipts.map((movement) => <button key={movement.id} onClick={(event) => {
+                  notificationReceiptTrigger.current = event.currentTarget;
+                  setNotificationReceiptId(movement.id);
+                }}>
                   <span className="notification-icon"><ReceiptText size={20} /></span>
                   <span><strong>{movement.type === "collection" ? "Cobro" : "Pago"} · {snapshot.collectors.find((collector) => collector.id === movement.collectorId)?.name ?? "Cobrador"}</strong><p>{nativeMoney(movement.amount, movement.currency)} · {businessTimestamp(movement.createdAt)}{movement.cancelledAt ? " · Anulado" : ""}</p><small>Ver recibo <ArrowRight size={12} /></small></span>
                 </button>)}
@@ -5277,19 +5305,68 @@ export default function App() {
                 </div>
               </div>
             )}
+            {notificationReceiptId && (
+              <Modal
+                open
+                onClose={() => setNotificationReceiptId(null)}
+                title="Recibo confirmado"
+                description="Datos del recibo. Fecha y hora de Santo Domingo."
+                className="notification-receipt-dialog"
+                overlayClassName="notification-receipt-overlay"
+                onCloseAutoFocus={(event) => {
+                  event.preventDefault();
+                  notificationReceiptTrigger.current?.focus({ preventScroll: true });
+                }}
+              >
+                {notificationReceipt ? (
+                  <dl className="notification-receipt">
+                    <dt>Operación</dt>
+                    <dd>
+                      {notificationReceipt.type === "collection" ? "Cobro" : "Pago"}
+                      {notificationReceipt.cancelledAt ? " · ANULADO" : ""}
+                    </dd>
+                    <dt>Movimiento</dt>
+                    <dd>{notificationReceipt.id}</dd>
+                    <dt>Recibo</dt>
+                    <dd>{notificationReceipt.receiptToken}</dd>
+                    <dt>Cliente</dt>
+                    <dd>
+                      {snapshot?.clients.find(
+                        (client) => client.id === notificationReceipt.clientId,
+                      )?.name ?? "No disponible"}
+                    </dd>
+                    <dt>Cobrador</dt>
+                    <dd>
+                      {snapshot?.collectors.find(
+                        (collector) => collector.id === notificationReceipt.collectorId,
+                      )?.name ?? "No disponible"}
+                    </dd>
+                    <dt>Fecha y hora</dt>
+                    <dd>{businessTimestamp(notificationReceipt.createdAt)}</dd>
+                    <dt>Importe</dt>
+                    <dd>
+                      {nativeMoney(notificationReceipt.amount, notificationReceipt.currency)}
+                    </dd>
+                    <dt>Concepto</dt>
+                    <dd>
+                      {notificationReceipt.chargeId
+                        ? (snapshot?.charges.find(
+                            (charge) => charge.id === notificationReceipt.chargeId,
+                          )?.concept ??
+                          snapshot?.charges.find(
+                            (charge) => charge.id === notificationReceipt.chargeId,
+                          )?.service)
+                        : snapshot?.payouts.find(
+                            (payout) => payout.id === notificationReceipt.payoutId,
+                          )?.concept}
+                    </dd>
+                  </dl>
+                ) : (
+                  <p>El movimiento ya no está disponible en el listado actual.</p>
+                )}
+              </Modal>
+            )}
           </Modal>
-          {notificationReceiptId && <Modal open onClose={() => setNotificationReceiptId(null)} title="Recibo confirmado" description="Datos del recibo. Fecha y hora de Santo Domingo.">
-            {notificationReceipt ? <dl className="notification-receipt">
-              <dt>Operación</dt><dd>{notificationReceipt.type === "collection" ? "Cobro" : "Pago"}{notificationReceipt.cancelledAt ? " · ANULADO" : ""}</dd>
-              <dt>Movimiento</dt><dd>{notificationReceipt.id}</dd>
-              <dt>Recibo</dt><dd>{notificationReceipt.receiptToken}</dd>
-              <dt>Cliente</dt><dd>{snapshot?.clients.find((client) => client.id === notificationReceipt.clientId)?.name ?? "No disponible"}</dd>
-              <dt>Cobrador</dt><dd>{snapshot?.collectors.find((collector) => collector.id === notificationReceipt.collectorId)?.name ?? "No disponible"}</dd>
-              <dt>Fecha y hora</dt><dd>{businessTimestamp(notificationReceipt.createdAt)}</dd>
-              <dt>Importe</dt><dd>{nativeMoney(notificationReceipt.amount, notificationReceipt.currency)}</dd>
-              <dt>Concepto</dt><dd>{notificationReceipt.chargeId ? snapshot?.charges.find((charge) => charge.id === notificationReceipt.chargeId)?.concept ?? snapshot?.charges.find((charge) => charge.id === notificationReceipt.chargeId)?.service : snapshot?.payouts.find((payout) => payout.id === notificationReceipt.payoutId)?.concept}</dd>
-            </dl> : <p>El movimiento ya no está disponible en el listado actual.</p>}
-          </Modal>}
           <Modal
             open={helpOpen}
             onClose={() => setHelpOpen(false)}
