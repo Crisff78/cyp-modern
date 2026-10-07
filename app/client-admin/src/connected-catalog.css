@@ -28,6 +28,15 @@
 .catalog-client-picker{width:min(620px,calc(100vw - 32px));max-height:85dvh}
 .catalog-client-picker .legacy-mdi-table-wrap{max-height:320px;overflow:auto}
 .catalog-client-picker .legacy-mdi-table tbody tr{cursor:pointer}
+.collector-account-field{display:flex;align-items:center;gap:6px;min-width:0}
+.collector-account-field input{flex:1;min-width:0;background:#f1f5f9}
+.collector-account-field button{flex-shrink:0;min-height:27px;padding:3px 8px;border:1px solid #94a3b8;border-radius:3px;background:#f8fafc;color:#334155}
+.collector-account-field button:hover:not(:disabled){border-color:#059669;background:#ecfdf5}
+.catalog-account-picker{width:min(680px,calc(100vw - 32px));max-height:85dvh}
+.catalog-account-picker .legacy-mdi-table-wrap{max-height:340px;overflow:auto}
+.catalog-account-picker tbody tr{cursor:pointer}
+.catalog-account-picker tbody tr.selected-row{background:#dbeafe}
+.catalog-account-picker tbody tr:focus-visible{outline:2px solid #059669;outline-offset:-2px}
 .catalog-legacy.recurring-charges-view>.catalog-scope-note{flex:0 0 auto;border-top:1px solid #cbd5e1}
 .catalog-legacy .legacy-footerbar{flex-wrap:wrap}
 .catalog-legacy .charges-grid-panel>.legacy-mdi-table-wrap{flex:1 1 auto;overflow:auto}

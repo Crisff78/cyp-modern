@@ -12,6 +12,7 @@ import { api, getToken } from "./api";
 import { isMockToken } from "./mock";
 import { operationKey } from "../../shared/remittances/strictApi";
 import { INPUT_LIMITS, validateEmail, validateText } from "../../shared/inputRules";
+import { ACCOUNT_ROLE_OPTIONS, accountRoleLabel, type AccountRole } from "../../shared/accountRoles";
 import { pendingMovementDraft, useMovementRequest } from "./useMovementRequest";
 import { HelpNote, Modal } from "./components";
 import type { PublicAccount, Snapshot } from "./types";
@@ -84,10 +85,10 @@ function AccountForm({
   const [mockBusy, setMockBusy] = useState(false);
   const busy = request.busy || mockBusy;
   const locked = request.locked || mockBusy;
-  const pending = pendingMovementDraft<{ name: string; email: string; role: "admin" | "collector"; collectorId: string; nickname: string; note: string; password: string }>(actorId, scope);
+  const pending = pendingMovementDraft<{ name: string; email: string; role: AccountRole; collectorId: string; nickname: string; note: string; password: string }>(actorId, scope);
   const [name, setName] = useState(pending?.name ?? ""),
     [email, setEmail] = useState(pending?.email ?? ""),
-    [role, setRole] = useState<"admin" | "collector">(pending?.role ?? "collector"),
+    [role, setRole] = useState<AccountRole>(pending?.role ?? "undefined"),
     [collectorId, setCollectorId] = useState(pending?.collectorId ?? snapshot.collectors[0]?.id ?? ""),
     [nickname, setNickname] = useState(pending?.nickname ?? ""),
     [note, setNote] = useState(pending?.note ?? ""),
@@ -137,7 +138,7 @@ function AccountForm({
       if ((creating || rotating) && password.length > INPUT_LIMITS.password) throw new Error(`La contraseña admite un máximo de ${INPUT_LIMITS.password} caracteres.`);
       const draft = { name, email, role, collectorId, nickname, note, password };
       if (creating) {
-        const account = await runAccount<PublicAccount>("/usuarios", { name, email, role, collectorId, nickname, note, password }, draft, (result) => Boolean(result?.id && result.email));
+        const account = await runAccount<PublicAccount>("/usuarios", { name, email, role, ...(role === "collector" ? { collectorId } : {}), nickname, note, password }, draft, (result) => Boolean(result?.id && result.email));
         toast.success(`Cuenta creada para ${account.email}.`);
       } else if (rotating) {
         await runAccount<{ ok: boolean }>(`/usuarios/${operation.account.id}/clave`, { password }, draft, (result) => result?.ok === true);
@@ -207,13 +208,13 @@ function AccountForm({
             <label className="field">
               Rol
               <select
+                aria-label="Rol"
                 value={role}
                 onChange={(event) =>
-                  setRole(event.target.value as "admin" | "collector")
+                  setRole(event.target.value as AccountRole)
                 }
               >
-                <option value="collector">Cobrador</option>
-                <option value="admin">Administración</option>
+                {ACCOUNT_ROLE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
             </label>
             {role === "collector" && (
@@ -246,9 +247,8 @@ function AccountForm({
             <div>
               <span>Rol</span>
               <strong>
-                {operation.account.role === "admin"
-                  ? "Administración"
-                  : `Cobrador · ${collectorName(operation.account.collectorId)}`}
+                {accountRoleLabel(operation.account.role)}
+                {operation.account.role === "collector" && ` · ${collectorName(operation.account.collectorId)}`}
               </strong>
             </div>
           </div>

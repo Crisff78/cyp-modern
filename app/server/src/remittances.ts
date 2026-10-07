@@ -134,8 +134,8 @@ export function remittanceOperators(state: State, user: User, systemOperators: U
   const account = state.accounts.find((a) => a.id === user.id);
   if (account && (account.status !== "active" || account.role !== user.role || account.collectorId !== user.collectorId))
     fail("SESSION_EXPIRED", "La cuenta cambió. Inicia sesión de nuevo.", 401);
-  if (user.role !== "admin") return [user];
-  const accounts: User[] = state.accounts.filter((a) => a.status === "active").map((a) => ({
+  if (user.role !== "admin") return user.role === "collector" ? [user] : [];
+  const accounts: User[] = state.accounts.filter((a) => a.status === "active" && (a.role === "admin" || a.role === "collector")).map((a) => ({
     id: a.id, name: a.name, role: a.role, ...(a.collectorId ? { collectorId: a.collectorId } : {}),
   }));
   return [...new Map([...systemOperators, ...accounts, user].map((operator) => [operator.id, operator])).values()];

@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { assertAdmin, DomainError, ledgerCurrency, MAX_MONEY_AMOUNT, supportedLedgerCurrency, type State, type User, type Zone } from "./domain.js";
+import { assertAdmin, assertAdminRead, DomainError, ledgerCurrency, MAX_MONEY_AMOUNT, supportedLedgerCurrency, type Collector, type State, type User, type Zone } from "./domain.js";
+import { isCollectorAccountRole } from "./account-roles.js";
 import type { Store } from "./store.js";
 import { frequencyCodes } from "./catalog-store.js";
 import { boundedId, freeText, phone, singleLine } from "./input-validation.js";
@@ -68,12 +69,21 @@ function resolveZone(state: State, sector: string, zoneId?: string): Zone {
   state.zones.push(zone);
   return zone;
 }
+function validateCollectorAccount(state: State, accountId?: string, current?: Collector) {
+  // Historical free-form codes remain editable when the account field is unchanged.
+  if (!accountId || accountId === current?.accountId) return;
+  const account = state.accounts.find((row) => row.id === accountId);
+  if (!account) throw new DomainError("ACCOUNT_NOT_FOUND", "Selecciona una cuenta registrada.", 422);
+  if (!isCollectorAccountRole(account.role)) throw new DomainError("ACCOUNT_ROLE_FORBIDDEN", "Una cuenta Admin no puede enlazarse a un cobrador.", 422);
+  if (account.role === "collector" && account.collectorId !== current?.id)
+    throw new DomainError("COLLECTOR_ACCOUNT_SCOPE", "La cuenta de cobrador está asignada a otro cobrador.", 409);
+}
 export function registerCatalogRoutes(app: FastifyInstance, store: Store, user: (req: FastifyRequest) => User, mutate: Mutate, describe: Describe) {
   for (const [path, key] of [
     ["/api/cobradores", "collectors"], ["/api/zonas", "zones"], ["/api/servicios", "services"],
     ["/api/motivos-atraso", "delayReasons"], ["/api/cargos-recurrentes", "recurringCharges"],
   ] as const) {
-    app.get(path, async (req) => { assertAdmin(user(req)); return (await store.read())[key]; });
+    app.get(path, async (req) => { assertAdminRead(user(req)); return (await store.read())[key]; });
     describe("get", path, `Consultar ${key}`);
   }
   for (const editing of [false, true]) {
@@ -115,6 +125,7 @@ export function registerCatalogRoutes(app: FastifyInstance, store: Store, user: 
       assertAdmin(actor);
       if (editing) {
         const current = requireRow(state.collectors, params.id, "Cobrador");
+        validateCollectorAccount(state, input.accountId, current);
         if (input.routeId) {
           const route = requireRow(state.routes, input.routeId, "Ruta");
           if (route.collectorId !== current.id) throw new DomainError("ROUTE_OWNER", "La ruta principal debe pertenecer a este cobrador.", 409);
@@ -123,6 +134,7 @@ export function registerCatalogRoutes(app: FastifyInstance, store: Store, user: 
         return current;
       }
       if (input.routeId) throw new DomainError("ROUTE_OWNER", "Crea el cobrador sin ruta y luego asigna sus rutas.", 409);
+      validateCollectorAccount(state, input.accountId);
       const collectorId = randomUUID(), routeId = randomUUID(), zone = resolveZone(state, "Sin asignar");
       state.routes.push({ id: routeId, name: `Ruta ${input.name}`, sector: zone.sector, zoneId: zone.id, collectorId, active: true });
       const collector = {

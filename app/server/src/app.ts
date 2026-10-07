@@ -15,7 +15,9 @@ import { emailOrEmpty, phoneOrEmpty } from "./contact-schemas.js";
 import {
   acceptDeposit,
   assertAdmin,
+  assertAdminRead,
   assertCollectorAccess,
+  assertCollectorReadAccess,
   businessDate,
   cancelDeposit,
   cancelMovement,
@@ -56,6 +58,7 @@ import { assertAuthSession, createAuthSession, recordMutationTrace, revokeUserSe
 import { registerAdminToolsRoutes } from "./admin-tools-routes.js";
 import { legacyFinancialFingerprintBody } from "./financial-currency-compat.js";
 import { boundedId, fourDecimalNumber, freeText, machineCounter, optionalEmail, phone, singleLine, systemConfigInput } from "./input-validation.js";
+import { ACCOUNT_ROLES, isOperationalRole } from "./account-roles.js";
 
 type Config = {
   store: Store;
@@ -296,6 +299,11 @@ export async function buildApp(config: Config) {
       );
     if (u.role === "collector" && !state.collectors.some((c) => c.id === u.collectorId && c.active !== false))
       throw new DomainError("COLLECTOR_INACTIVE", "El cobrador está inactivo.", 403);
+    if (!isOperationalRole(u.role)) {
+      const ownSession = path === "/api/auth/me" || path === "/api/auth/logout" || path === `/api/usuarios/${u.id}/clave`;
+      if (!ownSession && !(u.role === "supervisor" && req.method === "GET"))
+        throw new DomainError("FORBIDDEN", "Este rol no tiene permiso para realizar esta operación.", 403);
+    }
   });
   const user = (req: FastifyRequest) => req.user as User;
   const paths: Record<string, Record<string, unknown>> = {};
@@ -496,7 +504,7 @@ export async function buildApp(config: Config) {
       nickname: singleLine(120).optional(),
       note: freeText(1000).optional(),
       email: emailField,
-      role: z.enum(["admin", "collector"]),
+      role: z.enum(ACCOUNT_ROLES),
       collectorId: id.optional(),
       password: passwordField,
     })
@@ -510,7 +518,7 @@ export async function buildApp(config: Config) {
     account.credentialVersion += 1;
   };
   app.get("/api/usuarios", async (req) => {
-    assertAdmin(user(req));
+    assertAdminRead(user(req));
     return (await config.store.read()).accounts.map(publicAccount);
   });
   describe("get", "/api/usuarios", "Cuentas provisionadas (sin secretos)");
@@ -574,6 +582,8 @@ export async function buildApp(config: Config) {
     const account = state.accounts.find((item) => item.id === params.id);
     if (!account) throw new DomainError("NOT_FOUND", "La cuenta no existe.", 404);
     if (actor.id === account.id && body.role !== "admin") throw new DomainError("FORBIDDEN", "No puedes retirar tu propio acceso administrativo.", 403);
+    if (body.role === "admin" && account.role !== "admin" && state.collectors.some((collector) => collector.accountId === account.id))
+      throw new DomainError("ACCOUNT_LINKED_COLLECTOR", "Retira la cuenta del cobrador antes de cambiar su rol a Admin.", 409);
     if (body.role === "collector" && !body.collectorId) throw new DomainError("COLLECTOR_REQUIRED", "Una cuenta de cobrador necesita un cobrador asignado.", 422);
     if (body.role === "admin" && body.collectorId) throw new DomainError("COLLECTOR_NOT_ALLOWED", "Una cuenta de administración no se asocia a un cobrador.", 422);
     if (body.collectorId && !state.collectors.some((item) => item.id === body.collectorId && item.active !== false))
@@ -715,7 +725,7 @@ export async function buildApp(config: Config) {
     "/api/monitoring/collector/:id/map-data",
     async (req) => {
       const u = user(req);
-      assertAdmin(u);
+      assertAdminRead(u);
       const state = await config.store.read(),
         collector = state.collectors.find((item) => item.id === req.params.id);
       if (!collector)
@@ -736,7 +746,7 @@ export async function buildApp(config: Config) {
     "/api/monitoring/route/:id/map-data",
     async (req) => {
       const u = user(req);
-      assertAdmin(u);
+      assertAdminRead(u);
       const state = await config.store.read(),
         route = state.routes.find((item) => item.id === req.params.id);
       if (!route)
@@ -757,7 +767,7 @@ export async function buildApp(config: Config) {
     "/api/monitoring/zone/:id/map-data",
     async (req) => {
       const u = user(req);
-      assertAdmin(u);
+      assertAdminRead(u);
       const state = await config.store.read(),
         routes = state.routes.filter((item) => item.zoneId === req.params.id || item.sector === req.params.id);
       if (!routes.length)
@@ -829,7 +839,7 @@ export async function buildApp(config: Config) {
     },
   );
   app.get<{ Params: { id: string } }>("/api/clientes/:id/tragamonedas", async (req) => {
-    assertAdmin(user(req));
+    assertAdminRead(user(req));
     const state = await config.store.read();
     if (!state.clients.some((client) => client.id === req.params.id))
       throw new DomainError("CLIENT_NOT_FOUND", "Cliente no encontrado.", 404);
@@ -889,7 +899,7 @@ export async function buildApp(config: Config) {
     },
   );
   app.get<{ Params: { id: string } }>("/api/clientes/:id/tragamonedas/registros", async (req) => {
-    assertAdmin(user(req));
+    assertAdminRead(user(req));
     const state = await config.store.read();
     if (!state.clients.some((client) => client.id === req.params.id))
       throw new DomainError("CLIENT_NOT_FOUND", "Cliente no encontrado.", 404);
@@ -1069,7 +1079,7 @@ export async function buildApp(config: Config) {
     });
   }
   app.get("/api/configuracion", async (req) => {
-    assertAdmin(user(req));
+    assertAdminRead(user(req));
     return { config: (await config.store.read()).systemConfig ?? {} };
   });
   describe("get", "/api/configuracion", "Configuración general del sistema");
@@ -1175,7 +1185,7 @@ export async function buildApp(config: Config) {
   );
   app.get("/api/cuadres/preview", async (req) => {
     const q = z.object({ collectorId: id, date, currency: currency.default("DOP") }).parse(req.query);
-    assertCollectorAccess(user(req), q.collectorId);
+    assertCollectorReadAccess(user(req), q.collectorId);
     const s = await config.store.read();
     if (!s.collectors.some((c) => c.id === q.collectorId))
       throw new DomainError("NOT_FOUND", "Cobrador no encontrado.", 404);

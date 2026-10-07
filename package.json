@@ -15,7 +15,7 @@
     "dev": "pnpm -r --parallel dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm --filter @cyp/server test && pnpm --filter @cyp/client-collector test && pnpm --filter @cyp/server exec tsx --test ../client-admin/test/*.test.ts ../client-admin/tests/*.test.ts",
+    "test": "pnpm --filter @cyp/server test && pnpm --filter @cyp/client-collector test && pnpm --filter @cyp/server exec tsx --test --test-concurrency=1 ../client-admin/test/*.test.ts ../client-admin/tests/*.test.ts",
     "db:migrate": "pnpm --filter @cyp/server db:migrate",
     "start:local": "node scripts/start-local.mjs",
     "db:review": "pnpm --filter @cyp/server exec tsx --env-file-if-exists=../../.env scripts/seed-review.ts",

@@ -749,6 +749,7 @@ export async function mockApi<T>(
   }
   if (path === "/auth/me") return currentUser() as T;
   if (path === "/snapshot") return structuredClone(derive(state)) as T;
+  if (path === "/usuarios" && method === "GET") return structuredClone(state.accounts) as T;
   if (path === "/clientes" && method === "GET") {
     currentUser();
     return structuredClone(state.clients) as T;

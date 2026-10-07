@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { phoneOrEmpty } from "./contact-schemas.js";
-import { assertAdmin, businessDate, DomainError, type State, type User } from "./domain.js";
+import { assertAdmin, assertAdminRead, businessDate, DomainError, type State, type User } from "./domain.js";
 import type { Store } from "./store.js";
 import {
   createAuthorizationRequest, endOwnAuthSession, getAdminTools, requireAdminRow, resolveAuthorizationRequest,
@@ -32,10 +32,10 @@ function inDateRange(value: string, from?: string, to?: string) {
 function contains(value: string, query: string) { return value.toLocaleLowerCase().includes(query.toLocaleLowerCase()); }
 
 export function registerAdminToolsRoutes(app: FastifyInstance, store: Store, user: (req: FastifyRequest) => User, mutate: Mutate, describe: Describe) {
-  app.get("/api/estaciones", async (req) => { assertAdmin(user(req)); return getAdminTools(await store.read()).stations; });
-  app.get("/api/grupos-pcp", async (req) => { assertAdmin(user(req)); return getAdminTools(await store.read()).pcpGroups; });
+  app.get("/api/estaciones", async (req) => { assertAdminRead(user(req)); return getAdminTools(await store.read()).stations; });
+  app.get("/api/grupos-pcp", async (req) => { assertAdminRead(user(req)); return getAdminTools(await store.read()).pcpGroups; });
   app.get("/api/pcps", async (req) => {
-    assertAdmin(user(req)); const data = getAdminTools(await store.read());
+    assertAdminRead(user(req)); const data = getAdminTools(await store.read());
     return data.pcps.map((row) => ({ ...row, stationIds: data.pcpStations.filter((link) => link.pcpId === row.id).map((link) => link.stationId) }));
   });
   describe("get", "/api/estaciones", "Estaciones registradas");
@@ -84,7 +84,7 @@ export function registerAdminToolsRoutes(app: FastifyInstance, store: Store, use
     return { id: pcp.id, stationIds: body.stationIds };
   });
   app.get("/api/sesiones", async (req) => {
-    const actor = user(req) as User & { sid?: string }; assertAdmin(actor); const input = filters.parse(req.query);
+    const actor = user(req) as User & { sid?: string }; assertAdminRead(actor); const input = filters.parse(req.query);
     const items = getAdminTools(await store.read()).sessions.map((row) => ({ ...row, status: sessionStatus(row), current: row.id === actor.sid }))
       .filter((row) => inDateRange(row.startedAt, input.from, input.to) && (!input.status || row.status === input.status) && contains(`${row.userName} ${row.userId}`, input.q))
       .sort((a, b) => b.startedAt.localeCompare(a.startedAt) || a.id.localeCompare(b.id));
@@ -94,7 +94,7 @@ export function registerAdminToolsRoutes(app: FastifyInstance, store: Store, use
   mutate("/api/sesiones/:id/cerrar", "Revocar una sesión activa", z.object({}).strict(), (state, actor, _body, params) => revokeAuthSession(state, actor, params.id));
   mutate("/api/auth/logout", "Cerrar la sesión propia", z.object({}).strict(), (state, actor) => endOwnAuthSession(state, actor));
   app.get("/api/trazas", async (req) => {
-    assertAdmin(user(req)); const input = filters.parse(req.query);
+    assertAdminRead(user(req)); const input = filters.parse(req.query);
     const items = getAdminTools(await store.read()).traces
       .filter((row) => inDateRange(row.createdAt, input.from, input.to) && contains(`${row.action} ${row.resource} ${row.actorId} ${row.resourceId ?? ""}`, input.q))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id));
@@ -102,7 +102,7 @@ export function registerAdminToolsRoutes(app: FastifyInstance, store: Store, use
   });
   describe("get", "/api/trazas", "Auditoría de acciones registradas, sin cuerpos ni credenciales");
   app.get("/api/solicitudes-autorizacion", async (req) => {
-    assertAdmin(user(req)); const input = filters.parse(req.query); const state = await store.read();
+    assertAdminRead(user(req)); const input = filters.parse(req.query); const state = await store.read();
     const items = getAdminTools(state).authorizationRequests.filter((row) => {
       const client = state.clients.find((item) => item.id === row.clientId);
       return inDateRange(row.createdAt, input.from, input.to) && (!input.status || row.status === input.status) && contains(`${client?.name ?? ""} ${client?.code ?? ""}`, input.q);

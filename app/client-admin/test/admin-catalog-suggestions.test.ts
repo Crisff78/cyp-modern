@@ -501,6 +501,7 @@ remittancesApi("/snapshot").then(snapshot => { if (new URLSearchParams(location.
       const dialog = page.getByRole("dialog", { name: "Datos de Usuario...", exact: true });
       await dialog.getByLabel("Nombre", { exact: true }).fill("Cuenta sintética QA");
       await dialog.getByLabel("Correo", { exact: true }).fill("qa-catalog@example.invalid");
+      await dialog.getByLabel("Rol", { exact: true }).selectOption("collector");
       await dialog.getByLabel("Apodo", { exact: true }).fill("QA apodo"); await dialog.getByLabel("Nota", { exact: true }).fill("Nota sintética conservada");
       await dialog.getByLabel("Cobrador asociado", { exact: true }).selectOption("col-1");
       const password = dialog.getByLabel("Contraseña inicial (mínimo 3 caracteres)", { exact: true });

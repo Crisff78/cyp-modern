@@ -6,8 +6,9 @@ import {
 } from "node:crypto";
 import type { RemittanceState } from "./remittances.js";
 import { emptyAdminToolsState, type AdminToolsState } from "./admin-tools.js";
+import type { AccountRole } from "./account-roles.js";
 
-export type Role = "admin" | "collector";
+export type Role = AccountRole;
 export const ledgerCurrencies = ["DOP", "USD", "EUR"] as const;
 export type LedgerCurrency = (typeof ledgerCurrencies)[number];
 // Missing currency in historical records means DOP. Never infer a ledger
@@ -595,7 +596,8 @@ export function clientStatement(state: State, user: User, clientId: string) {
   const client = state.clients.find((c) => c.id === clientId);
   if (!client)
     throw new DomainError("NOT_FOUND", "Cliente no encontrado.", 404);
-  if (user.role !== "admin") {
+  if (!canReadAdministration(user)) {
+    if (user.role !== "collector") throw new DomainError("FORBIDDEN", "Esta cuenta no tiene acceso operativo.", 403);
     const collectorId = collectorForClient(state, clientId);
     if (user.collectorId !== collectorId)
       throw new DomainError(
@@ -768,13 +770,22 @@ export function assertAdmin(user: User) {
       403,
     );
 }
+export function canReadAdministration(user: User) {
+  return user.role === "admin" || user.role === "supervisor";
+}
+export function assertAdminRead(user: User) {
+  if (!canReadAdministration(user)) throw new DomainError("FORBIDDEN", "Esta consulta requiere administración o supervisión.", 403);
+}
 export function assertCollectorAccess(user: User, id: string) {
-  if (user.role === "collector" && user.collectorId !== id)
+  if (user.role !== "admin" && !(user.role === "collector" && user.collectorId === id))
     throw new DomainError(
       "FORBIDDEN",
       "Este cobrador no está asignado a tu cuenta.",
       403,
     );
+}
+export function assertCollectorReadAccess(user: User, id: string) {
+  if (!canReadAdministration(user)) assertCollectorAccess(user, id);
 }
 export function collectorForClient(state: State, clientId: string) {
   const client = state.clients.find((c) => c.id === clientId);
@@ -1093,14 +1104,15 @@ export function closeDay(
   return settlement;
 }
 export function snapshot(state: State, user: User) {
+  const administration = canReadAdministration(user);
   const allowed = (id: string) =>
-    user.role === "admin" || user.collectorId === id;
+    administration || (user.role === "collector" && user.collectorId === id);
   const routes = state.routes.filter((r) => allowed(r.collectorId));
   const clients = state.clients.filter((c) =>
     routes.some((r) => r.id === c.routeId),
   ).map((client) => ({ ...client, preferredCurrency: client.preferredCurrency ?? "DOP" }));
   const movements = state.movements
-    .filter((m) => allowed(m.collectorId) && (user.role === "admin" || ledgerCurrency(m.currency) === "DOP"))
+    .filter((m) => allowed(m.collectorId) && (administration || ledgerCurrency(m.currency) === "DOP"))
     .map(({ actorId, receiptRevoked, ...m }) => ({
       ...m,
       currency: ledgerCurrency(m.currency),
@@ -1115,7 +1127,7 @@ export function snapshot(state: State, user: User) {
         ...c,
         cashInHand: b.difference,
         cashInHandByCurrency: Object.fromEntries(ledgerCurrencies.map((currency) => [currency, balances[currency].difference])),
-        status: (c.active === false ? "offline" : (user.role === "admin" ? Object.values(balances) : [b]).some((balance) => balance.collected - balance.deposited >= c.collectionLimit ||
+        status: (c.active === false ? "offline" : (administration ? Object.values(balances) : [b]).some((balance) => balance.collected - balance.deposited >= c.collectionLimit ||
         balance.officeDelivered - balance.paidToClients >= c.payoutLimit)
           ? "limit"
           : Date.now() - Date.parse(c.lastSeen) > 15 * 60 * 1000
@@ -1156,21 +1168,21 @@ export function snapshot(state: State, user: User) {
     businessDate: date,
     clients,
     routes,
-    zones: state.zones.filter((z) => user.role === "admin" || routes.some((r) => r.zoneId === z.id)),
+    zones: state.zones.filter((z) => administration || routes.some((r) => r.zoneId === z.id)),
     services: state.services,
     delayReasons: state.delayReasons,
-    recurringCharges: user.role === "admin" ? state.recurringCharges.map((row) => ({ ...row, currency: supportedLedgerCurrency(row.currency) ?? row.currency, ...(!supportedLedgerCurrency(row.currency) ? { currencyUnsupported: true } : {}) })) : [],
+    recurringCharges: administration ? state.recurringCharges.map((row) => ({ ...row, currency: supportedLedgerCurrency(row.currency) ?? row.currency, ...(!supportedLedgerCurrency(row.currency) ? { currencyUnsupported: true } : {}) })) : [],
     collectors,
     accounts:
-      user.role === "admin"
+      administration
         ? state.accounts.map(publicAccount)
         : state.accounts.filter((a) => a.id === user.id).map(publicAccount),
     charges: state.charges.filter((c) =>
-      clients.some((cl) => cl.id === c.clientId) && (user.role === "admin" || supportedLedgerCurrency(c.currency) === "DOP"),
+      clients.some((cl) => cl.id === c.clientId) && (administration || supportedLedgerCurrency(c.currency) === "DOP"),
     ).map((c) => financialObligation(state, c, "collection")),
-    payouts: state.payouts.filter((p) => allowed(p.collectorId) && (user.role === "admin" || supportedLedgerCurrency(p.currency) === "DOP")).map((p) => financialObligation(state, p, "payout")),
+    payouts: state.payouts.filter((p) => allowed(p.collectorId) && (administration || supportedLedgerCurrency(p.currency) === "DOP")).map((p) => financialObligation(state, p, "payout")),
     payoutRecurring:
-      user.role === "admin" ? state.payoutRecurring : [],
+      administration ? state.payoutRecurring : [],
     movements,
     settlements: state.settlements.filter((s) => allowed(s.collectorId)),
     totals: {

@@ -9,8 +9,8 @@ export const ROLE_DEFINITIONS = {
   COLLECTOR: { code: "ROLE_COLLECTOR", id: "UUID-111", label: "Cobrador" },
   CLIENT: { code: "ROLE_CLIENT", id: "UUID-001", label: "Cliente" },
 } as const;
-export type RoleName = keyof typeof ROLE_DEFINITIONS;
-export type RoleCode = (typeof ROLE_DEFINITIONS)[RoleName]["code"];
+export type RoleName = keyof typeof ROLE_DEFINITIONS | "USER" | "UNDEFINED";
+export type RoleCode = (typeof ROLE_DEFINITIONS)[keyof typeof ROLE_DEFINITIONS]["code"];
 export type User = {
   id: string;
   name: string;

@@ -3,13 +3,15 @@ import { KeyRound, ShieldCheck, Users, Wallet } from "lucide-react";
 import { LegacyToolbar, LegacyDialog, LegacyCheck, LegacyDenseTable } from "./LegacyConnectedUi";
 import { ConnectedUserPermissionsDialog } from "./ConnectedUserPermissionsDialog";
 import { CollectorAssignmentsDialog } from "./CollectorAssignmentsDialog";
+import { CollectorAccountPicker } from "./CollectorAccountPicker";
 import type { CollectorAssignment } from "./collectorAssignmentsState";
 import { remittancesApi } from "./remittancesApi";
 import { pendingMovementDraft, useMovementRequest } from "./useMovementRequest";
 import { decimalCents, formatMoney } from "../../shared/remittances/output";
 import { INPUT_LIMITS, assertCentsLimit, isDecimalDraft, isIntegerDraft, parseDay, validateEmail, validatePhone, validateText } from "../../shared/inputRules";
 import { recurringDayFromInput } from "../../shared/recurringDays";
-import type { Snapshot } from "./types";
+import { ACCOUNT_ROLE_OPTIONS, accountRoleLabel } from "../../shared/accountRoles";
+import type { PublicAccount, Snapshot } from "./types";
 import "./connected-catalog.css";
 
 export type CatalogPage = "collectors" | "routes" | "zones" | "servicesProducts" | "delayReasons" | "users" | "recurringCharges";
@@ -62,6 +64,8 @@ export function ConnectedCatalog({ page, snapshot, actorId, onRefresh }: { page:
   const [formError, setFormError] = useState("");
   const [toggleTarget, setToggleTarget] = useState<RecordRow | null>(null);
   const [limitsTarget, setLimitsTarget] = useState<RecordRow | null>(null);
+  const [accountPickerOpen, setAccountPickerOpen] = useState(false);
+  const [pickedAccount, setPickedAccount] = useState<PublicAccount | null>(null);
   const refresh = useCallback(async () => {
     setLoading(true); setError("");
     try { const result = await remittancesApi<RecordRow[]>(definition.path); if (!Array.isArray(result)) throw new Error("El servidor no devolvió un catálogo válido."); setRecords(result); }
@@ -93,7 +97,7 @@ export function ConnectedCatalog({ page, snapshot, actorId, onRefresh }: { page:
     { key: "referenceQuantity", label: "Cantidad de referencia (indica unidad)", maxLength: INPUT_LIMITS.quantity },
   ] : page === "delayReasons" ? [{ key: "reason", label: "Motivo", required: true, maxLength: INPUT_LIMITS.name }] : page === "users" ? [
     { key: "nickname", label: "Apodo", maxLength: INPUT_LIMITS.userNickname }, { key: "note", label: "Nota", maxLength: INPUT_LIMITS.userNote, multiline: true },
-    { key: "name", label: "Nombre", required: true, maxLength: INPUT_LIMITS.name }, { key: "email", label: "Correo", type: "email", required: true, maxLength: INPUT_LIMITS.email }, { key: "role", label: "Rol", required: true, options: [{ value: "admin", label: "Administrador" }, { value: "collector", label: "Cobrador" }] }, { key: "collectorId", label: "Cobrador asociado", options: collectorOptions, required: draft.role === "collector" }, ...(editing === "new" ? [{ key: "password", label: `Contraseña inicial (mínimo ${MIN_ACCOUNT_PASSWORD_LENGTH} caracteres)`, type: "password" as const, required: true, maxLength: INPUT_LIMITS.password }] : []),
+    { key: "name", label: "Nombre", required: true, maxLength: INPUT_LIMITS.name }, { key: "email", label: "Correo", type: "email", required: true, maxLength: INPUT_LIMITS.email }, { key: "role", label: "Rol", required: true, options: ACCOUNT_ROLE_OPTIONS }, { key: "collectorId", label: "Cobrador asociado", options: collectorOptions, required: draft.role === "collector" }, ...(editing === "new" ? [{ key: "password", label: `Contraseña inicial (mínimo ${MIN_ACCOUNT_PASSWORD_LENGTH} caracteres)`, type: "password" as const, required: true, maxLength: INPUT_LIMITS.password }] : []),
   ] : [
     { key: "clientId", label: "Cliente", required: true, options: snapshot.clients.map((row) => ({ value: row.id, label: row.name })) }, { key: "service", label: "Servicio", required: true, maxLength: INPUT_LIMITS.name }, { key: "concept", label: "Concepto", required: true, maxLength: INPUT_LIMITS.name },
     { key: "startDate", label: "Fecha inicial", type: "date", required: true }, { key: "endDate", label: "Fecha final", type: "date" },
@@ -102,11 +106,11 @@ export function ConnectedCatalog({ page, snapshot, actorId, onRefresh }: { page:
   ];
   const open = (record: RecordRow | "new") => {
     if (busy) return;
-    const next: Draft = { role: "collector", frequency: "Mensual", startDate: snapshot.businessDate, day1: "1", day2: "15", active: true };
+    const next: Draft = { role: "undefined", frequency: "Mensual", startDate: snapshot.businessDate, day1: "1", day2: "15", active: true };
     for (const field of fields) next[field.key] = field.type === "money" ? moneyString(record === "new" ? page === "collectors" ? 1_000_000 : 0 : record[field.key]) : field.type === "boolean" ? Boolean(record !== "new" && record[field.key]) : String(record === "new" ? next[field.key] ?? "" : record[field.key] ?? "");
     if (page === "servicesProducts") next.referencePriceCents = record === "new" || record.referencePriceCents == null ? "" : moneyString(record.referencePriceCents);
     if (next.frequency === "Semestal") next.frequency = "Semestral";
-    setDraft(next); setEditing(record); setFormError(""); setMessage("");
+    setDraft(next); setEditing(record); setFormError(""); setMessage(""); setPickedAccount(null); setAccountPickerOpen(false);
   };
   const payloadFor = (value: Draft) => {
     const payload: Record<string, unknown> = {};
@@ -130,7 +134,7 @@ export function ConnectedCatalog({ page, snapshot, actorId, onRefresh }: { page:
     }
     if (page === "servicesProducts" && (payload.referencePriceCents != null) !== (payload.referenceCurrency != null)) throw new Error("El precio de referencia requiere su moneda; borra ambos para dejarlo vacío.");
     if (page === "users") {
-      if (payload.role === "admin") delete payload.collectorId;
+      if (payload.role !== "collector") delete payload.collectorId;
       if (editing === "new" && Array.from(String(payload.password)).length < MIN_ACCOUNT_PASSWORD_LENGTH) throw new Error(`La contraseña necesita al menos ${MIN_ACCOUNT_PASSWORD_LENGTH} caracteres.`);
     } else payload.active = editing === "new" || !editing ? true : active(editing);
     if (page === "recurringCharges") { payload.currency = "DOP"; payload.useConceptAmount = editing && editing !== "new" ? Boolean(editing.useConceptAmount) : false; }
@@ -229,7 +233,7 @@ export function ConnectedCatalog({ page, snapshot, actorId, onRefresh }: { page:
       case "routes": case "zones": return [marker(text(row, "number") || index + 1), text(row, "name"), text(row, "from"), text(row, "to"), check];
       case "servicesProducts": return [marker(index + 1), text(row, "service"), text(row, "abbr"), text(row, "caption"), <LegacyCheck checked={Boolean(row.obligated)} />, <input type="checkbox" readOnly aria-label="Usa importe fijo" checked={Boolean(row.fixedAmount)} />, check];
       case "delayReasons": return [marker(index + 1), text(row, "reason"), check];
-      case "users": return [marker(text(row, "name")), text(row, "email"), row.role === "admin" ? "Administrador" : "Cobrador", check];
+      case "users": return [marker(text(row, "name")), text(row, "email"), accountRoleLabel(text(row, "role")), check];
       case "recurringCharges": {
         const client = clientOf(row);
         return [marker(index + 1), dateOf(row.startDate), text(row, "frequency"), client?.identification ?? "", client?.name ?? "Sin cliente asignado", text(row, "service"), formatMoney(Number(row.amount ?? 0), currencyOf(row)), check, dateOf(row.registeredAt)];
@@ -251,7 +255,7 @@ export function ConnectedCatalog({ page, snapshot, actorId, onRefresh }: { page:
       className,
     };
     if (field.type === "boolean") return <input {...common} type="checkbox" checked={Boolean(draft[key])} onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.checked }))} />;
-    if (field.options) return <select {...common} value={String(draft[key] ?? "")} onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))}><option value="">Selecciona…</option>{field.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>;
+    if (field.options) return <select {...common} value={String(draft[key] ?? "")} onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))}>{key !== "role" && <option value="">Selecciona…</option>}{field.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>;
     return <input {...common} type={field.type === "date" || field.type === "password" || field.type === "email" || field.type === "tel" ? field.type : "text"} inputMode={field.type === "money" ? "decimal" : field.type === "number" ? "numeric" : field.type === "tel" ? "tel" : undefined} autoComplete={field.type === "password" ? "new-password" : "off"} value={String(draft[key] ?? "")} onChange={(event) => {
       const next = event.target.value;
       setDraft((current) => {
@@ -280,7 +284,7 @@ export function ConnectedCatalog({ page, snapshot, actorId, onRefresh }: { page:
     if (page === "collectors") return <>
       <label>Cobrador:{control("name")}</label>
       <div className="legacy-dialog-row two-cols"><label>Ident.:{control("ident")}</label><label>Celular:{control("cellular")}</label></div>
-      <label>Cuenta:{control("accountId")}</label>
+      <label>Cuenta:<span className="collector-account-field"><input aria-label="Cuenta" readOnly value={pickedAccount?.name ?? snapshot.accounts.find((account) => account.id === draft.accountId)?.name ?? String(draft.accountId ?? "")} title={String(draft.accountId ?? "")} /><button type="button" aria-label="Seleccionar cuenta" disabled={busy} onClick={() => setAccountPickerOpen(true)}>...</button><button type="button" aria-label="Quitar cuenta" disabled={busy || !draft.accountId} onClick={() => { setPickedAccount(null); setDraft((current) => ({ ...current, accountId: "" })); }}>Quitar</button></span></label>
       <fieldset className="legacy-config-fieldset"><legend>Límites en DOP</legend><div className="legacy-dialog-row two-cols"><label>Cobro:{control("collectionLimit")}</label><label>Pago:{control("payoutLimit")}</label></div></fieldset>
     </>;
     if (page === "routes") return <>
@@ -402,6 +406,7 @@ export function ConnectedCatalog({ page, snapshot, actorId, onRefresh }: { page:
     {editing && <LegacyDialog title={formTitles[page]} className={dialogClasses[page] + " catalog-legacy-dialog"} onClose={() => { if (!busy) setEditing(null); }}>
       <form className={formClasses[page]} onSubmit={submit}>{formContent()}{formError && <p role="alert">{formError}</p>}<div className="legacy-dialog-actions centered"><button type="submit" disabled={busy}>{busy ? "Guardando…" : "oK"}</button><button type="button" disabled={busy} onClick={() => setEditing(null)}>Cancelar</button></div></form>
     </LegacyDialog>}
+    {accountPickerOpen && editing && <CollectorAccountPicker currentId={String(draft.accountId ?? "")} onClose={() => setAccountPickerOpen(false)} onSelect={(account) => { setDraft((current) => ({ ...current, accountId: account.id })); setPickedAccount(account); setAccountPickerOpen(false); }} />}
     {toggleTarget && <LegacyDialog title="Confirmar" className="legacy-confirm-dialog catalog-legacy-dialog" onClose={() => { if (!busy) setToggleTarget(null); }}><div className="legacy-confirm-content"><span className="legacy-question-icon">?</span><p>¿{active(toggleTarget) ? "Inactivar" : "Reactivar"} {text(toggleTarget, definition.label)}?</p></div><p className="catalog-scope-note">El historial se conserva.</p>{formError && <p role="alert">{formError}</p>}<div className="legacy-dialog-actions centered"><button type="button" disabled={busy} onClick={() => void toggle()}>{busy ? "Guardando…" : "Sí"}</button><button type="button" disabled={busy} onClick={() => setToggleTarget(null)}>No</button></div></LegacyDialog>}
     {passwordTarget && <LegacyDialog title="Cambiar clave de usuario..." className="legacy-password-dialog catalog-legacy-dialog" onClose={() => { if (!busy) setPasswordTarget(null); }}><form className="legacy-user-form" onSubmit={changePassword}><label className="legacy-form-row"><span>Clave:</span><input autoFocus type="password" disabled={busy} required minLength={MIN_ACCOUNT_PASSWORD_LENGTH} maxLength={INPUT_LIMITS.password} autoComplete="new-password" value={String(draft.password ?? "")} onChange={(event) => setDraft((current) => ({ ...current, password: event.target.value }))} /></label><label className="legacy-form-row"><span>Confirmación:</span><input type="password" disabled={busy} required maxLength={INPUT_LIMITS.password} autoComplete="new-password" value={String(draft.confirmation ?? "")} onChange={(event) => setDraft((current) => ({ ...current, confirmation: event.target.value }))} /></label><small>Mínimo {MIN_ACCOUNT_PASSWORD_LENGTH} caracteres.</small>{formError && <p role="alert">{formError}</p>}<div className="legacy-dialog-actions centered"><button type="submit" disabled={busy}>{busy ? "Guardando…" : "oK"}</button><button type="button" disabled={busy} onClick={() => setPasswordTarget(null)}>Cancelar</button></div></form></LegacyDialog>}
     {relation === "permissions" && relationRow && <ConnectedUserPermissionsDialog key={relationRow.id} userId={relationRow.id} userName={text(relationRow, "name") || text(relationRow, "email") || relationRow.id} role={text(relationRow, "role")} onClose={() => setRelation(null)} />}
