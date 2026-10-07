@@ -103,8 +103,8 @@ export function ClientPicker({ api, side, senderId, label, clients, value, query
   </div>;
 }
 
-export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = "envios" }: { api: StrictApi; user: Actor; isAdmin: boolean; initialTab?: Tab }) {
-  const [tab, setTab] = useState<Tab>(initialTab === "tasas" && !isAdmin ? "envios" : initialTab);
+export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = "envios", reportRequest }: { api: StrictApi; user: Actor; isAdmin: boolean; initialTab?: Tab; reportRequest?: number }) {
+  const [tab, setTab] = useState<Tab>(reportRequest ? "reportes" : initialTab === "tasas" && !isAdmin ? "envios" : initialTab);
   const [snapshot, setSnapshot] = useState<RemittanceSnapshot | null>(null);
   const [sent, setSent] = useState<Transfer[]>([]);
   const [received, setReceived] = useState<Transfer[]>([]);
@@ -145,6 +145,8 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   const working = busy || quoteBusy || reportBusy;
 
   const retireQuote = useCallback(() => { quoteRequests.current.invalidate(); quoteLock.current = false; setQuoteBusy(false); setQuote(null); }, []);
+  const changeTab = useCallback((next: Tab) => { retireQuote(); reportRequests.current.invalidate(); setReportBusy(false); setTab(next); setError(""); setOutputError(""); }, [retireQuote]);
+  useEffect(() => { if (reportRequest) changeTab("reportes"); }, [reportRequest, changeTab]);
 
   const refresh = useCallback(async () => {
     const request = refreshRequests.current.begin();
@@ -344,7 +346,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
 
   return <section className="remittances" aria-label="Envíos de Dinero">
     <header className="remittance-heading"><div><h1>Envíos de Dinero</h1><p>{snapshot ? `Fecha de operación: ${snapshot.businessDate}` : "Conexión con la API"} · {user.name}</p></div><button type="button" onClick={() => void refresh()} disabled={loading || working}>{loading ? "Cargando…" : "Actualizar"}</button></header>
-    <nav className="remittance-tabs" aria-label="Secciones de Envíos">{tabs.filter((item) => item.id !== "tasas" || isAdmin).map((item) => <button key={item.id} type="button" aria-current={tab === item.id ? "page" : undefined} onClick={() => { retireQuote(); reportRequests.current.invalidate(); setReportBusy(false); setTab(item.id); clearErrors(); }}>{item.label}</button>)}</nav>
+    <nav className="remittance-tabs" aria-label="Secciones de Envíos">{tabs.filter((item) => item.id !== "tasas" || isAdmin).map((item) => <button key={item.id} type="button" aria-current={tab === item.id ? "page" : undefined} onClick={() => changeTab(item.id)}>{item.label}</button>)}</nav>
     {error && <div className="remittance-error" role="alert">{error}</div>}
     {outputError && <div className="remittance-error" role="alert">{outputError}</div>}
     {notice && <div className="remittance-notice" role="status">{notice}</div>}
