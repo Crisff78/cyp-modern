@@ -5241,7 +5241,10 @@ export default function App() {
             {snapshot && (
               <div className="notifications">
                 {pendingCollectionFunds.length > 0 && (
-                  <button onClick={() => openMdiWindow("dailySettlements", "daily-settlements")}>
+                  <button onClick={() => {
+                    setNotificationsOpen(false);
+                    openMdiWindow("dailySettlements", "daily-settlements");
+                  }}>
                     <span className="notification-icon amber">
                       <FileCheck2 size={20} />
                     </span>
