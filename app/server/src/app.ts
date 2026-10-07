@@ -59,6 +59,7 @@ import { registerAdminToolsRoutes } from "./admin-tools-routes.js";
 import { legacyFinancialFingerprintBody } from "./financial-currency-compat.js";
 import { boundedId, fourDecimalNumber, freeText, machineCounter, optionalEmail, phone, singleLine, systemConfigInput } from "./input-validation.js";
 import { ACCOUNT_ROLES, isOperationalRole } from "./account-roles.js";
+import { permissionCatalog, permissionsForAccount, updateAccountPermissions, userPermissionsBody } from "./user-permissions.js";
 
 type Config = {
   store: Store;
@@ -522,6 +523,19 @@ export async function buildApp(config: Config) {
     return (await config.store.read()).accounts.map(publicAccount);
   });
   describe("get", "/api/usuarios", "Cuentas provisionadas (sin secretos)");
+  app.get("/api/permisos", async (req) => {
+    assertAdminRead(user(req));
+    return permissionCatalog;
+  });
+  describe("get", "/api/permisos", "Catálogo de permisos legacy (códigos 1–501 con huecos)");
+  app.get("/api/usuarios/:id/permisos", async (req) => {
+    assertAdminRead(user(req));
+    const params = z.object({ id }).strict().parse(req.params);
+    return permissionsForAccount(await config.store.read(), params.id);
+  });
+  describe("get", "/api/usuarios/:id/permisos", "Asignaciones legacy del usuario");
+  mutate("/api/usuarios/:id/permisos", "Guardar asignaciones legacy sin modificar el rol ni las credenciales", userPermissionsBody,
+    (state, actor, body, params) => updateAccountPermissions(state, actor, params.id, body));
   mutate(
     "/api/usuarios",
     "Provisionar cuenta de usuario o cobrador",

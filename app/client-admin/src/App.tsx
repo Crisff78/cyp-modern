@@ -5099,7 +5099,7 @@ export default function App() {
               ) : windowState.page === "remittances" ? (
                 <RemittancesWorkspace api={remittancesApi} user={effectiveUser} isAdmin={["ADMIN", "SUPERADMIN"].includes(normalizeRole(effectiveUser.role))} reportRequest={windowState.remittanceReportRequest} />
               ) : isConnectedCatalog(windowState.page) ? (
-                <ConnectedCatalog page={windowState.page} snapshot={snapshot} actorId={effectiveUser.id} onRefresh={() => void refresh()} />
+                <ConnectedCatalog page={windowState.page} snapshot={snapshot} actorId={effectiveUser.id} canManagePermissions={["ADMIN", "SUPERADMIN"].includes(normalizeRole(effectiveUser.role))} onRefresh={() => void refresh()} />
               ) : isConnectedAdminTool(windowState.page) ? (
                 <ConnectedAdminTools page={windowState.page} snapshot={snapshot} onRefresh={() => void refresh()} />
               ) : windowState.page === "clients" ? (

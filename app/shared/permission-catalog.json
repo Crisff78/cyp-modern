@@ -1,0 +1,608 @@
+{
+  "categories": [
+    "No definido",
+    "Sistema",
+    "Archivos",
+    "Edición",
+    "Reportes y Procesamiento",
+    "Monitoreo",
+    "Otros"
+  ],
+  "permissions": [
+    {
+      "id": 1,
+      "name": "Entrar al sistema",
+      "category": "Sistema"
+    },
+    {
+      "id": 2,
+      "name": "Cambiar Clave propia",
+      "category": "Sistema"
+    },
+    {
+      "id": 3,
+      "name": "Mostrar Configuración General",
+      "category": "Sistema"
+    },
+    {
+      "id": 4,
+      "name": "Cambiar Configuración General",
+      "category": "Sistema"
+    },
+    {
+      "id": 5,
+      "name": "Mostrar Trazas General del Sistema",
+      "category": "Sistema"
+    },
+    {
+      "id": 6,
+      "name": "Hacer copias de Seguridad",
+      "category": "Sistema"
+    },
+    {
+      "id": 10,
+      "name": "Visualizar Panel de Control del Sistema",
+      "category": "Sistema"
+    },
+    {
+      "id": 101,
+      "name": "Visualizar Usuarios",
+      "category": "Sistema"
+    },
+    {
+      "id": 102,
+      "name": "Agregar usuario",
+      "category": "Sistema"
+    },
+    {
+      "id": 103,
+      "name": "Modificar usuario",
+      "category": "Sistema"
+    },
+    {
+      "id": 104,
+      "name": "Inactivar usuario",
+      "category": "Sistema"
+    },
+    {
+      "id": 106,
+      "name": "Modificar permisos de usuario",
+      "category": "Sistema"
+    },
+    {
+      "id": 107,
+      "name": "Cambiar Clave de Usuario",
+      "category": "Sistema"
+    },
+    {
+      "id": 109,
+      "name": "Cambiar Estación de Usuario",
+      "category": "Sistema"
+    },
+    {
+      "id": 111,
+      "name": "Visualizar estaciones de usuarios",
+      "category": "Sistema"
+    },
+    {
+      "id": 112,
+      "name": "Agregar estacion de usuarios",
+      "category": "Sistema"
+    },
+    {
+      "id": 113,
+      "name": "Modificar estacion de usuarios",
+      "category": "Sistema"
+    },
+    {
+      "id": 114,
+      "name": "Eliminar estacion de usuarios",
+      "category": "Sistema"
+    },
+    {
+      "id": 115,
+      "name": "Visualizar sesiones de Usuarios",
+      "category": "Sistema"
+    },
+    {
+      "id": 116,
+      "name": "Cerrar sesiones de usuarios",
+      "category": "Sistema"
+    },
+    {
+      "id": 120,
+      "name": "Visualizar Zonas",
+      "category": "Archivos"
+    },
+    {
+      "id": 121,
+      "name": "Agregar Zona",
+      "category": "Archivos"
+    },
+    {
+      "id": 122,
+      "name": "Modificar Zona",
+      "category": "Archivos"
+    },
+    {
+      "id": 123,
+      "name": "Inactivar/Eliminar Zona",
+      "category": "Archivos"
+    },
+    {
+      "id": 130,
+      "name": "Visualizar Rutas",
+      "category": "Archivos"
+    },
+    {
+      "id": 131,
+      "name": "Agregar Ruta",
+      "category": "Archivos"
+    },
+    {
+      "id": 132,
+      "name": "Modificar Ruta",
+      "category": "Archivos"
+    },
+    {
+      "id": 133,
+      "name": "Inactivar/Eliminar Ruta",
+      "category": "Archivos"
+    },
+    {
+      "id": 134,
+      "name": "Armar Ruta",
+      "category": "Archivos"
+    },
+    {
+      "id": 140,
+      "name": "Visualizar Clientes",
+      "category": "Archivos"
+    },
+    {
+      "id": 141,
+      "name": "Agregar cliente",
+      "category": "Archivos"
+    },
+    {
+      "id": 142,
+      "name": "Modificar cliente",
+      "category": "Archivos"
+    },
+    {
+      "id": 143,
+      "name": "Inactivar cliente",
+      "category": "Archivos"
+    },
+    {
+      "id": 144,
+      "name": "Mostrar Expediente del Cliente",
+      "category": "Archivos"
+    },
+    {
+      "id": 145,
+      "name": "Modificar GeoCoordenas del Cliente",
+      "category": "Archivos"
+    },
+    {
+      "id": 150,
+      "name": "Visualizar Cobradores",
+      "category": "Archivos"
+    },
+    {
+      "id": 151,
+      "name": "Agregar cobrador",
+      "category": "Archivos"
+    },
+    {
+      "id": 152,
+      "name": "Modificar cobrador",
+      "category": "Archivos"
+    },
+    {
+      "id": 153,
+      "name": "Inactivar/Eliminar cobrador",
+      "category": "Archivos"
+    },
+    {
+      "id": 154,
+      "name": "Modificar Zonas del Cobrador",
+      "category": "Archivos"
+    },
+    {
+      "id": 155,
+      "name": "Modificar Rutas del Cobrador",
+      "category": "Archivos"
+    },
+    {
+      "id": 156,
+      "name": "Modificar Límites del Cobrador",
+      "category": "Archivos"
+    },
+    {
+      "id": 160,
+      "name": "Visualizar Grupos de PCPs",
+      "category": "Archivos"
+    },
+    {
+      "id": 161,
+      "name": "Agregar Grupo de PCPs",
+      "category": "Archivos"
+    },
+    {
+      "id": 162,
+      "name": "Modificar Grupo de PCPs",
+      "category": "Archivos"
+    },
+    {
+      "id": 163,
+      "name": "ELiminar/Inactivar Grupo de PCPs",
+      "category": "Archivos"
+    },
+    {
+      "id": 170,
+      "name": "Visualizar PCPs",
+      "category": "Archivos"
+    },
+    {
+      "id": 171,
+      "name": "Agregar PCPs",
+      "category": "Archivos"
+    },
+    {
+      "id": 172,
+      "name": "Modificar PCPs",
+      "category": "Archivos"
+    },
+    {
+      "id": 173,
+      "name": "Inactivar/Eliminar PCPs",
+      "category": "Archivos"
+    },
+    {
+      "id": 174,
+      "name": "Mostrar Estaciones del PCP",
+      "category": "Archivos"
+    },
+    {
+      "id": 175,
+      "name": "Agregar Estación a PCP",
+      "category": "Archivos"
+    },
+    {
+      "id": 176,
+      "name": "Eliminar Estación de PCP",
+      "category": "Archivos"
+    },
+    {
+      "id": 180,
+      "name": "Visualizar Servicios",
+      "category": "Archivos"
+    },
+    {
+      "id": 181,
+      "name": "Agregar Servicio",
+      "category": "Archivos"
+    },
+    {
+      "id": 182,
+      "name": "Modificar Servicio",
+      "category": "Archivos"
+    },
+    {
+      "id": 183,
+      "name": "Inactivar/Eliminar Servicio",
+      "category": "Archivos"
+    },
+    {
+      "id": 190,
+      "name": "Visualizar Conceptos",
+      "category": "Archivos"
+    },
+    {
+      "id": 191,
+      "name": "Agregar concepto",
+      "category": "Archivos"
+    },
+    {
+      "id": 192,
+      "name": "Modificar Concepto",
+      "category": "Archivos"
+    },
+    {
+      "id": 193,
+      "name": "Inactivar/Eliminar Concepto",
+      "category": "Archivos"
+    },
+    {
+      "id": 200,
+      "name": "Visualizar Tasas de Cambios",
+      "category": "Archivos"
+    },
+    {
+      "id": 201,
+      "name": "Agregar Tasa de Cambio",
+      "category": "Archivos"
+    },
+    {
+      "id": 300,
+      "name": "Visualizar Cargos",
+      "category": "Edición"
+    },
+    {
+      "id": 301,
+      "name": "Agregar Cargo",
+      "category": "Edición"
+    },
+    {
+      "id": 302,
+      "name": "Modificar Cargo",
+      "category": "Edición"
+    },
+    {
+      "id": 303,
+      "name": "Eliminar Cargo",
+      "category": "Edición"
+    },
+    {
+      "id": 304,
+      "name": "Importar Cargos",
+      "category": "Edición"
+    },
+    {
+      "id": 310,
+      "name": "Visualizar Desembolsos",
+      "category": "Edición"
+    },
+    {
+      "id": 311,
+      "name": "Agregar Desembolso",
+      "category": "Edición"
+    },
+    {
+      "id": 312,
+      "name": "Modificar Desembolso",
+      "category": "Edición"
+    },
+    {
+      "id": 313,
+      "name": "Eliminar Desembolso",
+      "category": "Edición"
+    },
+    {
+      "id": 320,
+      "name": "Visualizar Cobros",
+      "category": "Edición"
+    },
+    {
+      "id": 321,
+      "name": "Agregar Cobro",
+      "category": "Edición"
+    },
+    {
+      "id": 322,
+      "name": "Modificar Cobro",
+      "category": "Edición"
+    },
+    {
+      "id": 323,
+      "name": "Eliminar Cobro",
+      "category": "Edición"
+    },
+    {
+      "id": 330,
+      "name": "Visualizar Depósitos",
+      "category": "Edición"
+    },
+    {
+      "id": 331,
+      "name": "Agregar depósito",
+      "category": "Edición"
+    },
+    {
+      "id": 332,
+      "name": "Modificar depósito",
+      "category": "Edición"
+    },
+    {
+      "id": 333,
+      "name": "Eliminar depósito",
+      "category": "Edición"
+    },
+    {
+      "id": 334,
+      "name": "Aceptar depósito",
+      "category": "Edición"
+    },
+    {
+      "id": 340,
+      "name": "Visuzalizar Entregas",
+      "category": "Edición"
+    },
+    {
+      "id": 341,
+      "name": "Agregar entrega",
+      "category": "Edición"
+    },
+    {
+      "id": 342,
+      "name": "Modificar entrega",
+      "category": "Edición"
+    },
+    {
+      "id": 343,
+      "name": "Eliminar entrega",
+      "category": "Edición"
+    },
+    {
+      "id": 350,
+      "name": "Visualizar Cargos Rec.",
+      "category": "Edición"
+    },
+    {
+      "id": 351,
+      "name": "Agregar Cargo Rec.",
+      "category": "Edición"
+    },
+    {
+      "id": 352,
+      "name": "Modificar Cargo Rec.",
+      "category": "Edición"
+    },
+    {
+      "id": 353,
+      "name": "Inactivar/Eliminar Cargo Rec.",
+      "category": "Edición"
+    },
+    {
+      "id": 360,
+      "name": "Visualizar Descargos",
+      "category": "Edición"
+    },
+    {
+      "id": 361,
+      "name": "Agregar descargo",
+      "category": "Edición"
+    },
+    {
+      "id": 362,
+      "name": "Modificar descargo",
+      "category": "Edición"
+    },
+    {
+      "id": 363,
+      "name": "Inactivar/Eliminar descargo",
+      "category": "Edición"
+    },
+    {
+      "id": 364,
+      "name": "Importar descargos",
+      "category": "Edición"
+    },
+    {
+      "id": 370,
+      "name": "Visualizar Pagos",
+      "category": "Edición"
+    },
+    {
+      "id": 371,
+      "name": "Agregar pago",
+      "category": "Edición"
+    },
+    {
+      "id": 372,
+      "name": "Modificar pago",
+      "category": "Edición"
+    },
+    {
+      "id": 373,
+      "name": "Inactivar/Eliminar pago",
+      "category": "Edición"
+    },
+    {
+      "id": 374,
+      "name": "Exportar pagos",
+      "category": "Edición"
+    },
+    {
+      "id": 380,
+      "name": "Visualizar Entregas de Dinero",
+      "category": "Edición"
+    },
+    {
+      "id": 381,
+      "name": "Agregar entrega",
+      "category": "Edición"
+    },
+    {
+      "id": 382,
+      "name": "Modificar entrega",
+      "category": "Edición"
+    },
+    {
+      "id": 383,
+      "name": "Inactivar/Eliminar entrega",
+      "category": "Edición"
+    },
+    {
+      "id": 390,
+      "name": "Visualizar Descargos Rec.",
+      "category": "Edición"
+    },
+    {
+      "id": 391,
+      "name": "Agregar descargo rec.",
+      "category": "Edición"
+    },
+    {
+      "id": 392,
+      "name": "Modificar descargo rec.",
+      "category": "Edición"
+    },
+    {
+      "id": 393,
+      "name": "Inactivar/Eliminar descargo rec.",
+      "category": "Edición"
+    },
+    {
+      "id": 400,
+      "name": "Visualizar Reportes",
+      "category": "Reportes y Procesamiento"
+    },
+    {
+      "id": 401,
+      "name": "Mostrar Cuadres",
+      "category": "Reportes y Procesamiento"
+    },
+    {
+      "id": 402,
+      "name": "Hacer cuadre",
+      "category": "Reportes y Procesamiento"
+    },
+    {
+      "id": 403,
+      "name": "Cerrar Día",
+      "category": "Reportes y Procesamiento"
+    },
+    {
+      "id": 410,
+      "name": "Visualizar Reporte de Cobros Resumido",
+      "category": "Reportes y Procesamiento"
+    },
+    {
+      "id": 411,
+      "name": "Visualizar Reporte de Cobros Detallado",
+      "category": "Reportes y Procesamiento"
+    },
+    {
+      "id": 412,
+      "name": "Visualizar Reporte de Pagos Resumido",
+      "category": "Reportes y Procesamiento"
+    },
+    {
+      "id": 413,
+      "name": "Visualizar Reporte de Pagos Detallado",
+      "category": "Reportes y Procesamiento"
+    },
+    {
+      "id": 414,
+      "name": "Visualizar Reporte de CDDE Resumido",
+      "category": "Reportes y Procesamiento"
+    },
+    {
+      "id": 415,
+      "name": "Visualizar Reporte de CDDE Detallado",
+      "category": "Reportes y Procesamiento"
+    },
+    {
+      "id": 500,
+      "name": "Mostrar Monitores",
+      "category": "Monitoreo"
+    },
+    {
+      "id": 501,
+      "name": "Mostrar Monitor de Cobradores",
+      "category": "Monitoreo"
+    }
+  ]
+}

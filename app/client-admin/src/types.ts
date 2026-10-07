@@ -203,6 +203,8 @@ export type Balance = {
 export type PublicAccount = {
   nickname?: string;
   note?: string;
+  permissionIds?: number[];
+  permissionRevision?: number;
   id: string;
   name: string;
   email: string;

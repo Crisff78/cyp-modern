@@ -6,6 +6,7 @@ import {
   type Snapshot,
   type User,
 } from "./types";
+import { PERMISSION_CATALOG, PERMISSION_CATEGORIES, defaultPermissionIds, isUserPermissions, type UserPermissions } from "../../shared/permissionCatalog";
 
 const MOCK_USER_KEY = "cyp-admin-mock-user";
 const today = () => new Date().toISOString().slice(0, 10);
@@ -382,6 +383,7 @@ const initialSnapshot = (): Snapshot => ({
 
 let mockSystemConfig: Record<string, string | number | boolean> = {};
 let state = derive(initialSnapshot());
+const permissionReceipts = new Map<string, { body: string; response: UserPermissions }>();
 let clientMachines: ClientMachine[] = [];
 let clientMachineLogs: ClientMachineLog[] = [];
 
@@ -750,6 +752,41 @@ export async function mockApi<T>(
   if (path === "/auth/me") return currentUser() as T;
   if (path === "/snapshot") return structuredClone(derive(state)) as T;
   if (path === "/usuarios" && method === "GET") return structuredClone(state.accounts) as T;
+  if (path === "/permisos" || /^\/usuarios\/[^/]+\/permisos$/.test(path)) {
+    const actor = currentUser(), role = String(actor.role).toUpperCase();
+    if (!["ADMIN", "SUPERADMIN", "SUPERVISOR"].includes(role) || (method !== "GET" && role === "SUPERVISOR"))
+      throw new MockApiError("Esta acción requiere administración.", 403);
+    if (path === "/permisos" && method === "GET")
+      return structuredClone({ categories: PERMISSION_CATEGORIES, permissions: PERMISSION_CATALOG }) as T;
+    const match = path.match(/^\/usuarios\/([^/]+)\/permisos$/);
+    const account = state.accounts.find(({ id }) => id === (match ? decodeURIComponent(match[1]) : ""));
+    if (!account) throw new MockApiError("La cuenta no existe.", 404);
+    const response = (): UserPermissions => ({ userId: account.id, permissionIds: account.permissionIds ?? defaultPermissionIds(account.role), revision: account.permissionRevision ?? 0 });
+    if (method === "GET") return structuredClone(response()) as T;
+    if (method === "POST") {
+      const body = jsonBody(options);
+      if (Object.keys(body).some((key) => !["permissionIds", "revision"].includes(key)) ||
+          !isUserPermissions({ ...body, userId: account.id }, account.id) || Number(body.revision) > 2_147_483_647)
+        throw new MockApiError("Los permisos no son válidos.", 400);
+      const key = new Headers(options.headers).get("Idempotency-Key");
+      if (!key || key.length < 8 || key.length > 100) throw new MockApiError("Envía un Idempotency-Key válido.", 400);
+      const scope = `${actor.id}:${key}`, fingerprint = JSON.stringify({ path, body }), previous = permissionReceipts.get(scope);
+      if (previous) {
+        if (previous.body !== fingerprint) throw new MockApiError("Esta clave ya se usó para otra operación.", 409);
+        return structuredClone(previous.response) as T;
+      }
+      if (body.revision !== (account.permissionRevision ?? 0)) throw new MockApiError("Otro operador modificó los permisos. Refresca el catálogo antes de guardar.", 409);
+      const next = [...body.permissionIds as number[]].sort((a, b) => a - b);
+      if (account.permissionIds === undefined || JSON.stringify(next) !== JSON.stringify(account.permissionIds)) {
+        account.permissionIds = next;
+        account.permissionRevision = Number(body.revision) + 1;
+        account.updatedAt = now();
+      }
+      const result = response();
+      permissionReceipts.set(scope, { body: fingerprint, response: structuredClone(result) });
+      return structuredClone(result) as T;
+    }
+  }
   if (path === "/clientes" && method === "GET") {
     currentUser();
     return structuredClone(state.clients) as T;

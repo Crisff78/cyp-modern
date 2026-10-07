@@ -63,6 +63,8 @@ export type Account = {
   name: string;
   nickname?: string;
   note?: string;
+  permissionIds?: number[];
+  permissionRevision?: number;
   email: string;
   role: Role;
   collectorId?: string;

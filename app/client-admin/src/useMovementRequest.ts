@@ -16,6 +16,7 @@ const definitiveCodes = new Set([
   "INSUFFICIENT_COLLECTION_CASH", "INSUFFICIENT_PAYOUT_CASH", "PAYOUT_LIMIT",
   "MOVEMENT_BALANCE_MISMATCH",
   "RATE_DATE", "DOP_RATE", "INVALID_RATE", "INVALID_CURRENCY",
+  "PERMISSIONS_CHANGED",
 ]);
 const states = new Map<string, RequestState>();
 const listeners = new Set<() => void>();
