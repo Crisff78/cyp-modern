@@ -2832,6 +2832,15 @@ strong {
   border-radius: 9px;
   box-shadow: none;
 }
+.login-form-section .login-back {
+  width: 100%;
+  gap: 4px;
+  font-weight: 500;
+}
+.login-form-section .login-back:hover:not(:disabled) {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 .login-divider {
   color: #64748b;
 }

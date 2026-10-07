@@ -16,6 +16,7 @@ import {
   Banknote,
   BellRing,
   Check,
+  ChevronLeft,
   ChevronRight,
   CircleAlert,
   Clock3,
@@ -777,6 +778,18 @@ function Login({
                 <ArrowRight size={20} />
               </>
             )}
+          </button>
+          <button
+            type="button"
+            className="text-button login-back"
+            disabled={busy}
+            onClick={() => {
+              const selectionUrl = new URL("/", window.location.origin);
+              if (import.meta.env.DEV) selectionUrl.port = "5173";
+              window.location.assign(selectionUrl.href);
+            }}
+          >
+            <ChevronLeft size={15} /> Volver
           </button>
         </form>
         {onRetry && (
