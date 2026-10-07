@@ -1,7 +1,9 @@
+import contracts from "./input-contracts.json";
+
 export const INPUT_LIMITS = {
   id: 80,
   name: 160,
-  phone: 40,
+  phone: contracts.phone.maxLength,
   address: 240,
   email: 200,
   note: 2000,
@@ -15,6 +17,7 @@ export const INPUT_LIMITS = {
 
 const singleLineControls = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
 const multilineControls = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/;
+const contactPhonePattern = new RegExp(contracts.phone.pattern);
 // Match z.email() in the server's installed Zod version.
 const emailPattern = /^(?:[A-Za-z0-9_'+\-]+\.)*[A-Za-z0-9_'+\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}$/;
 
@@ -29,6 +32,16 @@ export function validatePhone(value: string, label = "Teléfono", options: { req
   validateText(value, label, INPUT_LIMITS.phone, options);
   const phone = value.trim();
   if (!phone && !options.required) return;
+  const digits = phone.replace(/[^0-9]/g, "").length;
+  if (!contactPhonePattern.test(phone) || digits < contracts.phone.minDigits || digits > contracts.phone.maxDigits)
+    throw new Error(`${label}: ${contracts.phone.message}`);
+}
+
+// General configuration keeps its existing phone and fax contract.
+export function validateGeneralPhone(value: string, label = "Teléfono") {
+  validateText(value, label, INPUT_LIMITS.phone);
+  const phone = value.trim();
+  if (!phone) return;
   if (!/^\+?(?=[\d ().-]*\d)[\d ().-]+(?:\s*(?:ext\.?|extension|extensión|x|#)\s*\d{1,6})?$/iu.test(phone))
     throw new Error(`${label} debe contener dígitos; admite +, espacios, paréntesis, guiones y una extensión, como +18095550123 ext2.`);
 }

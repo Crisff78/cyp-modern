@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { phoneOrEmpty } from "./contact-schemas.js";
+import contracts from "../../shared/input-contracts.json" with { type: "json" };
 
 const singleLineControls = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
 const nonTextControls = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/;
@@ -21,7 +23,8 @@ export const optionalEmail = singleLine(200)
   .refine((value) => value === "" || emailFormat.safeParse(value).success, "Escribe un correo válido o deja el campo vacío.");
 
 const phoneFormat = /^\+?(?=[\d ().-]*\d)[\d ().-]+(?:\s*(?:ext\.?|extension|extensión|x|#)\s*\d{1,6})?$/iu;
-export const phone = singleLine(40).refine((value) => {
+export const phone = singleLine(contracts.phone.maxLength).pipe(phoneOrEmpty);
+const generalPhone = singleLine(40).refine((value) => {
   if (value === "") return true;
   return phoneFormat.test(value) && /\d/.test(value);
 }, "Escribe un teléfono con dígitos, separadores y extensión opcional de hasta 6 dígitos, o deja el campo vacío.");
@@ -66,8 +69,8 @@ const configNumber = (min: number, max: number, empty = false, integer = false, 
 
 const knownConfigFields: Record<string, z.ZodType> = {
   "general.empresa": configText(160), "general.direccion": configText(500),
-  "general.telefono": configText(40).refine((value) => phone.safeParse(value).success, "Escribe un teléfono válido o deja el campo vacío."),
-  "general.fax": configText(40).refine((value) => phone.safeParse(value).success, "Escribe un teléfono válido o deja el campo vacío."),
+  "general.telefono": configText(40).refine((value) => generalPhone.safeParse(value).success, "Escribe un teléfono válido o deja el campo vacío."),
+  "general.fax": configText(40).refine((value) => generalPhone.safeParse(value).success, "Escribe un teléfono válido o deja el campo vacío."),
   "general.correo": configText(200).refine((value) => optionalEmail.safeParse(value).success, "Escribe un correo válido o deja el campo vacío."),
   "general.licencia": configText(160), "general.moneda": configText(40),
   "cargos.servicioTm": configText(160), "cargos.conceptoTm": configText(160),

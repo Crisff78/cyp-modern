@@ -1,5 +1,11 @@
 {
-  "phone": { "maxLength": 40, "minDigits": 8, "maxDigits": 15 },
+  "phone": {
+    "maxLength": 40,
+    "minDigits": 8,
+    "maxDigits": 15,
+    "pattern": "^\\+?[0-9() -]+$",
+    "message": "Escribe un teléfono válido con 8 a 15 dígitos; admite + al inicio, espacios, guiones y paréntesis. No uses puntos ni extensiones."
+  },
   "email": { "maxLength": 200 },
   "recurringDay": { "min": 1, "max": 31, "numericStringPattern": "^[0-9]{1,2}$" }
 }

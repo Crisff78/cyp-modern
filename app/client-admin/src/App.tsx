@@ -97,7 +97,7 @@ import { businessDate, businessTimestamp, collectionCash, currencyCode, currency
 import { buildDepositComponents, confirmedDepositMatches, depositCashTotal, depositComponentsMatch, depositMethodLabel, nonCashDepositAmount, type NonCashDepositLine } from "./depositComponents";
 import { useChargeImportRequest } from "./useChargeImportRequest";
 import { decimalCents, formatMoney } from "../../shared/remittances/output";
-import { INPUT_LIMITS, assertCentsLimit, validateText, validatePhone, validateEmail } from "../../shared/inputRules";
+import { INPUT_LIMITS, assertCentsLimit, validateText, validatePhone, validateGeneralPhone, validateEmail } from "../../shared/inputRules";
 import { encodeCsvCell } from "../../shared/csv";
 import { GeoMap, type GeoPoint } from "./GeoMap";
 import { MonitorGeoMap } from "./MonitorGeoMap";
@@ -4007,8 +4007,8 @@ function validateSystemConfigInputs(config: Record<string, string | number | boo
     if ((config[key] as string).length > maximum) throw new Error(`${key}: usa como máximo ${maximum} caracteres.`);
     validateText(config[key] as string, key, maximum);
   }
-  validatePhone(String(config["general.telefono"] ?? ""), "Teléfono");
-  validatePhone(String(config["general.fax"] ?? ""), "Fax");
+  validateGeneralPhone(String(config["general.telefono"] ?? ""), "Teléfono");
+  validateGeneralPhone(String(config["general.fax"] ?? ""), "Fax");
   validateEmail(String(config["general.correo"] ?? ""));
   for (const [key, initial] of Object.entries(SYSTEM_CONFIG_DEFAULTS)) {
     if (typeof initial === "boolean" && Object.hasOwn(config, key) && typeof config[key] !== "boolean") throw new Error(`${key}: selecciona verdadero o falso.`);

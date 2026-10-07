@@ -1,3 +1,5 @@
+import { validatePhone } from "../../shared/inputRules";
+
 type SearchableClient = {
   id?: string; code?: string; name?: string; alias?: string; identification?: string;
   phone?: string; cellular?: string; note?: string;
@@ -25,10 +27,9 @@ export function matchesClientSearch(client: SearchableClient, query: string) {
   return false;
 }
 export function clientCodeFromPhone(phone: string) {
+  validatePhone(phone, "Teléfono", { required: true });
   const value = phone.trim();
   const digits = value.replace(/\D/g, "");
-  if (!/^\+?[\d\t ().-]+$/.test(value) || digits.length < 7 || digits.length > 15)
-    throw new Error("Escribe un teléfono válido de 7 a 15 dígitos; puede incluir +, espacios, paréntesis o guiones.");
   return `${value.startsWith("+") ? "+" : ""}${digits}`;
 }
 // Explicit action avoids overwriting notes or copying only the first keystroke.

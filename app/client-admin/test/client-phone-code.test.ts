@@ -33,7 +33,7 @@ test("client phone code works in the actual isolated React dialog", { skip: canR
     const appModule = JSON.stringify(path.join(adminRoot, "src/App.tsx").replaceAll("\\", "/"));
     fs.writeFileSync(fixture, `import { createRoot } from "react-dom/client";
 import { ClientDataDialog } from ${appModule};
-const existing = Object.freeze({id:"synthetic-real-id",code:"EXISTING-01",identification:"SYN-DOC-EDIT",name:"Cliente QA existente",alias:"Alias QA",address:"Dirección QA",location:"Ubicación QA",zone:"Zona QA",routeId:"qa-route",phone:"+509 (41)23-4567",cellular:"000-000-0000 ext. 1",email:"qa@example.invalid",note:"Nota QA conservada",active:true,preferredCurrency:"EUR"});
+const existing = Object.freeze({id:"synthetic-real-id",code:"EXISTING-01",identification:"SYN-DOC-EDIT",name:"Cliente QA existente",alias:"Alias QA",address:"Dirección QA",location:"Ubicación QA",zone:"Zona QA",routeId:"qa-route",phone:"+509 (41)23-4567",cellular:"000-000-0000",email:"qa@example.invalid",note:"Nota QA conservada",active:true,preferredCurrency:"EUR"});
 const client = new URLSearchParams(location.search).get("mode") === "edit" ? existing : undefined;
 window.__qaClient = client; window.__qaSaves = []; window.__qaRecords = []; window.__qaClosed = false;
 createRoot(document.getElementById("root")).render(<ClientDataDialog client={client} zones={["Zona QA"]} routes={[{id:"qa-route",name:"Ruta QA"}]} defaultCode="00042" onClose={() => {window.__qaClosed = true;}} onSave={draft => {
@@ -116,7 +116,7 @@ createRoot(document.getElementById("root")).render(<ClientDataDialog client={cli
       for (const phone of ["123", "abc +50941234567", "1234567890123456"]) {
         await field("Teléfono:").fill(phone); await usePhone().click();
         const alert = page.getByRole("dialog", { name: "Mensaje", exact: true }); await alert.waitFor();
-        assert.match(await alert.innerText(), /Escribe un teléfono válido de 7 a 15 dígitos/);
+        assert.match(await alert.innerText(), /Escribe un teléfono válido con 8 a 15 dígitos/);
         assert.equal(await field("Código:").inputValue(), "00042");
         await alert.getByRole("button", { name: "Aceptar", exact: true }).click(); await alert.waitFor({ state: "hidden" });
       }
@@ -126,7 +126,7 @@ createRoot(document.getElementById("root")).render(<ClientDataDialog client={cli
       await open("edit"); assert.equal(await usePhone().count(), 0);
       await field("Teléfono:").fill("+1 (809) 555-1234");
       await dialog().getByRole("button", { name: "Copiar teléfono a campos vacíos", exact: true }).click();
-      assert.equal(await field("Celular:").inputValue(), "000-000-0000 ext. 1"); assert.equal(await field("Nota:").inputValue(), "Nota QA conservada");
+      assert.equal(await field("Celular:").inputValue(), "000-000-0000"); assert.equal(await field("Nota:").inputValue(), "Nota QA conservada");
       assert.equal(await field("Código:").inputValue(), "EXISTING-01"); assert.equal(await field("Cédula / pasaporte:").inputValue(), "SYN-DOC-EDIT");
       await dialog().getByRole("button", { name: "oK", exact: true }).click();
       const draft = await saved(); assert.equal(draft.code, "EXISTING-01"); assert.equal(draft.identification, "SYN-DOC-EDIT");
