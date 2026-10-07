@@ -403,6 +403,7 @@ const mdiTitle = (page: MdiPage) => {
 type MdiWindowState = {
   id: string;
   page: MdiPage;
+  remittanceReportRequest?: number;
   title: string;
   x: number;
   y: number;
@@ -505,7 +506,7 @@ function ControlPanelContent({ onLaunch }: Readonly<{ onLaunch: (page: Page, nav
   );
 }
 
-function ReportesLauncher({ onLaunch }: Readonly<{ onLaunch: (page: ReportPageId, navKey: string) => void }>) {
+function ReportesLauncher({ onLaunch }: Readonly<{ onLaunch: (page: ReportPageId | "remittances", navKey: string) => void }>) {
   const renderGroup = (category: ReportDefinition["category"]) => (
     <section className="reports-launcher-section" key={category}>
       <div className="control-panel-section-heading"><span>{category}</span><small>Seleccione un reporte</small></div>
@@ -529,6 +530,15 @@ function ReportesLauncher({ onLaunch }: Readonly<{ onLaunch: (page: ReportPageId
       {renderGroup("-- Cargos --")}
       {renderGroup("-- Cobros --")}
       {renderGroup("-- Pagos --")}
+      <section className="reports-launcher-section" aria-label="Reportes de Envíos de Dinero">
+        <div className="control-panel-section-heading"><span>-- Envíos de Dinero --</span><small>Seleccione un reporte</small></div>
+        <div className="reports-launcher-grid">
+          <button type="button" className="report-launcher-tile" onClick={() => onLaunch("remittances", "reports-remittances")}>
+            <ChartNoAxesCombined size={18} aria-hidden="true" />
+            <span>Envíos de Dinero</span>
+          </button>
+        </div>
+      </section>
       {renderGroup("-- Servicios --")}
     </div>
   );
@@ -4584,10 +4594,14 @@ export default function App() {
   const openMdiWindow = useCallback((next: MdiPage, navKey = "") => {
     if (!isUiPageVisible(next)) return;
     setActiveNavKey(navKey);
+    const requestRemittanceReport = next === "remittances" && navKey === "reports-remittances";
     setMdiWindows((windows) => {
       const existing = windows.find((item) => item.page === next);
       const zIndex = nextZIndex();
-      if (existing) return focusWindowCollection(windows, existing.id, zIndex);
+      if (existing) return focusWindowCollection(windows, existing.id, zIndex).map((item) =>
+        requestRemittanceReport && item.id === existing.id
+          ? { ...item, remittanceReportRequest: (item.remittanceReportRequest ?? 0) + 1 }
+          : item);
 
       const offset = windows.length * 26;
       const compact = next === "controlPanel";
@@ -4597,6 +4611,7 @@ export default function App() {
         {
           id: `${next}-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`,
           page: next,
+          remittanceReportRequest: requestRemittanceReport ? 1 : undefined,
           title: mdiTitle(next),
           x: compact ? 180 : 118 + offset,
           y: compact ? 78 : 78 + offset,
@@ -5061,7 +5076,7 @@ export default function App() {
               ) : windowState.page === "exchangeRates" ? (
                 <ConnectedExchangeRates actorId={effectiveUser.id} isAdmin={["ADMIN", "SUPERADMIN"].includes(normalizeRole(effectiveUser.role))} />
               ) : windowState.page === "remittances" ? (
-                <RemittancesWorkspace api={remittancesApi} user={effectiveUser} isAdmin={["ADMIN", "SUPERADMIN"].includes(normalizeRole(effectiveUser.role))} />
+                <RemittancesWorkspace api={remittancesApi} user={effectiveUser} isAdmin={["ADMIN", "SUPERADMIN"].includes(normalizeRole(effectiveUser.role))} reportRequest={windowState.remittanceReportRequest} />
               ) : isConnectedCatalog(windowState.page) ? (
                 <ConnectedCatalog page={windowState.page} snapshot={snapshot} actorId={effectiveUser.id} onRefresh={() => void refresh()} />
               ) : isConnectedAdminTool(windowState.page) ? (
