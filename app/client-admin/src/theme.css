@@ -51,6 +51,12 @@
     background: var(--cyp-canvas);
   }
   :root[data-theme="dark"] body { background: var(--cyp-canvas); }
+  :root[data-theme="dark"] :is(.remittances, .remittances-dialog) {
+    --rem-ink: var(--cyp-text);
+    --rem-paper: var(--cyp-surface);
+    --rem-muted: var(--cyp-surface-muted);
+    --rem-edge: var(--cyp-border);
+  }
   :root[data-theme="dark"] :focus-visible { outline-color: var(--cyp-success-text); }
   :root[data-theme="dark"] input::placeholder,
   :root[data-theme="dark"] textarea::placeholder { color: var(--cyp-text-subtle); }
