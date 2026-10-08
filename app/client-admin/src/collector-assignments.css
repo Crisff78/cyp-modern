@@ -1,30 +1,30 @@
-.legacy-dialog.collector-assignments-dialog { width: min(720px, calc(100vw - 48px)); height: min(470px, calc(100dvh - 64px)); border-color: #047857; }
-.legacy-dialog.collector-assignment-picker { width: min(650px, calc(100vw - 48px)); height: min(390px, calc(100dvh - 64px)); border-color: #047857; }
-.legacy-dialog.collector-assignment-limit-picker { width: min(470px, calc(100vw - 48px)); border-color: #047857; }
+.legacy-dialog.collector-assignments-dialog { width: min(720px, calc(100vw - 48px)); height: min(470px, calc(100dvh - 64px)); border-color: var(--cyp-success-text, #047857); }
+.legacy-dialog.collector-assignment-picker { width: min(650px, calc(100vw - 48px)); height: min(390px, calc(100dvh - 64px)); border-color: var(--cyp-success-text, #047857); }
+.legacy-dialog.collector-assignment-limit-picker { width: min(470px, calc(100vw - 48px)); border-color: var(--cyp-success-text, #047857); }
 .collector-assignments-dialog .legacy-dialog-titlebar,
 .collector-assignment-picker .legacy-dialog-titlebar,
 .collector-assignment-limit-picker .legacy-dialog-titlebar { background: linear-gradient(#047857, #065f46); color: white; }
 .collector-assignments-dialog .legacy-dialog-body,
-.collector-assignment-picker .legacy-dialog-body { display: flex; flex: 1; min-height: 0; padding: 0; overflow: hidden; background: #f8fafc; }
+.collector-assignment-picker .legacy-dialog-body { display: flex; flex: 1; min-height: 0; padding: 0; overflow: hidden; background: var(--cyp-surface-muted, #f8fafc); }
 .collector-assignment-content, .collector-assignment-picker-content { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
 .collector-assignment-picker-content { padding: 10px; gap: 8px; }
-.collector-assignment-toolbar { flex-shrink: 0; padding: 8px; gap: 8px; background: #f1f5f9; border-bottom: 1px solid #cbd5e1; }
+.collector-assignment-toolbar { flex-shrink: 0; padding: 8px; gap: 8px; background: var(--cyp-surface-muted, #f1f5f9); border-bottom: 1px solid var(--cyp-border-strong, #cbd5e1); }
 .collector-assignment-toolbar button { min-width: 90px; min-height: 30px; }
 .collector-assignment-table { width: 100%; min-width: 560px; }
 .collector-assignment-table tr[tabindex] { cursor: pointer; }
-.collector-assignment-table .selected-row td { background: #dbeafe; color: #0f172a; }
-.collector-assignment-table tr[tabindex]:focus-visible { outline: 2px solid #047857; outline-offset: -2px; }
+.collector-assignment-table .selected-row td { background: var(--cyp-info-surface, #dbeafe); color: var(--cyp-info-text, #0f172a); }
+.collector-assignment-table tr[tabindex]:focus-visible { outline: 2px solid var(--cyp-success-text, #047857); outline-offset: -2px; }
 .collector-assignment-table th:first-child, .collector-assignment-indicator { width: 24px; text-align: center; }
-.collector-assignment-content .collector-assignment-pager { display: flex; align-items: center; justify-content: flex-start; flex-wrap: wrap; gap: 5px; padding: 5px 8px; border-top: 1px solid #cbd5e1; background: #f1f5f9; font-size: 12px; }
-.collector-assignment-content .collector-assignment-pager button { display: inline-flex; align-items: center; width: auto; height: auto; min-width: 24px; white-space: nowrap; gap: 4px; padding: 3px 6px; border: 1px solid #cbd5e1; background: white; border-radius: 3px; }
+.collector-assignment-content .collector-assignment-pager { display: flex; align-items: center; justify-content: flex-start; flex-wrap: wrap; gap: 5px; padding: 5px 8px; border-top: 1px solid var(--cyp-border-strong, #cbd5e1); background: var(--cyp-surface-muted, #f1f5f9); font-size: 12px; }
+.collector-assignment-content .collector-assignment-pager button { display: inline-flex; align-items: center; width: auto; height: auto; min-width: 24px; white-space: nowrap; gap: 4px; padding: 3px 6px; border: 1px solid var(--cyp-border-strong, #cbd5e1); background: var(--cyp-surface, white); border-radius: 3px; }
 .collector-assignment-pager label { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
-.collector-assignment-pager input { width: 48px; min-height: 24px; padding: 2px 4px; background: white; border: 1px solid #cbd5e1; border-radius: 3px; }
-.collector-assignment-scope { font-size: 11px; line-height: 1.4; color: #64748b; padding: 6px 10px; }
-.collector-assignment-content .legacy-relation-footer { padding: 8px 10px; border-top: 1px solid #cbd5e1; background: #f8fafc; }
-.collector-assignment-limit-picker .legacy-dialog-body { padding: 0; background: #f8fafc; }
+.collector-assignment-pager input { width: 48px; min-height: 24px; padding: 2px 4px; background: var(--cyp-surface, white); border: 1px solid var(--cyp-border-strong, #cbd5e1); border-radius: 3px; }
+.collector-assignment-scope { font-size: 11px; line-height: 1.4; color: var(--cyp-text-muted, #64748b); padding: 6px 10px; }
+.collector-assignment-content .legacy-relation-footer { padding: 8px 10px; border-top: 1px solid var(--cyp-border-strong, #cbd5e1); background: var(--cyp-surface-muted, #f8fafc); }
+.collector-assignment-limit-picker .legacy-dialog-body { padding: 0; background: var(--cyp-surface-muted, #f8fafc); }
 .collector-assignment-limit-form { display: flex; flex-direction: column; padding: 16px; gap: 10px; }
 .collector-assignment-limit-form label { display: grid; grid-template-columns: 108px minmax(0, 1fr); align-items: center; gap: 8px; font-size: 12px; }
-.collector-assignment-limit-form input, .collector-assignment-limit-form select { width: 100%; min-width: 0; min-height: 30px; padding: 4px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: white; }
-.collector-assignment-error { color: #be123c; font-size: 12px; padding: 4px 10px; margin: 0; }
-.collector-assignment-limit-form small { color: #64748b; }
+.collector-assignment-limit-form input, .collector-assignment-limit-form select { width: 100%; min-width: 0; min-height: 30px; padding: 4px 6px; border: 1px solid var(--cyp-border-strong, #cbd5e1); border-radius: 4px; background: var(--cyp-surface, white); }
+.collector-assignment-error { color: var(--cyp-danger-text, #be123c); font-size: 12px; padding: 4px 10px; margin: 0; }
+.collector-assignment-limit-form small { color: var(--cyp-text-muted, #64748b); }
 .collector-assignment-content button:disabled, .collector-assignment-picker button:disabled { opacity: .5; cursor: not-allowed; }

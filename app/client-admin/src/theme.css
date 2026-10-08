@@ -1,0 +1,82 @@
+/* Light colors remain the existing fallback values. Dark tokens only affect screens. */
+:root { color-scheme: light; }
+.theme-toggle { flex-shrink: 0; }
+.theme-toggle[aria-pressed="true"] { color: var(--cyp-success-text, #047857); }
+
+@media screen {
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --cyp-canvas: oklch(0.18 0.015 195);
+    --cyp-surface: oklch(0.225 0.013 195);
+    --cyp-surface-muted: oklch(0.26 0.015 195);
+    --cyp-surface-raised: oklch(0.30 0.016 195);
+    --cyp-text: oklch(0.94 0.008 180);
+    --cyp-text-muted: oklch(0.79 0.018 200);
+    --cyp-text-subtle: oklch(0.68 0.02 200);
+    --cyp-border: oklch(0.38 0.024 200);
+    --cyp-border-strong: oklch(0.50 0.03 200);
+    --cyp-success-text: oklch(0.82 0.13 160);
+    --cyp-success-surface: oklch(0.28 0.045 160);
+    --cyp-warning-text: oklch(0.86 0.12 80);
+    --cyp-warning-surface: oklch(0.30 0.045 80);
+    --cyp-danger-text: oklch(0.80 0.12 20);
+    --cyp-danger-surface: oklch(0.28 0.045 20);
+    --cyp-info-text: oklch(0.81 0.09 250);
+    --cyp-info-surface: oklch(0.29 0.04 250);
+    --cyp-purple-text: oklch(0.84 0.08 305);
+    --cyp-purple-surface: oklch(0.29 0.04 305);
+    --cyp-success-text-alpha-66: color-mix(in srgb, var(--cyp-success-text) 40%, transparent);
+    --cyp-surface-alpha-ed: color-mix(in srgb, var(--cyp-surface) 92.94118%, transparent);
+    --cyp-surface-alpha-bb: color-mix(in srgb, var(--cyp-surface) 73.33333%, transparent);
+    --cyp-surface-alpha-da: color-mix(in srgb, var(--cyp-surface) 85.49020%, transparent);
+    --cyp-surface-alpha-eb: color-mix(in srgb, var(--cyp-surface) 92.15686%, transparent);
+    --cyp-text-subtle-alpha-40: color-mix(in srgb, var(--cyp-text-subtle) 25.09804%, transparent);
+    --cyp-surface-alpha-ef: color-mix(in srgb, var(--cyp-surface) 93.72549%, transparent);
+    --cyp-surface-alpha-ee: color-mix(in srgb, var(--cyp-surface) 93.33333%, transparent);
+    --cyp-surface-raised-alpha-33: color-mix(in srgb, var(--cyp-surface-raised) 20%, transparent);
+    --cyp-success-text-alpha-99: color-mix(in srgb, var(--cyp-success-text) 60%, transparent);
+    --cyp-surface-alpha-f0: color-mix(in srgb, var(--cyp-surface) 94.11765%, transparent);
+    --cyp-translucent-65: color-mix(in srgb, var(--cyp-surface) 65%, transparent);
+    --cyp-translucent-78: color-mix(in srgb, var(--cyp-surface) 78%, transparent);
+    --cyp-translucent-88: color-mix(in srgb, var(--cyp-surface) 88%, transparent);
+    --cyp-translucent-90: color-mix(in srgb, var(--cyp-surface) 90%, transparent);
+    --bg: var(--cyp-canvas);
+    --white: var(--cyp-surface);
+    --text: var(--cyp-text);
+    --muted: var(--cyp-text-muted);
+    --border: var(--cyp-border);
+    --green-soft: var(--cyp-success-surface);
+    --shadow: 0 1px 3px oklch(0.12 0.01 195 / .3), 0 10px 28px oklch(0.12 0.01 195 / .4);
+    color: var(--cyp-text);
+    background: var(--cyp-canvas);
+  }
+  :root[data-theme="dark"] body { background: var(--cyp-canvas); }
+  :root[data-theme="dark"] :focus-visible { outline-color: var(--cyp-success-text); }
+  :root[data-theme="dark"] input::placeholder,
+  :root[data-theme="dark"] textarea::placeholder { color: var(--cyp-text-subtle); }
+  :root[data-theme="dark"] ::-webkit-scrollbar-thumb { background: var(--cyp-border-strong); }
+  :root[data-theme="dark"] :is(.btn.primary, .primary) { background: #047857; border-color: #047857; }
+  :root[data-theme="dark"] :is(.bg-white, .bg-slate-50, .bg-gray-50) { background-color: var(--cyp-surface); }
+  :root[data-theme="dark"] :is(.bg-slate-100, .bg-gray-100, .bg-slate-200, .bg-gray-200) { background-color: var(--cyp-surface-raised); }
+  :root[data-theme="dark"] :is(.text-slate-900, .text-gray-900, .text-slate-800, .text-gray-800) { color: var(--cyp-text); }
+  :root[data-theme="dark"] .leaflet-popup-content-wrapper,
+  :root[data-theme="dark"] .leaflet-popup-tip { background: var(--cyp-surface); color: var(--cyp-text); }
+  :root[data-theme="dark"] .leaflet-control-zoom a { background: var(--cyp-surface); color: var(--cyp-text); border-color: var(--cyp-border); }
+  :root[data-theme="dark"] [data-sonner-toaster] {
+    --normal-bg: var(--cyp-surface);
+    --normal-border: var(--cyp-border);
+    --normal-text: var(--cyp-text);
+    --success-bg: var(--cyp-success-surface);
+    --success-border: var(--cyp-border);
+    --success-text: var(--cyp-success-text);
+    --error-bg: var(--cyp-danger-surface);
+    --error-border: var(--cyp-border);
+    --error-text: var(--cyp-danger-text);
+    --warning-bg: var(--cyp-warning-surface);
+    --warning-border: var(--cyp-border);
+    --warning-text: var(--cyp-warning-text);
+    --info-bg: var(--cyp-info-surface);
+    --info-border: var(--cyp-border);
+    --info-text: var(--cyp-info-text);
+  }
+}

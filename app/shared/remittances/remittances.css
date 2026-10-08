@@ -9,24 +9,24 @@
   font-variant-numeric: tabular-nums;
   box-sizing: border-box;
 }
-.remittances { width: 100%; min-width: 0; height: 100%; overflow: auto; padding: 16px; background: #f2f5f9; container-type: inline-size; }
+.remittances { width: 100%; min-width: 0; height: 100%; overflow: auto; padding: 16px; background: var(--cyp-surface-muted, #f2f5f9); container-type: inline-size; }
 .remittances *, .remittances-dialog * { box-sizing: border-box; }
 .remittances h1 { margin: 0; font-size: 21px; line-height: 1.3; color: var(--rem-ink); }
 .remittances h2, .remittances-dialog h2 { margin: 0 0 12px; font-size: 16px; font-weight: 700; color: var(--rem-ink); }
 .remittances p, .remittances-dialog p { margin: 8px 0 14px; }
-.remittances button, .remittances-dialog button { min-height: 40px; border: 1px solid #879db8; padding: 8px 13px; background: #fff; color: var(--rem-ink); border-radius: 4px; font: inherit; font-weight: 600; cursor: pointer; touch-action: manipulation; transition: background-color 120ms; }
-.remittances button:hover:not(:disabled), .remittances-dialog button:hover:not(:disabled) { background: #dde7f3; }
+.remittances button, .remittances-dialog button { min-height: 40px; border: 1px solid var(--cyp-border-strong, #879db8); padding: 8px 13px; background: var(--cyp-surface, #fff); color: var(--rem-ink); border-radius: 4px; font: inherit; font-weight: 600; cursor: pointer; touch-action: manipulation; transition: background-color 120ms; }
+.remittances button:hover:not(:disabled), .remittances-dialog button:hover:not(:disabled) { background: var(--cyp-info-surface, #dde7f3); }
 .remittances button:disabled, .remittances-dialog button:disabled { opacity: .55; cursor: not-allowed; }
-.remittances :focus-visible, .remittances-dialog :focus-visible { outline: 3px solid #2a74c4; outline-offset: 2px; }
+.remittances :focus-visible, .remittances-dialog :focus-visible { outline: 3px solid var(--cyp-info-text, #2a74c4); outline-offset: 2px; }
 .remittances .remittance-primary, .remittances-dialog .remittance-primary { background: var(--rem-blue); color: #fff; border-color: var(--rem-blue); }
 .remittances .remittance-primary:hover:not(:disabled), .remittances-dialog .remittance-primary:hover:not(:disabled) { background: #173b63; }
-.remittances .remittance-danger, .remittances-dialog .remittance-danger { background: #fff1f0; border-color: #b44c46; color: #8b2924; }
+.remittances .remittance-danger, .remittances-dialog .remittance-danger { background: var(--cyp-danger-surface, #fff1f0); border-color: var(--cyp-border-strong, #b44c46); color: var(--cyp-danger-text, #8b2924); }
 .remittances label, .remittances-dialog label { display: flex; flex-direction: column; gap: 5px; min-width: 0; font-weight: 600; color: var(--rem-ink); }
-.remittances input, .remittances select, .remittances textarea, .remittances-dialog input, .remittances-dialog select, .remittances-dialog textarea { display: block; width: 100%; min-width: 0; min-height: 40px; padding: 8px 10px; border: 1px solid #879db8; border-radius: 4px; background: #fff; color: var(--rem-ink); font: inherit; }
+.remittances input, .remittances select, .remittances textarea, .remittances-dialog input, .remittances-dialog select, .remittances-dialog textarea { display: block; width: 100%; min-width: 0; min-height: 40px; padding: 8px 10px; border: 1px solid var(--cyp-border-strong, #879db8); border-radius: 4px; background: var(--cyp-surface, #fff); color: var(--rem-ink); font: inherit; }
 .remittances textarea, .remittances-dialog textarea { resize: vertical; }
 .remittances fieldset { margin: 0 0 14px; border: 0; padding: 0; }
 .remittance-heading { display: flex; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-.remittance-heading p { font-size: 12px; margin-bottom: 0; color: #43566f; }
+.remittance-heading p { font-size: 12px; margin-bottom: 0; color: var(--cyp-text, #43566f); }
 .remittance-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; border-bottom: 1px solid var(--rem-edge); padding-bottom: 10px; }
 .remittance-tabs button { flex: 1; padding: 8px; }
 .remittance-tabs button[aria-current="page"] { color: #fff; background: var(--rem-blue); border-color: var(--rem-blue); }
@@ -38,48 +38,48 @@
 .remittance-party-fields { display: grid; align-content: start; gap: 14px; min-width: 0; }
 .remittance-client-picker { position: relative; min-width: 0; }
 .remittance-client-picker input { min-height: 48px; font-size: 17px; }
-.remittance-client-selection { display: block; margin-top: 5px; color: #43566f; font-size: 12px; overflow-wrap: anywhere; }
-.remittance-client-options { position: absolute; top: 75px; left: 0; right: 0; z-index: 3; max-height: 280px; overflow: auto; border: 1px solid #879db8; border-radius: 4px; background: #fff; box-shadow: 0 5px 16px #152c4b26; }
-.remittance-client-options button { width: 100%; display: block; text-align: left; border: 0; border-bottom: 1px solid #e1e8f0; border-radius: 0; font-weight: 500; }
-.remittance-client-options button.highlighted { background: #dde7f3; }
+.remittance-client-selection { display: block; margin-top: 5px; color: var(--cyp-text, #43566f); font-size: 12px; overflow-wrap: anywhere; }
+.remittance-client-options { position: absolute; top: 75px; left: 0; right: 0; z-index: 3; max-height: 280px; overflow: auto; border: 1px solid var(--cyp-border-strong, #879db8); border-radius: 4px; background: var(--cyp-surface, #fff); box-shadow: 0 5px 16px #152c4b26; }
+.remittance-client-options button { width: 100%; display: block; text-align: left; border: 0; border-bottom: 1px solid var(--cyp-border, #e1e8f0); border-radius: 0; font-weight: 500; }
+.remittance-client-options button.highlighted { background: var(--cyp-info-surface, #dde7f3); }
 .remittance-client-options button[aria-selected="true"] { font-weight: 700; }
-.remittance-client-options small { display: block; color: #43566f; }
+.remittance-client-options small { display: block; color: var(--cyp-text, #43566f); }
 .remittance-client-options p { margin: 10px; font-size: 12px; }
 .remittance-wide { grid-column: 1 / -1; }
 .remittance-manager-toggle > span { display: flex; align-items: center; gap: 9px; }
 .remittance-manager-toggle input[type="checkbox"] { display: inline-block; width: 18px; height: 18px; min-height: 18px; flex: 0 0 auto; }
-.remittance-help { color: #43566f; font-size: 13px; }
+.remittance-help { color: var(--cyp-text, #43566f); font-size: 13px; }
 .remittance-quote { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--rem-edge); }
 .remittance-summary { margin: 12px 0; }
-.remittance-summary > div { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding: 7px 0; border-bottom: 1px solid #e1e8f0; }
-.remittance-summary dt { color: #43566f; }
+.remittance-summary > div { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding: 7px 0; border-bottom: 1px solid var(--cyp-border, #e1e8f0); }
+.remittance-summary dt { color: var(--cyp-text, #43566f); }
 .remittance-summary dd { margin: 0; font-weight: 650; text-align: right; overflow-wrap: anywhere; }
 .remittance-summary .remittance-total { padding: 10px 0; font-size: 16px; }
 .remittance-total dt { font-weight: 650; color: var(--rem-ink); }
-.remittance-table-wrap { max-width: 100%; overflow: auto; border: 1px solid var(--rem-edge); border-radius: 4px; background: #fff; }
+.remittance-table-wrap { max-width: 100%; overflow: auto; border: 1px solid var(--rem-edge); border-radius: 4px; background: var(--cyp-surface, #fff); }
 .remittance-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .remittance-table caption { padding: 10px; font-weight: 650; color: var(--rem-ink); text-align: left; background: var(--rem-muted); }
-.remittance-table th, .remittance-table td { padding: 10px; text-align: left; vertical-align: middle; border-bottom: 1px solid #d7e1ed; white-space: normal; overflow-wrap: anywhere; }
-.remittance-table th { background: #dae5f2; color: #1e3857; font-weight: 700; }
+.remittance-table th, .remittance-table td { padding: 10px; text-align: left; vertical-align: middle; border-bottom: 1px solid var(--cyp-border, #d7e1ed); white-space: normal; overflow-wrap: anywhere; }
+.remittance-table th { background: var(--cyp-info-surface, #dae5f2); color: var(--cyp-info-text, #1e3857); font-weight: 700; }
 .remittance-table tr:last-child td { border-bottom: 0; }
-.remittance-table small { display: block; font-size: 11px; color: #43566f; margin-top: 4px; }
-.remittance-table .remittance-link { padding: 4px 0; min-height: 32px; border: 0; color: #164c85; text-decoration: underline; background: transparent; }
-.remittance-status { display: inline-block; border: 1px solid #a3b8cf; padding: 3px 7px; border-radius: 4px; background: #eff3f8; font-size: 12px; font-weight: 650; }
-.remittance-status.paid { color: #185c42; background: #edf8f2; border-color: #91bfaa; }
-.remittance-status.cancelled { color: #8b2924; background: #fff1f0; border-color: #d6aaa7; }
+.remittance-table small { display: block; font-size: 11px; color: var(--cyp-text, #43566f); margin-top: 4px; }
+.remittance-table .remittance-link { padding: 4px 0; min-height: 32px; border: 0; color: var(--cyp-info-text, #164c85); text-decoration: underline; background: transparent; }
+.remittance-status { display: inline-block; border: 1px solid var(--cyp-border-strong, #a3b8cf); padding: 3px 7px; border-radius: 4px; background: var(--cyp-surface-muted, #eff3f8); font-size: 12px; font-weight: 650; }
+.remittance-status.paid { color: var(--cyp-success-text, #185c42); background: var(--cyp-surface-muted, #edf8f2); border-color: var(--cyp-border-strong, #91bfaa); }
+.remittance-status.cancelled { color: var(--cyp-danger-text, #8b2924); background: var(--cyp-danger-surface, #fff1f0); border-color: var(--cyp-border-strong, #d6aaa7); }
 .remittance-cash-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr)); gap: 14px; }
-.remittance-empty { padding: 28px 16px; border: 1px dashed var(--rem-edge); text-align: center; background: #fff; }
-.remittance-error { padding: 12px; margin: 12px 0; border: 1px solid #d6aaa7; color: #8b2924; background: #fff1f0; border-radius: 4px; overflow-wrap: anywhere; }
-.remittance-notice { padding: 12px; margin: 12px 0; border: 1px solid #91bfaa; color: #185c42; background: #edf8f2; border-radius: 4px; }
-.remittances-dialog { max-width: min(620px, calc(100vw - 24px)); width: 620px; max-height: calc(100dvh - 32px); padding: 0; border: 1px solid #7a92ae; border-radius: 6px; box-shadow: 0 20px 80px #152c4b40; background: #fff; overflow: auto; }
+.remittance-empty { padding: 28px 16px; border: 1px dashed var(--rem-edge); text-align: center; background: var(--cyp-surface, #fff); }
+.remittance-error { padding: 12px; margin: 12px 0; border: 1px solid var(--cyp-border-strong, #d6aaa7); color: var(--cyp-danger-text, #8b2924); background: var(--cyp-danger-surface, #fff1f0); border-radius: 4px; overflow-wrap: anywhere; }
+.remittance-notice { padding: 12px; margin: 12px 0; border: 1px solid var(--cyp-border-strong, #91bfaa); color: var(--cyp-success-text, #185c42); background: var(--cyp-surface-muted, #edf8f2); border-radius: 4px; }
+.remittances-dialog { max-width: min(620px, calc(100vw - 24px)); width: 620px; max-height: calc(100dvh - 32px); padding: 0; border: 1px solid var(--cyp-border-strong, #7a92ae); border-radius: 6px; box-shadow: 0 20px 80px #152c4b40; background: var(--cyp-surface, #fff); overflow: auto; }
 .remittances-dialog::backdrop { background: #12233b99; }
-.remittances-dialog > header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; background: #dce7f4; border-bottom: 1px solid var(--rem-edge); gap: 12px; }
+.remittances-dialog > header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; background: var(--cyp-info-surface, #dce7f4); border-bottom: 1px solid var(--rem-edge); gap: 12px; }
 .remittances-dialog > header h2 { margin: 0; }
 .remittances-dialog > header button { min-width: 40px; font-size: 22px; line-height: 1; }
 .remittances-dialog-body { padding: 18px; }
 .remittances-dialog-body form > button { margin-top: 14px; }
 .remittance-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-top: 18px; }
-.remittance-cancel { margin-top: 24px; padding-top: 16px; border-top: 1px solid #d6aaa7; }
+.remittance-cancel { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--cyp-border-strong, #d6aaa7); }
 @container (max-width: 600px) {
   .remittance-form-grid { grid-template-columns: 1fr; }
   .remittance-heading { align-items: flex-start; }
@@ -88,9 +88,9 @@
   .remittance-table, .remittance-table tbody, .remittance-table tr { display: block; width: 100%; }
   .remittance-table thead { display: none; }
   .remittance-table caption { display: block; border-radius: 4px; }
-  .remittance-table tr { margin: 10px 0; padding: 8px 12px; background: #fff; border: 1px solid var(--rem-edge); border-radius: 4px; }
+  .remittance-table tr { margin: 10px 0; padding: 8px 12px; background: var(--cyp-surface, #fff); border: 1px solid var(--rem-edge); border-radius: 4px; }
   .remittance-table td { display: flex; gap: 12px; justify-content: space-between; padding: 8px 0; text-align: right; }
-  .remittance-table td::before { content: attr(data-label); font-weight: 650; color: #43566f; text-align: left; }
+  .remittance-table td::before { content: attr(data-label); font-weight: 650; color: var(--cyp-text, #43566f); text-align: left; }
   .remittance-table td[data-label="Referencia"] { flex-wrap: wrap; align-items: center; }
   .remittance-table td small { width: 100%; }
   .remittance-table .remittance-link { min-height: 44px; }

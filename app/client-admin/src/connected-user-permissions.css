@@ -1,7 +1,7 @@
 .connected-user-permissions-dialog {
   width: min(880px, calc(100vw - 48px));
   height: min(590px, calc(100vh - 64px));
-  border-color: #065f46;
+  border-color: var(--cyp-success-text, #065f46);
 }
 
 .connected-user-permissions-dialog > .legacy-dialog-body {
@@ -9,7 +9,7 @@
   flex: 1;
   min-height: 0;
   padding: 0;
-  background: #f8fafc;
+  background: var(--cyp-surface-muted, #f8fafc);
 }
 
 .connected-user-permissions-content {
@@ -40,18 +40,18 @@
   flex-wrap: wrap;
   gap: 6px 16px;
   padding: 10px 12px;
-  border-bottom: 1px solid #cbd5e1;
-  color: #0f172a;
+  border-bottom: 1px solid var(--cyp-border-strong, #cbd5e1);
+  color: var(--cyp-info-text, #0f172a);
   font-size: 12px;
 }
-.connected-permissions-user span { color: #64748b; font-size: 11px; overflow-wrap: anywhere; }
+.connected-permissions-user span { color: var(--cyp-text-muted, #64748b); font-size: 11px; overflow-wrap: anywhere; }
 .connected-permissions-controls {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
   padding: 8px 12px;
-  border-bottom: 1px solid #cbd5e1;
+  border-bottom: 1px solid var(--cyp-border-strong, #cbd5e1);
 }
 .connected-permissions-controls .connected-permission-category { flex: 1 1 250px; }
 .connected-permissions-controls > button {
@@ -61,18 +61,18 @@
   gap: 5px;
   min-height: 30px;
   padding: 4px 8px;
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--cyp-border-strong, #cbd5e1);
   border-radius: 4px;
-  background: #fff;
-  color: #334155;
+  background: var(--cyp-surface, #fff);
+  color: var(--cyp-text, #334155);
   font-size: 11px;
   white-space: nowrap;
 }
-.connected-permissions-controls > button:hover:not(:disabled) { background: #ecfdf5; border-color: #059669; }
+.connected-permissions-controls > button:hover:not(:disabled) { background: var(--cyp-success-surface, #ecfdf5); border-color: var(--cyp-success-text, #059669); }
 .connected-permissions-controls > button:disabled { opacity: .5; cursor: not-allowed; }
 .connected-user-permissions-table input[type="checkbox"] { width: 14px; height: 14px; accent-color: #059669; }
 .connected-permissions-name { font: inherit; color: inherit; cursor: pointer; }
-.connected-permissions-feedback { margin: 0; padding: 6px 12px; font-size: 12px; color: #64748b; }
+.connected-permissions-feedback { margin: 0; padding: 6px 12px; font-size: 12px; color: var(--cyp-text-muted, #64748b); }
 .connected-permissions-footer {
   display: flex;
   justify-content: space-between;
@@ -80,28 +80,28 @@
   flex-wrap: wrap;
   gap: 8px;
   padding: 8px 12px;
-  border-top: 1px solid #cbd5e1;
+  border-top: 1px solid var(--cyp-border-strong, #cbd5e1);
   font-size: 11px;
-  color: #64748b;
+  color: var(--cyp-text-muted, #64748b);
 }
 .connected-permissions-footer .connected-permission-actions { padding: 0; }
-.connected-permissions-footer button[type="submit"] { background: #047857; border-color: #065f46; color: #fff; }
+.connected-permissions-footer button[type="submit"] { background: #047857; border-color: var(--cyp-success-text, #065f46); color: #fff; }
 
 .connected-user-permissions-table tbody tr {
   cursor: pointer;
 }
 
 .connected-user-permissions-table tbody tr:hover td {
-  background: #ecfdf5;
+  background: var(--cyp-success-surface, #ecfdf5);
 }
 
 .connected-user-permissions-table tbody tr.is-selected td {
-  background: #d1fae5;
-  color: #064e3b;
+  background: var(--cyp-success-surface, #d1fae5);
+  color: var(--cyp-success-text, #064e3b);
 }
 
 .connected-user-permissions-table tbody tr:focus-visible {
-  outline: 2px solid #059669;
+  outline: 2px solid var(--cyp-success-text, #059669);
   outline-offset: -2px;
 }
 
@@ -109,21 +109,21 @@
   flex-shrink: 0;
   margin: 0;
   padding: 7px 10px;
-  border-top: 1px solid #cbd5e1;
-  color: #64748b;
+  border-top: 1px solid var(--cyp-border-strong, #cbd5e1);
+  color: var(--cyp-text-muted, #64748b);
   font-size: 11px;
 }
 
 .connected-user-permissions-dialog > .legacy-dialog-titlebar {
   background: linear-gradient(180deg, #047857 0%, #065f46 100%);
-  border-bottom-color: #064e3b;
+  border-bottom-color: var(--cyp-success-text, #064e3b);
 }
 
 .connected-permission-category {
   display: flex;
   align-items: center;
   gap: 10px;
-  color: #334155;
+  color: var(--cyp-text, #334155);
   font-size: 12px;
   font-weight: 600;
 }
@@ -133,15 +133,15 @@
   min-width: 0;
   height: 30px;
   padding: 3px 8px;
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--cyp-border-strong, #cbd5e1);
   border-radius: 4px;
-  background: #fff;
-  color: #334155;
+  background: var(--cyp-surface, #fff);
+  color: var(--cyp-text, #334155);
   font: inherit;
 }
 
 .connected-permission-category select:focus-visible {
-  outline: 2px solid #059669;
+  outline: 2px solid var(--cyp-success-text, #059669);
   outline-offset: 1px;
 }
 
@@ -154,6 +154,6 @@
 .connected-permission-error {
   margin: 0;
   padding: 6px 10px;
-  color: #be123c;
+  color: var(--cyp-danger-text, #be123c);
   font-size: 12px;
 }
