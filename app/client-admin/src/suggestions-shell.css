@@ -1,6 +1,6 @@
-.notification-trigger.collections-pending { color: #b42318; }
+.notification-trigger.collections-pending { color: var(--cyp-danger-text, #b42318); }
 .notification-trigger.collections-pending i { background: #b42318; }
-.desktop-launchers { display: flex; flex-wrap: wrap; gap: 10px; padding: 10px 20px; border-bottom: 1px solid #d7e0ea; background: #f7fafc; }
+.desktop-launchers { display: flex; flex-wrap: wrap; gap: 10px; padding: 10px 20px; border-bottom: 1px solid var(--cyp-border, #d7e0ea); background: var(--cyp-info-surface, #f7fafc); }
 .desktop-launchers button { min-height: 36px; font-weight: 700; }
 .desktop-launchers small { margin-left: 6px; font-weight: 400; }
 .notification-receipt { display: grid; grid-template-columns: minmax(90px, 1fr) 2fr; gap: 10px; overflow-wrap: anywhere; }

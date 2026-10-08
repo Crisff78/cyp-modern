@@ -106,6 +106,7 @@ import { ConnectedSettlements } from "./ConnectedSettlements";
 import { ConnectedLegacyReports } from "./ConnectedLegacyReports";
 import { ConnectedAdminTools, isConnectedAdminTool } from "./ConnectedAdminTools";
 import { ConnectedExchangeRates } from "./ConnectedExchangeRates";
+import { ThemeToggle } from "./ThemeToggle";
 import { matchesClientSearch, copyPhoneIntoEmptyFields, clientCodeFromPhone } from "./clientSearch";
 import { unconfirmedCollectionBalances, recentMovementReceipts } from "./collectionAlerts";
 import { locationUnavailable, locationError as gpsError, validLocation } from "../../shared/geolocation";
@@ -4964,6 +4965,7 @@ export default function App() {
                 >
                   <CircleHelp size={19} />
                 </button>
+                <ThemeToggle />
                 <button
                   className="icon-button tablet-secondary"
                   aria-label="Ventana de Pagos"
