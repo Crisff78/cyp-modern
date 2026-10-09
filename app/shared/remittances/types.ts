@@ -60,3 +60,14 @@ export type Report = {
     totals: Array<ManagerCommission & { date: string; count: number; cancelledCount: number; cancelledAmount: number }>;
   };
 };
+export type CommissionReportStatus = "all" | "active" | "pending" | "paid" | "cancelled";
+export type CommissionReportGroupBy = "managerCurrency" | "currency";
+export type CommissionReportTotals = { count: number; cancelledCount: number; transactionAmount: number; companyAmount: number; managerAmount: number;
+  cancelledTransactionAmount: number; cancelledCompanyAmount: number; cancelledManagerAmount: number };
+export type ConsolidatedCommissionReport = {
+  from: string; to: string; grouping: "range" | "day"; groupBy: CommissionReportGroupBy; status: CommissionReportStatus;
+  managerId?: string; currency?: Currency; excludedLegacyCount: number;
+  details: Array<CommissionAllocation & Pick<Transfer, "id" | "envioReference" | "createdAt" | "status">>;
+  groups: Array<CommissionReportTotals & { date: string; currency: Currency; managerId?: string; managerName?: string }>;
+  currencyTotals: Array<CommissionReportTotals & { currency: Currency }>;
+};

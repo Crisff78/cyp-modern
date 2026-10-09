@@ -3,6 +3,7 @@ import { z } from "zod";
 import { assertAdmin, DomainError, type State, type User } from "./domain.js";
 import type { Store } from "./store.js";
 import { remittanceClientContact, searchRemittanceClients } from "./remittance-client-search.js";
+import { consolidatedCommissionReport } from "./remittance-commission-report.js";
 import {
   canSeeOutgoing, canSeeReceipt, cancelRemittance, closeRemittanceCash, createRemittance,
   currencies, openRemittanceCash, payRemittance, quoteRemittance, remittanceReports,
@@ -89,6 +90,13 @@ export function registerRemittanceRoutes(
   get("/api/envios/reportes", "Reportes de envíos por rango o día, sin mezclar monedas", async (req) => {
     const input = z.object({ from: z.iso.date(), to: z.iso.date(), grouping: z.enum(["range", "day"]).default("range") }).strict().parse(req.query);
     return remittanceReports(await store.read(), user(req), input);
+  });
+  get("/api/envios/reportes/comisiones", "Reporte consolidado de comisiones por gestor, moneda y estado", async (req) => {
+    const input = z.object({ from: z.iso.date(), to: z.iso.date(), grouping: z.enum(["range", "day"]).default("range"),
+      groupBy: z.enum(["managerCurrency", "currency"]).default("managerCurrency"),
+      status: z.enum(["all", "active", "pending", "paid", "cancelled"]).default("all"), managerId: id.optional(), currency: currency.optional(),
+    }).strict().parse(req.query);
+    return consolidatedCommissionReport(await store.read(), user(req), input);
   });
   mutate("/api/clientes/:id/actividad", "Activar o inactivar cliente conservando su historial",
     z.object({ active: z.boolean() }).strict(), (state, actor, input, params) => {

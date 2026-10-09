@@ -10,7 +10,7 @@ import { buildApp } from "../../server/src/app.js";
 import { MemoryStore } from "../../server/src/store.js";
 import { seed } from "../../server/src/seed.js";
 import { businessDate } from "../../server/src/domain.js";
-import { setCommissionPolicy, setDailyRate, openRemittanceCash } from "../../server/src/remittances.js";
+import { setCommissionPolicy, setDailyRate, openRemittanceCash, quoteRemittance, createRemittance, cancelRemittance, payRemittance } from "../../server/src/remittances.js";
 
 const adminRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const collectorRoot = path.resolve(adminRoot, "../client-collector");
@@ -139,6 +139,69 @@ createRoot(document.getElementById("root")).render(<App />);`);
         await workspace.getByText(/El importe real difiere por redondeo/).waitFor();
         assert.match(await workspace.locator('.remittance-quote').innerText(), /DOP 1\.20/);
         if (surface === "collector") assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      } finally { await context.close(); }
+    });
+    await t.test("consolidated report filters and totals match CSV and isolated print output", async () => {
+      await store.transaction((state) => {
+        const make = (actor: typeof admin | typeof collector, destinationCurrency: "EUR" | "DOP", amount = 10000) => {
+          const input = { sourceCurrency: "USD" as const, destinationCurrency, amount, commissionBps: 500 };
+          return createRemittance(state, { ...actor, name: "=Gestor QA homónimo" }, { ...input, senderClientId: "cli-1", recipientClientId: "cli-5", quote: quoteRemittance(state, input, now).quote }, [], now);
+        };
+        make(admin, "EUR"); const paid = make(collector, "EUR");
+        openRemittanceCash(state, admin, { operatorId: admin.id, currency: "EUR", openingAmount: 8000 }, [], now);
+        payRemittance(state, admin, paid.id, now);
+        const cancelled = make(admin, "EUR", 20000); cancelRemittance(state, admin, cancelled.id, "Cancelación para reporte QA", now);
+        make(admin, "DOP");
+      });
+      const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: "es-DO", serviceWorkers: "block", acceptDownloads: true });
+      try {
+        await context.addInitScript(({ token }: { token: string }) => { localStorage.setItem("cyp-admin-token", token); (window as any).__qaPrinted = false; window.print = () => { (window as any).__qaPrinted = true; }; }, { token: tokens.admin });
+        await context.route("**/*", async (route: any) => {
+          const url = new URL(route.request().url());
+          if (url.origin !== origin) { if (!["fonts.googleapis.com", "fonts.gstatic.com"].includes(url.hostname)) external.push(url.origin); return route.abort("blockedbyclient"); }
+          return route.continue();
+        });
+        const page = await context.newPage(); page.setDefaultTimeout(15000); page.on("pageerror", (error: Error) => errors.push(error.message));
+        await page.goto(`${origin}/admin/`); await page.getByRole("button", { name: "REMESAS", exact: true }).click();
+        const workspace = page.getByRole("region", { name: "Envíos de Dinero", exact: true });
+        await workspace.getByRole("button", { name: "Reportes", exact: true }).click();
+        await workspace.getByLabel("Reporte", { exact: false }).selectOption("allocations");
+        const consult = async () => { await workspace.getByRole("button", { name: "Consultar", exact: true }).click(); await workspace.getByRole("table", { name: "Totales del periodo por Moneda", exact: true }).waitFor(); };
+        await consult();
+        const totals = workspace.getByRole("table", { name: "Totales del periodo por Moneda", exact: true });
+        const columns = await totals.getByRole("columnheader").allTextContents();
+        for (const column of ["Comisión Total de la Transacción", "Comisión de la Empresa", "Comisión del Gestor"]) assert.ok(columns.includes(column));
+        const expectedTotals = await totals.locator("tbody tr").evaluateAll((rows: HTMLTableRowElement[]) => rows.map((row) => Array.from(row.cells).map((cell) => cell.textContent)));
+        assert.deepEqual(expectedTotals.map((row: string[]) => row.slice(1, 7)), [["DOP", "1", "0", "DOP 300.00", "DOP 180.00", "DOP 120.00"], ["EUR", "2", "3", "EUR 8.00", "EUR 4.80", "EUR 3.20"]]);
+        const groups = workspace.getByRole("table", { name: "Comisiones agrupadas por Gestor y Moneda", exact: true });
+        assert.equal(await groups.locator("tbody tr").count(), 3, "Homonymous gestor IDs and currencies stay separate");
+        const downloadPromise = page.waitForEvent("download"); await workspace.getByRole("button", { name: "Exportar CSV", exact: true }).click();
+        const download = await downloadPromise, csvPath = path.join(output, "consolidated.csv"); await download.saveAs(csvPath);
+        const csv = fs.readFileSync(csvPath, "utf8");
+        for (const row of expectedTotals) assert.ok(csv.includes(row.map((cell: string) => `"${cell}"`).join(";")), "CSV contains the exact onscreen totals");
+        assert.match(csv, /"'=Gestor QA homónimo"/, "Formula injection neutralization remains active");
+        const popupPromise = page.waitForEvent("popup"); await workspace.getByRole("button", { name: "Imprimir", exact: true }).click(); const popup = await popupPromise;
+        await popup.waitForFunction(() => (window as any).__qaPrinted === true);
+        const printRows = await popup.locator("table").filter({ has: popup.getByRole("columnheader", { name: "Total", exact: true }) }).locator("tbody tr").evaluateAll((rows: HTMLTableRowElement[]) => rows.map((row) => Array.from(row.cells).map((cell) => cell.textContent)));
+        assert.deepEqual(printRows, expectedTotals); assert.equal(await popup.locator("nav,aside,button,input,select").count(), 0, "Print isolates report content"); await popup.close();
+        await groups.scrollIntoViewIfNeeded(); await page.screenshot({ path: path.join(output, "consolidated-report.png") });
+        await workspace.getByLabel("Estado de la operación", { exact: true }).selectOption("paid");
+        assert.equal(await workspace.getByRole("button", { name: "Exportar CSV", exact: true }).count(), 0, "Filters invalidate the old printable/exportable result");
+        await consult(); assert.match(await totals.locator("tbody").innerText(), /EUR 4\.00.*EUR 2\.40.*EUR 1\.60/s);
+        await workspace.getByLabel("Gestor", { exact: true }).selectOption(admin.id); await consult();
+        assert.match(await totals.innerText(), /No hay resultados/);
+        await workspace.getByLabel("Gestor", { exact: true }).selectOption("");
+        await workspace.getByLabel("Estado de la operación", { exact: true }).selectOption("cancelled"); await consult();
+        const cancelledAmounts = await totals.locator("tbody tr").evaluateAll((rows: HTMLTableRowElement[]) => rows.map((row) => Array.from(row.cells).slice(4, 7).map((cell) => cell.textContent)));
+        assert.deepEqual(cancelledAmounts, [["EUR 0.00", "EUR 0.00", "EUR 0.00"]]);
+        await workspace.getByLabel("Estado de la operación", { exact: true }).selectOption("active");
+        await workspace.getByLabel("Moneda de destino", { exact: true }).selectOption("EUR");
+        await workspace.getByLabel("Agrupar por", { exact: true }).selectOption("currency"); await consult();
+        assert.equal(await workspace.getByRole("table", { name: "Comisiones agrupadas por Moneda", exact: true }).locator("tbody tr").count(), 1);
+        assert.equal(await totals.locator("tbody tr").count(), 1); assert.match(await totals.locator("tbody").innerText(), /EUR 8\.00.*EUR 4\.80.*EUR 3\.20/s);
+        const today = businessDate(now), nextDay = new Date(`${today}T12:00:00Z`); nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+        await workspace.getByLabel("Desde", { exact: true }).fill(nextDay.toISOString().slice(0, 10)); await workspace.getByLabel("Hasta", { exact: true }).fill(nextDay.toISOString().slice(0, 10)); await consult();
+        assert.match(await totals.innerText(), /No hay resultados/);
       } finally { await context.close(); }
     });
     assert.deepEqual(errors, []); assert.deepEqual(external, []);

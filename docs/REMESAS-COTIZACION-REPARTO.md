@@ -61,3 +61,29 @@ ni mezcla la caja DOP de cobros con la caja multimoneda de remesas.
 Los campos manuales históricos `managerCommission` permanecen como información
 sin convertirlos retroactivamente en deuda ni mezclarlos con el nuevo reparto.
 La migración es aditiva y no recalcula remesas anteriores.
+
+## Reporte consolidado para gerencia (etapa 5)
+
+`GET /api/envios/reportes/comisiones` recibe `from`, `to` (fechas inclusivas de
+emisión en America/Santo_Domingo), `grouping=range|day`,
+`groupBy=managerCurrency|currency`, `status=all|active|pending|paid|cancelled`,
+y opcionalmente `managerId` y `currency=DOP|USD|EUR`. Por defecto agrupa todo el
+periodo por gestor y moneda, incluyendo todos los estados. `active` significa
+pendientes y pagadas. Los valores desconocidos se rechazan; no amplía el acceso
+a remesas fuera del ámbito de la sesión.
+
+Devuelve los filtros aplicados, detalle, grupos y `currencyTotals` de todo el
+periodo. Los tres importes vigentes son `transactionAmount`, `companyAmount` y
+`managerAmount`, siempre centavos de destino. Se suman en BigInt y se rechaza
+un total fuera del entero seguro. Los importes cancelados se informan aparte:
+sus tres columnas de saldo vigente son cero, incluso al filtrar Canceladas.
+Nunca se suma USD con EUR/DOP. Los gestores se identifican por ID estable;
+homónimos no se fusionan. No se recalcula una comisión con tasas o porcentajes
+actuales. Las operaciones históricas sin reparto se cuentan como excluidas.
+
+La UI compartida de Admin/PWA muestra las columnas exactas `Comisión Total de la
+Transacción`, `Comisión de la Empresa` y `Comisión del Gestor`, agrupación elegible,
+filtros de periodo/estado/gestor/moneda, subtotales y totales por moneda.
+Pantalla, CSV e impresión consumen las mismas secciones y filtros confirmados.
+Editar un filtro invalida el resultado anterior hasta volver a Consultar.
+No requiere migraciones adicionales a la 024.
