@@ -9,7 +9,9 @@ export async function readAdminTools(client: pg.PoolClient): Promise<AdminToolsS
   return {
     pcpGroups: await rows('SELECT id,name FROM pcp_groups ORDER BY name,id'),
     stations: await rows(`SELECT id,number,name,device_id AS "deviceId",description,station_group AS "group",station_type AS type,
-      license,version,active FROM pcp_stations ORDER BY number,id`),
+      license,version,active,rraa_client_id AS "rraaClientId",rraa_station_code AS "rraaStationCode",
+      rraa_device_id AS "rraaDeviceId",rraa_validated_at AS "rraaValidatedAt",rraa_validated_by AS "rraaValidatedBy"
+      FROM pcp_stations ORDER BY number,id`),
     pcps: await rows('SELECT id,number,name,group_id AS "groupId",address,phone,active FROM pcps ORDER BY number,id'),
     pcpStations: await rows('SELECT pcp_id AS "pcpId",station_id AS "stationId" FROM pcp_station_links ORDER BY pcp_id,station_id'),
     sessions: await rows(`SELECT id,user_id AS "userId",user_name AS "userName",role,collector_id AS "collectorId",
@@ -29,11 +31,15 @@ export async function saveAdminTools(client: pg.PoolClient, state: State, before
   }
   for (const row of data.stations) {
     if (!changed(old.stations, row)) continue;
-    await client.query(`INSERT INTO pcp_stations(id,number,name,device_id,description,station_group,station_type,license,version,active)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(id) DO UPDATE SET number=EXCLUDED.number,name=EXCLUDED.name,
+    await client.query(`INSERT INTO pcp_stations(id,number,name,device_id,description,station_group,station_type,license,version,active,
+      rraa_client_id,rraa_station_code,rraa_device_id,rraa_validated_at,rraa_validated_by)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) ON CONFLICT(id) DO UPDATE SET number=EXCLUDED.number,name=EXCLUDED.name,
       device_id=EXCLUDED.device_id,description=EXCLUDED.description,station_group=EXCLUDED.station_group,
-      station_type=EXCLUDED.station_type,license=EXCLUDED.license,version=EXCLUDED.version,active=EXCLUDED.active`,
-      [row.id,row.number,row.name,row.deviceId,row.description,row.group,row.type,row.license,row.version,row.active]);
+      station_type=EXCLUDED.station_type,license=EXCLUDED.license,version=EXCLUDED.version,active=EXCLUDED.active,
+      rraa_client_id=EXCLUDED.rraa_client_id,rraa_station_code=EXCLUDED.rraa_station_code,rraa_device_id=EXCLUDED.rraa_device_id,
+      rraa_validated_at=EXCLUDED.rraa_validated_at,rraa_validated_by=EXCLUDED.rraa_validated_by`,
+      [row.id,row.number,row.name,row.deviceId,row.description,row.group,row.type,row.license,row.version,row.active,
+        row.rraaClientId ?? null,row.rraaStationCode ?? null,row.rraaDeviceId ?? null,row.rraaValidatedAt ?? null,row.rraaValidatedBy ?? null]);
   }
   for (const row of data.pcps) {
     if (!changed(old.pcps, row)) continue;

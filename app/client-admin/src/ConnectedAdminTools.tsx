@@ -17,6 +17,8 @@ const definitions: Record<AdminToolPage, { title: string; path: string }> = {
 export const isConnectedAdminTool = (page: string): page is AdminToolPage => Object.hasOwn(definitions, page);
 type Row = { id: string; [key: string]: unknown };
 type PageResult = { items: Row[]; total: number; limit: number; offset: number };
+type RraaStatus = { configured: boolean; clientId?: string };
+type RraaPreview = { stationCode: string; deviceId: string; license: string; validatedAt: string };
 type Draft = Record<string, string | boolean>;
 type Filter = { q: string; from: string; to: string; status: string };
 type Dialog = { type: "edit" | "stations" | "resolve" | "confirm" | "detail"; row?: Row; action?: "deactivate" | "activate" | "delete" | "close" };
@@ -37,6 +39,7 @@ export function ConnectedAdminTools({ page, snapshot, onRefresh }: { page: Admin
   const [selectedId, setSelectedId] = useState(""), [filtersVisible, setFiltersVisible] = useState(true), [groupFilter, setGroupFilter] = useState(""), [userFilter, setUserFilter] = useState(false);
   const [selectedLink, setSelectedLink] = useState(""), [addingStation, setAddingStation] = useState(false), [stationChoice, setStationChoice] = useState(""), [uncertain, setUncertain] = useState(false);
   const [stationStatusReview, setStationStatusReview] = useState(false);
+  const [rraa, setRraa] = useState<RraaStatus>({ configured: false }), [rraaPreview, setRraaPreview] = useState<RraaPreview | null>(null);
   const requestVersion = useRef(0), pendingRequest = useRef<{ path: string; body: string } | null>(null), instanceId = useId();
   const locked = busy || uncertain;
   const refresh = useCallback(async () => {
@@ -45,17 +48,18 @@ export function ConnectedAdminTools({ page, snapshot, onRefresh }: { page: Admin
     const query = new URLSearchParams();
     if (paged) { for (const [key, entry] of Object.entries(applied)) if (entry) query.set(key, entry); query.set("offset", String(offset)); query.set("limit", "50"); }
     try {
-      const [result, groupRows, stationRows, reasonRows] = await Promise.all([
+      const [result, groupRows, stationRows, reasonRows, rraaStatus] = await Promise.all([
         remittancesApi<Row[] | PageResult>(`${definition.path}${paged ? `?${query}` : ""}`),
         page === "pcps" ? remittancesApi<Row[]>("/grupos-pcp") : Promise.resolve([]),
         page === "pcps" ? remittancesApi<Row[]>("/estaciones") : Promise.resolve([]),
         page === "authorizationRequests" ? remittancesApi<Row[]>("/motivos-atraso") : Promise.resolve([]),
+        page === "stations" || page === "pcps" ? remittancesApi<RraaStatus>("/estaciones/rraa") : Promise.resolve({ configured: false }),
       ]);
       if (version !== requestVersion.current) return;
       const items = Array.isArray(result) ? result : result.items;
       if (!Array.isArray(items)) throw new Error("La API no devolvió un listado válido.");
       const count = Array.isArray(result) ? result.length : result.total;
-      setRecords(items); setTotal(count); setGroups(groupRows); setStations(stationRows); setReasons(reasonRows);
+      setRecords(items); setTotal(count); setGroups(groupRows); setStations(stationRows); setReasons(reasonRows); setRraa(rraaStatus);
       if (paged && offset > 0 && offset >= count) setOffset(Math.max(0, Math.ceil(count / 50) - 1) * 50);
     } catch (failure) { if (version === requestVersion.current) setError(errorText(failure)); }
     finally { if (version === requestVersion.current) setLoading(false); }
@@ -64,12 +68,13 @@ export function ConnectedAdminTools({ page, snapshot, onRefresh }: { page: Admin
   const close = () => { if (!locked) { if (stationStatusReview) { setStationStatusReview(false); setFormError(""); return; } setDialog(null); setDraft({}); setFormError(""); setAddingStation(false); } };
   const open = (next: Dialog) => {
     if (locked || loading) return;
-    if (page === "stations") return;
+    if (page === "stations" && !rraa.configured && next.type === "edit") return;
     pendingRequest.current = null; setUncertain(false); setStationStatusReview(false);
-    setDialog(next); setFormError(""); setMessage("");
+    setDialog(next); setFormError(""); setMessage(""); setRraaPreview(null);
     const row = next.row;
     const nextDraft: Draft = { name: "", number: "", groupId: groups[0]?.id ?? "", active: true, forCollection: true, note: "", status: "approved" };
     if (row) for (const [key, item] of Object.entries(row)) if (typeof item === "string" || typeof item === "boolean") nextDraft[key] = item;
+    if (page === "stations") nextDraft.active = Boolean(row?.active && row.rraaValidated);
     if (next.type === "resolve") { nextDraft.status = "approved"; nextDraft.note = ""; }
     if (page === "authorizationRequests" && next.type === "edit") {
       const first = snapshot.clients.find((client) => client.active !== false && snapshot.routes.some((route) => route.id === client.routeId && snapshot.collectors.some((collector) => collector.id === route.collectorId && collector.active !== false)));
@@ -78,9 +83,9 @@ export function ConnectedAdminTools({ page, snapshot, onRefresh }: { page: Admin
     setDraft(nextDraft); setLinks(row ? stationIds(row) : []); setSelectedLink(row ? stationIds(row)[0] ?? "" : ""); setAddingStation(false);
   };
   const fields: Field[] = page === "stations" ? [
-    { key: "number", label: "Número", required: true, maxLength: INPUT_LIMITS.id }, { key: "name", label: "Estación", required: true, maxLength: INPUT_LIMITS.name }, { key: "deviceId", label: "Identificador del dispositivo (si se conoce)", maxLength: INPUT_LIMITS.name },
+    { key: "number", label: "Número", required: true, maxLength: INPUT_LIMITS.id }, { key: "name", label: "Estación", required: true, maxLength: INPUT_LIMITS.name }, { key: "deviceId", label: "ID dispositivo", required: true, maxLength: INPUT_LIMITS.name },
     { key: "description", label: "Descripción", multiline: true, maxLength: INPUT_LIMITS.userNote }, { key: "group", label: "Grupo de estación", maxLength: INPUT_LIMITS.name }, { key: "type", label: "Tipo", maxLength: INPUT_LIMITS.name },
-    { key: "license", label: "Licencia registrada (opcional)", maxLength: INPUT_LIMITS.name }, { key: "version", label: "Versión registrada (opcional)", maxLength: INPUT_LIMITS.name }, { key: "active", label: "Activa", boolean: true },
+    { key: "active", label: "Activa", boolean: true },
   ] : page === "groups" ? [{ key: "name", label: "Nombre del grupo", required: true, maxLength: INPUT_LIMITS.name }] : page === "pcps" ? [
     { key: "number", label: "Número", required: true, maxLength: INPUT_LIMITS.id }, { key: "name", label: "Nombre del PCP", required: true, maxLength: INPUT_LIMITS.name },
     { key: "groupId", label: "Grupo", required: true, options: groups.map((row) => ({ value: row.id, label: value(row, "name") })) },
@@ -115,6 +120,7 @@ export function ConnectedAdminTools({ page, snapshot, onRefresh }: { page: Admin
         path += `/${encodeURIComponent(dialog.row.id)}`;
         if (dialog.action === "delete") { path += "/eliminar"; text = "Grupo eliminado."; }
         else if (dialog.action === "close") { path += "/cerrar"; text = "Sesión cerrada."; }
+        else if (page === "stations") { path += "/actividad"; body = { active: dialog.action === "activate" }; text = "Estado actualizado."; }
         else { body = payload({ ...Object.fromEntries(Object.entries(dialog.row).filter(([, item]) => typeof item === "string" || typeof item === "boolean")), active: dialog.action === "activate" } as Draft); text = "Estado actualizado."; }
       }
       if (page === "stations" && dialog.type === "edit" && dialog.row && body.active !== (dialog.row.active !== false) && !stationStatusReview && !pendingRequest.current) {
@@ -135,12 +141,28 @@ export function ConnectedAdminTools({ page, snapshot, onRefresh }: { page: Admin
   };
   const updateDraft = (field: string, entry: string | boolean) => {
     if (locked) return;
+    if (page === "stations" && (field === "name" || field === "deviceId")) {
+      setRraaPreview(null); setFormError("");
+      setDraft((current) => ({ ...current, [field]: entry, active: false, license: "" })); return;
+    }
     setDraft((current) => {
       const next = { ...current, [field]: entry };
       if (field === "clientId") { const client = snapshot.clients.find((row) => row.id === entry); next.collectorId = snapshot.routes.find((route) => route.id === client?.routeId)?.collectorId ?? ""; }
       return next;
     });
   };
+  const obtainLicense = async () => {
+    if (locked) return;
+    if (!String(draft.name ?? "").trim()) { setFormError("El campo Nombre no puede estar vacío"); return; }
+    if (!String(draft.deviceId ?? "").trim()) { setFormError("Completa el ID dispositivo."); return; }
+    setBusy(true); setFormError(""); setRraaPreview(null);
+    try {
+      const validation = await remittancesApi<RraaPreview>("/estaciones/validar", { method: "POST", body: JSON.stringify({ stationCode: draft.name, deviceId: draft.deviceId }) });
+      setRraaPreview(validation);
+    } catch (failure) { setFormError(errorText(failure)); setDraft((current) => ({ ...current, active: false })); }
+    finally { setBusy(false); }
+  };
+  const draftValidated = Boolean(rraaPreview || (dialog?.row?.rraaValidated && dialog.row.name === draft.name && dialog.row.deviceId === draft.deviceId));
   const layout = ({ stations: "stations", groups: "groups", pcps: "pcp", sessions: "sessions", traces: "traces", authorizationRequests: "authorization" } as const)[page];
   const visible = useMemo(() => paged ? records : records.filter((row) =>
     (page !== "pcps" || !groupFilter || row.groupId === groupFilter) &&
@@ -166,20 +188,20 @@ export function ConnectedAdminTools({ page, snapshot, onRefresh }: { page: Admin
   const clientLabel = (row: Row) => clientFor(row)?.name ?? value(row, "clientId");
   const collectorLabel = (row: Row) => snapshot.collectors.find((collector) => collector.id === row.collectorId)?.name ?? value(row, "collectorId");
   const draftClient = snapshot.clients.find((client) => client.id === draft.clientId);
-  const availableStations: Row[] = []; // RRAA is not connected: no new assignments of unvalidated stations.
+  const availableStations = stations.filter((station) => station.active === true && station.rraaValidated === true && !links.includes(station.id));
   const assignedStations = links.map((id) => stations.find((station) => station.id === id) ?? { id, name: id, active: false });
   const beginResolution = (cancel = false) => {
     if (!selected || selected.status !== "pending") return;
     open({ type: "resolve", row: selected });
     if (cancel) setDraft((current) => ({ ...current, status: "cancelled" }));
   };
-  const headers = page === "stations" ? ["Nro", "Estacion", "idDispositivo", "Licencia", "Version", "VersionRec", "Activa (histórico)", "Validación"]
+  const headers = page === "stations" ? ["Nro", "Estacion", "idDispositivo", "Licencia", "Version", "VersionRec", "Activa", "Validación"]
     : page === "groups" ? ["Nro.", "Grupo"] : page === "pcps" ? ["Nro.", "PCP", "Cliente", "Grupo", "Ruta", "Activo"]
     : page === "sessions" ? ["Nro.", "Usuario", "Estacion", "Inicio", "Estado", "Vencimiento"]
     : page === "traces" ? ["Nro.", "Fecha", "Traza"] : ["Nro.", "Fecha", "Cobrador", "Código", "Cliente", "Telefono", "Celular", "Estado"];
   const unavailable = (description: string) => <span title={description}>—</span>;
   const cells = (row: Row): ReactNode => page === "groups" ? <td>{value(row, "name")}</td>
-    : page === "stations" ? <><td title={value(row, "description")}>{value(row, "name")}</td><td>{value(row, "deviceId") || "—"}</td><td title="Licencia histórica sin validar por RRAA">{value(row, "license") || "—"}</td><td>{value(row, "version") || "—"}</td><td>{unavailable("La versión recibida no está disponible.")}</td><td><LegacyCheck checked={row.active !== false} /></td><td>No validado</td></>
+    : page === "stations" ? <><td title={value(row, "description")}>{value(row, "name")}</td><td>{value(row, "deviceId") || "—"}</td><td title={row.rraaValidated ? "Licencia recibida de RRAA" : "Licencia histórica sin validar por RRAA"}>{value(row, "license") || "—"}</td><td>{value(row, "version") || "—"}</td><td>{unavailable("La versión recibida no está disponible.")}</td><td><LegacyCheck checked={row.active === true && row.rraaValidated === true} /></td><td>{row.rraaValidated ? "Validada · " + dateTime(row.rraaValidatedAt) : "No validado"}</td></>
     : page === "pcps" ? <><td title={[value(row, "address"), value(row, "phone"), "Estaciones: " + (stationIds(row).map((id) => stations.find((station) => station.id === id)?.name ?? id).join(", ") || "Sin asignar")].filter(Boolean).join(" · ")}>{value(row, "name")}</td><td>{unavailable("El PCP es independiente de los clientes.")}</td><td>{groups.find((group) => group.id === row.groupId)?.name as string ?? "—"}</td><td>{unavailable("El PCP no tiene una ruta de cobro asignada.")}</td><td><LegacyCheck checked={row.active !== false} /></td></>
     : page === "sessions" ? <><td title={value(row, "role") === "admin" ? "Administración" : "Cobrador"}>{value(row, "userName")}{row.current ? " (esta sesión)" : ""}</td><td>{unavailable("Las sesiones no registran una estación de PCP.")}</td><td>{dateTime(row.startedAt)}</td><td title={row.revokedAt ? "Cerrada: " + dateTime(row.revokedAt) : undefined}>{states[value(row, "status")] ?? value(row, "status")}</td><td>{dateTime(row.expiresAt)}</td></>
     : page === "traces" ? <><td>{dateTime(row.createdAt)}</td><td className="legacy-admin-trace-cell">{row.action === "session.started" ? "Inicio de sesión" : row.action === "mutation.completed" ? "Cambio guardado" : value(row, "action")} · {value(row, "resource")} · Usuario: {value(row, "actorId")}{row.resourceId ? " · Referencia: " + value(row, "resourceId") : ""}</td></>
@@ -207,9 +229,9 @@ export function ConnectedAdminTools({ page, snapshot, onRefresh }: { page: Admin
     </div>
     : <LegacyToolbar onToggleFilters={page === "pcps" || page === "authorizationRequests" ? () => setFiltersVisible((current) => !current) : undefined} filtersVisible={filtersVisible}
       onFirst={() => moveSelection("first")} onPrevious={() => moveSelection("previous")} onNext={() => moveSelection("next")} onLast={() => moveSelection("last")}
-      onNew={() => open({ type: "edit" })} disableNew={page === "stations" || loading || (page === "pcps" && !groups.length)} newTitle={page === "authorizationRequests" ? "Nueva solicitud" : "Nuevo"}
-      showEdit={page !== "authorizationRequests"} onEdit={() => selected && open({ type: "edit", row: selected })} disableEdit={page === "stations" || loading || !selected}
-      onDelete={deleteSelected} deleteTitle={deleteTitle} deleteIcon={page === "groups" ? "trash" : "x"} disableDelete={page === "stations" || loading || !selected || (page === "authorizationRequests" && selected.status !== "pending")}
+      onNew={() => open({ type: "edit" })} disableNew={(page === "stations" && !rraa.configured) || loading || (page === "pcps" && !groups.length)} newTitle={page === "authorizationRequests" ? "Nueva solicitud" : "Nuevo"}
+      showEdit={page !== "authorizationRequests"} onEdit={() => selected && open({ type: "edit", row: selected })} disableEdit={(page === "stations" && !rraa.configured) || loading || !selected}
+      onDelete={deleteSelected} deleteTitle={deleteTitle} deleteIcon={page === "groups" ? "trash" : "x"} disableDelete={(page === "stations" && !rraa.configured && !selected?.active) || loading || !selected || (page === "authorizationRequests" && selected.status !== "pending")}
       onRefresh={() => { if (!loading) void refresh(); }} extra={page === "pcps" ? <button type="button" className="pcp-stations-button" title="Estaciones del PCP" disabled={loading || !selected || selected.active === false} onClick={() => selected && open({ type: "stations", row: selected })}><Building2 size={15} /><span>Estaciones</span></button>
         : page === "authorizationRequests" ? <><button type="button" disabled={loading || !selected} onClick={() => selected && open({ type: "detail", row: selected })}>Detalle</button><button type="button" disabled={loading || selected?.status !== "pending"} onClick={() => beginResolution()}>Resolver</button></> : search} />;
   const filterPanel = page === "pcps"
@@ -238,7 +260,7 @@ export function ConnectedAdminTools({ page, snapshot, onRefresh }: { page: Admin
   const formClass = dialog?.type === "stations" ? "legacy-relation-manager legacy-admin-relations" : page === "stations" && dialog?.type === "edit" && !stationStatusReview ? "legacy-dialog-form pcp-station-form" : page === "pcps" && dialog?.type === "edit" ? "legacy-dialog-form pcp-data-form legacy-pcp-form" : page === "authorizationRequests" ? "authorization-form" : "legacy-dialog-form";
   return <section className={"connected-admin-tools legacy-mdi-view " + layout + "-mdi-view"} aria-label={definition.title} aria-busy={loading}>
     {toolbar}
-    {page === "stations" && <p className="legacy-admin-note" role="status"><strong>No validado.</strong> Deshabilitado temporalmente hasta conexión RRAA. El catálogo es de consulta: no se permite crear, editar ni activar estaciones. Los estados históricos no acreditan validación de empresa, dispositivo o licencia.</p>}
+    {page === "stations" && <p className="legacy-admin-note" role="status">{rraa.configured ? "RRAA configurado. Obtener Licencia consulta VALSTAT; guardar y activar vuelven a validar la estación y el dispositivo. Una licencia histórica no acredita autorización." : "No validado. Deshabilitado temporalmente hasta conexión RRAA: no se permite crear, editar ni activar estaciones. Solo puedes desactivar registros históricos."}</p>}
     {page === "authorizationRequests" && <p className="legacy-admin-note">Solicitudes de revisión administrativa de un cliente y su cobrador responsable. Registra el motivo, consulta la solicitud y resuélvela como aprobada, rechazada o anulada. La decisión queda en el historial; no registra cobros o pagos ni amplía límites o permisos.</p>}
     {error && <p className="legacy-admin-feedback error" role="alert">{error}</p>}{message && <p className="legacy-admin-feedback success" role="status">{message}</p>}
     {page === "pcps" && !loading && !groups.length && <p className="legacy-admin-note">Crea un grupo de PCPs para registrar el primer punto.</p>}
@@ -264,11 +286,12 @@ export function ConnectedAdminTools({ page, snapshot, onRefresh }: { page: Admin
             <span className="station-internal-id" title={dialog.row?.id}>ID: {dialog.row?.id ?? "Nuevo"}</span>
             <label>Estación:{input("name", undefined, true)}</label>
             <div className="legacy-dialog-row two-cols"><label>Nro.:{input("number")}</label><label>ID dispositivo:{input("deviceId")}</label></div>
-            <div className="license-row"><label>Lic.:{input("license")}</label><button type="button" disabled title="Los datos del dispositivo se registran manualmente.">Obtener Datos</button><button type="button" disabled title="No hay un servicio de emisión de licencias conectado.">Obtener Licencia</button></div>
+            <label>Cliente RRAA:<input readOnly value={rraa.clientId ?? ""} /></label>
+            <div className="license-row"><label>Lic.:<input readOnly value={rraaPreview?.license ?? String(draft.license ?? "")} /></label><button type="button" disabled title="VALSTAT solo valida la estación y devuelve su licencia; no proporciona datos del dispositivo.">Obtener Datos</button><button type="button" disabled={locked || !rraa.configured} onClick={() => void obtainLicense()}>Obtener Licencia</button></div>
             <label>Descrip.:<textarea rows={2} maxLength={1000} value={String(draft.description ?? "")} disabled={locked} onChange={(event) => updateDraft("description", event.target.value)} /></label>
             <div className="legacy-dialog-row two-cols"><label>Grupo:{input("group")}</label><label>Tipo:{input("type")}</label></div>
-            <div className="legacy-dialog-row two-cols"><label>Versión registrada:{input("version")}</label>{check("active", "Activa")}</div>
-          </fieldset><p className="legacy-admin-note">Dispositivo, licencia y versión se registran manualmente; no activan ni validan una licencia.</p>
+            <div className="legacy-dialog-row two-cols"><label>Versión registrada:<input readOnly value={String(draft.version ?? "")} /></label><label className="legacy-admin-checkbox"><input type="checkbox" checked={Boolean(draft.active)} disabled={locked || !draftValidated} onChange={(event) => updateDraft("active", event.target.checked)} /><span>Activa</span></label></div>
+          </fieldset><p className="legacy-admin-note">{rraaPreview ? "Validación recibida: " + dateTime(rraaPreview.validatedAt) + ". Se comprobará nuevamente al guardar." : "Introduce el código RRAA en Estación y el ID del dispositivo. Obtener Licencia no guarda ni activa el registro."}</p>
         </>}
         {dialog.type === "edit" && page === "groups" && <label>Nombre:{input("name", undefined, true)}</label>}
         {dialog.type === "edit" && page === "pcps" && <>

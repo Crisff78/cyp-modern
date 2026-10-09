@@ -59,7 +59,7 @@ test("PCPs are independent persistent entities with validated station associatio
     assert.deepEqual(stored.stationIds, [station.id]);
     assert.equal((await env.post(`/grupos-pcp/${group.json().id}/eliminar`, {})).statusCode, 409);
     assert.equal((await env.store.read()).clients.some((client) => client.id === pcp.json().id), false);
-    const { id: stationId, ...stationInput } = station;
+    const { id: stationId, license: _license, version: _version, ...stationInput } = station;
     assert.equal((await env.post(`/estaciones/${stationId}`, { ...stationInput, active: false })).statusCode, 409);
     assert.equal((await env.post(path, { stationIds: [] })).statusCode, 200);
     assert.equal((await env.post(path, { stationIds: [stationId] })).statusCode, 409);

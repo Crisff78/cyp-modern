@@ -4,6 +4,8 @@ import { assertAdmin, DomainError, type State, type User } from "./domain.js";
 export type PcpStation = {
   id: string; number: string; name: string; deviceId: string; description: string;
   group: string; type: string; license: string; version: string; active: boolean;
+  rraaClientId?: string; rraaStationCode?: string; rraaDeviceId?: string;
+  rraaValidatedAt?: string; rraaValidatedBy?: string;
 };
 export type PcpGroup = { id: string; name: string };
 export type Pcp = { id: string; number: string; name: string; groupId: string; address: string; phone: string; active: boolean };

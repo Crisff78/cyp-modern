@@ -5,6 +5,7 @@ import { enrichPublicDemo } from "./demo-scenarios.js";
 import { enrichCollectorDemo } from "./demo-collector-scenarios.js";
 import { FileStore, PostgresStore, type Store } from "./store.js";
 import { registerPublicWeb } from "./public-web.js";
+import { createRraaValidator } from "./rraa.js";
 
 const requestedDemo = process.env.DEMO_MODE === "true";
 const publicWeb = process.env.CYP_PUBLIC_DEMO === "true";
@@ -76,6 +77,11 @@ async function openStore(): Promise<{
   };
 }
 
+if (!publicWeb && Boolean(process.env.RRAA_ENDPOINT) !== Boolean(process.env.RRAA_CLIENT_ID))
+  throw new Error("Configura RRAA_ENDPOINT y RRAA_CLIENT_ID juntos.");
+const rraa = !publicWeb && process.env.RRAA_ENDPOINT && process.env.RRAA_CLIENT_ID
+  ? createRraaValidator({ endpoint: process.env.RRAA_ENDPOINT, clientId: process.env.RRAA_CLIENT_ID,
+    timeoutMs: process.env.RRAA_TIMEOUT_MS ? Number(process.env.RRAA_TIMEOUT_MS) : undefined }) : undefined;
 const { store, demo, source } = await openStore();
 const app = await buildApp({
   store,
@@ -89,6 +95,7 @@ const app = await buildApp({
   collectorUrl: process.env.COLLECTOR_URL ?? (publicWeb ? `${publicOrigin}/collector` : "http://127.0.0.1:5174"),
   adminEmail: process.env.ADMIN_EMAIL,
   adminPassword: process.env.ADMIN_PASSWORD,
+  rraa,
 });
 if (publicWeb) await registerPublicWeb(app);
 await app.listen({

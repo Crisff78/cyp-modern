@@ -379,7 +379,9 @@ remittancesApi("/snapshot").then(snapshot => { if (new URLSearchParams(location.
       const before = await store.read(), count = writes.length;
       const row = page.getByRole("row").filter({ hasText: "Estación sintética QA" }); await row.click();
       assert.match(await page.getByRole("status").innerText(), /No validado.*RRAA/);
-      for (const title of ["Nuevo", "Editar", "Inactivar"]) assert.equal(await page.getByTitle(title, { exact: true }).isDisabled(), true);
+      for (const title of ["Nuevo", "Editar"]) assert.equal(await page.getByTitle(title, { exact: true }).isDisabled(), true);
+      // A historical station can be deactivated safely; it cannot be activated without RRAA.
+      assert.equal(await page.getByTitle("Inactivar", { exact: true }).isDisabled(), false);
       assert.equal(await page.getByRole("dialog").count(), 0);
       assert.equal(writes.length, count); assert.deepEqual(await store.read(), before);
     });
@@ -394,7 +396,9 @@ remittancesApi("/snapshot").then(snapshot => { if (new URLSearchParams(location.
       const before = await store.read();
       const headers = { authorization: `Bearer ${token}`, "idempotency-key": randomUUID() };
       const denied = await app.inject({ method: "POST", url: `/api/estaciones/${stationId}`, headers, payload: { number: "QA-EDIT", name: "Manual", deviceId: "FORGED", license: "FORGED", active: true } });
-      assert.equal(denied.statusCode, 409); assert.equal(denied.json().error.code, "STATION_RRAA_REQUIRED");
+      assert.equal(denied.statusCode, 400, "A browser-supplied license is rejected by the strict schema before any external validation");
+      const unavailable = await app.inject({ method: "POST", url: `/api/estaciones/${stationId}`, headers, payload: { number: "QA-EDIT", name: "Manual", deviceId: "FORGED", active: true } });
+      assert.equal(unavailable.statusCode, 409); assert.equal(unavailable.json().error.code, "STATION_RRAA_REQUIRED");
       const invalid = await app.inject({ method: "POST", url: "/api/estaciones", headers: { ...headers, "idempotency-key": randomUUID() }, payload: { id: "forged", number: "QA", name: "Manual" } });
       assert.equal(invalid.statusCode, 400, "Strict identity contract remains enforced");
       assert.deepEqual(await store.read(), before);

@@ -56,6 +56,7 @@ import { registerCatalogRoutes } from "./catalog-routes.js";
 import { registerDemoAccess, type DemoAccessConfig } from "./demo-access.js";
 import { assertAuthSession, createAuthSession, recordMutationTrace, revokeUserSessions } from "./admin-tools.js";
 import { registerAdminToolsRoutes } from "./admin-tools-routes.js";
+import type { RraaValidator } from "./rraa.js";
 import { legacyFinancialFingerprintBody } from "./financial-currency-compat.js";
 import { boundedId, fourDecimalNumber, freeText, machineCounter, optionalEmail, phone, singleLine, systemConfigInput } from "./input-validation.js";
 import { ACCOUNT_ROLES, isOperationalRole } from "./account-roles.js";
@@ -71,6 +72,7 @@ type Config = {
   collectorUrl: string;
   adminEmail?: string;
   adminPassword?: string;
+  rraa?: RraaValidator;
 };
 const money = z.number().int().positive().max(MAX_MONEY_AMOUNT);
 const currency = singleLine(40, 1)
@@ -384,7 +386,7 @@ export async function buildApp(config: Config) {
         fingerprint = createHash("sha256")
           .update(JSON.stringify({ path: req.url, body }))
           .digest("hex");
-      return config.store.transaction((state) => {
+      return config.store.transaction(async (state) => {
         assertAuthSession(state, u, (u as User & { sid?: string }).sid);
         const existing = state.idempotency.find((i) => i.id === scope);
         if (existing) {
@@ -399,7 +401,7 @@ export async function buildApp(config: Config) {
             );
           return existing.response;
         }
-        const response = fn(state, u, body, params);
+        const response = await fn(state, u, body, params);
         recordMutationTrace(state, u, path, req.params, response);
         state.idempotency.push({
           id: scope,
@@ -1386,7 +1388,7 @@ export async function buildApp(config: Config) {
     );
   }
   registerCatalogRoutes(app, config.store, user, mutate, describe);
-  registerAdminToolsRoutes(app, config.store, user, mutate, describe);
+  registerAdminToolsRoutes(app, config.store, user, mutate, describe, config.publicWeb ? undefined : config.rraa);
   registerRemittanceRoutes(app, config.store, user, mutate, describe, config.demo ? [
     { id: "demo-admin", name: "Administración", role: "admin" },
     { id: "demo-collector", name: "Cobrador", role: "collector", collectorId: "col-1" },
