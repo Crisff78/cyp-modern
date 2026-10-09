@@ -51,16 +51,16 @@ export async function readRemittances(client: pg.PoolClient): Promise<Remittance
         : { status: "cancelled", cancelledAt: event.createdAt, cancelledBy: event.actorId, cancelReason: event.reason });
     }
   }
-  const policy = (await client.query(`SELECT revision,manager_commission_bps AS "managerCommissionBps",updated_at AS "updatedAt",updated_by AS "updatedBy" FROM remittance_commission_policy WHERE id=1`)).rows[0];
+  const policy = (await client.query(`SELECT revision,transaction_commission_bps AS "transactionCommissionBps",manager_commission_bps AS "managerCommissionBps",updated_at AS "updatedAt",updated_by AS "updatedBy" FROM remittance_commission_policy WHERE id=1`)).rows[0];
   return { rates, rateHistory, cashSessions, transfers, events, ...(policy ? { commissionPolicy: clean<NonNullable<RemittanceState["commissionPolicy"]>>(policy) } : {}) };
 }
 
 export async function saveRemittances(client: pg.PoolClient, state: RemittanceState, before: RemittanceState) {
   if (state.commissionPolicy && JSON.stringify(state.commissionPolicy) !== JSON.stringify(before.commissionPolicy)) {
     const policy = state.commissionPolicy;
-    await client.query(`INSERT INTO remittance_commission_policy(id,revision,manager_commission_bps,updated_at,updated_by) VALUES(1,$1,$2,$3,$4)
-      ON CONFLICT(id) DO UPDATE SET revision=EXCLUDED.revision,manager_commission_bps=EXCLUDED.manager_commission_bps,updated_at=EXCLUDED.updated_at,updated_by=EXCLUDED.updated_by`,
-      [policy.revision,policy.managerCommissionBps,policy.updatedAt ?? null,policy.updatedBy ?? null]);
+    await client.query(`INSERT INTO remittance_commission_policy(id,revision,manager_commission_bps,transaction_commission_bps,updated_at,updated_by) VALUES(1,$1,$2,$3,$4,$5)
+      ON CONFLICT(id) DO UPDATE SET revision=EXCLUDED.revision,manager_commission_bps=EXCLUDED.manager_commission_bps,transaction_commission_bps=EXCLUDED.transaction_commission_bps,updated_at=EXCLUDED.updated_at,updated_by=EXCLUDED.updated_by`,
+      [policy.revision,policy.managerCommissionBps,policy.transactionCommissionBps ?? 0,policy.updatedAt ?? null,policy.updatedBy ?? null]);
   }
   const oldHistory = new Map((before.rateHistory ?? []).map((row) => [row.id, row]));
   for (const old of oldHistory.values()) {

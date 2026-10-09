@@ -19,6 +19,7 @@ const pair = { sourceCurrency: "USD" as Currency, destinationCurrency: "EUR" as 
 const code = (expected: string) => (error: unknown) => { assert.equal((error as { code: string }).code, expected); return true; };
 function fixture() {
   const state = seed();
+  setCommissionPolicy(state, admin, { transactionCommissionBps: 500, managerCommissionBps: 0 }, now);
   setDailyRate(state, admin, { currency: "USD", rate: "60", date: businessDate(now) }, now);
   setDailyRate(state, admin, { currency: "EUR", rate: "75", date: businessDate(now) }, now);
   openRemittanceCash(state, admin, { operatorId: collector.id, currency: "USD", openingAmount: 0 }, [collector], now);
@@ -42,7 +43,7 @@ test("bidirectional quotes use server half-up and expose unrepresentable destina
   assert.equal(negativeDelta.receiveAmount, 120); assert.equal(negativeDelta.receiveRoundingDifference, -20);
   assert.throws(() => quoteRemittance(state, { ...pair, destinationCurrency: "DOP", amountMode: "destination", amount: 1 }, now), code("INVALID_AMOUNT"));
   for (const sourceCurrency of ["DOP", "USD", "EUR"] as const) for (const destinationCurrency of ["DOP", "USD", "EUR"] as const) {
-    const quote = quoteRemittance(state, { sourceCurrency, destinationCurrency, amount: 600000, amountMode: "destination", commissionBps: 0 }, now);
+    const quote = quoteRemittance(state, { sourceCurrency, destinationCurrency, amount: 600000, amountMode: "destination" }, now);
     assert.ok(Number.isSafeInteger(quote.amount)); assert.ok(Number.isSafeInteger(quote.receiveAmount));
     assert.equal(quote.requestedReceiveAmount, 600000);
   }
@@ -50,7 +51,7 @@ test("bidirectional quotes use server half-up and expose unrepresentable destina
 
 test("calculated split uses final destination base, preserves identity, freezes configuration and cancels accrual", () => {
   const state = fixture(), ledger = structuredClone(state.movements);
-  setCommissionPolicy(state, admin, 200, now);
+  setCommissionPolicy(state, admin, { managerCommissionBps: 200 }, now);
   const transfer = createRemittance(state, collector, input(state, 8000), [], now);
   const allocation = transfer.commissionAllocation!;
   assert.equal(transfer.commissionAmount, 500); assert.equal(transfer.totalAmount, 10500);
@@ -60,7 +61,7 @@ test("calculated split uses final destination base, preserves identity, freezes 
   assert.equal(allocation.managerId, collector.id); assert.equal(allocation.managerName, collector.name);
   const report = () => remittanceReports(state, admin, { from: "2026-10-09", to: "2026-10-09", grouping: "day" });
   assert.equal(report().commissionAllocations.totals[0].managerAmount, 160);
-  setCommissionPolicy(state, admin, 300, now);
+  setCommissionPolicy(state, admin, { managerCommissionBps: 300 }, now);
   assert.deepEqual(state.remittances.transfers[0].commissionAllocation, allocation);
   cancelRemittance(state, collector, transfer.id, "Cancelación sintética", now);
   const totals = report().commissionAllocations.totals[0];
@@ -72,7 +73,7 @@ test("calculated split uses final destination base, preserves identity, freezes 
 });
 
 test("payment does not accrue twice; report groups by stable gestor ID, currency and business date", () => {
-  const state = fixture(); setCommissionPolicy(state, admin, 200, now);
+  const state = fixture(); setCommissionPolicy(state, admin, { managerCommissionBps: 200 }, now);
   const transfer = createRemittance(state, collector, input(state), [], now);
   openRemittanceCash(state, admin, { operatorId: receiver.id, currency: "EUR", openingAmount: 8000 }, [receiver], now);
   payRemittance(state, receiver, transfer.id, new Date("2026-10-09T17:00:00Z"));
@@ -90,15 +91,17 @@ test("payment does not accrue twice; report groups by stable gestor ID, currency
 
 test("policy changes, over-allocation and manipulated inverse principal reject without cash or transfer changes", () => {
   const state = fixture(), stale = input(state);
-  setCommissionPolicy(state, admin, 200, now); setCommissionPolicy(state, admin, 0, now);
+  setCommissionPolicy(state, admin, { managerCommissionBps: 200 }, now); setCommissionPolicy(state, admin, { managerCommissionBps: 0 }, now);
   assert.throws(() => createRemittance(state, collector, stale, [], now), code("QUOTE_CHANGED"));
   const current = input(state, 8000), before = structuredClone(state.remittances);
   assert.throws(() => createRemittance(state, collector, { ...current, amount: current.amount + 1 }, [], now), code("QUOTE_CHANGED"));
-  setCommissionPolicy(state, admin, 600, now);
+  assert.throws(() => setCommissionPolicy(state, admin, { managerCommissionBps: 600 }, now), code("COMMISSION_EXCEEDS_TOTAL"));
+  // An old file with an inconsistent policy also fails closed at quotation.
+  state.remittances.commissionPolicy!.managerCommissionBps = 600;
   assert.throws(() => quoteRemittance(state, pair, now), code("COMMISSION_EXCEEDS_TOTAL"));
   assert.deepEqual(state.remittances.transfers, before.transfers); assert.deepEqual(state.remittances.events, before.events);
-  assert.throws(() => setCommissionPolicy(state, collector, 100, now), code("FORBIDDEN"));
-  for (const rate of [-1, 10001, 0.5, NaN, Infinity]) assert.throws(() => setCommissionPolicy(state, admin, rate, now), code("INVALID_COMMISSION"));
+  assert.throws(() => setCommissionPolicy(state, collector, { managerCommissionBps: 100 }, now), code("FORBIDDEN"));
+  for (const rate of [-1, 10001, 0.5, NaN, Infinity]) assert.throws(() => setCommissionPolicy(state, admin, { managerCommissionBps: rate }, now), code("INVALID_COMMISSION"));
 });
 
 test("FileStore reopen preserves policy, inverse intent, immutable accrual and annulment", async () => {
@@ -106,7 +109,7 @@ test("FileStore reopen preserves policy, inverse intent, immutable accrual and a
   let store: FileStore | undefined;
   try {
     store = await FileStore.open(path, fixture());
-    const transfer = await store.transaction((state) => { setCommissionPolicy(state, admin, 200, now); return createRemittance(state, collector, input(state, 8000), [], now); });
+    const transfer = await store.transaction((state) => { setCommissionPolicy(state, admin, { managerCommissionBps: 200 }, now); return createRemittance(state, collector, input(state, 8000), [], now); });
     await store.close(); store = await FileStore.open(path, seed());
     assert.equal(getCommissionPolicy(await store.read()).managerCommissionBps, 200);
     const { canPay: _pay, canCancel: _cancel, ...stored } = transfer;
@@ -129,7 +132,7 @@ test("API keeps strict schemas, guards policy, confirms destination quote and re
     const get = (url: string) => app.inject({ url: `/api${url}`, headers: { authorization: `Bearer ${token}` } });
     assert.equal((await post("/envios/politica-comisiones", { managerCommissionBps: 200 }, randomUUID(), collectorToken)).statusCode, 403);
     for (const payload of [{ managerCommissionBps: "200" }, { managerCommissionBps: 200, extra: true }, { managerCommissionBps: -1 }]) assert.equal((await post("/envios/politica-comisiones", payload)).statusCode, 400);
-    assert.equal((await post("/envios/politica-comisiones", { managerCommissionBps: 200 })).statusCode, 200);
+    assert.equal((await post("/envios/politica-comisiones", { transactionCommissionBps: 500, managerCommissionBps: 200 })).statusCode, 200);
     const date = businessDate();
     await post("/envios/tasas", { currency: "USD", rate: "60", date }); await post("/envios/tasas", { currency: "EUR", rate: "75", date });
     assert.equal((await post("/envios/cajas/abrir", { operatorId: "demo-admin", currency: "USD", openingAmount: 0 })).statusCode, 200);

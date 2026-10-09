@@ -2,7 +2,7 @@ import { businessDate, emptyState, type State, type User } from "./domain.js";
 import { getAdminTools, seedAdminTools } from "./admin-tools.js";
 import {
   cancelRemittance, createRemittance, openRemittanceCash, payRemittance,
-  quoteRemittance, setDailyRate,
+  quoteRemittance, setDailyRate, setCommissionPolicy,
 } from "./remittances.js";
 
 export function normalizeDemoCollectorLabel(state: State, demo: boolean) {
@@ -146,6 +146,7 @@ export function seedPublicDemo(): State {
     { senderClientId: "cli-3", recipientClientId: "cli-2", sourceCurrency: "DOP", destinationCurrency: "USD", amount: 250_000, status: "pending" },
     { senderClientId: "cli-4", recipientClientId: "cli-1", sourceCurrency: "DOP", destinationCurrency: "USD", amount: 100_000, status: "cancelled" },
   ] as const;
+  setCommissionPolicy(s, admin, { transactionCommissionBps: 100, managerCommissionBps: 0 }, now);
   for (const example of examples) {
     const { status, ...input } = example;
     const quote = quoteRemittance(s, { ...input, commissionBps: 100 }, now).quote;
@@ -155,6 +156,7 @@ export function seedPublicDemo(): State {
     if (status === "paid") payRemittance(s, collector, transfer.id, now);
     if (status === "cancelled") cancelRemittance(s, collector, transfer.id, "Cancelación ficticia de demostración", now);
   }
+  setCommissionPolicy(s, admin, { transactionCommissionBps: 0, managerCommissionBps: 0 }, now);
   seedAdminTools(s);
   return s;
 }

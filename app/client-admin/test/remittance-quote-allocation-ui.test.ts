@@ -28,7 +28,7 @@ test("actual Admin MDI and Collector PWA quote both directions and persist commi
   await store.transaction((state) => {
     setDailyRate(state, admin, { currency: "USD", rate: "60", date: businessDate(now) }, now);
     setDailyRate(state, admin, { currency: "EUR", rate: "75", date: businessDate(now) }, now);
-    setCommissionPolicy(state, admin, 200, now);
+    setCommissionPolicy(state, admin, { transactionCommissionBps: 500, managerCommissionBps: 200 }, now);
     openRemittanceCash(state, admin, { operatorId: admin.id, currency: "USD", openingAmount: 0 }, [], now);
     openRemittanceCash(state, admin, { operatorId: collector.id, currency: "USD", openingAmount: 0 }, [collector], now);
   });
@@ -80,6 +80,36 @@ createRoot(document.getElementById("root")).render(<App />);`);
     await new Promise<void>((resolve, reject) => { server!.once("error", reject); server!.listen(0, "127.0.0.1", resolve); });
     const address = server.address(); assert(address && typeof address !== "string"); const origin = `http://127.0.0.1:${address.port}`;
     browser = await chromium.launch({ executablePath: edge, headless: true });
+    await t.test("Admin registers both central rates once and future remittances display them readonly", async () => {
+      const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: "es-DO", serviceWorkers: "block" });
+      try {
+        await context.addInitScript((token: string) => localStorage.setItem("cyp-admin-token", token), tokens.admin);
+        await context.route("**/*", async (route: any) => new URL(route.request().url()).origin === origin ? route.continue() : route.abort("blockedbyclient"));
+        const page = await context.newPage(); page.setDefaultTimeout(15000); page.on("pageerror", (error: Error) => errors.push(error.message));
+        const openWorkspace = async () => { await page.goto(`${origin}/admin/`); await page.getByRole("button", { name: "REMESAS", exact: true }).click(); };
+        await openWorkspace();
+        const workspace = page.getByRole("region", { name: "Envíos de Dinero", exact: true });
+        const savePolicy = async (transaction: string, manager: string) => {
+          await workspace.getByRole("button", { name: "Tasas", exact: true }).click();
+          await workspace.getByLabel("Comisión total de la transacción (%)", { exact: true }).fill(transaction);
+          await workspace.getByLabel("Comisión del gestor (%)", { exact: true }).fill(manager);
+          await workspace.getByRole("button", { name: "Revisar reparto", exact: true }).click();
+          await page.getByRole("dialog", { name: "Configurar comisiones de remesas", exact: true }).getByRole("button", { name: "Confirmar", exact: true }).click();
+          await workspace.getByText("Operación registrada correctamente.", { exact: true }).waitFor();
+          await page.waitForFunction(() => !document.querySelector('dialog[open]'));
+        };
+        await savePolicy("6", "2");
+        assert.equal((await store.read()).remittances.commissionPolicy!.transactionCommissionBps, 600);
+        await openWorkspace(); await workspace.getByRole("button", { name: "Tasas", exact: true }).click();
+        assert.equal(await workspace.getByLabel("Comisión total de la transacción (%)", { exact: true }).inputValue(), "6", "configuration survives reload");
+        await workspace.getByLabel("Comisión del gestor (%)", { exact: true }).fill("7");
+        await workspace.getByRole("button", { name: "Revisar reparto", exact: true }).click();
+        await workspace.getByRole("alert").filter({ hasText: "La comisión del gestor no puede superar" }).waitFor();
+        assert.equal((await store.read()).remittances.commissionPolicy!.managerCommissionBps, 200);
+        await savePolicy("5", "2");
+        await page.screenshot({ path: path.join(output, "admin-central-commission-config.png") });
+      } finally { await context.close(); }
+    });
     for (const surface of ["admin", "collector"]) await t.test(`${surface} active render: readonly DOP, inverse rounding, save and cancellation`, async () => {
       const context = await browser.newContext({ viewport: surface === "admin" ? { width: 1440, height: 1000 } : { width: 390, height: 844 }, locale: "es-DO", serviceWorkers: "block" });
       try {
@@ -101,12 +131,16 @@ createRoot(document.getElementById("root")).render(<App />);`);
         await choose("Remitente", sender.code); await choose("Destinatario", recipient.code);
         await workspace.getByLabel("Moneda del remitente").selectOption("USD");
         await workspace.getByLabel("Moneda del destinatario").selectOption("EUR");
-        await workspace.getByLabel("Comisión (%)", { exact: true }).fill("5");
+        const commission = workspace.getByRole("textbox", { name: "Comisión (%)", exact: true });
+        assert.equal(await commission.getAttribute("readonly"), "");
+        assert.equal(await commission.inputValue(), "5", "both surfaces use the saved central policy");
+        await commission.evaluate((input: HTMLInputElement) => { input.value = "0"; });
         await workspace.getByLabel("Monto a enviar (USD)", { exact: true }).fill("100");
         await workspace.getByRole("button", { name: "Calcular cotización", exact: true }).click();
         const dop = workspace.getByRole("textbox", { name: "Equivalente del principal en DOP", exact: true });
         await page.waitForFunction(() => Array.from(document.querySelectorAll<HTMLInputElement>('input[readonly]')).some((input) => input.value === "DOP 6,000.00"));
         assert.equal(await dop.getAttribute("readonly"), ""); assert.equal(await dop.inputValue(), "DOP 6,000.00");
+        assert.equal(await commission.inputValue(), "5", "changing the DOM cannot change the server-derived rate");
         assert.equal(await workspace.getByRole("textbox", { name: "Monto a recibir calculado (EUR)", exact: true }).inputValue(), "EUR 80.00");
         await workspace.getByLabel("Ingresar importe de").selectOption("destination");
         assert.equal(await dop.inputValue(), "Calcula la cotización", "changing mode invalidates the quote");
@@ -133,11 +167,11 @@ createRoot(document.getElementById("root")).render(<App />);`);
         await detail.getByRole("button", { name: `Cerrar ${saved.envioReference} · ${saved.reciboReference}`, exact: true }).click();
         await workspace.getByRole("button", { name: "Nuevo envío", exact: true }).click();
         await workspace.getByLabel("Moneda del destinatario").selectOption("DOP");
-        await workspace.getByLabel("Comisión (%)", { exact: true }).fill("50");
-        await workspace.getByLabel("Monto a recibir (DOP)", { exact: true }).fill("1");
+        assert.equal(await commission.inputValue(), "5", "the next remittance keeps the configured rate");
+        await workspace.getByLabel("Monto a recibir (DOP)", { exact: true }).fill("72.01");
         await workspace.getByRole("button", { name: "Calcular cotización", exact: true }).click();
         await workspace.getByText(/El importe real difiere por redondeo/).waitFor();
-        assert.match(await workspace.locator('.remittance-quote').innerText(), /DOP 1\.20/);
+        assert.match(await workspace.locator('.remittance-quote').innerText(), /DOP 72\.00/);
         if (surface === "collector") assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
       } finally { await context.close(); }
     });

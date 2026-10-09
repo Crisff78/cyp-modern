@@ -12,6 +12,8 @@ import { confirmedRateResponse } from "./rateResponse";
 import { useClientContact } from "./useClientContact";
 import { confirmedCreatedTransfer } from "./createdTransferResponse";
 import { allocationRows, commissionReportStatusLabels, consolidatedCommissionSections } from "./commissionOutput";
+import { confirmedCommissionPolicy } from "./commissionPolicyResponse";
+import type { CommissionPolicy } from "./types";
 
 type Tab = "envios" | "recibos" | "tasas" | "caja" | "reportes";
 type Actor = { id: string; name: string };
@@ -19,8 +21,8 @@ type Confirmation = { title: string; path: string; body: Record<string, unknown>
 // Only in-memory: retain an uncertain action across route changes and same-actor login.
 const pendingByActor = new Map<string, Confirmation>();
 // These domain errors are produced only after the server's idempotency lookup.
-const definitiveDomainErrors = new Set(["QUOTE_CHANGED", "CASH_NOT_OPEN", "RATE_MISSING", "RATE_DATE", "DOP_RATE", "CASH_EXISTS", "PREVIOUS_CASH_OPEN", "CASH_CLOSED", "CASH_UNBALANCED", "CASH_NOT_FOUND", "CLIENT_INACTIVE", "CLIENT_NOT_FOUND", "SAME_CLIENT", "TRANSFER_NOT_PENDING", "TRANSFER_NOT_FOUND", "INSUFFICIENT_CASH", "SEQUENCE_EXHAUSTED", "MONEY_RANGE", "INVALID_AMOUNT", "INVALID_RATE", "INVALID_CURRENCY", "INVALID_COMMISSION", "INVALID_AMOUNT_MODE", "COMMISSION_EXCEEDS_TOTAL", "AMOUNT_TOO_SMALL", "REASON_REQUIRED"]);
-type Draft = { senderClientId: string; recipientClientId: string; sendingUserId: string; sourceCurrency: Currency; destinationCurrency: Currency; amount: string; amountMode: "source" | "destination"; commission: string; note: string };
+const definitiveDomainErrors = new Set(["QUOTE_CHANGED", "COMMISSION_POLICY_MISMATCH", "CASH_NOT_OPEN", "RATE_MISSING", "RATE_DATE", "DOP_RATE", "CASH_EXISTS", "PREVIOUS_CASH_OPEN", "CASH_CLOSED", "CASH_UNBALANCED", "CASH_NOT_FOUND", "CLIENT_INACTIVE", "CLIENT_NOT_FOUND", "SAME_CLIENT", "TRANSFER_NOT_PENDING", "TRANSFER_NOT_FOUND", "INSUFFICIENT_CASH", "SEQUENCE_EXHAUSTED", "MONEY_RANGE", "INVALID_AMOUNT", "INVALID_RATE", "INVALID_CURRENCY", "INVALID_COMMISSION", "INVALID_AMOUNT_MODE", "COMMISSION_EXCEEDS_TOTAL", "AMOUNT_TOO_SMALL", "REASON_REQUIRED"]);
+type Draft = { senderClientId: string; recipientClientId: string; sendingUserId: string; sourceCurrency: Currency; destinationCurrency: Currency; amount: string; amountMode: "source" | "destination"; note: string };
 const statusText = { pending: "Pendiente de entrega", paid: "Pagado", cancelled: "Cancelado" };
 const tabs: { id: Tab; label: string }[] = [{ id: "envios", label: "Envíos" }, { id: "recibos", label: "Recibos" }, { id: "tasas", label: "Tasas" }, { id: "caja", label: "Caja" }, { id: "reportes", label: "Reportes" }];
 const money = formatMoney;
@@ -120,8 +122,9 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
   const [formOpen, setFormOpen] = useState(false);
-  const [draft, setDraft] = useState<Draft>({ senderClientId: "", recipientClientId: "", sendingUserId: user.id, sourceCurrency: "DOP", destinationCurrency: "DOP", amount: "", amountMode: "source", commission: "0", note: "" });
+  const [draft, setDraft] = useState<Draft>({ senderClientId: "", recipientClientId: "", sendingUserId: user.id, sourceCurrency: "DOP", destinationCurrency: "DOP", amount: "", amountMode: "source", note: "" });
   const [policyPercent, setPolicyPercent] = useState<string | null>(null);
+  const [transactionPolicyPercent, setTransactionPolicyPercent] = useState<string | null>(null);
   const senderContact = useClientContact(api, formOpen ? draft.senderClientId : "", "sender", "", snapshot);
   const recipientContact = useClientContact(api, formOpen ? draft.recipientClientId : "", "recipient", draft.senderClientId, snapshot);
   const [senderSearch, setSenderSearch] = useState("");
@@ -181,7 +184,6 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   const updateDraft = <K extends keyof Draft>(key: K, value: Draft[K]) => {
     if (typeof value === "string") {
       if (key === "amount" && !isDecimalDraft(value)) return;
-      if (key === "commission" && !isDecimalDraft(value, { wholeDigits: 3 })) return;
     }
     setDraft((current) => ({ ...current, [key]: value })); retireQuote(); clearErrors();
   };
@@ -225,13 +227,12 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
     try {
       const result = await api<Transfer>(confirmation.path, { method: "POST", headers: { "Idempotency-Key": confirmation.idempotencyKey! }, body: JSON.stringify(confirmation.body) });
       if (confirmation.kind === "rate") confirmedRateResponse(result, confirmation.body as Pick<Rate, "currency" | "date" | "rate">);
-      if (confirmation.kind === "policy" && (!result || (result as unknown as { managerCommissionBps?: number }).managerCommissionBps !== confirmation.body.managerCommissionBps || typeof (result as unknown as { revision?: string }).revision !== "string"))
-        throw new StrictApiError("No pudimos confirmar la política guardada. Reintenta la misma operación.", 200, true);
+      if (confirmation.kind === "policy") confirmedCommissionPolicy(result, confirmation.body as Pick<CommissionPolicy, "transactionCommissionBps" | "managerCommissionBps">);
       const savedTransfer = confirmation.kind === "create" ? confirmedCreatedTransfer(result, confirmation.body, user.id, confirmation.expectedQuotation) : null;
       pendingByActor.delete(user.id);
       setNotice("Operación registrada correctamente.");
       if (confirmation.kind === "create") { setFormOpen(false); setQuote(null); setDraft((current) => ({ ...current, amount: "", note: "" })); }
-      if (confirmation.kind === "policy") setPolicyPercent(null);
+      if (confirmation.kind === "policy") { setPolicyPercent(null); setTransactionPolicyPercent(null); }
       if (confirmation.kind === "close") { setClosing(null); setCounted(""); }
       if (confirmation.kind === "cancel") setCancelReason("");
       setConfirmation(null); setUncertain(false); setReport(null); setAllocationReport(null);
@@ -243,7 +244,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
       const unresolved = !definitive && (uncertain || (failure instanceof StrictApiError && failure.uncertain));
       setUncertain(unresolved);
       if (!unresolved) pendingByActor.delete(user.id);
-      if (failure instanceof StrictApiError && failure.code === "QUOTE_CHANGED") setQuote(null);
+      if (failure instanceof StrictApiError && ["QUOTE_CHANGED", "COMMISSION_POLICY_MISMATCH"].includes(failure.code ?? "")) setQuote(null);
     } finally { mutationLock.current = false; setBusy(false); }
   }
 
@@ -255,11 +256,9 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
     try {
       if (!draft.senderClientId || !draft.recipientClientId || draft.senderClientId === draft.recipientClientId) throw new Error("Selecciona un remitente y un destinatario distintos.");
       if (!eligibleClients(snapshot.clients, "sender", draft.senderClientId).some((client) => client.id === draft.senderClientId) || !eligibleClients(snapshot.clients, "recipient", draft.senderClientId).some((client) => client.id === draft.recipientClientId)) throw new Error("El cliente seleccionado ya no está disponible. Selecciónalo de nuevo.");
-      if (!isDecimalDraft(draft.amount) || !isDecimalDraft(draft.commission, { wholeDigits: 3 })) throw new Error("Revisa el importe y la comisión: admiten hasta dos decimales.");
+      if (!isDecimalDraft(draft.amount)) throw new Error("Revisa el importe: admite hasta dos decimales.");
       const amount = decimalCents(draft.amount);
-      const commissionBps = decimalCents(draft.commission, true);
-      if (commissionBps > 10000) throw new Error("La comisión debe estar entre 0% y 100%.");
-      const params = new URLSearchParams({ sourceCurrency: draft.sourceCurrency, destinationCurrency: draft.destinationCurrency, amount: String(amount), amountMode: draft.amountMode, commissionBps: String(commissionBps) });
+      const params = new URLSearchParams({ sourceCurrency: draft.sourceCurrency, destinationCurrency: draft.destinationCurrency, amount: String(amount), amountMode: draft.amountMode });
       const result = await api<Quotation>(`/envios/cotizacion?${params}`);
       if (quoteRequests.current.accepts(request)) setQuote(result);
     } catch (failure) { if (quoteRequests.current.accepts(request)) setError(failureMessage(failure)); }
@@ -293,10 +292,12 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   function prepareCommissionPolicy(event: FormEvent) {
     event.preventDefault(); if (!isAdmin || !snapshot) return;
     try {
+      const transactionCommissionBps = decimalCents(transactionPolicyPercent ?? String((snapshot.commissionPolicy?.transactionCommissionBps ?? 0) / 100), true);
       const managerCommissionBps = decimalCents(policyPercent ?? String((snapshot.commissionPolicy?.managerCommissionBps ?? 0) / 100), true);
-      if (managerCommissionBps > 10000) throw new Error("La comisión del gestor debe estar entre 0% y 100%.");
-      confirm({ title: "Configurar comisión del gestor", path: "/envios/politica-comisiones", kind: "policy", body: { managerCommissionBps },
-        description: <p>Aplicar {managerCommissionBps / 100}% sobre el importe final de destino a remesas futuras. La empresa recibe el resto de la comisión de transacción convertida. Las remesas existentes conservan su reparto. Si la comisión del gestor supera el total disponible, la cotización se bloqueará.</p> });
+      if (transactionCommissionBps > 10000 || managerCommissionBps > 10000) throw new Error("Los porcentajes de comisión deben estar entre 0% y 100%.");
+      if (managerCommissionBps > transactionCommissionBps) throw new Error("La comisión del gestor no puede superar la comisión total de la transacción.");
+      confirm({ title: "Configurar comisiones de remesas", path: "/envios/politica-comisiones", kind: "policy", body: { transactionCommissionBps, managerCommissionBps },
+        description: <p>Guardar una comisión total de {transactionCommissionBps / 100}% sobre el monto a enviar y {managerCommissionBps / 100}% para el gestor sobre el importe final de destino. Se aplicarán automáticamente a remesas nuevas. La empresa recibe el resto de la comisión convertida; no se agrega otro cargo al cliente. Las remesas existentes conservan sus importes y reparto.</p> });
     } catch (failure) { setError(failureMessage(failure)); }
   }
 
@@ -378,6 +379,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
     {outputError && <div className="remittance-error" role="alert">{outputError}</div>}
     {notice && <div className="remittance-notice" role="status">{notice}</div>}
     {!snapshot ? <div className="remittance-empty">{loading ? "Cargando clientes, tasas y cajas…" : "No hay datos conectados. Actualiza para volver a intentar."}</div> : <>
+      {(snapshot.commissionPolicy?.managerCommissionBps ?? 0) > (snapshot.commissionPolicy?.transactionCommissionBps ?? 0) && <p className="remittance-error" role="alert">La comisión total configurada no cubre el porcentaje del gestor. Un administrador debe revisar Remesas → Tasas → Reparto de comisiones antes de registrar nuevos envíos. Los recibos anteriores conservan sus importes.</p>}
       {(tab === "envios" || tab === "recibos") && <>
         <div className="remittance-toolbar"><label>Buscar<input type="search" maxLength={INPUT_LIMITS.name} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Referencia o cliente" /></label><label>Estado<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">Todos</option><option value="pending">Pendientes</option><option value="paid">Pagados</option><option value="cancelled">Cancelados</option></select></label>{tab === "envios" && <button type="button" className="remittance-primary" disabled={busy || uncertain} onClick={() => { if (formOpen) closeForm(); else { setFormOpen(true); clearErrors(); } }}>{formOpen ? "Cancelar nuevo envío" : "Nuevo envío"}</button>}</div>
         {tab === "envios" && formOpen && <form className="remittance-panel" onSubmit={(event) => void requestQuote(event)}>
@@ -389,7 +391,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
               <label>{draft.amountMode === "source" ? `Monto a enviar (${draft.sourceCurrency})` : `Monto a recibir (${draft.destinationCurrency})`}<input required inputMode="decimal" maxLength={moneyInputLength} value={draft.amount} onChange={(event) => updateDraft("amount", event.target.value)} placeholder="0.00" /></label>
               <label>Equivalente del principal en DOP<input readOnly value={quote?.amountDop === undefined ? (quote ? "Fuera de rango de visualización" : "Calcula la cotización") : money(quote.amountDop, "DOP")} /></label>
               <label>{draft.amountMode === "source" ? `Monto a recibir calculado (${draft.destinationCurrency})` : `Monto a enviar calculado (${draft.sourceCurrency})`}<input readOnly value={quote ? money(draft.amountMode === "source" ? quote.receiveAmount : quote.amount, draft.amountMode === "source" ? draft.destinationCurrency : draft.sourceCurrency) : "Calcula la cotización"} /></label>
-              <label>Comisión (%)<input required inputMode="decimal" maxLength={6} value={draft.commission} onChange={(event) => updateDraft("commission", event.target.value)} /></label>
+              <label>Comisión (%)<input aria-label="Comisión (%)" readOnly value={String((quote?.commissionBps ?? snapshot.commissionPolicy?.transactionCommissionBps ?? 0) / 100)} /><small>Se aplica automáticamente desde la configuración de comisiones.</small></label>
             </div>
             <div className="remittance-party-fields" role="group" aria-label="Datos del destinatario">
               <ClientPicker api={api} side="recipient" senderId={draft.senderClientId} label="Destinatario" clients={eligibleClients(snapshot.clients, "recipient", draft.senderClientId)} value={draft.recipientClientId} query={recipientSearch} onQuery={(value) => { setRecipientSearch(value); updateDraft("recipientClientId", ""); }} onSelect={(client) => chooseClient("recipient", client)} contactState={recipientContact} />
@@ -406,7 +408,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
         <div className="remittance-table-wrap"><table className="remittance-table remittance-transfer-table"><caption>{tab === "recibos" ? "Recepción de dinero" : "Listado de envíos"} · {list.length}</caption><thead><tr><th>Referencia</th><th>Fecha</th><th>Remitente → destinatario</th><th>Total recibido</th><th>A entregar</th><th>Estado</th></tr></thead><tbody>{list.map((transfer) => <tr key={transfer.id}><td data-label="Referencia"><button type="button" className="remittance-link" onClick={() => { setDetailId(transfer.id); setCancelReason(""); }}>{tab === "recibos" ? transfer.reciboReference : transfer.envioReference}</button><small>{transfer.operatingCode}</small></td><td data-label="Fecha">{formatDate(transfer.createdAt)}</td><td data-label="Clientes">{clientName(transfer.senderClientId)}<br />→ {clientName(transfer.recipientClientId)}</td><td data-label="Total recibido">{money(transfer.totalAmount, transfer.sourceCurrency)}</td><td data-label="A entregar">{money(transfer.receiveAmount, transfer.destinationCurrency)}</td><td data-label="Estado"><span className={`remittance-status ${transfer.status}`}>{statusText[transfer.status]}</span></td></tr>)}{!list.length && <tr><td colSpan={6}>No hay {tab === "envios" ? "envíos" : "recibos"} para estos filtros.</td></tr>}</tbody></table></div>
       </>}
       {tab === "tasas" && isAdmin && <>
-        <form className="remittance-panel" onSubmit={prepareCommissionPolicy}><h2>Reparto de comisiones</h2><p>El porcentaje del gestor se aplica al importe final de destino. Valor inicial: 0%, pendiente de definir la tasa comercial. Los cambios afectan remesas futuras.</p><fieldset disabled={working || uncertain} className="remittance-form-grid"><label>Comisión del gestor (%)<input required inputMode="decimal" maxLength={6} value={policyPercent ?? String((snapshot.commissionPolicy?.managerCommissionBps ?? 0) / 100)} onChange={(event) => { if (isDecimalDraft(event.target.value, { wholeDigits: 3 })) setPolicyPercent(event.target.value); }} /></label></fieldset><button className="remittance-primary" disabled={working || uncertain}>Revisar reparto</button></form>
+        <form className="remittance-panel" onSubmit={prepareCommissionPolicy}><h2>Reparto de comisiones</h2><p>Registra aquí los porcentajes aprobados por Gerencia. Cada nueva remesa los toma automáticamente en Admin y en la terminal del cobrador. Ambos empiezan en 0% hasta definir las tasas comerciales. Los cambios afectan solo remesas futuras.</p><fieldset disabled={working || uncertain} className="remittance-form-grid"><label>Comisión total de la transacción (%)<input aria-label="Comisión total de la transacción (%)" required inputMode="decimal" maxLength={6} value={transactionPolicyPercent ?? String((snapshot.commissionPolicy?.transactionCommissionBps ?? 0) / 100)} onChange={(event) => { if (isDecimalDraft(event.target.value, { wholeDigits: 3 })) setTransactionPolicyPercent(event.target.value); }} /><small>Se cobra sobre el monto a enviar en moneda de origen.</small></label><label>Comisión del gestor (%)<input aria-label="Comisión del gestor (%)" required inputMode="decimal" maxLength={6} value={policyPercent ?? String((snapshot.commissionPolicy?.managerCommissionBps ?? 0) / 100)} onChange={(event) => { if (isDecimalDraft(event.target.value, { wholeDigits: 3 })) setPolicyPercent(event.target.value); }} /><small>Se calcula sobre el importe final de destino. La empresa conserva el resto.</small></label></fieldset><button className="remittance-primary" disabled={working || uncertain}>Revisar reparto</button></form>
         <form className="remittance-panel" onSubmit={prepareRate}><h2>Tasa</h2><p>Fecha: {snapshot.businessDate}. DOP vale 1. Las demás monedas necesitan tasa de hoy. Cada cambio queda en el historial; los envíos anteriores conservan su tasa.</p><fieldset disabled={working} className="remittance-form-grid"><label>Moneda<select value={rate.currency} onChange={(event) => setRate({ currency: event.target.value as Currency, value: event.target.value === "DOP" ? "1.000000" : "" })}>{snapshot.currencies.map((currency) => <option key={currency}>{currency}</option>)}</select></label><label>Tasa<input required aria-describedby="remittance-rate-unit" inputMode="decimal" maxLength={RATE_INPUT_MAX_LENGTH} value={rate.value} readOnly={rate.currency === "DOP"} onChange={(event) => { setRate((current) => ({ ...current, value: rateInputDraft(event.target.value) })); setError(""); }} placeholder="0.000000" /><span id="remittance-rate-unit">1 {rate.currency} = esta tasa en DOP</span></label><RateRegistrationTime rate={snapshot.rates.find((row) => row.currency === rate.currency && row.date === snapshot.businessDate)} /></fieldset><button className="remittance-primary" disabled={working}>Revisar tasa</button></form>
         <DataTable section={{ title: "Tasas vigentes", columns: ["Fecha", "Moneda", "Tasa", "Último cambio (America/Santo_Domingo)"], rows: snapshot.rates.map((row) => [row.date, row.currency, row.rate, rateMoment(row.updatedAt)]) }} />
         <DataTable section={{ title: "Historial de cambios de tasa", columns: ["Fecha de operación", "Moneda", "Tasa", "Fecha y hora (America/Santo_Domingo)", "Registrado por"], rows: (snapshot.rateHistory ?? []).map((row) => [row.date, row.currency, row.rate, rateMoment(row.createdAt), operatorName(row.actorId)]) }} />

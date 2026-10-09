@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { seed } from "../app/server/src/seed.js";
 import { buildReviewSeed } from "../app/server/scripts/seed-review.js";
 import type { User } from "../app/server/src/domain.js";
-import { createRemittance, openRemittanceCash, quoteRemittance } from "../app/server/src/remittances.js";
+import { createRemittance, openRemittanceCash, quoteRemittance, setCommissionPolicy } from "../app/server/src/remittances.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const directory = resolve(root, ".local");
@@ -68,6 +68,7 @@ if (summary.status !== "DRY_RUN" || state.clients.some((client) =>
 const admin: User = { id: "demo-admin", name: "Prueba CyP Administración", role: "admin" };
 const collector: User = { id: "demo-collector", name: "Prueba CyP Cobrador", role: "collector", collectorId: "col-1" };
 const sample = { sourceCurrency: "DOP", destinationCurrency: "DOP", amount: 50000, commissionBps: 200 } as const;
+setCommissionPolicy(state, admin, { transactionCommissionBps: 200, managerCommissionBps: 0 }, now);
 const note = "DATOS SINTÉTICOS PRUEBA CYP. Envío pendiente para el cobrador de muestra.";
 const quote = quoteRemittance(state, sample, now);
 openRemittanceCash(state, admin, { operatorId: collector.id, currency: "DOP", openingAmount: 0 }, [collector], now);

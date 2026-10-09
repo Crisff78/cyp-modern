@@ -22,7 +22,7 @@ const amount = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const bps = z.number().int().min(0).max(10000);
 const quoteFields = {
   sourceCurrency: currency, destinationCurrency: currency,
-  amount: amount.positive(), commissionBps: bps,
+  amount: amount.positive(), commissionBps: bps.optional(),
 };
 export function registerRemittanceRoutes(
   app: FastifyInstance, store: Store, user: (req: FastifyRequest) => User,
@@ -50,14 +50,14 @@ export function registerRemittanceRoutes(
   get("/api/envios/cotizacion", "Cotizar envío con la tasa del día", async (req) => {
     const input = z.object({ ...quoteFields,
       amount: z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER),
-      commissionBps: z.coerce.number().int().min(0).max(10000),
+      commissionBps: z.string().regex(/^\d{1,5}$/).transform(Number).pipe(bps).optional(),
       amountMode: z.enum(["source", "destination"]).default("source"),
     }).strict().parse(req.query);
     return quoteRemittance(await store.read(), input);
   });
   mutate("/api/envios/politica-comisiones", "Configurar reparto de comisiones para remesas futuras", z.object({
-    managerCommissionBps: bps,
-  }).strict(), (state, actor, input) => setCommissionPolicy(state, actor, input.managerCommissionBps));
+    transactionCommissionBps: bps.optional(), managerCommissionBps: bps,
+  }).strict(), (state, actor, input) => setCommissionPolicy(state, actor, input));
   mutate("/api/envios/tasas", "Registrar tasa diaria DOP por unidad", z.object({
     currency, rate: z.string().max(19), date: z.iso.date(),
   }).strict(), (state, actor, input) => setDailyRate(state, actor, input));

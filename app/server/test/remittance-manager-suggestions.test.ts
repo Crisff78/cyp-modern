@@ -10,7 +10,7 @@ import { businessDate, type State, type User } from "../src/domain.js";
 import { seed } from "../src/seed.js";
 import { MemoryStore, FileStore, PostgresStore } from "../src/store.js";
 import { cancelRemittance, cashBalance, createRemittance, openRemittanceCash, quoteRemittance,
-  remittanceReports, remittanceSnapshot, type CreateRemittanceInput, type ManagerCommission } from "../src/remittances.js";
+  remittanceReports, remittanceSnapshot, setCommissionPolicy, type CreateRemittanceInput, type ManagerCommission } from "../src/remittances.js";
 
 const at = new Date("2026-09-27T16:00:00.000Z");
 const admin: User = { id: "demo-admin", name: "Synthetic admin", role: "admin" };
@@ -19,6 +19,7 @@ const input = { sourceCurrency: "DOP" as const, destinationCurrency: "DOP" as co
 const manual: ManagerCommission = { managerName: "Synthetic external gestor", amount: 375, currency: "EUR" };
 function fixture() {
   const state = seed();
+  setCommissionPolicy(state, admin, { transactionCommissionBps: 100, managerCommissionBps: 0 }, at);
   openRemittanceCash(state, admin, { operatorId: admin.id, currency: "DOP", openingAmount: 0 }, [], at);
   return state;
 }
@@ -110,7 +111,8 @@ test("6.8 FileStore reopen preserves manual snapshot and leaves legacy field abs
 });
 
 test("6.8 API validates complete optional manual payload and replays exact snapshot without duplicate or legacy change", async () => {
-  const store = new MemoryStore(seed());
+  const initial = seed(); setCommissionPolicy(initial, admin, { transactionCommissionBps: 100, managerCommissionBps: 0 }, at);
+  const store = new MemoryStore(initial);
   const app = await buildApp({ store, secret: "synthetic-manager-remittances-secret-32", demo: true, origins: [], collectorUrl: "http://127.0.0.1:5174" });
   try {
     const token = (await app.inject({ method: "POST", url: "/api/auth/login", payload: { email: "admin@cyp.local", password: "Demo-CyP-2026!" } })).json().token;

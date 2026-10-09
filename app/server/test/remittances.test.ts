@@ -14,7 +14,7 @@ import { MemoryStore, FileStore, PostgresStore, type Store } from "../src/store.
 import {
   cashBalance, closeRemittanceCash, createRemittance, cancelRemittance, normalizeRate,
   openRemittanceCash, payRemittance, quoteRemittance, remittanceReports,
-  remittanceSnapshot, setDailyRate, type Currency,
+  remittanceSnapshot, setDailyRate, setCommissionPolicy, type Currency,
 } from "../src/remittances.js";
 
 const now = new Date("2026-09-27T16:00:00.000Z");
@@ -27,6 +27,7 @@ const operators = [admin, sender, receiver, outsider];
 const code = (expected: string) => (error: unknown) => { assert.equal((error as { code: string }).code, expected); return true; };
 function fixture(at = now) {
   const state = seed();
+  setCommissionPolicy(state, admin, { transactionCommissionBps: 100, managerCommissionBps: 0 }, at);
   for (const [currency, rate] of [["USD", "60"], ["EUR", "65"]] as const)
     setDailyRate(state, admin, { currency, rate, date: businessDate(at) }, at);
   return state;
@@ -43,12 +44,15 @@ function create(state: State, overrides: Record<string, unknown> = {}, actor = s
 test("quote uses exact half-up, fees in source currency and safe BigInt intermediates", () => {
   const state = fixture();
   setDailyRate(state, admin, { currency: "EUR", rate: "2", date: businessDate(now) }, now);
+  setCommissionPolicy(state, admin, { transactionCommissionBps: 5000, managerCommissionBps: 0 }, now);
   const quote = quoteRemittance(state, { sourceCurrency: "DOP", destinationCurrency: "EUR", amount: 1, commissionBps: 5000 }, now);
   assert.equal(quote.commissionAmount, 1); assert.equal(quote.totalAmount, 2); assert.equal(quote.receiveAmount, 1);
   assert.equal(normalizeRate("00060.1"), "60.100000");
   setDailyRate(state, admin, { currency: "USD", rate: "10000000000", date: businessDate(now) }, now);
   setDailyRate(state, admin, { currency: "EUR", rate: "10000000000.000001", date: businessDate(now) }, now);
+  setCommissionPolicy(state, admin, { transactionCommissionBps: 0, managerCommissionBps: 0 }, now);
   assert.equal(quoteRemittance(state, { sourceCurrency: "USD", destinationCurrency: "EUR", amount: 5000000000000001, commissionBps: 0 }, now).receiveAmount, 5000000000000000);
+  setCommissionPolicy(state, admin, { transactionCommissionBps: 1, managerCommissionBps: 0 }, now);
   assert.throws(() => quoteRemittance(state, { sourceCurrency: "DOP", destinationCurrency: "DOP", amount: Number.MAX_SAFE_INTEGER, commissionBps: 1 }, now), code("MONEY_RANGE"));
   assert.throws(() => normalizeRate("1.0000001"), code("INVALID_RATE"));
   assert.throws(() => normalizeRate("1e3"), code("INVALID_RATE"));
@@ -123,6 +127,7 @@ test("cash opening/closing constraints, funds and previous-day guard", () => {
 
 test("recycled cash cannot overflow accumulated sent totals or corrupt the next snapshot", async () => {
   const state = fixture(); open(state, sender.id, "DOP");
+  setCommissionPolicy(state, admin, { transactionCommissionBps: 0, managerCommissionBps: 0 }, now);
   const store = new MemoryStore(state);
   const transfer = await store.transaction((s) => create(s, { sourceCurrency: "DOP", destinationCurrency: "DOP", amount: Number.MAX_SAFE_INTEGER, commissionBps: 0 }));
   await store.transaction((s) => cancelRemittance(s, sender, transfer.id, "Devolución", now));
@@ -159,6 +164,7 @@ test("reports group all four families by inclusive business date, preserve curre
   create(state, {}, sender, tomorrow);
   open(state, sender.id, "EUR", 0, tomorrow);
   setDailyRate(state, admin, { currency: "EUR", rate: "65", date: businessDate(tomorrow) }, tomorrow);
+  setCommissionPolicy(state, admin, { transactionCommissionBps: 0, managerCommissionBps: 0 }, tomorrow);
   create(state, { sourceCurrency: "EUR", commissionBps: 0 }, sender, tomorrow);
   const range = remittanceReports(state, admin, { from: "2026-09-27", to: "2026-09-28", grouping: "range" });
   assert.equal(range.amounts.length, 2); assert.equal(range.amounts[0].cancelledCount, 1);
@@ -183,6 +189,7 @@ test("FileStore upgrades old shape and reloads transfer, activity, references an
     let store = await FileStore.open(path, seed());
     assert.deepEqual((await store.read()).remittances.transfers, []);
     await store.transaction((s) => {
+      setCommissionPolicy(s, admin, { transactionCommissionBps: 100, managerCommissionBps: 0 }, now);
       setDailyRate(s, admin, { currency: "USD", rate: "60", date: businessDate(now) }, now);
       open(s, sender.id, "USD"); const t = create(s); cancelRemittance(s, sender, t.id, "Prueba persistencia", now);
       s.clients[0].active = false;
@@ -212,6 +219,7 @@ test("API validates DTO, idempotence, activity, representation, receipt scope an
     assert.equal((await post("/api/envios/tasas", { currency: "USD", rate: "60", date: businessDate() })).statusCode, 200);
     assert.equal((await post("/api/envios/cajas/abrir", { operatorId: "demo-collector", currency: "USD", openingAmount: 0 })).statusCode, 200);
     assert.equal((await post("/api/envios/cajas/abrir", { operatorId: "demo-admin", currency: "DOP", openingAmount: 1000000 })).statusCode, 200);
+    assert.equal((await post("/api/envios/politica-comisiones", { transactionCommissionBps: 100, managerCommissionBps: 0 })).statusCode, 200);
     const quote = (await get("/api/envios/cotizacion?sourceCurrency=USD&destinationCurrency=DOP&amount=10000&commissionBps=100")).json().quote;
     const payload = { senderClientId: "cli-1", recipientClientId: "cli-5", sendingUserId: "demo-collector", sourceCurrency: "USD", destinationCurrency: "DOP", amount: 10000, commissionBps: 100, quote };
     const key = randomUUID();

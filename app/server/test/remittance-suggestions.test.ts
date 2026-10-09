@@ -10,7 +10,7 @@ import { businessDate, type State, type User } from "../src/domain.js";
 import { seed } from "../src/seed.js";
 import { MemoryStore, FileStore, PostgresStore } from "../src/store.js";
 import { createRemittance, cancelRemittance, openRemittanceCash, quoteRemittance,
-  remittanceReports, remittanceSnapshot, setDailyRate, type QuoteInput } from "../src/remittances.js";
+  remittanceReports, remittanceSnapshot, setDailyRate, setCommissionPolicy, type QuoteInput } from "../src/remittances.js";
 
 const at = new Date("2026-09-25T16:00:00.000Z");
 const admin: User = { id: "demo-admin", name: "Synthetic admin", role: "admin" };
@@ -21,6 +21,7 @@ const moneyInput = { sourceCurrency: "USD" as const, destinationCurrency: "EUR" 
 const errorCode = (code: string) => (error: unknown) => { assert.equal((error as { code: string }).code, code); return true; };
 function fixture() {
   const state = seed();
+  setCommissionPolicy(state, admin, { transactionCommissionBps: 100, managerCommissionBps: 0 }, at);
   state.clients[0].phone = "+509 2222 0001"; state.clients[0].cellular = "+509 3333 0001";
   state.clients[0].address = "Synthetic sender address"; state.clients[0].preferredCurrency = "USD";
   state.clients[4].phone = "+509 2222 0005"; state.clients[4].address = "Synthetic destination address";
@@ -59,7 +60,7 @@ test("6.7 legacy daily rates keep unknown timestamps until explicitly confirmed"
   const state = seed();
   state.remittances.rates.push({ id: "legacy-usd", currency: "USD", rate: "0.5", date: businessDate(at) });
   const before = structuredClone(state.remittances);
-  const quote = quoteRemittance(state, { ...moneyInput, destinationCurrency: "DOP" }, at).quote;
+  const quote = quoteRemittance(state, { ...moneyInput, destinationCurrency: "DOP", commissionBps: 0 }, at).quote;
   assert.equal(quote.sourceRateChangedAt, undefined); assert.equal(quote.sourceRateChangeId, undefined);
   assert.deepEqual(state.remittances, before, "reading/quoting must not backfill history");
   const confirmed = setDailyRate(state, admin, { currency: "USD", rate: "0.5", date: businessDate(at) }, at);
@@ -100,6 +101,7 @@ test("7.1 business commission report separates currency/cancellation and uses Do
   const first = create(state);
   const cancelled = create(state);
   cancelRemittance(state, sender, cancelled.id, "Synthetic cancellation", new Date(at.getTime() + 1000));
+  setCommissionPolicy(state, admin, { transactionCommissionBps: 250, managerCommissionBps: 0 }, at);
   create(state, { ...moneyInput, sourceCurrency: "EUR", destinationCurrency: "USD", amount: 20000, commissionBps: 250 });
   // Emitted before Dominican midnight; cancelled on a later day, still shown as cancelled by emission.
   const boundary = structuredClone(first); boundary.id = "boundary"; boundary.createdAt = "2026-09-26T03:59:59Z";
@@ -162,6 +164,7 @@ test("6.7 API concurrent/replayed rate changes do not duplicate history or reset
 
 test("4.2/6.7 API lost-response retry keeps frozen contacts/quote after edits and rate changes", async () => {
   const initial = seed(); initial.clients[0].phone = "+509 5555 0001";
+  setCommissionPolicy(initial, admin, { transactionCommissionBps: 100, managerCommissionBps: 0 }, at);
   const { app, store, post, get } = await apiSetup(initial);
   try {
     await post("/api/envios/tasas", { currency: "USD", rate: "0.5", date: businessDate() });
@@ -185,7 +188,7 @@ test("6.7 legacy payload/cache replay stays compatible after rate history is int
   const { app, store, post } = await apiSetup(initial);
   try {
     await post("/api/envios/cajas/abrir", { operatorId: admin.id, currency: "USD", openingAmount: 0 });
-    const body = { ...moneyInput, destinationCurrency: "DOP", senderClientId: "cli-1", recipientClientId: "cli-5",
+    const body = { ...moneyInput, commissionBps: 0, destinationCurrency: "DOP", senderClientId: "cli-1", recipientClientId: "cli-5",
       quote: { date: businessDate(), sourceRate: "0.500000", destinationRate: "1.000000" } }, key = randomUUID();
     const original = await post("/api/envios", body, key); assert.equal(original.statusCode, 200, original.body);
     // Represent an actual older stored response without changing any real ledger.

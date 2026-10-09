@@ -3172,6 +3172,11 @@
                     "minLength": 1,
                     "maxLength": 80
                   },
+                  "requestedReceiveAmount": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
                   "quote": {
                     "type": "object",
                     "properties": {
@@ -3187,6 +3192,41 @@
                       "destinationRate": {
                         "type": "string",
                         "maxLength": 19
+                      },
+                      "quotedAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                      },
+                      "sourceRateChangeId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 80
+                      },
+                      "destinationRateChangeId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 80
+                      },
+                      "sourceRateChangedAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                      },
+                      "destinationRateChangedAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                      },
+                      "commissionPolicyRevision": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 80
+                      },
+                      "managerCommissionBps": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 10000
                       }
                     },
                     "required": [
@@ -3196,9 +3236,39 @@
                     ],
                     "additionalProperties": false
                   },
+                  "managerCommission": {
+                    "type": "object",
+                    "properties": {
+                      "managerName": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160
+                      },
+                      "amount": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "currency": {
+                        "type": "string",
+                        "enum": [
+                          "DOP",
+                          "USD",
+                          "EUR"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "managerName",
+                      "amount",
+                      "currency"
+                    ],
+                    "additionalProperties": false
+                  },
                   "note": {
                     "default": "",
                     "type": "string",
+                    "minLength": 0,
                     "maxLength": 2000
                   }
                 },
@@ -3206,11 +3276,9 @@
                   "sourceCurrency",
                   "destinationCurrency",
                   "amount",
-                  "commissionBps",
                   "senderClientId",
                   "recipientClientId",
-                  "quote",
-                  "note"
+                  "quote"
                 ],
                 "additionalProperties": false
               }
@@ -3738,6 +3806,75 @@
                 },
                 "required": [
                   "active"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      }
+    },
+    "/api/envios/politica-comisiones": {
+      "post": {
+        "summary": "Configurar reparto de comisiones para remesas futuras",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 100
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "transactionCommissionBps": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 10000
+                  },
+                  "managerCommissionBps": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 10000
+                  }
+                },
+                "required": [
+                  "managerCommissionBps"
                 ],
                 "additionalProperties": false
               }

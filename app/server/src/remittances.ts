@@ -9,7 +9,7 @@ export type Quote = {
   sourceRateChangedAt?: string; destinationRateChangedAt?: string;
   commissionPolicyRevision?: string; managerCommissionBps?: number;
 };
-export type CommissionPolicy = { revision: string; managerCommissionBps: number; updatedAt?: string; updatedBy?: string };
+export type CommissionPolicy = { revision: string; transactionCommissionBps: number; managerCommissionBps: number; updatedAt?: string; updatedBy?: string };
 export type CommissionAllocation = {
   version: 1; currency: Currency; policyRevision: string; managerCommissionBps: number;
   baseAmount: number; transactionAmount: number; companyAmount: number; managerAmount: number;
@@ -50,7 +50,9 @@ export type RemittanceState = {
   commissionPolicy?: CommissionPolicy;
 };
 export type QuoteInput = {
-  sourceCurrency: Currency; destinationCurrency: Currency; amount: number; commissionBps: number;
+  sourceCurrency: Currency; destinationCurrency: Currency; amount: number;
+  // Compatibility assertion only: the server always uses the central policy.
+  commissionBps?: number;
   amountMode?: "source" | "destination";
 };
 export type CreateRemittanceInput = QuoteInput & {
@@ -87,15 +89,22 @@ const assertCurrency = (currency: Currency) => {
   if (!currencies.includes(currency)) fail("INVALID_CURRENCY", "Moneda no admitida.");
 };
 export function getCommissionPolicy(state: State): CommissionPolicy {
-  return state.remittances.commissionPolicy ?? { revision: "default", managerCommissionBps: 0 };
+  const policy = state.remittances.commissionPolicy;
+  return policy ? { ...policy, transactionCommissionBps: policy.transactionCommissionBps ?? 0 }
+    : { revision: "default", transactionCommissionBps: 0, managerCommissionBps: 0 };
 }
-export function setCommissionPolicy(state: State, user: User, managerCommissionBps: number, now = new Date()) {
+export function setCommissionPolicy(state: State, user: User,
+  input: Pick<CommissionPolicy, "managerCommissionBps"> & Partial<Pick<CommissionPolicy, "transactionCommissionBps">>, now = new Date()) {
   remittanceOperators(state, user); assertAdmin(user);
-  if (!Number.isInteger(managerCommissionBps) || managerCommissionBps < 0 || managerCommissionBps > 10000)
-    fail("INVALID_COMMISSION", "La comisión del gestor debe estar entre 0 y 10000 BPS.");
   const current = getCommissionPolicy(state);
-  if (current.managerCommissionBps === managerCommissionBps) return current;
-  return state.remittances.commissionPolicy = { revision: randomUUID(), managerCommissionBps, updatedAt: now.toISOString(), updatedBy: user.id };
+  const transactionCommissionBps = input.transactionCommissionBps ?? current.transactionCommissionBps;
+  const managerCommissionBps = input.managerCommissionBps;
+  if ([transactionCommissionBps, managerCommissionBps].some((value) => !Number.isInteger(value) || value < 0 || value > 10000))
+    fail("INVALID_COMMISSION", "Los porcentajes de comisión deben estar entre 0 y 10000 BPS.");
+  if (managerCommissionBps > transactionCommissionBps)
+    fail("COMMISSION_EXCEEDS_TOTAL", "La comisión del gestor no puede superar la comisión total de la transacción.");
+  if (current.managerCommissionBps === managerCommissionBps && current.transactionCommissionBps === transactionCommissionBps) return current;
+  return state.remittances.commissionPolicy = { revision: randomUUID(), transactionCommissionBps, managerCommissionBps, updatedAt: now.toISOString(), updatedBy: user.id };
 }
 function manualManagerCommission(value: ManagerCommission | undefined): ManagerCommission | undefined {
   if (value === undefined) return undefined;
@@ -117,7 +126,7 @@ export function quoteRemittance(state: State, input: QuoteInput, now = new Date(
   const requested = integerMoney(input.amount, true);
   if (input.amountMode !== undefined && input.amountMode !== "source" && input.amountMode !== "destination")
     fail("INVALID_AMOUNT_MODE", "Selecciona importe de origen o destino.");
-  if (!Number.isInteger(input.commissionBps) || input.commissionBps < 0 || input.commissionBps > 10000)
+  if (input.commissionBps !== undefined && (!Number.isInteger(input.commissionBps) || input.commissionBps < 0 || input.commissionBps > 10000))
     fail("INVALID_COMMISSION", "La comisión debe estar entre 0 y 10000 BPS.");
   const date = businessDate(now);
   const source = dailyRate(state, input.sourceCurrency, date);
@@ -125,10 +134,15 @@ export function quoteRemittance(state: State, input: QuoteInput, now = new Date(
   const sourceRate = source.rate, destinationRate = destination.rate;
   const amount = input.amountMode === "destination" ? roundHalfUp(requested * scaledRate(destinationRate), scaledRate(sourceRate)) : requested;
   integerMoney(safeMoney(amount), true);
-  const commissionAmount = safeMoney(roundHalfUp(amount * BigInt(input.commissionBps), 10000n));
+  const policy = getCommissionPolicy(state);
+  if (policy.managerCommissionBps > policy.transactionCommissionBps)
+    fail("COMMISSION_EXCEEDS_TOTAL", "Un administrador debe revisar la configuración: la comisión del gestor supera la comisión total de la transacción.");
+  if (input.commissionBps !== undefined && input.commissionBps !== policy.transactionCommissionBps)
+    fail("COMMISSION_POLICY_MISMATCH", "La comisión se toma de la configuración guardada. Actualiza y vuelve a cotizar.", 409);
+  const commissionBps = policy.transactionCommissionBps;
+  const commissionAmount = safeMoney(roundHalfUp(amount * BigInt(commissionBps), 10000n));
   const receiveAmount = safeMoney(roundHalfUp(amount * scaledRate(sourceRate), scaledRate(destinationRate)));
   if (receiveAmount === 0) fail("AMOUNT_TOO_SMALL", "El importe recibido se redondea a cero.");
-  const policy = getCommissionPolicy(state);
   const transactionAmount = safeMoney(roundHalfUp(BigInt(commissionAmount) * scaledRate(sourceRate), scaledRate(destinationRate)));
   const managerAmount = safeMoney(roundHalfUp(BigInt(receiveAmount) * BigInt(policy.managerCommissionBps), 10000n));
   if (managerAmount > transactionAmount)
@@ -139,7 +153,7 @@ export function quoteRemittance(state: State, input: QuoteInput, now = new Date(
   // Leave that indicative equivalent unavailable rather than corrupting a valid quote.
   const dop = roundHalfUp(amount * scaledRate(sourceRate), 1_000_000n);
   return {
-    sourceCurrency: input.sourceCurrency, destinationCurrency: input.destinationCurrency, amount: safeMoney(amount), commissionBps: input.commissionBps,
+    sourceCurrency: input.sourceCurrency, destinationCurrency: input.destinationCurrency, amount: safeMoney(amount), commissionBps,
     ...(dop <= BigInt(Number.MAX_SAFE_INTEGER) ? { amountDop: safeMoney(dop) } : {}), commissionAllocation,
     ...(input.amountMode === "destination" ? { requestedReceiveAmount: input.amount, receiveRoundingDifference: receiveAmount - input.amount } : {}),
     commissionAmount, totalAmount: safeMoney(amount + BigInt(commissionAmount)),
@@ -274,16 +288,16 @@ export function createRemittance(state: State, user: User, input: CreateRemittan
   }
   if (!clientInRoute(state, sendingUser, input.senderClientId)) fail("FORBIDDEN", "El remitente no pertenece a la ruta del operador.", 403);
   if (input.quote.date !== businessDate(now)) fail("QUOTE_CHANGED", "La fecha cambió. Vuelve a cotizar antes de guardar.", 409);
-  const calculated = quoteRemittance(state, {
-    amount: input.requestedReceiveAmount ?? input.amount, amountMode: input.requestedReceiveAmount === undefined ? "source" : "destination", commissionBps: input.commissionBps,
-    sourceCurrency: input.sourceCurrency, destinationCurrency: input.destinationCurrency,
-  }, now);
-  if (calculated.amount !== input.amount) fail("QUOTE_CHANGED", "El principal no coincide con el cálculo del importe de destino. Vuelve a cotizar.", 409);
   const policy = getCommissionPolicy(state);
   if ((input.quote.commissionPolicyRevision !== undefined && input.quote.commissionPolicyRevision !== policy.revision) ||
       (input.quote.managerCommissionBps !== undefined && input.quote.managerCommissionBps !== policy.managerCommissionBps) ||
       (input.quote.commissionPolicyRevision === undefined && policy.revision !== "default"))
     fail("QUOTE_CHANGED", "La política de comisiones cambió. Vuelve a cotizar antes de guardar.", 409);
+  const calculated = quoteRemittance(state, {
+    amount: input.requestedReceiveAmount ?? input.amount, amountMode: input.requestedReceiveAmount === undefined ? "source" : "destination", commissionBps: input.commissionBps,
+    sourceCurrency: input.sourceCurrency, destinationCurrency: input.destinationCurrency,
+  }, now);
+  if (calculated.amount !== input.amount) fail("QUOTE_CHANGED", "El principal no coincide con el cálculo del importe de destino. Vuelve a cotizar.", 409);
   if (input.quote.date !== calculated.quote.date || input.quote.sourceRate !== calculated.quote.sourceRate || input.quote.destinationRate !== calculated.quote.destinationRate ||
       input.quote.sourceRateChangeId !== calculated.quote.sourceRateChangeId || input.quote.destinationRateChangeId !== calculated.quote.destinationRateChangeId)
     fail("QUOTE_CHANGED", "La fecha o la tasa cambió. Vuelve a cotizar antes de guardar.", 409);

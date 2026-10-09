@@ -52,7 +52,7 @@ test("business date boundaries, daily/currency grouping and legacy exclusion nev
   const boundary = transfer("boundary"); boundary.createdAt = "2026-10-10T03:59:59Z";
   const next = transfer("next"); next.createdAt = "2026-10-10T04:00:00Z";
   const legacy = transfer("legacy"); delete legacy.commissionAllocation; state.remittances.transfers.push(boundary, next, legacy);
-  state.remittances.commissionPolicy = { revision: "changed", managerCommissionBps: 9900 };
+  state.remittances.commissionPolicy = { revision: "changed", transactionCommissionBps: 10000, managerCommissionBps: 9900 };
   const day = consolidatedCommissionReport(state, admin, { ...defaults, grouping: "day", groupBy: "currency" });
   assert.equal(day.excludedLegacyCount, 1); assert.ok(day.details.some((row) => row.id === "boundary")); assert.ok(!day.details.some((row) => row.id === "next"));
   assert.equal(day.groups.length, 2); assert.ok(day.groups.every((row) => row.managerId === undefined && row.date === "2026-10-09"));

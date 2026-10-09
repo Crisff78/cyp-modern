@@ -4,3 +4,4 @@ import "../../shared/remittances/suggestions-manager.test";
 import "../../shared/remittances/crossRate.test";
 import "../../shared/remittances/rateInput.test";
 import "../../shared/remittances/rateResponse.test";
+import "../../shared/remittances/commissionPolicyResponse.test";

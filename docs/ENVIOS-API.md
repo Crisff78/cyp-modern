@@ -1,5 +1,11 @@
 # Envíos de Dinero: contrato local
 
+La comisión de nuevas remesas se toma de la configuración central de Admin,
+sin edición por operación. Ver [COMISIONES-CONFIGURACION.md](COMISIONES-CONFIGURACION.md)
+para contrato y migración aditiva 026. Las referencias inferiores a
+`commissionBps` en solicitudes son compatibles solo cuando coinciden con la
+tasa registrada; ese campo ya es opcional en cotización y alta.
+
 El contrato vigente de entrada por origen/destino, redondeos y reparto devengado
 está en [REMESAS-COTIZACION-REPARTO.md](REMESAS-COTIZACION-REPARTO.md). Requiere la
 migración aditiva `024_remittance_commission_allocation.sql` antes de iniciar esta
@@ -55,7 +61,8 @@ siempre vale `1.000000`. Se exige tasa de la fecha exacta para cada moneda usada
 no se arrastra la del día anterior. Comisión: BPS enteros 0..10000 (100 BPS=1%).
 Remitente paga `amount + commissionAmount` en origen. Destinatario recibe
 `round_half_up(amount * sourceRate / destinationRate)` en destino; la comisión
-no se convierte ni se descuenta de su principal. El backend usa BigInt para
+no se descuenta de su principal. Para repartirla entre empresa y gestor, la
+comisión cobrada en origen se expresa también en destino. El backend usa BigInt para
 intermedios y rechaza resultados fuera del rango seguro.
 
 ## Consultas, tasas y alta
@@ -75,12 +82,18 @@ intermedios y rechaza resultados fuera del rango seguro.
 - `GET /envios/recibos` → `TransferView[]` visibles por ruta destino (admin todas).
 - `POST /envios/tasas` admin: `{currency,rate:string,date:'YYYY-MM-DD'}` → `Rate`.
   Solo fecha de negocio actual; DOP solo admite 1. Los envíos previos retienen su tasa.
-- `GET /envios/cotizacion?sourceCurrency=USD&destinationCurrency=DOP&amount=10000&commissionBps=100`
+- `POST /envios/politica-comisiones` admin:
+  `{transactionCommissionBps,managerCommissionBps}` → configuración central.
+  Cada porcentaje es un entero 0..10000; gestor no puede superar transacción.
+  Cambios afectan solo remesas futuras y requieren recotizar antes de registrar.
+- `GET /envios/cotizacion?sourceCurrency=USD&destinationCurrency=DOP&amount=10000`
   → `{sourceCurrency,destinationCurrency,amount,commissionBps,commissionAmount,totalAmount,receiveAmount,quote}`.
 - `POST /envios`:
-  `{senderClientId,recipientClientId,sendingUserId?,sourceCurrency,destinationCurrency,amount,commissionBps,quote,note?}`
+  `{senderClientId,recipientClientId,sendingUserId?,sourceCurrency,destinationCurrency,amount,commissionBps?,quote,note?}`
   → `TransferView`. `quote` debe ser exactamente la cotización recibida. Cambio de
-  fecha/tasa devuelve `QUOTE_CHANGED` 409. `sendingUserId` omitido usa usuario
+  fecha/tasa/configuración devuelve `QUOTE_CHANGED` 409. Si `commissionBps`
+  viene presente, se valida contra la tasa central y no puede reemplazarla.
+  `sendingUserId` omitido usa usuario
   autenticado; solo admin puede representar otro operador activo. `registeredBy`
   siempre es el autenticado. Clientes deben ser distintos, existentes y activos.
   El remitente debe pertenecer a la ruta del operador si este es cobrador.

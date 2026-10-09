@@ -14,7 +14,8 @@ retirará únicamente al integrar el contrato real de RRAA.
 ## Cotización
 
 `GET /api/envios/cotizacion` conserva `sourceCurrency`, `destinationCurrency`,
-`amount` (centavos seguros), `commissionBps`. Acepta `amountMode=source|destination`
+`amount` (centavos seguros) y `commissionBps` opcional, que solo puede coincidir
+con la tasa central. Acepta `amountMode=source|destination`
 (por defecto `source`). En modo destino, `amount` es el importe solicitado para
 el destinatario. El servidor convierte inversamente con las tasas del día y
 redondea al centavo de origen, mitad hacia arriba. Después calcula el importe
@@ -36,8 +37,12 @@ rechaza un principal alterado. El comprobante conserva esta intención de entrad
 ## Política y devengo
 
 `POST /api/envios/politica-comisiones` es exclusivo de Admin y recibe
-`{managerCommissionBps: 0..10000}`. El porcentaje inicial es 0, sin inventar una
-tasa comercial. `GET /api/envios/snapshot` devuelve la política actual.
+`{transactionCommissionBps: 0..10000, managerCommissionBps: 0..10000}`. Ambos
+porcentajes iniciales son 0, sin inventar tasas comerciales. La comisión de cada
+remesa procede de esta configuración y no se digita manualmente por operación.
+`GET /api/envios/snapshot` devuelve la política actual. Ver
+[COMISIONES-CONFIGURACION.md](COMISIONES-CONFIGURACION.md) para compatibilidad y
+migración 026. La tasa del gestor no puede superar la tasa de la transacción.
 La cotización guarda su revisión y porcentaje; cambiar la política requiere
 recotizar, también si se cambia A → B → A. Una política con reparto positivo
 no permite omitir su revisión al crear una remesa.
@@ -86,4 +91,5 @@ Transacción`, `Comisión de la Empresa` y `Comisión del Gestor`, agrupación e
 filtros de periodo/estado/gestor/moneda, subtotales y totales por moneda.
 Pantalla, CSV e impresión consumen las mismas secciones y filtros confirmados.
 Editar un filtro invalida el resultado anterior hasta volver a Consultar.
-No requiere migraciones adicionales a la 024.
+El reporte conserva los registros de la 024. La configuración central de
+la comisión de transacción requiere la migración 026 descrita arriba.

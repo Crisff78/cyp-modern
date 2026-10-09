@@ -300,28 +300,28 @@ export function buildReviewSeed(state: State, options: Options, now = new Date()
       recipientClientId: id(`client-${recipient}`), sendingUserId: sender.id, quote: quote.quote, note: sampleNote }, operators, at);
   };
   for (const actor of operators) openRemittanceCash(state, admin, { operatorId: actor.id, currency: "DOP", openingAmount: 200000 }, operators, historical);
-  const historicalPaid = create(operators[0], 5, { sourceCurrency: "DOP", destinationCurrency: "DOP", amount: 75000, commissionBps: 1000 }, historical);
+  const historicalPaid = create(operators[0], 5, { sourceCurrency: "DOP", destinationCurrency: "DOP", amount: 75000 }, historical);
   payRemittance(state, operators[1], historicalPaid.id, new Date(historical.getTime() + 90000));
-  const historicalCancelled = create(operators[0], 5, { sourceCurrency: "DOP", destinationCurrency: "DOP", amount: 50000, commissionBps: 200 }, historical);
+  const historicalCancelled = create(operators[0], 5, { sourceCurrency: "DOP", destinationCurrency: "DOP", amount: 50000 }, historical);
   cancelRemittance(state, admin, historicalCancelled.id, "Prueba CyP devolución histórica sintética", historical);
   for (const cash of state.remittances.cashSessions.filter((row) => operators.some((actor) => actor.id === row.operatorId) && row.date === yesterday))
     closeRemittanceCash(state, admin, cash.id, cashBalance(state, cash).expected, new Date(historical.getTime() + 180000));
   for (const actor of operators) for (const currency of ["DOP", "USD", "EUR"] as const)
     openRemittanceCash(state, admin, { operatorId: actor.id, currency, openingAmount: currency === "DOP" ? 2000000 : 50000 }, operators, now);
-  create(operators[0], 5, { sourceCurrency: "DOP", destinationCurrency: "DOP", amount: 100000, commissionBps: 100 }, now);
+  create(operators[0], 5, { sourceCurrency: "DOP", destinationCurrency: "DOP", amount: 100000 }, now);
   for (const currency of ["USD", "EUR"] as const) {
-    let input: QuoteInput = { sourceCurrency: currency, destinationCurrency: "DOP", amount: 10000, commissionBps: 200 };
+    let input: QuoteInput = { sourceCurrency: currency, destinationCurrency: "DOP", amount: 10000 };
     try { quoteRemittance(state, input, now); }
     catch (error) {
       if (!(error instanceof DomainError) || !["MONEY_RANGE", "AMOUNT_TOO_SMALL"].includes(error.code)) throw error;
       warnings.push(`Muestra ${currency} sustituida por DOP: se conservó la tasa existente fuera del rango útil para el ejemplo.`);
-      input = { sourceCurrency: "DOP", destinationCurrency: "DOP", amount: 75000, commissionBps: 200 };
+      input = { sourceCurrency: "DOP", destinationCurrency: "DOP", amount: 75000 };
     }
     create(operators[0], 6, input, now);
   }
-  const paid = create(operators[1], 1, { sourceCurrency: "DOP", destinationCurrency: "DOP", amount: 25000, commissionBps: 0 }, now);
+  const paid = create(operators[1], 1, { sourceCurrency: "DOP", destinationCurrency: "DOP", amount: 25000 }, now);
   payRemittance(state, operators[0], paid.id, now);
-  const cancelled = create(operators[0], 5, { sourceCurrency: "DOP", destinationCurrency: "DOP", amount: 15000, commissionBps: 100 }, now);
+  const cancelled = create(operators[0], 5, { sourceCurrency: "DOP", destinationCurrency: "DOP", amount: 15000 }, now);
   cancelRemittance(state, operators[0], cancelled.id, "Prueba CyP devolución sintética", now);
   namespaceNewRows(before, state);
   const preservedExistingRows = assertExistingPreserved(before, state);
