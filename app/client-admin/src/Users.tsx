@@ -14,6 +14,7 @@ import { operationKey } from "../../shared/remittances/strictApi";
 import { INPUT_LIMITS, validateEmail, validateText } from "../../shared/inputRules";
 import { ACCOUNT_ROLE_OPTIONS, accountRoleLabel, type AccountRole } from "../../shared/accountRoles";
 import { pendingMovementDraft, useMovementRequest } from "./useMovementRequest";
+import { collectorOptionsForAccount } from "./collectorAccountOptions";
 import { HelpNote, Modal } from "./components";
 import type { PublicAccount, Snapshot } from "./types";
 
@@ -89,7 +90,7 @@ function AccountForm({
   const [name, setName] = useState(pending?.name ?? ""),
     [email, setEmail] = useState(pending?.email ?? ""),
     [role, setRole] = useState<AccountRole>(pending?.role ?? "undefined"),
-    [collectorId, setCollectorId] = useState(pending?.collectorId ?? snapshot.collectors[0]?.id ?? ""),
+    [collectorId, setCollectorId] = useState(pending?.collectorId ?? ""),
     [nickname, setNickname] = useState(pending?.nickname ?? ""),
     [note, setNote] = useState(pending?.note ?? ""),
     [password, setPassword] = useState(pending?.password ?? ""),
@@ -134,6 +135,7 @@ function AccountForm({
         validateEmail(email, "Correo", { required: true });
         validateText(nickname, "Apodo", INPUT_LIMITS.userNickname);
         validateText(note, "Nota", INPUT_LIMITS.userNote, { multiline: true });
+        if (!request.attempt && role === "collector" && !snapshot.collectors.some((collector) => collector.id === collectorId && collector.active !== false)) throw new Error("Selecciona un cobrador activo para vincular esta cuenta.");
       }
       if ((creating || rotating) && password.length > INPUT_LIMITS.password) throw new Error(`La contraseña admite un máximo de ${INPUT_LIMITS.password} caracteres.`);
       const draft = { name, email, role, collectorId, nickname, note, password };
@@ -221,17 +223,21 @@ function AccountForm({
               <label className="field">
                 Cobrador asignado
                 <select
+                  required
+                  aria-label="Cobrador asignado"
                   value={collectorId}
                   onChange={(event) => setCollectorId(event.target.value)}
                 >
-                  {snapshot.collectors.map((collector) => (
-                    <option key={collector.id} value={collector.id}>
-                      {collector.name}
+                  <option value="">Selecciona un cobrador…</option>
+                  {collectorOptionsForAccount(snapshot.collectors, collectorId).map((collector) => (
+                    <option key={collector.value} value={collector.value} disabled={collector.disabled}>
+                      {collector.label}
                     </option>
                   ))}
                 </select>
               </label>
             )}
+            {role === "collector" && <p className="catalog-association-note">Selecciona la ficha de un cobrador activo. Sus datos personales y límites se administran desde Cobradores.</p>}
           </>
         )}
         {!creating && (

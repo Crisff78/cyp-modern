@@ -35,6 +35,7 @@ const canRunBrowser = process.platform === "win32" && fs.existsSync(edge) && Boo
 test("actual user forms and collector picker persist real API references in an isolated browser", { skip: canRunBrowser ? false : "Installed Windows Edge and Playwright required; no download attempted." }, async (t) => {
   const output = fs.mkdtempSync(path.join(os.tmpdir(), "cyp-account-roles-"));
   const state = seed(); state.collectors[0].name = "Cobrador QA";
+  state.collectors.push({ ...state.collectors[0], id: "qa-inactive-collector", name: "Cobrador inactivo QA", active: false });
   const store = new MemoryStore(state);
   const app = await buildApp({ store, demo: true, secret: "synthetic-role-ui-secret-at-least-32-characters", origins: [], collectorUrl: "http://localhost:5174" });
   const { token, user } = (await app.inject({ method: "POST", url: "/api/auth/login", payload: { email: "admin@cyp.local", password: "Demo-CyP-2026!" } })).json();
@@ -43,6 +44,12 @@ test("actual user forms and collector picker persist real API references in an i
     const result = await app.inject({ method: "POST", url: "/api/usuarios", headers: { authorization: `Bearer ${token}`, "idempotency-key": randomUUID() }, payload: { name: `Cuenta QA ${role}`, email: `qa-${role}@example.invalid`, role, password: "Qa3+#'", ...(role === "collector" ? { collectorId: "col-1" } : {}) } });
     assert.equal(result.statusCode, 200, result.body); samples[role] = result.json();
   }
+  const otherAccount = await app.inject({ method: "POST", url: "/api/usuarios", headers: { authorization: `Bearer ${token}`, "idempotency-key": randomUUID() }, payload: { name: "Cuenta de otro cobrador QA", email: "qa-other@example.invalid", role: "collector", collectorId: "col-2", password: "Qa3+#'" } });
+  assert.equal(otherAccount.statusCode, 200, otherAccount.body);
+  const disabledAccount = await app.inject({ method: "POST", url: "/api/usuarios", headers: { authorization: `Bearer ${token}`, "idempotency-key": randomUUID() }, payload: { name: "Cuenta inactiva QA", email: "qa-disabled@example.invalid", role: "user", password: "Qa3+#'" } });
+  assert.equal(disabledAccount.statusCode, 200, disabledAccount.body);
+  const disabled = await app.inject({ method: "POST", url: `/api/usuarios/${disabledAccount.json().id}/estado`, headers: { authorization: `Bearer ${token}`, "idempotency-key": randomUUID() }, payload: { status: "disabled" } });
+  assert.equal(disabled.statusCode, 200, disabled.body);
   await store.transaction((current) => { current.collectors[0].accountId = samples.user.id; });
   let browser: any, context: any, server: ReturnType<typeof createServer> | undefined;
   const pageErrors: string[] = [], external: string[] = [], writes: string[] = [];
@@ -94,6 +101,13 @@ remittancesApi("/snapshot").then(initial=>createRoot(document.getElementById("ro
       await open("users"); await page.getByTitle("Nuevo", { exact: true }).click();
       const dialog = page.getByRole("dialog", { name: "Datos de Usuario...", exact: true }), role = dialog.getByLabel("Rol", { exact: true });
       assert.equal(await role.inputValue(), "undefined"); assert.deepEqual(await roleLabels(role), ACCOUNT_ROLE_OPTIONS.map((row) => row.label));
+      assert.equal(await dialog.getByLabel("Cobrador asociado", { exact: true }).count(), 0);
+      await role.selectOption("collector");
+      const association = dialog.getByLabel("Cobrador asociado", { exact: true });
+      assert.equal(await association.inputValue(), "");
+      assert.equal(await association.locator('option[value="qa-inactive-collector"]').count(), 0);
+      await association.selectOption("col-1"); await role.selectOption("undefined");
+      assert.equal(await association.count(), 0);
       await dialog.getByLabel("Nombre", { exact: true }).fill("Cuenta nueva QA");
       await dialog.getByLabel("Correo", { exact: true }).fill("qa-new@example.invalid");
       const password = dialog.getByLabel("Contraseña inicial (mínimo 3 caracteres)", { exact: true });
@@ -111,11 +125,15 @@ remittancesApi("/snapshot").then(initial=>createRoot(document.getElementById("ro
     await t.test("account picker excludes Admin, blocks the parent, and Cancel/OK keep draft and persisted state separate", async () => {
       await open("collectors"); await page.getByRole("row").filter({ hasText: "Cobrador QA" }).click(); await page.getByTitle("Editar", { exact: true }).click();
       const parent = page.getByRole("dialog", { name: "Datos de Cobrador...", exact: true }), field = parent.getByLabel("Cuenta", { exact: true });
+      await parent.getByText(samples.user.email, { exact: true }).waitFor();
+      assert.ok(await parent.getByText(/El correo, rol y contraseña/).isVisible());
       assert.equal(await field.inputValue(), samples.user.name); assert.equal(await field.getAttribute("readonly"), "");
       const launch = () => parent.getByRole("button", { name: "Seleccionar cuenta", exact: true }).click();
       const picker = page.getByRole("dialog", { name: "Seleccionar cuenta del cobrador...", exact: true });
       await launch(); await picker.getByText(samples.supervisor.email, { exact: true }).waitFor();
       assert.equal(await picker.getByText(samples.admin.email, { exact: true }).count(), 0);
+      assert.equal(await picker.getByText("qa-other@example.invalid", { exact: true }).count(), 0);
+      assert.equal(await picker.getByText("qa-disabled@example.invalid", { exact: true }).count(), 0);
       for (const role of ["undefined", "supervisor", "collector", "user"]) assert.equal(await picker.getByText(samples[role].email, { exact: true }).count(), 1);
       const before = writes.length;
       await parent.getByLabel("Nombre", { exact: true }).evaluate((node: HTMLInputElement) => node.focus());
@@ -141,7 +159,23 @@ remittancesApi("/snapshot").then(initial=>createRoot(document.getElementById("ro
     await t.test("auxiliary user form uses the same exact roles and No definido default", async () => {
       await open("auxiliary"); const dialog = page.getByRole("dialog", { name: "Nueva cuenta", exact: true }), role = dialog.getByLabel("Rol", { exact: true });
       assert.equal(await role.inputValue(), "undefined"); assert.deepEqual(await roleLabels(role), ACCOUNT_ROLE_OPTIONS.map((row) => row.label));
+      await role.selectOption("collector");
+      const association = dialog.getByLabel("Cobrador asignado", { exact: true });
+      assert.equal(await association.inputValue(), "");
+      assert.equal(await association.getAttribute("required"), "");
+      assert.equal(await association.locator('option[value="qa-inactive-collector"]').count(), 0);
       await dialog.getByRole("button", { name: "Cancelar", exact: true }).click(); await page.getByText("Ventana cerrada", { exact: true }).waitFor();
+    });
+    await t.test("historical inactive collector remains visible but cannot be selected as a new association", async () => {
+      await store.transaction((current) => { current.accounts.find((row) => row.id === samples.collector.id)!.collectorId = "qa-inactive-collector"; });
+      await open("users"); await page.getByRole("row").filter({ hasText: samples.collector.email }).click(); await page.getByTitle("Editar", { exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Datos de Usuario...", exact: true });
+      const association = dialog.getByLabel("Cobrador asociado", { exact: true });
+      assert.equal(await association.inputValue(), "qa-inactive-collector");
+      const archived = association.locator('option[value="qa-inactive-collector"]');
+      assert.equal(await archived.getAttribute("disabled"), "", await archived.evaluate((node: HTMLOptionElement) => node.outerHTML)); assert.match(await archived.textContent(), /Inactivo/);
+      const count = writes.length; await dialog.getByRole("button", { name: "Cancelar", exact: true }).click();
+      assert.equal(writes.length, count); assert.equal((await store.read()).accounts.find((row) => row.id === samples.collector.id)?.collectorId, "qa-inactive-collector");
     });
     assert.deepEqual(pageErrors, []); assert.deepEqual(external, []); t.diagnostic(`Synthetic role UI screenshot: ${output}`);
   } finally {

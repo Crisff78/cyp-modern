@@ -107,6 +107,7 @@ import { ConnectedLegacyReports } from "./ConnectedLegacyReports";
 import { ConnectedAdminTools, isConnectedAdminTool } from "./ConnectedAdminTools";
 import { ConnectedExchangeRates } from "./ConnectedExchangeRates";
 import { ThemeToggle } from "./ThemeToggle";
+import { LoginPasswordInput, PasswordManagerHint } from "../../shared/LoginPasswordInput";
 import { matchesClientSearch, copyPhoneIntoEmptyFields, clientCodeFromPhone } from "./clientSearch";
 import { unconfirmedCollectionBalances, recentMovementReceipts } from "./collectionAlerts";
 import { locationUnavailable, locationError as gpsError, validLocation } from "../../shared/geolocation";
@@ -4270,21 +4271,6 @@ function Login({
     [busy, setBusy] = useState(false),
     [blockedCollector, setBlockedCollector] = useState(false),
     [error, setError] = useState("");
-  useEffect(() => {
-    let active = true;
-    fetch("/api/health")
-      .then((r) => r.json())
-      .then((h) => {
-        if (active && h?.mode && h.mode !== "demo") {
-          setEmail("");
-          setPassword("");
-        }
-      })
-      .catch(() => undefined);
-    return () => {
-      active = false;
-    };
-  }, []);
   async function login() {
     setBusy(true);
     setError("");
@@ -4358,6 +4344,8 @@ function Login({
             <>
               <p className="login-instructions">Ingrese sus credenciales para continuar.</p>
               <form
+                name="admin-login"
+                autoComplete="on"
                 onSubmit={(event) => {
                   event.preventDefault();
                   void login();
@@ -4366,7 +4354,13 @@ function Login({
                 <label className="field">
                   Usuario / Correo
                   <input
+                    id="admin-login-username"
+                    name="username"
                     type="text"
+                    inputMode="email"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    disabled={busy}
                     autoComplete="username"
                     maxLength={INPUT_LIMITS.email}
                     autoFocus
@@ -4378,17 +4372,9 @@ function Login({
                 </label>
                 <label className="field">
                   Contraseña
-                  <input
-                    type="password"
-                    autoComplete="current-password"
-                    maxLength={INPUT_LIMITS.password}
-                    required
-                    minLength={3}
-                    placeholder="Tu contraseña"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                  />
+                  <LoginPasswordInput id="admin-login-password" value={password} onChange={setPassword} minLength={3} disabled={busy} />
                 </label>
+                <PasswordManagerHint />
                 {error && (
                   <div className="inline-error" role="alert">
                     <CircleAlert size={17} />
@@ -5077,9 +5063,9 @@ export default function App() {
               </div>
             </header>
             <nav className="desktop-launchers" aria-label="Operaciones principales">
-              <button type="button" className="btn" onClick={() => openMdiWindow("charges", "charges")}>COBROS <small>Cargos</small></button>
-              <button type="button" className="btn" onClick={() => openMdiWindow("payouts", "payouts")}>PAGOS <small>Descargos</small></button>
-              <button type="button" className="btn" onClick={() => openMdiWindow("remittances", "remittances")}>REMESAS</button>
+              <button type="button" className="btn launcher-collections" onClick={() => openMdiWindow("charges", "charges")}>COBROS <small>Cargos</small></button>
+              <button type="button" className="btn launcher-payments" onClick={() => openMdiWindow("payouts", "payouts")}>PAGOS <small>Descargos</small></button>
+              <button type="button" className="btn launcher-remittances" onClick={() => openMdiWindow("remittances", "remittances")}>REMESAS</button>
             </nav>
             <main id="main-content" className="main-content desktop-canvas" tabIndex={-1}>
           {snapshot && mdiWindows.filter((windowState) => isUiPageVisible(windowState.page)).map((windowState) => (

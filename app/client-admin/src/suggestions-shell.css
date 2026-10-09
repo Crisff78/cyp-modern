@@ -1,13 +1,19 @@
 .notification-trigger.collections-pending { color: var(--cyp-danger-text, #b42318); }
 .notification-trigger.collections-pending i { background: #b42318; }
 .desktop-launchers { display: flex; flex-wrap: wrap; gap: 10px; padding: 10px 20px; border-bottom: 1px solid var(--cyp-border, #d7e0ea); background: var(--cyp-info-surface, #f7fafc); }
-.desktop-launchers button { min-height: 36px; font-weight: 700; }
+.desktop-launchers .btn { min-height: 48px; min-width: 148px; padding: 10px 20px; gap: 8px; font-size: 15px; font-weight: 700; border-color: var(--launcher-color); background: var(--launcher-color); color: oklch(.98 .006 180); }
+.desktop-launchers .launcher-collections { --launcher-color: oklch(.47 .11 160); --launcher-hover: oklch(.40 .09 160); }
+.desktop-launchers .launcher-payments { --launcher-color: oklch(.47 .16 28); --launcher-hover: oklch(.40 .13 28); }
+.desktop-launchers .launcher-remittances { --launcher-color: oklch(.47 .12 250); --launcher-hover: oklch(.40 .10 250); }
+.desktop-launchers .btn:hover { background: var(--launcher-hover); border-color: var(--launcher-hover); }
+.desktop-launchers .btn:active { box-shadow: inset 0 1px 3px oklch(.15 .01 180 / .3); }
+.desktop-launchers .btn:focus-visible { outline: 2px solid var(--cyp-text, #334155); outline-offset: 3px; }
 .desktop-launchers small { margin-left: 6px; font-weight: 400; }
 .notification-receipt { display: grid; grid-template-columns: minmax(90px, 1fr) 2fr; gap: 10px; overflow-wrap: anywhere; }
 .notification-receipt dt { font-weight: 600; }
 .notification-receipt dd { margin: 0; }
 @media (max-width: 500px) {
   .desktop-launchers { padding: 8px 10px; gap: 6px; }
-  .desktop-launchers button { flex: 1; }
+  .desktop-launchers .btn { flex: 1; min-width: 100px; padding: 10px 12px; }
   .desktop-launchers small { display: none; }
 }

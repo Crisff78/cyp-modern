@@ -2248,18 +2248,6 @@ strong {
 .login-form-section input::placeholder {
   color: #a3af98;
 }
-.password-wrap {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-.password-wrap > .icon-button {
-  position: absolute;
-  right: 3px;
-}
-.password-wrap input {
-  padding-right: 49px;
-}
 .login-form-section .primary {
   margin-top: 5px;
   justify-content: space-between;

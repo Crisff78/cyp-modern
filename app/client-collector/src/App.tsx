@@ -22,8 +22,6 @@ import {
   Clock3,
   CloudOff,
   Download,
-  Eye,
-  EyeOff,
   Fingerprint,
   Landmark,
   LoaderCircle,
@@ -59,6 +57,7 @@ import { isMockToken } from "./mock";
 import { GeoMap } from "../../client-admin/src/GeoMap";
 import { locationUnavailable, locationError, validLocation } from "../../shared/geolocation";
 import { INPUT_LIMITS, validateText } from "../../shared/inputRules";
+import { LoginPasswordInput, PasswordManagerHint } from "../../shared/LoginPasswordInput";
 import { transformRouteToMap } from "./services/mapAdapter";
 import { businessDay as localDay, timeLabel } from "./services/dates";
 import { pocketBalances } from "./services/pocket";
@@ -624,7 +623,6 @@ function Login({
 }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(initialError);
   useEffect(() => setError(initialError), [initialError]);
@@ -721,11 +719,17 @@ function Login({
           <h2>Cobros y Pagos — Acceso del Cobrador</h2>
           <p>Ingrese sus credenciales para continuar.</p>
         </div>
-        <form onSubmit={(event) => void submit(event)}>
+        <form name="collector-login" autoComplete="on" onSubmit={(event) => void submit(event)}>
           <label>
             Usuario / Email
             <input
+              id="collector-login-username"
+              name="username"
               type="text"
+              inputMode="email"
+              autoCapitalize="none"
+              spellCheck={false}
+              disabled={busy}
               required
               autoComplete="username"
               maxLength={INPUT_LIMITS.email}
@@ -736,28 +740,9 @@ function Login({
           </label>
           <label>
             Contraseña
-            <span className="password-wrap">
-              <input
-                type={showPassword ? "text" : "password"}
-                required
-                autoComplete="current-password"
-                maxLength={INPUT_LIMITS.password}
-                placeholder="Tu contraseña"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-              />
-              <button
-                type="button"
-                className="icon-button"
-                aria-label={
-                  showPassword ? "Ocultar contraseña" : "Mostrar contraseña"
-                }
-                onClick={() => setShowPassword(!showPassword)}
-              >
-                {showPassword ? <EyeOff size={19} /> : <Eye size={19} />}
-              </button>
-            </span>
+            <LoginPasswordInput id="collector-login-password" value={password} onChange={setPassword} disabled={busy} />
           </label>
+          <PasswordManagerHint />
           {!online && (
             <p className="inline-error">
               <CloudOff size={17} />

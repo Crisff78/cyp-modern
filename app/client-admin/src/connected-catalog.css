@@ -30,6 +30,8 @@
 .catalog-client-picker .legacy-mdi-table tbody tr{cursor:pointer}
 .collector-account-field{display:flex;align-items:center;gap:6px;min-width:0}
 .collector-account-field input{flex:1;min-width:0;background:var(--cyp-surface-muted, #f1f5f9)}
+.catalog-linked-account,.catalog-association-note{grid-column:1/-1;margin:4px 0;color:var(--cyp-text-muted, #475569);font-size:12px;line-height:1.5;overflow-wrap:anywhere}
+.catalog-linked-account strong{color:var(--cyp-text, #334155)}
 .collector-account-field button{flex-shrink:0;min-height:27px;padding:3px 8px;border:1px solid var(--cyp-border-strong, #94a3b8);border-radius:3px;background:var(--cyp-surface-muted, #f8fafc);color:var(--cyp-text, #334155)}
 .collector-account-field button:hover:not(:disabled){border-color:var(--cyp-success-text, #059669);background:var(--cyp-success-surface, #ecfdf5)}
 .catalog-account-picker{width:min(680px,calc(100vw - 32px));max-height:85dvh}
