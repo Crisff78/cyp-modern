@@ -58,6 +58,7 @@ import { GeoMap } from "../../client-admin/src/GeoMap";
 import { locationUnavailable, locationError, validLocation } from "../../shared/geolocation";
 import { INPUT_LIMITS, validateText } from "../../shared/inputRules";
 import { LoginPasswordInput, PasswordManagerHint } from "../../shared/LoginPasswordInput";
+import { loginCredentials } from "../../shared/loginCredentials";
 import { transformRouteToMap } from "./services/mapAdapter";
 import { businessDay as localDay, timeLabel } from "./services/dates";
 import { pocketBalances } from "./services/pocket";
@@ -626,20 +627,18 @@ function Login({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(initialError);
   useEffect(() => setError(initialError), [initialError]);
-  async function submit(event?: FormEvent) {
-    event?.preventDefault();
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const credentials = loginCredentials(event.currentTarget);
     setBusy(true);
     setError("");
     try {
-      validateText(email, "Usuario / Email", INPUT_LIMITS.email, { required: true });
-      if (!password || password.length > INPUT_LIMITS.password)
+      validateText(credentials.email, "Usuario / Email", INPUT_LIMITS.email, { required: true });
+      if (!credentials.password || credentials.password.length > INPUT_LIMITS.password)
         throw new Error(`Escribe una contraseña de hasta ${INPUT_LIMITS.password} caracteres.`);
       const result = await api<{ token: string; user: User }>("/auth/login", {
         method: "POST",
-        body: JSON.stringify({
-          email,
-          password,
-        }),
+        body: JSON.stringify(credentials),
       });
       const next = enrichUserRole(result.user);
       if (isSuspendedUser(next))
@@ -734,7 +733,7 @@ function Login({
               autoComplete="username"
               maxLength={INPUT_LIMITS.email}
               placeholder="usuario@empresa.com"
-              value={email}
+              defaultValue={email}
               onChange={(event) => setEmail(event.target.value)}
             />
           </label>

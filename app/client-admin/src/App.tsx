@@ -108,6 +108,8 @@ import { ConnectedAdminTools, isConnectedAdminTool } from "./ConnectedAdminTools
 import { ConnectedExchangeRates } from "./ConnectedExchangeRates";
 import { ThemeToggle } from "./ThemeToggle";
 import { LoginPasswordInput, PasswordManagerHint } from "../../shared/LoginPasswordInput";
+import { loginCredentials } from "../../shared/loginCredentials";
+import { ReceiptPaperSelect, type ReceiptPaper } from "../../shared/ReceiptPaperSelect";
 import { matchesClientSearch, copyPhoneIntoEmptyFields, clientCodeFromPhone } from "./clientSearch";
 import { unconfirmedCollectionBalances, recentMovementReceipts } from "./collectionAlerts";
 import { locationUnavailable, locationError as gpsError, validLocation } from "../../shared/geolocation";
@@ -4271,13 +4273,13 @@ function Login({
     [busy, setBusy] = useState(false),
     [blockedCollector, setBlockedCollector] = useState(false),
     [error, setError] = useState("");
-  async function login() {
+  async function login(credentials: Readonly<{ email: string; password: string }>) {
     setBusy(true);
     setError("");
     try {
       const result = await api<{ token: string; user: User }>("/auth/login", {
         method: "POST",
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify(credentials),
       });
       const next = enrichUserRole(result.user);
       if (isSuspendedUser(next))
@@ -4348,7 +4350,7 @@ function Login({
                 autoComplete="on"
                 onSubmit={(event) => {
                   event.preventDefault();
-                  void login();
+                  void login(loginCredentials(event.currentTarget));
                 }}
               >
                 <label className="field">
@@ -4366,7 +4368,7 @@ function Login({
                     autoFocus
                     required
                     placeholder="admin@cyp.local"
-                    value={email}
+                    defaultValue={email}
                     onChange={(event) => setEmail(event.target.value)}
                   />
                 </label>
@@ -9182,11 +9184,12 @@ function RecurringPayoutArchiveDialog({ actorId, row, onClose, onSaved }: Readon
 }
 
 function CollectionReceiptPrintDialog({ receipts, onClose, title = "Imprimir Recibo de Cobro..." }: Readonly<{ receipts: readonly CollectionTicketModel[]; onClose: () => void; title?: string }>) {
+  const [paper, setPaper] = useState<ReceiptPaper>("auto");
   const printedAt = new Date().toLocaleString("es-DO", { dateStyle: "short", timeStyle: "medium", timeZone: "America/Santo_Domingo" });
   return (
-    <LegacyDialog title={title} onClose={onClose} className="collection-flow-dialog collection-ticket-dialog" overlayClassName="collection-receipt-suboverlay collection-ticket-print-overlay">
+    <LegacyDialog title={title} onClose={onClose} className="collection-flow-dialog collection-ticket-dialog" overlayClassName={"collection-receipt-suboverlay collection-ticket-print-overlay cyp-print-paper-" + paper}>
       <div className="collection-ticket-print-content">
-        <p className="collection-ticket-controls">Selecciona tu impresora o "Guardar como PDF" en el diálogo de impresión del navegador.</p>
+        <div className="collection-ticket-controls"><ReceiptPaperSelect value={paper} onChange={setPaper} /><p>Selecciona la impresora y el tamaño de papel en el diálogo del navegador. También puedes guardar como PDF.</p></div>
         <div className="collection-ticket-preview-list">
           {receipts.map((receipt) => (
             <pre className="collection-ticket-preview" key={receipt.id}>{[

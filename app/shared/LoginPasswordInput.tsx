@@ -11,10 +11,12 @@ export function LoginPasswordInput({ id, value, onChange, minLength, disabled = 
 }>) {
   const [visible, setVisible] = useState(false);
   const label = visible ? "Ocultar contraseña" : "Mostrar contraseña";
+  // Native autofill owns the current DOM value. The login form reads it on
+  // submit, so toggling visibility cannot overwrite it with stale React state.
   return <span className="cyp-login-password">
     <input id={id} name="password" aria-label="Contraseña" type={visible ? "text" : "password"}
       required autoComplete="current-password" maxLength={INPUT_LIMITS.password} minLength={minLength}
-      placeholder="Tu contraseña" value={value} disabled={disabled}
+      placeholder="Tu contraseña" defaultValue={value} disabled={disabled}
       onChange={(event) => onChange(event.target.value)} />
     <button type="button" className="icon-button cyp-password-toggle" aria-label={label} title={label}
       aria-controls={id} aria-pressed={visible} disabled={disabled} onClick={() => setVisible((current) => !current)}>

@@ -38,6 +38,8 @@ window.fetch = async (input, options = {}) => {
   if (pathname === "/api/health") return new Promise(resolve => { window.__qaResolveHealth = () => resolve(new Response(JSON.stringify({ mode: "real" }))); });
   if (pathname !== "/api/auth/login") throw new Error("Network API forbidden in UI fixture: " + pathname);
   window.__qaLoginRequests++;
+  const credentials = JSON.parse(String(options.body || "{}"));
+  window.__qaLoginValues = { username: credentials.email, passwordLength: credentials.password?.length ?? 0 };
   try { return new Response(JSON.stringify(await mockApi("/auth/login", options))); }
   catch (error) { return new Response(JSON.stringify({error:{message:error.message}}), {status:401}); }
 };
@@ -121,6 +123,24 @@ createRoot(document.getElementById("root")).render(<App />);
       await page.screenshot({ path: path.join(output, "login-form-mobile.png") });
       await page.setViewportSize({ width: 1280, height: 900 });
     });
+    await t.test("native form values survive visibility changes and submit without input events", async () => {
+      const username = "qa-autofill@example.invalid", secret = "Autofill-Prueba!+#'";
+      await page.evaluate(({ username, secret }) => {
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+        setter.call(document.querySelector('[name="username"]'), username);
+        setter.call(document.querySelector('[name="password"]'), secret);
+      }, { username, secret });
+      const before = await page.evaluate(() => (window as any).__qaLoginRequests);
+      await page.getByRole("button", { name: "Mostrar contraseña", exact: true }).click();
+      assert.equal(await page.getByLabel("Contraseña", { exact: true }).inputValue(), secret);
+      assert.equal(await page.getByLabel("Usuario / Correo", { exact: true }).inputValue(), username);
+      await page.getByRole("button", { name: "Ocultar contraseña", exact: true }).click();
+      assert.equal(await page.evaluate(() => (window as any).__qaLoginRequests), before);
+      await submit().click(); await page.getByRole("alert").getByText("Correo o contraseña incorrectos.").waitFor();
+      assert.deepEqual(await page.evaluate(() => (window as any).__qaLoginValues), { username, passwordLength: secret.length });
+      assert.equal(await page.evaluate((secret: string) => [localStorage, sessionStorage].every((storage) => Object.values(storage).every((value) => !String(value).includes(secret))), secret), true);
+      await page.getByRole("button", { name: "Volver", exact: true }).click(); await chooseAdmin().click();
+    });
     await t.test("collector and suspended accounts retain their Admin guards", async () => {
       await credentials("collector@cyp.local");
       await page.getByRole("heading", { name: "Acceso no autorizado", exact: true }).waitFor();
@@ -131,6 +151,34 @@ createRoot(document.getElementById("root")).render(<App />);
       assert.equal(await page.evaluate(() => localStorage.getItem("cyp-admin-token")), null);
       await credentials("admin@cyp.local");
       await page.getByRole("button", { name: /^Notificaciones,/ }).waitFor();
+    });
+    await t.test("native printing supports printer paper and thermal widths, with separate receipts and no MDI controls", async () => {
+      await page.getByRole("button", { name: "Cobros", exact: true }).click();
+      const view = page.locator(".collections-legacy-view"); await view.waitFor();
+      await view.getByTitle("Imprimir", { exact: true }).click();
+      await page.getByRole("dialog", { name: "Seleccione...", exact: true }).getByRole("button", { name: "oK", exact: true }).click();
+      const ticket = page.getByRole("dialog", { name: "Imprimir Recibo de Cobro...", exact: true }); await ticket.waitFor();
+      assert.ok(await ticket.locator(".collection-ticket-preview").count() >= 2);
+      assert.equal(await ticket.getByLabel("Papel de impresión", { exact: true }).inputValue(), "auto");
+      await page.evaluate(() => { (window as any).__qaPrint = 0; (window as any).__qaOriginalPrint = window.print; window.print = () => { (window as any).__qaPrint++; }; });
+      await ticket.getByRole("button", { name: "Imprimir / Guardar PDF", exact: true }).click();
+      assert.equal(await page.evaluate(() => (window as any).__qaPrint), 1);
+      for (const [paper, millimeters] of [["auto", 72], ["58", 50], ["80", 72]] as const) {
+        await ticket.getByLabel("Papel de impresión", { exact: true }).selectOption(paper); await page.emulateMedia({ media: "print" });
+        assert.equal(await page.locator("#root").evaluate((node: HTMLElement) => getComputedStyle(node).display), "none");
+        assert.equal(await ticket.locator(".collection-ticket-controls").evaluate((node: HTMLElement) => getComputedStyle(node).display), "none");
+        assert.equal(await ticket.locator(".collection-ticket-preview-list").evaluate((node: HTMLElement) => getComputedStyle(node).display), "block");
+        const size = await ticket.locator(".collection-ticket-preview").first().evaluate((node: HTMLElement) => ({ width: node.getBoundingClientRect().width, scroll: node.scrollWidth, client: node.clientWidth, breakAfter: getComputedStyle(node).breakAfter }));
+        assert.ok(Math.abs(size.width - millimeters * 96 / 25.4) < 1); assert.ok(size.scroll <= size.client + 1); assert.equal(size.breakAfter, "page");
+        assert.equal(await ticket.locator(".collection-ticket-preview").last().evaluate((node: HTMLElement) => getComputedStyle(node).breakAfter), "auto");
+        await page.screenshot({ path: path.join(output, `admin-print-${paper}.png`) }); await page.emulateMedia({ media: "screen" });
+      }
+      await ticket.getByRole("button", { name: "oK", exact: true }).click();
+      await page.emulateMedia({ media: "print" });
+      assert.equal(await page.locator("#root").evaluate((node: HTMLElement) => getComputedStyle(node).visibility), "visible", "Receipt CSS must not blank unrelated print views.");
+      await page.emulateMedia({ media: "screen" });
+      await page.getByRole("button", { name: "Cerrar Cobros", exact: true }).click();
+      await page.evaluate(() => { window.print = (window as any).__qaOriginalPrint; });
     });
     await t.test("receipt X, Escape and backdrop preserve the bell, focus and scroll for the next receipt", async () => {
       await page.getByRole("button", { name: /^Notificaciones,/ }).click();

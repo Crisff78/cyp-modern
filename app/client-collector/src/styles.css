@@ -2861,6 +2861,8 @@ strong {
     max-width: none;
   }
   .receipt-paper {
+    box-sizing: border-box;
+    max-width: 100%;
     border: 0;
     border-radius: 0;
     box-shadow: none;
@@ -2875,6 +2877,7 @@ strong {
   .receipt-paper.thermal-80 {
     width: 80mm;
   }
+  .receipt-paper.thermal-auto { width: 80mm; }
   .receipt-paper:after {
     display: none;
   }

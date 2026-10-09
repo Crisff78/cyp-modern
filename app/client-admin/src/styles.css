@@ -10062,6 +10062,14 @@ table {
 .collection-ticket-preview-list { display: flex; flex: 1; flex-direction: column; gap: 12px; min-height: 0; overflow: auto; padding: 12px; border: 1px solid var(--cyp-border-strong, #cbd5e1); border-radius: 4px; background: var(--cyp-surface-raised, #e2e8f0); }
 .collection-ticket-preview { width: min(100%, 350px); flex: 0 0 auto; align-self: center; margin: 0; padding: 16px; border: 1px dashed var(--cyp-border-strong, #94a3b8); background: var(--cyp-surface, #fff); color: var(--cyp-info-text, #0f172a); font-family: "Courier New", monospace; font-size: 12px; line-height: 1.5; white-space: pre-wrap; }
 .collection-ticket-actions { justify-content: flex-end; margin-top: auto; }
+.collection-ticket-controls { display: flex; align-items: end; flex-wrap: wrap; gap: 8px; }
+.collection-ticket-controls label { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.collection-ticket-controls select { max-width: 100%; }
+.collection-ticket-controls p { flex: 1 1 200px; margin: 0; font-size: 12px; }
+.collection-ticket-preview { overflow-wrap: anywhere; }
+.cyp-print-paper-auto { --cyp-ticket-width: 72mm; }
+.cyp-print-paper-58 { --cyp-ticket-width: 50mm; }
+.cyp-print-paper-80 { --cyp-ticket-width: 72mm; }
 .collection-map-dialog .legacy-dialog-body { padding: 10px; }
 .collections-map-dialog { width: min(900px, calc(100vw - 32px)); height: min(700px, calc(100vh - 40px)); }
 .collections-map-dialog .client-map-view { gap: 8px; }
@@ -10080,13 +10088,18 @@ table {
 }
 
 @media print {
-  body * { visibility: hidden !important; }
+  @page cyp-receipt { size: auto; margin: 4mm; }
+  body:has(.collection-ticket-print-overlay) { margin: 0 !important; height: auto !important; overflow: visible !important; background: #fff !important; }
+  body:has(.collection-ticket-print-overlay) > :not(.collection-ticket-print-overlay) { display: none !important; }
   .collection-ticket-print-overlay,
   .collection-ticket-print-overlay * { visibility: visible !important; }
   .collection-ticket-print-overlay {
-    position: absolute !important;
-    inset: 0 !important;
+    position: static !important;
+    inset: auto !important;
     display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+    page: cyp-receipt;
     padding: 0 !important;
     background: #fff !important;
   }
@@ -10103,8 +10116,10 @@ table {
   .collection-ticket-controls,
   .collection-ticket-actions { display: none !important; }
   .collection-ticket-dialog .legacy-dialog-body,
-  .collection-ticket-preview-list { overflow: visible !important; padding: 0 !important; border: 0 !important; background: #fff !important; }
-  .collection-ticket-preview { width: 72mm !important; max-width: 72mm !important; border: 0 !important; padding: 0 !important; break-after: page; }
+  .collection-ticket-print-content,
+  .collection-ticket-preview-list { display: block !important; height: auto !important; max-height: none !important; overflow: visible !important; padding: 0 !important; border: 0 !important; background: #fff !important; }
+  .collection-ticket-preview { box-sizing: border-box; width: var(--cyp-ticket-width, 72mm) !important; max-width: 100% !important; margin: 0 !important; border: 0 !important; padding: 0 !important; color: #000 !important; background: #fff !important; break-after: page; }
+  .collection-ticket-preview:last-child { break-after: auto; }
 }
 
 /* Three-panel, compact MDI workspace for collector deposits. */

@@ -13,6 +13,7 @@ import {
 import { toast } from "sonner";
 import { api, dateLabel, money } from "./api";
 import type { Receipt } from "./types";
+import { ReceiptPaperSelect, type ReceiptPaper } from "../../shared/ReceiptPaperSelect";
 
 export function ReceiptView({
   token,
@@ -24,7 +25,7 @@ export function ReceiptView({
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [width, setWidth] = useState<"58" | "80">("80");
+  const [width, setWidth] = useState<ReceiptPaper>("auto");
   const [downloading, setDownloading] = useState(false);
   const url = new URL(
     `${import.meta.env.BASE_URL}?receipt=${encodeURIComponent(token)}`,
@@ -73,6 +74,7 @@ export function ReceiptView({
   async function download() {
     setDownloading(true);
     try {
+      if (width === "auto") throw new Error("Selecciona papel térmico de 58 mm u 80 mm para descargar ESC/POS.");
       const response = await fetch(
         `/api/recibos/${encodeURIComponent(token)}/escpos?width=${width}`,
         { cache: "no-store" },
@@ -213,18 +215,7 @@ export function ReceiptView({
                   WhatsApp
                 </a>
               </div>
-              <label className="print-selector">
-                Ancho de papel
-                <select
-                  value={width}
-                  onChange={(event) =>
-                    setWidth(event.target.value as "58" | "80")
-                  }
-                >
-                  <option value="58">58 mm</option>
-                  <option value="80">80 mm</option>
-                </select>
-              </label>
+              <ReceiptPaperSelect className="print-selector" value={width} onChange={setWidth} />
               <div className="two-buttons">
                 <button className="secondary" onClick={() => window.print()}>
                   <Printer size={18} />
@@ -232,7 +223,8 @@ export function ReceiptView({
                 </button>
                 <button
                   className="secondary"
-                  disabled={downloading}
+                  disabled={downloading || width === "auto"}
+                  title={width === "auto" ? "Selecciona 58 mm u 80 mm para exportar comandos ESC/POS." : "Descargar para una impresora compatible con ESC/POS"}
                   onClick={() => void download()}
                 >
                   {downloading ? (
