@@ -55,9 +55,8 @@ test("administration suggestions run in real components with a synthetic isolate
   const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { email: "admin@cyp.local", password: "Demo-CyP-2026!" } });
   assert.equal(login.statusCode, 200);
   const { token, user } = login.json();
-  const station = await app.inject({ method: "POST", url: "/api/estaciones", headers: { authorization: `Bearer ${token}`, "idempotency-key": randomUUID() }, payload: { number: "QA-STATION-01", name: "Estación sintética QA", active: true } });
-  assert.equal(station.statusCode, 200, station.body);
-  const stationId = station.json().id;
+  const stationId = randomUUID();
+  await store.transaction((state) => { state.adminTools.stations.push({ id: stationId, number: "QA-STATION-01", name: "Estación sintética QA", deviceId: "QA-DEVICE", license: "", version: "", description: "", group: "", type: "", active: true }); });
   const fixtureAccount = await app.inject({ method: "POST", url: "/api/usuarios", headers: { authorization: `Bearer ${token}`, "idempotency-key": randomUUID() }, payload: { name: "Cuenta sintética de permisos", email: "qa-existing@example.invalid", role: "collector", collectorId: "col-1", password: "Synthetic-QA-2026!" } });
   assert.equal(fixtureAccount.statusCode, 200, fixtureAccount.body);
   const writes: Array<{ pathname: string; status: number; key?: string; body: Record<string, unknown> }> = [];
@@ -375,106 +374,42 @@ remittancesApi("/snapshot").then(snapshot => { if (new URLSearchParams(location.
       }
       assert.equal(await page.getByRole("columnheader", { name: "Importe fijo", exact: true }).count(), 1);
     });
-    await run("SUG-2.2/2.3 station identity label and named activation confirmation", async () => {
-      await open("stations"); const row = page.getByRole("row").filter({ hasText: "Estación sintética QA" }); await row.click();
-      await page.getByTitle("Editar", { exact: true }).click();
-      assert.match(await page.getByRole("dialog").innerText(), /ID dispositivo:/);
-      assert.equal(await page.getByRole("textbox").filter({ hasText: stationId }).count(), 0);
-      await page.getByRole("button", { name: "Cancelar", exact: true }).click();
-      const count = writes.length;
-      await page.getByTitle("Inactivar", { exact: true }).click();
-      assert.match(await page.getByRole("dialog").innerText(), /Inactivar la estación Estación sintética QA \(código QA-STATION-01\)/);
-      await page.getByRole("button", { name: "Cancelar", exact: true }).click(); assert.equal(writes.length, count);
-      await page.getByTitle("Inactivar", { exact: true }).click(); await page.getByRole("button", { name: "Confirmar", exact: true }).click();
-      await page.getByTitle("Activar", { exact: true }).waitFor();
-      await page.getByTitle("Activar", { exact: true }).click();
-      assert.match(await page.getByRole("dialog").innerText(), /Activar la estación Estación sintética QA \(código QA-STATION-01\)/);
-      await page.getByRole("button", { name: "Confirmar", exact: true }).click(); await page.getByTitle("Inactivar", { exact: true }).waitFor();
-    });
-    const currentStation = async () => (await store.read()).adminTools.stations.find((row) => row.id === stationId)!;
-    const openStationEditor = async () => {
+    await run("SUG-2.2/2.3 unvalidated stations remain visible without enabling manual actions", async () => {
       await open("stations");
-      await page.getByRole("row").filter({ hasText: (await currentStation()).name }).click();
-      await page.getByTitle("Editar", { exact: true }).click();
-      return page.getByRole("dialog", { name: "Datos de la Estación de PCP", exact: true });
-    };
-    const stationFields = {
-      "Estación": "Estación QA editada", "Número": "QA-STATION-EDIT", "Identificador del dispositivo (si se conoce)": "QA-DEVICE-EDIT",
-      "Descrip.:": "Descripción sintética editada", "Grupo de estación": "QA-GROUP", "Tipo": "QA-TYPE",
-      "Licencia registrada (opcional)": "QA-LICENSE", "Versión registrada (opcional)": "QA-VERSION",
-    };
-    const expectedStationBody = { name: stationFields.Estación, number: stationFields.Número, deviceId: stationFields["Identificador del dispositivo (si se conoce)"], description: stationFields["Descrip.:"], group: stationFields["Grupo de estación"], type: stationFields.Tipo, license: stationFields["Licencia registrada (opcional)"], version: stationFields["Versión registrada (opcional)"], active: false };
-    const stationField = (dialog: any, label: string) => dialog.getByLabel(label === "Descrip.:" ? /^Descrip\.:/ : label, { exact: label !== "Descrip.:" });
-    const stationWrites = () => writes.filter((row) => row.pathname === `/api/estaciones/${stationId}`);
-    await run("SUG-2.3 station edit cancellation and close preserve the draft; unchanged status saves normally", async () => {
-      const dialog = await openStationEditor(), before = structuredClone(await currentStation()), count = stationWrites().length;
-      for (const [label, entry] of Object.entries(stationFields)) await stationField(dialog, label).fill(entry);
-      await dialog.getByRole("checkbox", { name: "Activa", exact: true }).uncheck();
-      await dialog.getByRole("button", { name: "oK", exact: true }).click();
-      const confirmation = page.getByRole("dialog", { name: "Confirmación", exact: true });
-      await confirmation.waitFor(); assert.match(await confirmation.innerText(), /Inactivar la estación Estación QA editada \(código QA-STATION-EDIT\)/);
-      assert.equal(stationWrites().length, count); assert.deepEqual(await currentStation(), before);
-      await confirmation.getByRole("button", { name: "Cancelar", exact: true }).click();
-      for (const [label, entry] of Object.entries(stationFields)) assert.equal(await stationField(dialog, label).inputValue(), entry);
-      assert.equal(await dialog.getByRole("checkbox", { name: "Activa", exact: true }).isChecked(), false);
-      await dialog.getByRole("button", { name: "oK", exact: true }).click();
-      await confirmation.getByRole("button", { name: "Cerrar Confirmación", exact: true }).click();
-      for (const [label, entry] of Object.entries(stationFields)) assert.equal(await stationField(dialog, label).inputValue(), entry);
-      assert.equal(await dialog.getByRole("checkbox", { name: "Activa", exact: true }).isChecked(), false);
-      assert.equal(stationWrites().length, count); assert.deepEqual(await currentStation(), before);
-      await dialog.getByRole("checkbox", { name: "Activa", exact: true }).check();
-      await dialog.getByRole("button", { name: "oK", exact: true }).click();
-      await page.getByText("Datos guardados correctamente.", { exact: true }).waitFor();
-      assert.equal(await confirmation.count(), 0); assert.equal(stationWrites().length, count + 1);
-      assert.deepEqual(await currentStation(), { id: stationId, ...expectedStationBody, active: true });
+      const before = await store.read(), count = writes.length;
+      const row = page.getByRole("row").filter({ hasText: "Estación sintética QA" }); await row.click();
+      assert.match(await page.getByRole("status").innerText(), /No validado.*RRAA/);
+      for (const title of ["Nuevo", "Editar", "Inactivar"]) assert.equal(await page.getByTitle(title, { exact: true }).isDisabled(), true);
+      assert.equal(await page.getByRole("dialog").count(), 0);
+      assert.equal(writes.length, count); assert.deepEqual(await store.read(), before);
     });
-    await run("SUG-2.3 station edit confirms both transitions with all fields and one intent", async () => {
-      const dialog = await openStationEditor(), before = await operationalState(), count = stationWrites().length;
-      for (const [label, entry] of Object.entries(stationFields)) await stationField(dialog, label).fill(entry);
-      await dialog.getByRole("checkbox", { name: "Activa", exact: true }).uncheck();
-      await dialog.getByRole("button", { name: "oK", exact: true }).click();
-      const confirmation = page.getByRole("dialog", { name: "Confirmación", exact: true });
-      await confirmation.waitFor(); assert.equal(stationWrites().length, count);
-      delayNextStationResponse = true;
-      await confirmation.getByRole("button", { name: "Confirmar", exact: true }).evaluate((button: HTMLButtonElement) => { button.click(); button.click(); });
-      await page.getByText("Datos guardados correctamente.", { exact: true }).waitFor();
-      const first = stationWrites().at(-1)!;
-      assert.equal(stationWrites().length, count + 1); assert.equal(first.status, 200); assert.match(first.key!, /^[a-f0-9]{32}$/); assert.deepEqual(first.body, expectedStationBody);
-      assert.deepEqual(await currentStation(), { id: stationId, ...expectedStationBody });
-      assert.deepEqual(await operationalState(), before);
-      const activate = await openStationEditor(); await activate.getByRole("checkbox", { name: "Activa", exact: true }).check();
-      await activate.getByRole("button", { name: "oK", exact: true }).click();
-      assert.match(await confirmation.innerText(), /Activar la estación Estación QA editada/);
-      await confirmation.getByRole("button", { name: "Confirmar", exact: true }).click();
-      await page.getByText("Datos guardados correctamente.", { exact: true }).waitFor();
-      const second = stationWrites().at(-1)!;
-      assert.deepEqual(second.body, { ...expectedStationBody, active: true }); assert.notEqual(second.key, first.key);
-      assert.equal((await currentStation()).active, true); assert.deepEqual(await operationalState(), before);
+    await run("SUG-2.3 double click and programmatic edit cannot open a station form", async () => {
+      const count = writes.length;
+      await page.getByRole("row").filter({ hasText: "Estación sintética QA" }).dblclick();
+      await page.getByTitle("Editar", { exact: true }).evaluate((button: HTMLButtonElement) => button.click());
+      assert.equal(await page.getByRole("dialog").count(), 0);
+      assert.equal(writes.length, count);
     });
-    await run("SUG-2.3 station edit and toolbar retain the body and key after a lost committed response", async () => {
-      const dialog = await openStationEditor(), count = stationWrites().length;
-      await stationField(dialog, "Descrip.:").fill("Borrador sintético confirmado una vez");
-      await dialog.getByRole("checkbox", { name: "Activa", exact: true }).uncheck();
-      await dialog.getByRole("button", { name: "oK", exact: true }).click();
-      const confirmation = page.getByRole("dialog", { name: "Confirmación", exact: true });
-      loseNextStationResponse = true; await confirmation.getByRole("button", { name: "Confirmar", exact: true }).click();
-      await confirmation.getByRole("button", { name: "Reintentar", exact: true }).waitFor();
-      assert.equal(stationWrites().length, count + 1); assert.equal((await currentStation()).active, false);
-      const committed = structuredClone(await store.read());
-      assert.equal(await confirmation.getByRole("button", { name: "Cancelar", exact: true }).isDisabled(), true);
-      await confirmation.getByRole("button", { name: "Cerrar Confirmación", exact: true }).click(); assert.equal(await confirmation.count(), 1);
-      await confirmation.getByRole("button", { name: "Reintentar", exact: true }).click();
-      await page.getByText("Datos guardados correctamente.", { exact: true }).waitFor();
-      const attempts = stationWrites().slice(count); assert.equal(attempts.length, 2); assert.equal(attempts[0].key, attempts[1].key); assert.deepEqual(attempts[0].body, attempts[1].body);
-      assert.deepEqual(await store.read(), committed, "Retry must not repeat the station mutation or its audit event.");
-      const toolbarCount = stationWrites().length;
-      await page.getByTitle("Activar", { exact: true }).click(); await confirmation.waitFor();
-      loseNextStationResponse = true; await confirmation.getByRole("button", { name: "Confirmar", exact: true }).click();
-      await confirmation.getByRole("button", { name: "Reintentar", exact: true }).waitFor();
-      const toolbarCommitted = structuredClone(await store.read());
-      await confirmation.getByRole("button", { name: "Reintentar", exact: true }).click(); await page.getByText("Estado actualizado.", { exact: true }).waitFor();
-      const toolbarAttempts = stationWrites().slice(toolbarCount); assert.equal(toolbarAttempts.length, 2); assert.equal(toolbarAttempts[0].key, toolbarAttempts[1].key); assert.deepEqual(toolbarAttempts[0].body, toolbarAttempts[1].body); assert.notEqual(toolbarAttempts[0].key, attempts[0].key);
-      assert.equal((await currentStation()).active, true); assert.deepEqual(await store.read(), toolbarCommitted);
+    await run("SUG-2.3 API denies arbitrary device, license and activation even for Admin", async () => {
+      const before = await store.read();
+      const headers = { authorization: `Bearer ${token}`, "idempotency-key": randomUUID() };
+      const denied = await app.inject({ method: "POST", url: `/api/estaciones/${stationId}`, headers, payload: { number: "QA-EDIT", name: "Manual", deviceId: "FORGED", license: "FORGED", active: true } });
+      assert.equal(denied.statusCode, 409); assert.equal(denied.json().error.code, "STATION_RRAA_REQUIRED");
+      const invalid = await app.inject({ method: "POST", url: "/api/estaciones", headers: { ...headers, "idempotency-key": randomUUID() }, payload: { id: "forged", number: "QA", name: "Manual" } });
+      assert.equal(invalid.statusCode, 400, "Strict identity contract remains enforced");
+      assert.deepEqual(await store.read(), before);
+    });
+    await run("SUG-2.3 denied station retries preserve stored data and refresh remains available", async () => {
+      const headers = { authorization: `Bearer ${token}`, "idempotency-key": randomUUID() };
+      const before = await store.read();
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const result = await app.inject({ method: "POST", url: "/api/estaciones", headers, payload: { number: "QA-NEW", name: "Manual", active: false } });
+        assert.equal(result.statusCode, 409); assert.equal(result.json().error.code, "STATION_RRAA_REQUIRED");
+      }
+      assert.deepEqual(await store.read(), before);
+      await page.getByTitle("Refrescar", { exact: true }).click();
+      await page.getByRole("row").filter({ hasText: "Estación sintética QA" }).waitFor();
+      assert.equal(await page.getByTitle("Editar", { exact: true }).isDisabled(), true);
     });
     await run("SUG-2.6/2.10 panels explain administrative scope without granting roles", async () => {
       const count = writes.length;

@@ -3,12 +3,20 @@ export type Quote = {
   date: string; sourceRate: string; destinationRate: string; quotedAt?: string;
   sourceRateChangeId?: string; destinationRateChangeId?: string;
   sourceRateChangedAt?: string; destinationRateChangedAt?: string;
+  commissionPolicyRevision?: string; managerCommissionBps?: number;
+};
+export type CommissionPolicy = { revision: string; managerCommissionBps: number; updatedAt?: string; updatedBy?: string };
+export type CommissionAllocation = {
+  version: 1; currency: Currency; policyRevision: string; managerCommissionBps: number;
+  baseAmount: number; transactionAmount: number; companyAmount: number; managerAmount: number;
+  managerId?: string; managerName?: string;
 };
 export type Rate = { id: string; currency: Currency; rate: string; date: string; changeId?: string; updatedAt?: string; updatedBy?: string };
 export type RateChange = { id: string; currency: Currency; rate: string; date: string; createdAt: string; actorId: string };
 export type RemittanceContact = { id: string; code: string; name: string; phone: string; cellular: string; address: string };
 export type ManagerCommission = { managerName: string; amount: number; currency: Currency };
-export type Quotation = { sourceCurrency: Currency; destinationCurrency: Currency; amount: number; commissionBps: number; commissionAmount: number; totalAmount: number; receiveAmount: number; quote: Quote };
+export type Quotation = { sourceCurrency: Currency; destinationCurrency: Currency; amount: number; commissionBps: number; commissionAmount: number; totalAmount: number; receiveAmount: number; quote: Quote;
+  amountDop?: number; requestedReceiveAmount?: number; receiveRoundingDifference?: number; commissionAllocation?: CommissionAllocation };
 export type Transfer = Quotation & {
   id: string; sequence: number; envioReference: string; reciboReference: string; operatingCode: string;
   senderClientId: string; recipientClientId: string; sendingUserId: string; registeredBy: string;
@@ -25,11 +33,17 @@ export type Cash = {
 };
 export type RemittanceSnapshot = {
   businessDate: string; currencies: Currency[];
+  commissionPolicy?: CommissionPolicy;
   clients: { id: string; code: string; name: string; routeId: string; active: boolean; preferredCurrency?: Currency; canSendFrom: boolean; canReceive: boolean }[];
   operators: { id: string; name: string; role: "admin" | "collector"; collectorId?: string }[];
   rates: Rate[]; rateHistory?: RateChange[]; transfers: Transfer[]; cashSessions: Cash[];
 };
 export type Report = {
+  commissionAllocations?: {
+    details: Array<CommissionAllocation & Pick<Transfer, "id" | "envioReference" | "createdAt" | "status">>;
+    totals: Array<{ date: string; currency: Currency; managerId: string; managerName: string; count: number; cancelledCount: number;
+      transactionAmount: number; companyAmount: number; managerAmount: number; cancelledTransactionAmount: number; cancelledCompanyAmount: number; cancelledManagerAmount: number }>;
+  };
   from: string; to: string; grouping: "range" | "day";
   amounts: { date: string; sourceCurrency: Currency; destinationCurrency: Currency; count: number; pendingCount: number; paidCount: number; cancelledCount: number; amount: number; commissionAmount: number; totalAmount: number; receiveAmount: number }[];
   deliveryTimes: { id: string; envioReference: string; createdAt: string; paidAt: string; elapsedSeconds: number }[];

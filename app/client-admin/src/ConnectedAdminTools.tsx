@@ -64,6 +64,7 @@ export function ConnectedAdminTools({ page, snapshot, onRefresh }: { page: Admin
   const close = () => { if (!locked) { if (stationStatusReview) { setStationStatusReview(false); setFormError(""); return; } setDialog(null); setDraft({}); setFormError(""); setAddingStation(false); } };
   const open = (next: Dialog) => {
     if (locked || loading) return;
+    if (page === "stations") return;
     pendingRequest.current = null; setUncertain(false); setStationStatusReview(false);
     setDialog(next); setFormError(""); setMessage("");
     const row = next.row;
@@ -165,20 +166,20 @@ export function ConnectedAdminTools({ page, snapshot, onRefresh }: { page: Admin
   const clientLabel = (row: Row) => clientFor(row)?.name ?? value(row, "clientId");
   const collectorLabel = (row: Row) => snapshot.collectors.find((collector) => collector.id === row.collectorId)?.name ?? value(row, "collectorId");
   const draftClient = snapshot.clients.find((client) => client.id === draft.clientId);
-  const availableStations = stations.filter((station) => station.active !== false && !links.includes(station.id));
+  const availableStations: Row[] = []; // RRAA is not connected: no new assignments of unvalidated stations.
   const assignedStations = links.map((id) => stations.find((station) => station.id === id) ?? { id, name: id, active: false });
   const beginResolution = (cancel = false) => {
     if (!selected || selected.status !== "pending") return;
     open({ type: "resolve", row: selected });
     if (cancel) setDraft((current) => ({ ...current, status: "cancelled" }));
   };
-  const headers = page === "stations" ? ["Nro", "Estacion", "idDispositivo", "Licencia", "Version", "VersionRec", "Activa"]
+  const headers = page === "stations" ? ["Nro", "Estacion", "idDispositivo", "Licencia", "Version", "VersionRec", "Activa (histórico)", "Validación"]
     : page === "groups" ? ["Nro.", "Grupo"] : page === "pcps" ? ["Nro.", "PCP", "Cliente", "Grupo", "Ruta", "Activo"]
     : page === "sessions" ? ["Nro.", "Usuario", "Estacion", "Inicio", "Estado", "Vencimiento"]
     : page === "traces" ? ["Nro.", "Fecha", "Traza"] : ["Nro.", "Fecha", "Cobrador", "Código", "Cliente", "Telefono", "Celular", "Estado"];
   const unavailable = (description: string) => <span title={description}>—</span>;
   const cells = (row: Row): ReactNode => page === "groups" ? <td>{value(row, "name")}</td>
-    : page === "stations" ? <><td title={value(row, "description")}>{value(row, "name")}</td><td>{value(row, "deviceId") || "—"}</td><td title="Licencia registrada manualmente">{value(row, "license") || "—"}</td><td>{value(row, "version") || "—"}</td><td>{unavailable("La versión recibida no está disponible.")}</td><td><LegacyCheck checked={row.active !== false} /></td></>
+    : page === "stations" ? <><td title={value(row, "description")}>{value(row, "name")}</td><td>{value(row, "deviceId") || "—"}</td><td title="Licencia histórica sin validar por RRAA">{value(row, "license") || "—"}</td><td>{value(row, "version") || "—"}</td><td>{unavailable("La versión recibida no está disponible.")}</td><td><LegacyCheck checked={row.active !== false} /></td><td>No validado</td></>
     : page === "pcps" ? <><td title={[value(row, "address"), value(row, "phone"), "Estaciones: " + (stationIds(row).map((id) => stations.find((station) => station.id === id)?.name ?? id).join(", ") || "Sin asignar")].filter(Boolean).join(" · ")}>{value(row, "name")}</td><td>{unavailable("El PCP es independiente de los clientes.")}</td><td>{groups.find((group) => group.id === row.groupId)?.name as string ?? "—"}</td><td>{unavailable("El PCP no tiene una ruta de cobro asignada.")}</td><td><LegacyCheck checked={row.active !== false} /></td></>
     : page === "sessions" ? <><td title={value(row, "role") === "admin" ? "Administración" : "Cobrador"}>{value(row, "userName")}{row.current ? " (esta sesión)" : ""}</td><td>{unavailable("Las sesiones no registran una estación de PCP.")}</td><td>{dateTime(row.startedAt)}</td><td title={row.revokedAt ? "Cerrada: " + dateTime(row.revokedAt) : undefined}>{states[value(row, "status")] ?? value(row, "status")}</td><td>{dateTime(row.expiresAt)}</td></>
     : page === "traces" ? <><td>{dateTime(row.createdAt)}</td><td className="legacy-admin-trace-cell">{row.action === "session.started" ? "Inicio de sesión" : row.action === "mutation.completed" ? "Cambio guardado" : value(row, "action")} · {value(row, "resource")} · Usuario: {value(row, "actorId")}{row.resourceId ? " · Referencia: " + value(row, "resourceId") : ""}</td></>
@@ -206,9 +207,9 @@ export function ConnectedAdminTools({ page, snapshot, onRefresh }: { page: Admin
     </div>
     : <LegacyToolbar onToggleFilters={page === "pcps" || page === "authorizationRequests" ? () => setFiltersVisible((current) => !current) : undefined} filtersVisible={filtersVisible}
       onFirst={() => moveSelection("first")} onPrevious={() => moveSelection("previous")} onNext={() => moveSelection("next")} onLast={() => moveSelection("last")}
-      onNew={() => open({ type: "edit" })} disableNew={loading || (page === "pcps" && !groups.length)} newTitle={page === "authorizationRequests" ? "Nueva solicitud" : "Nuevo"}
-      showEdit={page !== "authorizationRequests"} onEdit={() => selected && open({ type: "edit", row: selected })} disableEdit={loading || !selected}
-      onDelete={deleteSelected} deleteTitle={deleteTitle} deleteIcon={page === "groups" ? "trash" : "x"} disableDelete={loading || !selected || (page === "authorizationRequests" && selected.status !== "pending")}
+      onNew={() => open({ type: "edit" })} disableNew={page === "stations" || loading || (page === "pcps" && !groups.length)} newTitle={page === "authorizationRequests" ? "Nueva solicitud" : "Nuevo"}
+      showEdit={page !== "authorizationRequests"} onEdit={() => selected && open({ type: "edit", row: selected })} disableEdit={page === "stations" || loading || !selected}
+      onDelete={deleteSelected} deleteTitle={deleteTitle} deleteIcon={page === "groups" ? "trash" : "x"} disableDelete={page === "stations" || loading || !selected || (page === "authorizationRequests" && selected.status !== "pending")}
       onRefresh={() => { if (!loading) void refresh(); }} extra={page === "pcps" ? <button type="button" className="pcp-stations-button" title="Estaciones del PCP" disabled={loading || !selected || selected.active === false} onClick={() => selected && open({ type: "stations", row: selected })}><Building2 size={15} /><span>Estaciones</span></button>
         : page === "authorizationRequests" ? <><button type="button" disabled={loading || !selected} onClick={() => selected && open({ type: "detail", row: selected })}>Detalle</button><button type="button" disabled={loading || selected?.status !== "pending"} onClick={() => beginResolution()}>Resolver</button></> : search} />;
   const filterPanel = page === "pcps"
@@ -237,6 +238,7 @@ export function ConnectedAdminTools({ page, snapshot, onRefresh }: { page: Admin
   const formClass = dialog?.type === "stations" ? "legacy-relation-manager legacy-admin-relations" : page === "stations" && dialog?.type === "edit" && !stationStatusReview ? "legacy-dialog-form pcp-station-form" : page === "pcps" && dialog?.type === "edit" ? "legacy-dialog-form pcp-data-form legacy-pcp-form" : page === "authorizationRequests" ? "authorization-form" : "legacy-dialog-form";
   return <section className={"connected-admin-tools legacy-mdi-view " + layout + "-mdi-view"} aria-label={definition.title} aria-busy={loading}>
     {toolbar}
+    {page === "stations" && <p className="legacy-admin-note" role="status"><strong>No validado.</strong> Deshabilitado temporalmente hasta conexión RRAA. El catálogo es de consulta: no se permite crear, editar ni activar estaciones. Los estados históricos no acreditan validación de empresa, dispositivo o licencia.</p>}
     {page === "authorizationRequests" && <p className="legacy-admin-note">Solicitudes de revisión administrativa de un cliente y su cobrador responsable. Registra el motivo, consulta la solicitud y resuélvela como aprobada, rechazada o anulada. La decisión queda en el historial; no registra cobros o pagos ni amplía límites o permisos.</p>}
     {error && <p className="legacy-admin-feedback error" role="alert">{error}</p>}{message && <p className="legacy-admin-feedback success" role="status">{message}</p>}
     {page === "pcps" && !loading && !groups.length && <p className="legacy-admin-note">Crea un grupo de PCPs para registrar el primer punto.</p>}

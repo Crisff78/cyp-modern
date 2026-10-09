@@ -44,19 +44,23 @@ test("PCPs are independent persistent entities with validated station associatio
   try {
     const group = await env.post("/grupos-pcp", { name: "Grupo de prueba" }); assert.equal(group.statusCode, 200);
     assert.equal((await env.post("/grupos-pcp", { name: "grupo de prueba" })).statusCode, 409);
-    const station = await env.post("/estaciones", { name: "Terminal de prueba", number: "TP-1" }); assert.equal(station.statusCode, 200);
-    assert.equal(station.json().license, ""); assert.equal(station.json().deviceId, ""); assert.equal(station.json().version, "");
+    // Historical fixtures bypass the disabled manual endpoint; no RRAA validity is inferred.
+    const station = { id: randomUUID(), name: "Terminal de prueba", number: "TP-1", license: "", deviceId: "", version: "", description: "", group: "", type: "", active: true };
+    await env.store.transaction((state) => { getAdminTools(state).stations.push(station); });
+    assert.equal((await env.post("/estaciones", { name: station.name, number: station.number })).statusCode, 409);
     assert.equal((await env.post("/estaciones", { name: "Otra", number: "tp-1" })).statusCode, 409);
     const pcp = await env.post("/pcps", { name: "Punto independiente", number: "P-1", groupId: group.json().id }); assert.equal(pcp.statusCode, 200);
     const path = `/pcps/${pcp.json().id}/estaciones`;
-    assert.equal((await env.post(path, { stationIds: [station.json().id] })).statusCode, 200);
-    assert.equal((await env.post(path, { stationIds: [station.json().id, "missing"] })).statusCode, 404);
+    assert.equal((await env.post(path, { stationIds: [station.id] })).json().error.code, "STATION_RRAA_REQUIRED");
+    await env.store.transaction((state) => { getAdminTools(state).pcpStations.push({ pcpId: pcp.json().id, stationId: station.id }); });
+    assert.equal((await env.post(path, { stationIds: [station.id] })).statusCode, 200);
+    assert.equal((await env.post(path, { stationIds: [station.id, "missing"] })).statusCode, 404);
     const stored = (await env.get("/pcps")).json().find((row: { id: string }) => row.id === pcp.json().id);
-    assert.deepEqual(stored.stationIds, [station.json().id]);
+    assert.deepEqual(stored.stationIds, [station.id]);
     assert.equal((await env.post(`/grupos-pcp/${group.json().id}/eliminar`, {})).statusCode, 409);
     assert.equal((await env.store.read()).clients.some((client) => client.id === pcp.json().id), false);
-    const { id: stationId, ...stationInput } = station.json();
-    assert.equal((await env.post(`/estaciones/${stationId}`, { ...stationInput, active: false })).statusCode, 200);
+    const { id: stationId, ...stationInput } = station;
+    assert.equal((await env.post(`/estaciones/${stationId}`, { ...stationInput, active: false })).statusCode, 409);
     assert.equal((await env.post(path, { stationIds: [] })).statusCode, 200);
     assert.equal((await env.post(path, { stationIds: [stationId] })).statusCode, 409);
   } finally { await env.app.close(); }
@@ -205,8 +209,10 @@ test("PostgreSQL admin tools survive reopening and preserve revoked sessions and
       assert.equal(response.statusCode, 200, response.body); return response.json();
     };
     const group = await post("/grupos-pcp", { name: `Grupo ${prefix}` });
-    const station = await post("/estaciones", { name: `Estación ${prefix}`, number: prefix, deviceId: `${prefix}-device`, description: "Dispositivo ficticio", version: "versión registrada" });
+    const station = { id: randomUUID(), name: `Estación ${prefix}`, number: prefix, deviceId: `${prefix}-device`, description: "Dispositivo ficticio", version: "versión registrada", license: "", group: "", type: "", active: true };
+    await store.transaction((state) => { getAdminTools(state).stations.push(station); });
     const pcp = await post("/pcps", { name: `PCP ${prefix}`, number: prefix, groupId: group.id, address: "Dirección ficticia", phone: "" });
+    await store.transaction((state) => { getAdminTools(state).pcpStations.push({ pcpId: pcp.id, stationId: station.id }); });
     await post(`/pcps/${pcp.id}/estaciones`, { stationIds: [station.id] });
     const request = await post("/solicitudes-autorizacion", { clientId: ids.client, collectorId: ids.collector, delayReasonId: ids.reason, forCollection: true, note: "Detalle privado ficticio PG015" });
     await post(`/solicitudes-autorizacion/${request.id}/resolver`, { status: "approved", note: "Resolución ficticia PG015" });

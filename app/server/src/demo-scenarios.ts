@@ -283,7 +283,7 @@ export function enrichPublicDemo(state: State, now = new Date()) {
   const omittedRemittanceDates = fillTransfers(fixture, state, baseDate, now);
   const counts: Record<string, number> = {};
   for (const [name, rows] of Object.entries(fixture)) if (Array.isArray(rows)) counts[name] = rows.length;
-  for (const [name, rows] of Object.entries(fixture.remittances)) counts[`remittances.${name}`] = rows.length;
+  for (const [name, rows] of Object.entries(fixture.remittances)) if (Array.isArray(rows)) counts[`remittances.${name}`] = rows.length;
   for (const [name, rows] of Object.entries(fixture.adminTools)) counts[`adminTools.${name}`] = rows.length;
   const manifest: Manifest = { version, baseDate, counts, omittedRemittanceDates };
   validateAndAppend(state, fixture);

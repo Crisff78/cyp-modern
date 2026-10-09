@@ -6,7 +6,7 @@ import { remittanceClientContact, searchRemittanceClients } from "./remittance-c
 import {
   canSeeOutgoing, canSeeReceipt, cancelRemittance, closeRemittanceCash, createRemittance,
   currencies, openRemittanceCash, payRemittance, quoteRemittance, remittanceReports,
-  remittanceSnapshot, setDailyRate, transferView,
+  remittanceSnapshot, setDailyRate, setCommissionPolicy, transferView,
 } from "./remittances.js";
 import { boundedId, freeText, singleLine } from "./input-validation.js";
 
@@ -50,17 +50,23 @@ export function registerRemittanceRoutes(
     const input = z.object({ ...quoteFields,
       amount: z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER),
       commissionBps: z.coerce.number().int().min(0).max(10000),
+      amountMode: z.enum(["source", "destination"]).default("source"),
     }).strict().parse(req.query);
     return quoteRemittance(await store.read(), input);
   });
+  mutate("/api/envios/politica-comisiones", "Configurar reparto de comisiones para remesas futuras", z.object({
+    managerCommissionBps: bps,
+  }).strict(), (state, actor, input) => setCommissionPolicy(state, actor, input.managerCommissionBps));
   mutate("/api/envios/tasas", "Registrar tasa diaria DOP por unidad", z.object({
     currency, rate: z.string().max(19), date: z.iso.date(),
   }).strict(), (state, actor, input) => setDailyRate(state, actor, input));
   mutate("/api/envios", "Registrar envío y recibir principal más comisión", z.object({
     ...quoteFields, senderClientId: id, recipientClientId: id, sendingUserId: id.optional(),
+    requestedReceiveAmount: amount.positive().optional(),
     quote: z.object({ date: z.iso.date(), sourceRate: z.string().max(19), destinationRate: z.string().max(19),
       quotedAt: z.iso.datetime().optional(), sourceRateChangeId: id.optional(), destinationRateChangeId: id.optional(),
       sourceRateChangedAt: z.iso.datetime().optional(), destinationRateChangedAt: z.iso.datetime().optional(),
+      commissionPolicyRevision: id.optional(), managerCommissionBps: bps.optional(),
     }).strict(),
     managerCommission: z.object({
       managerName: singleLine(160, 1)

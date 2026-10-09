@@ -44,11 +44,8 @@ export function registerAdminToolsRoutes(app: FastifyInstance, store: Store, use
   for (const editing of [false, true]) {
     const suffix = editing ? "/:id" : "";
     mutate(`/api/estaciones${suffix}`, "Guardar estación registrada", stationBody, (state, actor, body, params) => {
-      assertAdmin(actor); const data = getAdminTools(state);
-      const current = editing ? requireAdminRow(data.stations, params.id, "Estación") : undefined;
-      for (const key of ["name", "number", "deviceId"] as const) uniqueAdminValue(data.stations, key, body[key], current?.id);
-      if (current) { Object.assign(current, body); return current; }
-      const row = { id: randomUUID(), ...body }; data.stations.push(row); return row;
+      assertAdmin(actor);
+      throw new DomainError("STATION_RRAA_REQUIRED", "Deshabilitado temporalmente hasta conexión RRAA. No se permite crear, editar ni activar estaciones manualmente.", 409);
     });
     mutate(`/api/grupos-pcp${suffix}`, "Guardar grupo de PCPs", groupBody, (state, actor, body, params) => {
       assertAdmin(actor); const data = getAdminTools(state);
@@ -77,6 +74,8 @@ export function registerAdminToolsRoutes(app: FastifyInstance, store: Store, use
     if (new Set(body.stationIds).size !== body.stationIds.length) throw new DomainError("DUPLICATE_STATION", "La lista contiene estaciones repetidas.");
     for (const stationId of body.stationIds) {
       const station = requireAdminRow(data.stations, stationId, "Estación");
+      if (!data.pcpStations.some((link) => link.pcpId === pcp.id && link.stationId === stationId))
+        throw new DomainError("STATION_RRAA_REQUIRED", "No se pueden agregar estaciones no validadas hasta conexión RRAA.", 409);
       if (!station.active && !data.pcpStations.some((link) => link.pcpId === pcp.id && link.stationId === stationId))
         throw new DomainError("STATION_INACTIVE", "Solo puedes agregar estaciones activas.", 409);
     }

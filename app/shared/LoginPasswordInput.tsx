@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Eye, EyeOff } from "lucide-react";
 import { INPUT_LIMITS } from "./inputRules";
 import "./login-password.css";
 
@@ -19,7 +18,10 @@ export function LoginPasswordInput({ id, value, onChange, minLength, disabled = 
       onChange={(event) => onChange(event.target.value)} />
     <button type="button" className="icon-button cyp-password-toggle" aria-label={label} title={label}
       aria-controls={id} aria-pressed={visible} disabled={disabled} onClick={() => setVisible((current) => !current)}>
-      {visible ? <EyeOff size={19} aria-hidden="true" /> : <Eye size={19} aria-hidden="true" />}
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" />
+        {visible && <path d="m3 3 18 18" />}
+      </svg>
     </button>
   </span>;
 }

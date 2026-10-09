@@ -1,5 +1,11 @@
 # Envíos de Dinero: contrato local
 
+El contrato vigente de entrada por origen/destino, redondeos y reparto devengado
+está en [REMESAS-COTIZACION-REPARTO.md](REMESAS-COTIZACION-REPARTO.md). Requiere la
+migración aditiva `024_remittance_commission_allocation.sql` antes de iniciar esta
+versión con PostgreSQL. Las referencias a comisión manual describen información
+histórica: las remesas nuevas usan el reparto calculado en el servidor.
+
 Todas las rutas requieren sesión. Base `/api`. Todos los POST requieren
 `Idempotency-Key` (UUID recomendado; reutilizar al reintentar el mismo payload).
 Errores: `{error:{code,message}}`. Importes son centavos enteros no negativos,

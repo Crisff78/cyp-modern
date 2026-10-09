@@ -249,6 +249,7 @@ async function saveState(client: pg.PoolClient, state: State, before: State) {
     ...state.remittances.cashSessions.flatMap((c) => [c.operatorId, c.openedBy]),
     ...state.remittances.events.map((event) => event.actorId),
     ...(state.remittances.rateHistory ?? []).map((change) => change.actorId),
+    ...(state.remittances.commissionPolicy?.updatedBy ? [state.remittances.commissionPolicy.updatedBy] : []),
   ]))
     await ensureUser(client, userId, state);
   for (const account of state.accounts) {
