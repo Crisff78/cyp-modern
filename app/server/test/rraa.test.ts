@@ -70,6 +70,9 @@ test("station preview is read-only, Admin-only and excludes browser-supplied aut
   try {
     assert.deepEqual((await env.get("/estaciones/rraa")).json(), { configured: true, clientId: "QA-COMPANY" });
     assert.equal((await env.get("/estaciones/rraa", env.collector)).statusCode, 403);
+    const spec = (await env.get("/openapi.json")).json();
+    assert.equal(spec.paths["/api/estaciones/validar"].post.parameters.some((header: { name: string }) => header.name === "Idempotency-Key"), false);
+    assert.equal(spec.paths["/api/estaciones"].post.parameters.some((header: { name: string; required: boolean }) => header.name === "Idempotency-Key" && header.required), true);
     const before = await env.store.read();
     const result = await env.post("/estaciones/validar", { stationCode: input.name, deviceId: input.deviceId });
     assert.equal(result.statusCode, 200); assert.equal(result.json().license, "QA-LICENSE");
@@ -132,6 +135,40 @@ test("new PCP associations require active proof for current company; historical 
     assert.equal((await env.post(path, { stationIds: [station.id] })).statusCode, 200);
     assert.equal((await env.post(path, { stationIds: [] })).statusCode, 200);
     assert.equal((await env.post(path, { stationIds: [station.id] })).json().error.code, "STATION_RRAA_REQUIRED");
+  } finally { await env.app.close(); }
+});
+
+test("new PCP links revalidate with RRAA and reject revoked or unavailable licenses atomically", async () => {
+  const env = await fixture();
+  try {
+    const station = (await env.post("/estaciones", { ...input, active: true })).json();
+    const other = (await env.post("/estaciones", { ...input, name: "QA-SECOND-STATION", number: "QA-SECOND", deviceId: "QA-SECOND-DEVICE", active: true })).json();
+    const group = (await env.post("/grupos-pcp", { name: "QA-FRESH-RRAA-GROUP" })).json();
+    const pcp = (await env.post("/pcps", { name: "QA-FRESH-RRAA-PCP", number: "QA-FRESH-RRAA-PCP", groupId: group.id })).json();
+    const path = `/pcps/${pcp.id}/estaciones`, before = await env.store.read();
+    env.fail(true);
+    const rejected = await env.post(path, { stationIds: [station.id] });
+    assert.equal(rejected.statusCode, 422); assert.equal(rejected.json().error.code, "RRAA_STATION_NOT_FOUND");
+    assert.deepEqual(await env.store.read(), before, "rejection keeps license, activity and links unchanged");
+    const validate = env.rraa.validate;
+    env.rraa.validate = async () => { throw new DomainError("RRAA_UNAVAILABLE", "Proveedor no disponible.", 502); };
+    assert.equal((await env.post(path, { stationIds: [station.id] })).statusCode, 502);
+    assert.deepEqual(await env.store.read(), before);
+    env.fail(false);
+    env.rraa.validate = async (stationCode, deviceId) => {
+      if (stationCode === other.name) throw new DomainError("RRAA_STATION_NOT_FOUND", "RRAA: Estación no encontrada.", 422);
+      return validate.call(env.rraa, stationCode, deviceId);
+    };
+    assert.equal((await env.post(path, { stationIds: [station.id, other.id] })).statusCode, 422);
+    assert.deepEqual(await env.store.read(), before, "a later rejection also rolls back the first refreshed license");
+    env.rraa.validate = validate;
+    const calls = env.calls();
+    assert.equal((await env.post(path, { stationIds: [station.id] })).statusCode, 200);
+    assert.equal(env.calls(), calls + 1, "new link obtains fresh validation");
+    env.fail(true);
+    assert.equal((await env.post(path, { stationIds: [station.id] })).statusCode, 200, "existing links can be retained offline");
+    assert.equal((await env.post(path, { stationIds: [] })).statusCode, 200, "existing links can be removed offline");
+    assert.equal(env.calls(), calls + 1);
   } finally { await env.app.close(); }
 });
 test("RRAA proof and license persist through FileStore reopening", async () => {

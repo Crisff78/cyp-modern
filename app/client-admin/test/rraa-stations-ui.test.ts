@@ -22,7 +22,7 @@ test("RRAA station UI validates, preserves modal locking, saves proof and permit
   skip: process.platform !== "win32" || !fs.existsSync(edge) || !playwrightEntry ? "Installed Edge/Playwright required; no download or real profile used." : false,
 }, async (t) => {
   const output = fs.mkdtempSync(path.join(os.tmpdir(), "cyp-rraa-ui-")), store = new MemoryStore(seed());
-  let rejectStation = false, calls = 0;
+  let rejectStation = false, calls = 0, previewPatch: Record<string, unknown> | null = null;
   const app = await buildApp({ store, demo: true, secret: "rraa-ui-synthetic-secret-at-least-32-characters", origins: [], collectorUrl: "http://localhost:5174",
     rraa: { clientId: "QA-COMPANY", async validate(stationCode, deviceId) {
       calls++; if (rejectStation) throw new DomainError("RRAA_STATION_NOT_FOUND", "RRAA: Estación no encontrada.", 422);
@@ -51,7 +51,9 @@ remittancesApi("/snapshot").then(snapshot => createRoot(document.getElementById(
           const chunks: Buffer[] = []; for await (const chunk of request) chunks.push(Buffer.from(chunk));
           const result = await app.inject({ method: request.method as "GET" | "POST", url: request.url!, headers: request.headers,
             ...(chunks.length ? { payload: JSON.parse(Buffer.concat(chunks).toString("utf8")) } : {}) });
-          response.writeHead(result.statusCode, { "Content-Type": "application/json" }); response.end(result.body); return;
+          const responseBody = pathname === "/api/estaciones/validar" && result.statusCode === 200 && previewPatch
+            ? JSON.stringify({ ...result.json(), ...previewPatch }) : result.body;
+          response.writeHead(result.statusCode, { "Content-Type": "application/json" }); response.end(responseBody); return;
         }
         if (pathname === "/") { response.writeHead(200, { "Content-Type": "text/html" }); response.end('<!doctype html><html lang="es"><meta charset="utf-8"><link rel="stylesheet" href="/fixture.css"><div id="root" style="height:850px"></div><script type="module" src="/fixture.js"></script></html>'); return; }
         const mime = { "/fixture.js": "text/javascript", "/fixture.css": "text/css" }[pathname];
@@ -84,6 +86,25 @@ remittancesApi("/snapshot").then(snapshot => createRoot(document.getElementById(
       assert.equal(await dialog.getByLabel("Activa", { exact: true }).isDisabled(), true);
       await dialog.getByRole("button", { name: "Cancelar", exact: true }).click(); assert.equal(await page.getByRole("dialog").count(), 0);
     });
+    await t.test("foreign or malformed previews cannot display an authorized license or enable activation", async () => {
+      await page.getByTitle("Nuevo", { exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Datos de la Estación de PCP", exact: true });
+      await dialog.getByLabel("Estación", { exact: true }).fill("QA-STATION"); await dialog.getByLabel("Número", { exact: true }).fill("QA-1");
+      await dialog.getByLabel("ID dispositivo", { exact: true }).fill("QA-DEVICE");
+      for (const patch of [{ clientId: "OTHER-COMPANY" }, { deviceId: "OTHER-DEVICE" }, { stationCode: "OTHER-STATION" }, { license: "" }, { validatedAt: "invalid" }]) {
+        previewPatch = patch;
+        await dialog.getByRole("button", { name: "Obtener Licencia", exact: true }).click();
+        await dialog.getByRole("alert").filter({ hasText: "No pudimos confirmar la respuesta de RRAA" }).waitFor();
+        assert.equal(await dialog.getByLabel("Activa", { exact: true }).isDisabled(), true);
+        assert.equal(await dialog.getByLabel("Lic.:", { exact: true }).inputValue(), "");
+        assert.equal((await store.read()).adminTools.stations.length, 0);
+      }
+      previewPatch = null;
+      await dialog.getByRole("button", { name: "Obtener Licencia", exact: true }).click();
+      await dialog.getByText(/Validación recibida:/).waitFor();
+      assert.equal(await dialog.getByLabel("Activa", { exact: true }).isDisabled(), false);
+      await dialog.getByRole("button", { name: "Cancelar", exact: true }).click();
+    });
     await t.test("new station saves fresh RRAA evidence and explicit activation; edits reject ER without closing form", async () => {
       await page.getByTitle("Nuevo", { exact: true }).click();
       const dialog = page.getByRole("dialog", { name: "Datos de la Estación de PCP", exact: true });
@@ -106,6 +127,24 @@ remittancesApi("/snapshot").then(snapshot => createRoot(document.getElementById(
       await review.getByRole("button", { name: "Cancelar", exact: true }).click();
       await dialog.getByRole("button", { name: "Cancelar", exact: true }).click(); rejectStation = false;
       await page.screenshot({ path: path.join(output, "station-list.png") });
+    });
+    await t.test("a fresh rejection invalidates old proof even if unchanged identifiers are restored", async () => {
+      await page.getByRole("row").filter({ hasText: "QA-STATION" }).click(); await page.getByTitle("Editar", { exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Datos de la Estación de PCP", exact: true });
+      assert.equal(await dialog.getByLabel("Activa", { exact: true }).isDisabled(), false);
+      rejectStation = true;
+      await dialog.getByRole("button", { name: "Obtener Licencia", exact: true }).click();
+      await dialog.getByRole("alert").filter({ hasText: "Estación no encontrada." }).waitFor();
+      assert.equal(await dialog.getByLabel("Activa", { exact: true }).isDisabled(), true);
+      await dialog.getByLabel("ID dispositivo", { exact: true }).fill("QA-CHANGED");
+      await dialog.getByLabel("ID dispositivo", { exact: true }).fill("QA-DEVICE");
+      assert.equal(await dialog.getByLabel("Activa", { exact: true }).isDisabled(), true, "restoring old IDs cannot reuse rejected proof");
+      assert.equal((await store.read()).adminTools.stations[0].active, true, "preview rejection does not mutate the saved record");
+      rejectStation = false;
+      await dialog.getByRole("button", { name: "Obtener Licencia", exact: true }).click();
+      await dialog.getByText(/Validación recibida:/).waitFor();
+      assert.equal(await dialog.getByLabel("Activa", { exact: true }).isDisabled(), false);
+      await dialog.getByRole("button", { name: "Cancelar", exact: true }).click();
     });
     await t.test("PCP station selector lists only active validated stations and persists their link", async () => {
       const headers = { authorization: `Bearer ${token}`, "idempotency-key": "qa-rraa-group" };

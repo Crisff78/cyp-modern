@@ -51,6 +51,13 @@ puente de impresión. La impresión estándar no depende de ESC/POS.
 
 No se certificó salida física en una impresora durante estas pruebas.
 
+## Estado confirmado por el usuario — 9 de octubre de 2026
+
+El usuario confirmó que su navegador ofrece guardar la contraseña y que la
+guarda correctamente. Esta comprobación manual queda cerrada según su reporte.
+No tiene impresora en casa: Mayo realizará posteriormente la prueba de salida
+física y legibilidad. La impresión por el diálogo nativo permanece disponible.
+
 ## Porcentaje comercial del gestor
 
 La regla de reparto está implementada: el gestor recibe su porcentaje del monto

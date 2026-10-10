@@ -316,6 +316,7 @@ export async function buildApp(config: Config) {
     summary: string,
     schema?: z.ZodType,
     publicAccess = false,
+    requiresIdempotency = true,
   ) => {
     const formatted = path.replace(/:([A-Za-z]+)/g, "{$1}");
     const params = [...path.matchAll(/:([A-Za-z]+)/g)].map((m) => ({
@@ -330,7 +331,7 @@ export async function buildApp(config: Config) {
       security: publicAccess ? [] : [{ bearerAuth: [] }],
       parameters: [
         ...params,
-        ...(method === "post" && !publicAccess
+        ...(method === "post" && !publicAccess && requiresIdempotency
           ? [
               {
                 in: "header",

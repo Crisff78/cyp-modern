@@ -5,6 +5,7 @@ import { clearToken } from "./api";
 import { remittancesApi } from "./remittancesApi";
 import { StrictApiError } from "../../shared/remittances/strictApi";
 import { INPUT_LIMITS, validatePhone, validateText } from "../../shared/inputRules";
+import { confirmedRraaPreview, type RraaPreview } from "./rraaValidation";
 import type { Snapshot } from "./types";
 import "./connected-admin-tools.css";
 
@@ -18,7 +19,6 @@ export const isConnectedAdminTool = (page: string): page is AdminToolPage => Obj
 type Row = { id: string; [key: string]: unknown };
 type PageResult = { items: Row[]; total: number; limit: number; offset: number };
 type RraaStatus = { configured: boolean; clientId?: string };
-type RraaPreview = { stationCode: string; deviceId: string; license: string; validatedAt: string };
 type Draft = Record<string, string | boolean>;
 type Filter = { q: string; from: string; to: string; status: string };
 type Dialog = { type: "edit" | "stations" | "resolve" | "confirm" | "detail"; row?: Row; action?: "deactivate" | "activate" | "delete" | "close" };
@@ -40,6 +40,7 @@ export function ConnectedAdminTools({ page, snapshot, onRefresh }: { page: Admin
   const [selectedLink, setSelectedLink] = useState(""), [addingStation, setAddingStation] = useState(false), [stationChoice, setStationChoice] = useState(""), [uncertain, setUncertain] = useState(false);
   const [stationStatusReview, setStationStatusReview] = useState(false);
   const [rraa, setRraa] = useState<RraaStatus>({ configured: false }), [rraaPreview, setRraaPreview] = useState<RraaPreview | null>(null);
+  const [rraaNeedsValidation, setRraaNeedsValidation] = useState(false);
   const requestVersion = useRef(0), pendingRequest = useRef<{ path: string; body: string } | null>(null), instanceId = useId();
   const locked = busy || uncertain;
   const refresh = useCallback(async () => {
@@ -70,7 +71,7 @@ export function ConnectedAdminTools({ page, snapshot, onRefresh }: { page: Admin
     if (locked || loading) return;
     if (page === "stations" && !rraa.configured && next.type === "edit") return;
     pendingRequest.current = null; setUncertain(false); setStationStatusReview(false);
-    setDialog(next); setFormError(""); setMessage(""); setRraaPreview(null);
+    setDialog(next); setFormError(""); setMessage(""); setRraaPreview(null); setRraaNeedsValidation(false);
     const row = next.row;
     const nextDraft: Draft = { name: "", number: "", groupId: groups[0]?.id ?? "", active: true, forCollection: true, note: "", status: "approved" };
     if (row) for (const [key, item] of Object.entries(row)) if (typeof item === "string" || typeof item === "boolean") nextDraft[key] = item;
@@ -142,7 +143,7 @@ export function ConnectedAdminTools({ page, snapshot, onRefresh }: { page: Admin
   const updateDraft = (field: string, entry: string | boolean) => {
     if (locked) return;
     if (page === "stations" && (field === "name" || field === "deviceId")) {
-      setRraaPreview(null); setFormError("");
+      setRraaPreview(null); setRraaNeedsValidation(true); setFormError("");
       setDraft((current) => ({ ...current, [field]: entry, active: false, license: "" })); return;
     }
     setDraft((current) => {
@@ -155,14 +156,15 @@ export function ConnectedAdminTools({ page, snapshot, onRefresh }: { page: Admin
     if (locked) return;
     if (!String(draft.name ?? "").trim()) { setFormError("El campo Nombre no puede estar vacío"); return; }
     if (!String(draft.deviceId ?? "").trim()) { setFormError("Completa el ID dispositivo."); return; }
-    setBusy(true); setFormError(""); setRraaPreview(null);
+    setBusy(true); setFormError(""); setRraaPreview(null); setRraaNeedsValidation(true);
     try {
-      const validation = await remittancesApi<RraaPreview>("/estaciones/validar", { method: "POST", body: JSON.stringify({ stationCode: draft.name, deviceId: draft.deviceId }) });
-      setRraaPreview(validation);
+      const requested = { clientId: rraa.clientId ?? "", stationCode: String(draft.name ?? ""), deviceId: String(draft.deviceId ?? "") };
+      const validation = await remittancesApi<unknown>("/estaciones/validar", { method: "POST", body: JSON.stringify({ stationCode: requested.stationCode, deviceId: requested.deviceId }) });
+      setRraaPreview(confirmedRraaPreview(validation, requested)); setRraaNeedsValidation(false);
     } catch (failure) { setFormError(errorText(failure)); setDraft((current) => ({ ...current, active: false })); }
     finally { setBusy(false); }
   };
-  const draftValidated = Boolean(rraaPreview || (dialog?.row?.rraaValidated && dialog.row.name === draft.name && dialog.row.deviceId === draft.deviceId));
+  const draftValidated = !rraaNeedsValidation && Boolean(rraaPreview || (dialog?.row?.rraaValidated && dialog.row.name === draft.name && dialog.row.deviceId === draft.deviceId));
   const layout = ({ stations: "stations", groups: "groups", pcps: "pcp", sessions: "sessions", traces: "traces", authorizationRequests: "authorization" } as const)[page];
   const visible = useMemo(() => paged ? records : records.filter((row) =>
     (page !== "pcps" || !groupFilter || row.groupId === groupFilter) &&

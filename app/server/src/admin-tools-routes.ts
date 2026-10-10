@@ -12,7 +12,7 @@ import { applyRraaValidation, stationRraaValidated, type RraaValidator } from ".
 import { freeText, phone, singleLine } from "./input-validation.js";
 
 type Mutate = <T, P = Record<string, string>>(path: string, summary: string, schema: z.ZodType<T>, fn: (state: State, actor: User, body: T, params: P) => unknown) => void;
-type Describe = (method: string, path: string, summary: string, schema?: z.ZodType, isPublic?: boolean) => void;
+type Describe = (method: string, path: string, summary: string, schema?: z.ZodType, isPublic?: boolean, requiresIdempotency?: boolean) => void;
 // Keep the existing normalization of body references in administrative tools.
 const id = singleLine(80, 1);
 const name = singleLine(160, 1);
@@ -47,7 +47,7 @@ export function registerAdminToolsRoutes(app: FastifyInstance, store: Store, use
     return validator().validate(body.stationCode, body.deviceId);
   });
   describe("get", "/api/estaciones/rraa", "Disponibilidad de validación RRAA para esta instalación");
-  describe("post", "/api/estaciones/validar", "Consultar VALSTAT sin guardar ni activar la estación", stationValidationBody);
+  describe("post", "/api/estaciones/validar", "Consultar VALSTAT sin guardar ni activar la estación", stationValidationBody, false, false);
   mutate("/api/estaciones/:id/actividad", "Activar con RRAA o desactivar estación", z.object({ active: z.boolean() }).strict(), async (state, actor, body, params) => {
     assertAdmin(actor); const station = requireAdminRow(getAdminTools(state).stations, params.id, "Estación");
     if (body.active) applyRraaValidation(station, await validator().validate(station.name, station.deviceId), actor.id);
@@ -96,7 +96,7 @@ export function registerAdminToolsRoutes(app: FastifyInstance, store: Store, use
     if (data.pcps.some((pcp) => pcp.groupId === row.id)) throw new DomainError("GROUP_IN_USE", "El grupo tiene PCPs asociados. Reasígnalos antes de eliminarlo.", 409);
     data.pcpGroups = data.pcpGroups.filter((item) => item.id !== row.id); return { id: row.id, deleted: true };
   });
-  mutate("/api/pcps/:id/estaciones", "Guardar estaciones asociadas al PCP", z.object({ stationIds: z.array(id).max(500) }).strict(), (state, actor, body, params) => {
+  mutate("/api/pcps/:id/estaciones", "Guardar estaciones asociadas al PCP con validación RRAA vigente", z.object({ stationIds: z.array(id).max(500) }).strict(), async (state, actor, body, params) => {
     assertAdmin(actor); const data = getAdminTools(state); const pcp = requireAdminRow(data.pcps, params.id, "PCP");
     if (!pcp.active) throw new DomainError("PCP_INACTIVE", "Activa el PCP antes de modificar sus estaciones.", 409);
     if (new Set(body.stationIds).size !== body.stationIds.length) throw new DomainError("DUPLICATE_STATION", "La lista contiene estaciones repetidas.");
@@ -106,6 +106,7 @@ export function registerAdminToolsRoutes(app: FastifyInstance, store: Store, use
       if (!existing && !stationRraaValidated(station, rraa?.clientId))
         throw new DomainError("STATION_RRAA_REQUIRED", "Solo puedes agregar estaciones validadas por RRAA para esta instalación.", 409);
       if (!existing && !station.active) throw new DomainError("STATION_INACTIVE", "Solo puedes agregar estaciones activas.", 409);
+      if (!existing) applyRraaValidation(station, await validator().validate(station.name, station.deviceId), actor.id);
     }
     data.pcpStations = [...data.pcpStations.filter((link) => link.pcpId !== pcp.id), ...body.stationIds.map((stationId) => ({ pcpId: pcp.id, stationId }))];
     return { id: pcp.id, stationIds: body.stationIds };

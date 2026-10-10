@@ -3902,6 +3902,475 @@
           }
         }
       }
+    },
+    "/api/estaciones/rraa": {
+      "get": {
+        "summary": "Disponibilidad de validación RRAA para esta instalación",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      }
+    },
+    "/api/estaciones/validar": {
+      "post": {
+        "summary": "Consultar VALSTAT sin guardar ni activar la estación",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "stationCode": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "deviceId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  }
+                },
+                "required": [
+                  "stationCode",
+                  "deviceId"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      }
+    },
+    "/api/estaciones/{id}/actividad": {
+      "post": {
+        "summary": "Activar con RRAA o desactivar estación",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 100
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "active": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "active"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      }
+    },
+    "/api/estaciones": {
+      "get": {
+        "summary": "Estaciones registradas",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      },
+      "post": {
+        "summary": "Guardar estación validada por RRAA",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 100
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "number": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "deviceId": {
+                    "default": "",
+                    "type": "string",
+                    "minLength": 0,
+                    "maxLength": 160
+                  },
+                  "description": {
+                    "default": "",
+                    "type": "string",
+                    "minLength": 0,
+                    "maxLength": 1000
+                  },
+                  "group": {
+                    "default": "",
+                    "type": "string",
+                    "minLength": 0,
+                    "maxLength": 160
+                  },
+                  "type": {
+                    "default": "",
+                    "type": "string",
+                    "minLength": 0,
+                    "maxLength": 160
+                  },
+                  "active": {
+                    "default": false,
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "name",
+                  "number"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      }
+    },
+    "/api/estaciones/{id}": {
+      "post": {
+        "summary": "Guardar estación validada por RRAA",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 100
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "number": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "deviceId": {
+                    "default": "",
+                    "type": "string",
+                    "minLength": 0,
+                    "maxLength": 160
+                  },
+                  "description": {
+                    "default": "",
+                    "type": "string",
+                    "minLength": 0,
+                    "maxLength": 1000
+                  },
+                  "group": {
+                    "default": "",
+                    "type": "string",
+                    "minLength": 0,
+                    "maxLength": 160
+                  },
+                  "type": {
+                    "default": "",
+                    "type": "string",
+                    "minLength": 0,
+                    "maxLength": 160
+                  },
+                  "active": {
+                    "default": false,
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "name",
+                  "number"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      }
+    },
+    "/api/pcps/{id}/estaciones": {
+      "post": {
+        "summary": "Guardar estaciones asociadas al PCP con validación RRAA vigente",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 100
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "stationIds": {
+                    "maxItems": 500,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 80
+                    }
+                  }
+                },
+                "required": [
+                  "stationIds"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Operación completada"
+          },
+          "400": {
+            "description": "Validación"
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "No autorizado"
+          },
+          "409": {
+            "description": "Conflicto o límite"
+          },
+          "422": {
+            "description": "Regla de negocio"
+          }
+        }
+      }
     }
   }
 }
