@@ -77,7 +77,7 @@ Estados de esta matriz:
 
 Se corrigió el comprobante de remesas en `output.ts` y
 `RemittancesWorkspace.tsx`: la impresión tras guardar y desde el detalle conserva
-el total recibido, que incluye la comisión, y omite su desglose en el recibo del
+el total pagado por el remitente, incluida la comisión, y omite su desglose en el recibo del
 cliente. El reporte administrativo conserva sus columnas de transacción, empresa
 y gestor. El caso de impresión de `october-nine-financial-ui.test.ts` pasó con
 salida HTML real; no acredita impresión física.
@@ -109,14 +109,14 @@ a `october-nine-financial-ui.test.ts`, **reporting** a
 | 3.3.2 | Resaltar más el registro seleccionado de Cobros | Implementado; comprobación aislada PASS | Filas de `App.tsx` y `styles.css`: fondo/borde de selección y `aria-selected`. Caso Cobros de **shell**. |
 | 3.3.3 | Imprimir listado de Cobros como listado; conservar impresión individual por separado | Implementado; comprobación aislada PASS | `App.tsx`: Listado de Cobros imprime una tabla única con filtros, movimientos y totales por moneda/estado; la opción actual conserva el recibo individual. **Shell** inspecciona ambas ventanas de impresión; no acredita salida física. |
 | 3.4.1 | Denominaciones de monedas en orden ascendente | Implementado; comprobación aislada PASS | `DENOMS` y depósito de `App.tsx`: presentación ascendente; el refresco automático sigue descomponiendo desde la mayor denominación. **Shell** comprueba ambas propiedades. |
-| 4.1.1 | Configurar compra y venta en Administración → Tasas | Implementado; comprobación aislada PASS | `ConnectedExchangeRates.tsx` y servidor: `purchaseRate`/`saleRate` persistidas e históricas, separadas de `rate`, la tasa operativa de remesas. DOP mantiene las tres referencias en uno y de solo lectura. **Financial**, **reporting**, **contratos** y PostgreSQL. Son referencias informativas; no se inventa una regla para elegir compra/venta en la conversión. |
+| 4.1.1 | Configurar compra y venta en Administración → Tasas | Implementado; comprobación aislada PASS | `ConnectedExchangeRates.tsx` y servidor: `purchaseRate`/`saleRate` persistidas e históricas, separadas de `rate`, la tasa operativa de remesas. En el editor, DOP mantiene las tres referencias en uno y de solo lectura; esto no completa compra/venta ausentes en la tabla ni en históricos. **Financial**, **reporting**, **contratos** y PostgreSQL. Son referencias informativas; no se inventa una regla para elegir compra/venta en la conversión. |
 | 4.1.2 | Botón para administrar los bancos usados por otros formularios | Implementado; comprobación aislada PASS | Administración → Bancos en `App.tsx` y `ConnectedBanks.tsx`; `/api/bancos` permite alta, edición y activación/inactivación, conservando referencias históricas. Caso Bancos de **shell** y **contratos**. |
 | 4.2.1 | Botón de generación secuencial ascendente de código de cliente | Implementado; comprobación aislada PASS | `ClientDataDialog` y `client-identities.ts`: `/api/clientes/sugerencias` reserva una secuencia en el servidor; ambos botones reutilizan una reserva por formulario. **Shell**, **contratos** y concurrencia PostgreSQL. En edición con identificación interna permanente se deshabilita generar otro código reservado; la edición manual permanece disponible. La reserva consumida se retira del registro local y de la actualización de ubicación, incluso si falla la recarga tras el alta; regresión comprobada por **shell**. |
 | 4.2.2 | Botón de generación secuencial ascendente de identificación de cliente | Implementado; comprobación aislada PASS | Se interpreta como identificación interna de CyP (`internalIdentification`), separada del UUID y del documento legal obligatorio. El servidor asigna la reserva al guardar y conserva una identificación interna permanente; clientes antiguos pueden recibirla una vez. **Shell**, **contratos** y PostgreSQL. No se fabrica cédula/pasaporte. |
 | 5.1 | Botón Cuadre del día abre la pantalla correcta | Implementado; comprobación aislada PASS | Dashboard de `App.tsx`: abre Cuadres Diarios mediante navegación MDI. Caso Dashboard de **shell**. |
 | 5.2 | Espacio para logo del cliente en Dashboard | Implementado; comprobación aislada PASS | `App.tsx`, `components.tsx` y configuración `companyLogoDataUrl`: logo PNG/JPEG/WebP opcional, máximo 24 KiB de cadena codificada (archivo aproximadamente 18 KiB), con CyP por defecto. **Shell** comprueba guardado, presentación y rechazo por tamaño. Gamera se identifica como soporte, sin atribuirle la marca del cliente. |
 | 5.3 | Destacar mejor los módulos del panel principal | Implementado; comprobación aislada PASS | `App.tsx` y `styles.css`: grupos, estado seleccionado y accesos centrales más visibles; conserva las funciones MDI. Caso Dashboard de **shell**. |
-| 5.4 | Módulo de soporte técnico en el panel izquierdo | Implementado; comprobación aislada PASS | Acceso Soporte Técnico y pantalla informativa en `App.tsx`; **shell** comprueba apertura. No envía mensajes a terceros. |
+| 5.4 | Módulo de soporte técnico en el panel izquierdo | Implementado; comprobación aislada PASS | Acceso Soporte Técnico y pantalla informativa en `App.tsx`; **shell** comprueba la visibilidad del botón. La apertura de la guía se observó públicamente el 10 de octubre en `70909a3` (antes del PR21), sin escrituras. No envía mensajes a terceros. |
 | 5.5 | Herramienta para cambiar la clave propia | Implementado; comprobación aislada PASS | `OwnPasswordDialog` de `App.tsx` envía clave actual y nueva a `/api/usuarios/:id/clave`; el servidor exige la actual y revoca sesiones al guardar. **Shell** usa una API/sesión sintética separada y comprueba rechazo de la anterior, cierre de sesión e ingreso con la nueva; **contratos** cubre cuentas iniciales. |
 | 5.6 | Entrada vacía en el documento | Sin requisito | Se conserva el ID; no se crea una función para un texto ausente. |
 | 6.1 | Color consistente o mayor visibilidad de iconos | Implementado; comprobación aislada PASS | SVG y contraste de barras en `App.tsx`, `components.tsx` y `styles.css`; **shell** comprueba iconos visibles. Capturas de recibo y detalle de entrega inspeccionadas visualmente; no es una auditoría exhaustiva de todos los iconos del sistema. |
@@ -145,7 +145,7 @@ Comprobaciones aisladas ejecutadas durante este turno:
 
 - `pnpm --filter @cyp/server exec tsx --test --test-concurrency=1 ../client-admin/test/october-nine-shell-ui.test.ts`:
   **9/9 PASS**, ocho casos funcionales y su contenedor, sin omitidos. Usa el App
-  y estilos reales: Dashboard/Cuadres/Soporte, catálogo de bancos, logo y nota
+  y estilos reales: Dashboard/Cuadres y botón de Soporte, catálogo de bancos, logo y nota
   literal al pie, reserva de cliente y documento legal separado, Entregas de
   oficina y doble clic, barras izquierdas y denominaciones, Cobros con
   banco/referencia/nota y las dos opciones de impresión, cambio de clave propia.
@@ -169,10 +169,10 @@ Comprobaciones aisladas ejecutadas durante este turno:
 - `app/client-admin/test/october-nine-financial-ui.test.ts`: **5/5 PASS**, cuatro
   casos y su contenedor, sin omitidos. Compra/venta persisten tras perder el
   reconocimiento de una escritura exitosa y el reintento conserva una sola
-  operación; DOP muestra tres referencias de uno de solo lectura; Cuadres filtra
+  operación; el editor DOP muestra tres referencias de uno de solo lectura; Cuadres filtra
   e imprime DOP/USD/EUR por separado; Remesas consulta tasas centrales y busca
   Recibos por identificación congelada, abre detalle con doble clic e imprime
-  total recibido y pie sin desglose de comisión. Recibo
+  total pagado por el remitente, incluida la comisión, y pie sin desglose de comisión. Recibo
   `%TEMP%/cyp-october-financial-ui-zzcVnR/report.json`:
   MemoryStore, navegador nuevo, localhost, cero errores de página y un origen
   del inyector bloqueado. El propio recibo declara impresión física no probada.
@@ -275,3 +275,23 @@ Referencia: [Acceso a facturación de GitHub](https://docs.github.com/en/billing
   El gate local pasó; CI no inició por el bloqueo de facturación. La publicación
   se acredita mediante el estado del PR y el recibo de deployment, y la revisión
   pública por sus observaciones sin escritura en registros compartidos.
+
+### Verificación pública posterior: 10 de octubre
+
+- PR20 y PR21 fusionados. La fuente de la aplicación publicada es
+  `9b56fca765b7213ff1370ff4845880b47e1a54db`. Render confirmó el despliegue
+  `dep-db576um7bikc7396g3p0` a las 17:20:09 UTC, y la salud pública respondió
+  `status: ok`, `mode: demo`. Las migraciones 001–029 figuran rastreadas; el
+  arranque no seleccionó ni aplicó migraciones nuevas.
+- En el navegador integrado de Codex se envió una invitación nueva al formulario
+  después del guardado privado y despliegue, y abrió el Centro de operaciones.
+  Esto acredita el acceso con la configuración vigente, sin publicar su valor;
+  conservar la sesión de Administración no prueba un ingreso nuevo con contraseña.
+- PR21 añadió dos pruebas de reapertura de FileStore y Fastify, dentro del mismo
+  proceso Node, además de nueve pruebas focalizadas de invitación y cuentas:
+  11 aprobadas, ninguna fallida ni omitida. No equivalen a reiniciar el proceso,
+  PostgreSQL o Render. El servidor también pasó tipado y compilación locales.
+  CI de PR21 no ejecutó pasos por el mismo bloqueo de facturación.
+- Continúan los tres requisitos externos: contrato de identidad física y
+  Obtener Datos de RRAA, porcentajes aprobados por Gerencia y prueba de impresión
+  física con Mayo. No se sustituyen por fixtures, porcentajes supuestos ni PDF.
