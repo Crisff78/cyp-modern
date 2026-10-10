@@ -32,8 +32,9 @@ por un estado anterior de React. Se conservan validaciones, límites y roles.
 Usar un recibo ficticio de un entorno de prueba aislado; no crear una operación
 real únicamente para probar la impresora.
 
-1. Abrir la vista de impresión del recibo y verificar importe, moneda, comisión,
-   detalle y referencia antes de imprimir.
+1. Abrir la vista de impresión del recibo y verificar importe, moneda, detalle y
+   referencia antes de imprimir. En remesas, comprobar el total pagado por el
+   remitente, incluida la comisión; el recibo omite su desglose.
 2. Seleccionar «Papel de la impresora (A4 / Carta / otro)» o un ancho térmico de
    58/80 mm en el recibo. Elegir la impresora habitual y el mismo papel en el
    diálogo del navegador; para probar salida física, no elegir «Guardar como PDF».
@@ -58,17 +59,18 @@ guarda correctamente. Esta comprobación manual queda cerrada según su reporte.
 No tiene impresora en casa: Mayo realizará posteriormente la prueba de salida
 física y legibilidad. La impresión por el diálogo nativo permanece disponible.
 
-## Porcentaje comercial del gestor
+## Porcentajes comerciales
 
 La regla de reparto está implementada: el gestor recibe su porcentaje del monto
 final en moneda de destino y la empresa recibe el resto de la comisión total.
-Gerencia debe indicar el porcentaje real; RRAA no proporciona ese dato.
+Gerencia debe aprobar el porcentaje total de la transacción y el porcentaje del
+gestor; RRAA no proporciona esos datos.
 
 El administrador lo configura en Remesas → Tasas → Reparto de comisiones. El
-valor inicial es 0%; no equivale a una tasa comercial aprobada. Los cambios se
-aplican a nuevas remesas y las anteriores conservan el reparto guardado. Las
+valor inicial de ambos es 0%; no equivale a una tasa comercial aprobada. Los
+cambios se aplican a nuevas remesas y las anteriores conservan el reparto guardado. Las
 canceladas no incrementan el saldo vigente del gestor.
 
-Gerencia confirmó que todavía no ha definido el porcentaje: se conserva 0% y se
-actualizará desde este panel cuando comunique el valor. No se cambian saldos ni
+No se han recibido porcentajes comerciales aprobados; se conservan ambos en 0%
+hasta recibirlos. Se actualizarán desde este panel, sin cambiar saldos ni
 repartos anteriores para anticipar esa decisión.
