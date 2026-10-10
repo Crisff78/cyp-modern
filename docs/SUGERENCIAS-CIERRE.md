@@ -1,5 +1,13 @@
 # Cierre de las cuatro sugerencias parciales
 
+Este cierre documenta las correcciones del 5 y 6 de octubre y sus comprobaciones
+de entonces. La revisión del 9 de octubre se mantiene en
+[OCTUBRE-09-CORRECCIONES.md](OCTUBRE-09-CORRECCIONES.md), sin convertir los
+resultados históricos en una ejecución nueva. El reparto automático de nuevas
+remesas se rige por [COMISIONES-CONFIGURACION.md](COMISIONES-CONFIGURACION.md);
+las anotaciones manuales anteriores permanecen separadas. La validación vigente
+de estaciones sigue [RRAA-ESTACIONES.md](RRAA-ESTACIONES.md).
+
 ## Contactos visibles al registrar remesas (4.2) — 6 de octubre de 2026
 
 Al seleccionar remitente y destinatario, el formulario muestra su teléfono,
@@ -60,7 +68,10 @@ un número en texto libre produce candidatos, nunca una identidad automática.
 
 La tasa cruzada es una presentación de las tasas de la cotización, no una fórmula
 nueva. Principal, comisión, importe recibido y moneda permanecen calculados y
-validados por el servidor. Las comisiones del gestor continúan siendo manuales.
+validados por el servidor. En aquel cierre las comisiones del gestor eran manuales.
+Desde la revisión del 9 de octubre, las remesas nuevas calculan el reparto desde
+la configuración central, sobre el importe final de destino. Las anotaciones
+manuales históricas no se convierten ni recalculan retroactivamente.
 
 ## Verificación y límites
 
@@ -79,7 +90,9 @@ Se conservan hash, permisos, invalidación de sesiones e idempotencia.
   la impresión de 58/80 mm y las reglas existentes de idempotencia.
 - TestSprite e impresión física quedan excluidos. GPS físico confirmado por
   el usuario, sin nueva prueba del asistente. Punto 2.2 conserva el ID de estación
-  de solo lectura; no añade identificación física ni emisión de licencias.
+  de solo lectura. La integración posterior consulta VALSTAT antes de guardar,
+  activar o asociar nuevas estaciones; no identifica automáticamente el equipo
+  físico ni emite licencias fuera del contrato del proveedor.
 - La revisión y los casos automatizados no certifican el 100 % de la aplicación
   ni garantizan la ausencia de otros errores.
 

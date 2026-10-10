@@ -96,7 +96,8 @@ import { hasUnresolvedMovementRequest, pendingMovementDraft, useMovementRequest 
 import { businessDate, businessTimestamp, collectionCash, currencyCode, currencyName, financeMatches, nativeMoney, nativeTotals, obligationReceived, decimalProductCents, centsInput } from "./adminFinance";
 import { buildDepositComponents, confirmedDepositMatches, depositCashTotal, depositComponentsMatch, depositMethodLabel, nonCashDepositAmount, type NonCashDepositLine } from "./depositComponents";
 import { useChargeImportRequest } from "./useChargeImportRequest";
-import { decimalCents, formatMoney } from "../../shared/remittances/output";
+import { decimalCents, formatMoney, printSections, type OutputSection } from "../../shared/remittances/output";
+import { currentOperationalWeek } from "../../shared/operationalWeek";
 import { INPUT_LIMITS, assertCentsLimit, validateText, validatePhone, validateGeneralPhone, validateEmail } from "../../shared/inputRules";
 import { encodeCsvCell } from "../../shared/csv";
 import { GeoMap, type GeoPoint } from "./GeoMap";
@@ -106,6 +107,7 @@ import { ConnectedSettlements } from "./ConnectedSettlements";
 import { ConnectedLegacyReports } from "./ConnectedLegacyReports";
 import { ConnectedAdminTools, isConnectedAdminTool } from "./ConnectedAdminTools";
 import { ConnectedExchangeRates } from "./ConnectedExchangeRates";
+import { ConnectedBanks, type Bank } from "./ConnectedBanks";
 import { ThemeToggle } from "./ThemeToggle";
 import { LoginPasswordInput, PasswordManagerHint } from "../../shared/LoginPasswordInput";
 import { loginCredentials } from "../../shared/loginCredentials";
@@ -245,6 +247,7 @@ const pageTitles: Record<Page, string> = {
   servicesProducts: "Servicios y Productos",
   delayReasons: "Motivos de Atraso",
   exchangeRates: "Tasas de Cambio",
+  banks: "Bancos",
   remittances: "Envíos de Dinero",
   sessions: "Listado de Sesiones",
   traces: "Trazas del Sistema",
@@ -485,6 +488,7 @@ const codifierTiles: ControlPanelTile[] = [
   { label: "Servicios y Prods.", page: "servicesProducts", navKey: "control-services", icon: ListFilter },
   { label: "Sesiones", page: "sessions", navKey: "control-sessions", icon: Activity },
   { label: "Tasas de cambio", page: "exchangeRates", navKey: "control-exchange", icon: RefreshCw },
+  { label: "Bancos", page: "banks", navKey: "control-banks", icon: Building2 },
   { label: "Trazas", page: "traces", navKey: "control-traces", icon: ClipboardCheck },
   { label: "Usuarios", page: "users", navKey: "control-users", icon: ShieldCheck },
   { label: "Zonas", page: "zones", navKey: "control-zones", icon: MapPinned },
@@ -549,8 +553,8 @@ function ReportesLauncher({ onLaunch }: Readonly<{ onLaunch: (page: ReportPageId
 }
 
 function CompactReportLayout({ page, title, snapshot, onRefresh }: Readonly<{ page: ReportPageId; title: string; snapshot: Snapshot; onRefresh: () => void }>) {
-  const [startDate, setStartDate] = useState(() => `${snapshot.businessDate.slice(0, 7)}-01`);
-  const [endDate, setEndDate] = useState(snapshot.businessDate);
+  const [startDate, setStartDate] = useState(() => currentOperationalWeek().from);
+  const [endDate, setEndDate] = useState(() => currentOperationalWeek().to);
   const [currency, setCurrency] = useState("Peso Dominicano");
   const [routeId, setRouteId] = useState("");
   const [zone, setZone] = useState("");
@@ -1195,8 +1199,8 @@ function ReportOutputActions({ title, table }: Readonly<{ title: string; table: 
 }
 
 function PendingClientChargesReport({ snapshot, onRefresh }: Readonly<{ snapshot: Snapshot; onRefresh: () => void }>) {
-  const [startDate, setStartDate] = useState(() => `${snapshot.businessDate.slice(0, 7)}-01`);
-  const [endDate, setEndDate] = useState(snapshot.businessDate);
+  const [startDate, setStartDate] = useState(() => currentOperationalWeek().from);
+  const [endDate, setEndDate] = useState(() => currentOperationalWeek().to);
   const [currency, setCurrency] = useState("Peso Dominicano");
   const [refreshCount, setRefreshCount] = useState(0);
   const [refreshStatus, setRefreshStatus] = useState("");
@@ -1563,8 +1567,8 @@ function CollectorRoutesLegacyDialog({ collector, snapshot, onClose }: Readonly<
 function CollectorCashBalancesDialog({ collector, onClose }: Readonly<{ collector: Collector; onClose: () => void }>) {
   const today = new Date().toISOString().slice(0, 10);
   const [currency, setCurrency] = useState("Peso Dominicano");
-  const [fromDate, setFromDate] = useState(today);
-  const [toDate, setToDate] = useState(today);
+  const [fromDate, setFromDate] = useState(() => currentOperationalWeek().from);
+  const [toDate, setToDate] = useState(() => currentOperationalWeek().to);
   const [rows, setRows] = useState<CollectorCashBalanceRow[]>(() => buildCollectorBalanceRows(collector, today, today));
   const refreshBalances = () => {
     setRows(buildCollectorBalanceRows(collector, fromDate, toDate));
@@ -2095,8 +2099,8 @@ function SessionsLegacyView({ snapshot }: Readonly<{ snapshot: Snapshot }>): Rea
   const [filtersVisible, setFiltersVisible] = useState(true);
   const [filterMode, setFilterMode] = useState<"all" | "user">("all");
   const [selectedUser, setSelectedUser] = useState(sessions[0]?.user ?? "");
-  const [fromDate, setFromDate] = useState("2026-09-18");
-  const [toDate, setToDate] = useState("2026-09-18");
+  const [fromDate, setFromDate] = useState(() => currentOperationalWeek().from);
+  const [toDate, setToDate] = useState(() => currentOperationalWeek().to);
   const [statusFilter, setStatusFilter] = useState("Todas");
   const [confirmClose, setConfirmClose] = useState(false);
   const selectedSession = sessions.find((session) => session.id === selectedSessionId) ?? sessions[0];
@@ -2172,6 +2176,7 @@ type ClientLegacyRecord = {
   id: string;
   code: string;
   identification: string;
+  internalIdentification?: string;
   name: string;
   alias: string;
   address: string;
@@ -2187,7 +2192,7 @@ type ClientLegacyRecord = {
   lng?: number;
 };
 
-type ClientLegacyDraft = Omit<ClientLegacyRecord, "id" | "active"> & { active: boolean };
+type ClientLegacyDraft = Omit<ClientLegacyRecord, "id" | "active"> & { active: boolean; reservationId?: string };
 
 type ClientFilterMode = "all" | "identification" | "name" | "zone" | "route" | "search";
 type ClientFinanceTab = "Cargos" | "Cargos Rec." | "Cobros" | "Descargos" | "Descargos Rec." | "Pagos";
@@ -2199,6 +2204,7 @@ const clientRecordFromSnapshot = (client: Client): ClientLegacyRecord => ({
   id: client.id,
   code: client.code,
   identification: client.identification ?? "",
+  internalIdentification: client.internalIdentification,
   name: client.name,
   alias: client.alias ?? "",
   address: client.address,
@@ -2230,6 +2236,7 @@ export function ClientDataDialog({ client, zones, routes, defaultCode = "", onCl
     preferredCurrency: client?.preferredCurrency ?? "DOP",
     code: client?.code ?? defaultCode,
     identification: client?.identification ?? "",
+    ...(client?.internalIdentification ? { internalIdentification: client.internalIdentification } : {}),
     name: client?.name ?? "",
     alias: client?.alias ?? "",
     address: client?.address ?? "",
@@ -2244,6 +2251,20 @@ export function ClientDataDialog({ client, zones, routes, defaultCode = "", onCl
   });
   const [error, setError] = useState("");
   const zoneOptions = ["No Definida", ...zones.filter((zone) => zone !== "No Definida")];
+  const [generating, setGenerating] = useState(false);
+  const reservation = useRef<{ reservationId: string; code: string; internalIdentification: string } | null>(null);
+  const generationBusy = useRef(false);
+  const generate = async (field: "code" | "internalIdentification") => {
+    if (client?.internalIdentification || generationBusy.current) return;
+    generationBusy.current = true; setGenerating(true); setError("");
+    try {
+      const suggestion = reservation.current ?? await remittancesApi<{ reservationId: string; code: string; internalIdentification: string }>("/clientes/sugerencias", { method: "POST", body: "{}" });
+      if (!suggestion.reservationId || !suggestion.code || !suggestion.internalIdentification) throw new Error("El servidor no confirmó los identificadores. Vuelve a solicitar la reserva.");
+      reservation.current = suggestion;
+      setDraft((current) => ({ ...current, reservationId: client?.internalIdentification ? undefined : suggestion.reservationId, [field]: suggestion[field] }));
+    } catch (failure) { setError(failure instanceof Error ? failure.message : "No se pudo generar el identificador."); }
+    finally { generationBusy.current = false; setGenerating(false); }
+  };
   const update = (field: keyof ClientLegacyDraft, value: string | boolean) => setDraft((current) => ({ ...current, [field]: value }));
   const usePhoneAsCode = () => {
     if (client) return;
@@ -2288,7 +2309,8 @@ export function ClientDataDialog({ client, zones, routes, defaultCode = "", onCl
   return (
     <LegacyDialog title="Datos del Cliente..." onClose={onClose} className="client-form-dialog">
       <form className="client-form" onSubmit={submit}>
-        <label className="client-form-row"><span>Código:</span><input autoFocus maxLength={INPUT_LIMITS.id} value={draft.code} onChange={(event) => update("code", event.target.value)} /></label>
+        <div className="client-form-row client-generated-field"><label htmlFor="client-generated-code">Código:</label><input id="client-generated-code" autoFocus maxLength={INPUT_LIMITS.id} value={draft.code} onChange={(event) => update("code", event.target.value)} /><button type="button" disabled={generating || Boolean(client?.internalIdentification)} title={client?.internalIdentification ? "El cliente ya tiene identificación interna. Puedes modificar su código manualmente." : "Reservar un código secuencial para este cliente"} onClick={() => void generate("code")}>Generar código</button></div>
+        <div className="client-form-row client-generated-field"><label htmlFor="client-internal-identification">Identificación interna:</label><input id="client-internal-identification" value={draft.internalIdentification ?? ""} readOnly placeholder="Se asignará al guardar" />{!client?.internalIdentification && <button type="button" disabled={generating} onClick={() => void generate("internalIdentification")}>Generar identificación</button>}</div>
         <label className="client-form-row"><span>Cédula / pasaporte:</span><input required={!client} maxLength={80} placeholder="Número del documento" value={draft.identification} onChange={(event) => update("identification", event.target.value)} /></label>
         <label className="client-form-row"><span>Cliente:</span><input maxLength={INPUT_LIMITS.name} value={draft.name} onChange={(event) => update("name", event.target.value)} /></label>
         <label className="client-form-row"><span>Conocido por:</span><input maxLength={INPUT_LIMITS.name} value={draft.alias} onChange={(event) => update("alias", event.target.value)} /></label>
@@ -2305,7 +2327,7 @@ export function ClientDataDialog({ client, zones, routes, defaultCode = "", onCl
         <label className="client-form-row"><span>Nota:</span><input maxLength={INPUT_LIMITS.note} value={draft.note} onChange={(event) => update("note", event.target.value)} /></label>
         <button type="button" title="Completa celular y nota únicamente si están vacíos." disabled={!draft.phone.trim()} onClick={() => setDraft(copyPhoneIntoEmptyFields)}>Copiar teléfono a campos vacíos</button>
         {!client && <button type="button" disabled={!draft.phone.trim()} onClick={usePhoneAsCode}>Usar teléfono como código</button>}
-        <div className="legacy-dialog-actions"><button type="submit">oK</button><button type="button" onClick={onClose}>Cancelar</button></div>
+        <div className="legacy-dialog-actions"><button type="submit" disabled={generating}>oK</button><button type="button" disabled={generating} onClick={onClose}>Cancelar</button></div>
       </form>
       {error && <LegacyAlertDialog message={error} onClose={() => setError("")} />}
     </LegacyDialog>
@@ -2326,8 +2348,8 @@ function ClientFinanceTable({ columns, rows }: Readonly<{ columns: readonly stri
 function ClientFinancialDialog({ client, snapshot, onClose, onRefresh }: Readonly<{ client: ClientLegacyRecord; snapshot: Snapshot; onClose: () => void; onRefresh: () => Promise<void> }>) {
   const [tab, setTab] = useState<ClientFinanceTab>("Cargos");
   const [currency, setCurrency] = useState("Peso Dominicano");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  const [fromDate, setFromDate] = useState(() => currentOperationalWeek().from);
+  const [toDate, setToDate] = useState(() => currentOperationalWeek().to);
   const [refreshing, setRefreshing] = useState(false);
   const matches = (date: string, itemCurrency?: string) => financeMatches(date, itemCurrency, fromDate, toDate, currency);
   const clientCharges = snapshot.charges.filter((charge) => charge.clientId === client.id && matches(charge.dueDate, charge.currency));
@@ -2444,11 +2466,11 @@ function ClientMachineFormDialog({ actorId, clientId, machine, defaultNumber, on
 }
 
 function ClientMachineLogsDialog({ client, machines, logs, onClose, onRefresh }: Readonly<{ client: ClientLegacyRecord; machines: readonly ClientMachine[]; logs: readonly ClientMachineLog[]; onClose: () => void; onRefresh: () => Promise<void> }>) {
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  const [fromDate, setFromDate] = useState(() => currentOperationalWeek().from);
+  const [toDate, setToDate] = useState(() => currentOperationalWeek().to);
   const visibleLogs = logs.filter((log) => (!fromDate || businessDate(log.registeredAt) >= fromDate) && (!toDate || businessDate(log.registeredAt) <= toDate));
   const rows = visibleLogs.map((log) => [businessTimestamp(log.registeredAt), machines.find((machine) => machine.id === log.machineId)?.number ?? "", log.previousEntry, log.entry, log.entryDifference, log.previousExit, log.exit, log.exitDifference, log.difference, log.currency, log.amount.toFixed(2), `${log.percentage}%`, log.charge.toFixed(2), log.modifiedAt ? businessTimestamp(log.modifiedAt) : "", log.cancelledAt ? businessTimestamp(log.cancelledAt) : ""]);
-  return <LegacyDialog title="Registros de Máquina Tragamonedas..." onClose={onClose} className="client-machine-logs-dialog"><div className="client-machine-logs"><div className="client-machine-log-filters"><label>Fecha Inicial:<input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} /></label><label>Fecha Final:<input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} /></label><button type="button" className="legacy-refresh-button" onClick={() => { setFromDate(""); setToDate(""); void onRefresh(); }}>Refrescar</button><button type="button" onClick={onClose}>Cancelar</button></div><div className="client-machine-log-grid"><LegacyDenseTable columns={["Registro", "Nro.", "Ent. Ant.", "Entrada", "Dif_Entr...", "Sal. Ant.", "Salida", "Dif_Sali...", "Diferencia", "Mon.", "Importe", "Porc.", "Cargo", "Modificación", "Cancelación"]} rows={rows} /></div><ClientFinancePager /></div><span className="sr-only">Registros de {client.name}</span></LegacyDialog>;
+  return <LegacyDialog title="Registros de Máquina Tragamonedas..." onClose={onClose} className="client-machine-logs-dialog"><div className="client-machine-logs"><div className="client-machine-log-filters"><label>Fecha Inicial:<input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} /></label><label>Fecha Final:<input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} /></label><button type="button" className="legacy-refresh-button" onClick={() => { setFromDate(currentOperationalWeek().from); setToDate(currentOperationalWeek().to); void onRefresh(); }}>Refrescar</button><button type="button" onClick={onClose}>Cancelar</button></div><div className="client-machine-log-grid"><LegacyDenseTable columns={["Registro", "Nro.", "Ent. Ant.", "Entrada", "Dif_Entr...", "Sal. Ant.", "Salida", "Dif_Sali...", "Diferencia", "Mon.", "Importe", "Porc.", "Cargo", "Modificación", "Cancelación"]} rows={rows} /></div><ClientFinancePager /></div><span className="sr-only">Registros de {client.name}</span></LegacyDialog>;
 }
 
 function ClientMachinesDialog({ client, actorId, onClose }: Readonly<{ client: ClientLegacyRecord; actorId: string; onClose: () => void }>) {
@@ -2576,6 +2598,7 @@ function ClientsLegacyView({ snapshot, actorId, onRefresh }: Readonly<{ snapshot
     alias: draft.alias, address: draft.address, sector: draft.zone === "No Definida" ? draft.location : draft.zone,
     routeId: draft.routeId, phone: draft.phone, cellular: draft.cellular, email: draft.email, note: draft.note,
     preferredCurrency: draft.preferredCurrency,
+    ...(draft.reservationId ? { reservationId: draft.reservationId } : {}),
     ...(coordinates ? { lat: coordinates.lat, lng: coordinates.lng } : draft.lat !== undefined && draft.lng !== undefined ? { lat: draft.lat, lng: draft.lng } : {}),
   });
   const saveClient = async (draft: ClientLegacyDraft) => {
@@ -2586,7 +2609,8 @@ function ClientsLegacyView({ snapshot, actorId, onRefresh }: Readonly<{ snapshot
       const saved = await remittancesApi<Client>(isEdit ? `/clientes/${encodeURIComponent(selectedClient.id)}` : "/clientes", {
         method: "POST", body: JSON.stringify(clientPayload(draft, isEdit && selectedClient.lat !== undefined && selectedClient.lng !== undefined ? { lat: selectedClient.lat, lng: selectedClient.lng } : undefined)),
       });
-      const record = { ...clientRecordFromSnapshot(saved), ...draft, id: saved.id, lat: saved.lat, lng: saved.lng, active: isEdit ? selectedClient.active : true };
+      const { reservationId: _consumedReservation, ...savedDraft } = draft;
+      const record = { ...clientRecordFromSnapshot(saved), ...savedDraft, id: saved.id, internalIdentification: saved.internalIdentification, lat: saved.lat, lng: saved.lng, active: isEdit ? selectedClient.active : true };
       invalidateSnapshotReads();
       setClientsData((current) => isEdit ? current.map((client) => client.id === record.id ? record : client) : [...current, record]);
       if (version === clientDialogVersion.current) { setSelectedClientId(record.id); closeClientForm(); }
@@ -2600,7 +2624,7 @@ function ClientsLegacyView({ snapshot, actorId, onRefresh }: Readonly<{ snapshot
     if (!selectedClient) return false;
     const version = mapDialogVersion.current;
     invalidateSnapshotReads();
-    const payload = clientPayload({ ...selectedClient, active: selectedClient.active }, { lat, lng });
+    const payload = clientPayload({ ...selectedClient, reservationId: undefined, active: selectedClient.active }, { lat, lng });
     try {
       const saved = await remittancesApi<Client>(`/clientes/${encodeURIComponent(selectedClient.id)}`, {
         method: "POST", body: JSON.stringify(payload),
@@ -2729,8 +2753,8 @@ function AuthorizationRequestsLegacyView({ snapshot }: Readonly<{ snapshot: Snap
   const [requests, setRequests] = useState<AuthorizationRequestRecord[]>(() => defaultAuthorizationRequests(snapshot));
   const [selectedRequestId, setSelectedRequestId] = useState(requests[0]?.id ?? "");
   const [filtersVisible, setFiltersVisible] = useState(true);
-  const [fromDate, setFromDate] = useState("2026-09-18");
-  const [toDate, setToDate] = useState("2026-09-18");
+  const [fromDate, setFromDate] = useState(() => currentOperationalWeek().from);
+  const [toDate, setToDate] = useState(() => currentOperationalWeek().to);
   const [statusFilter, setStatusFilter] = useState("Todas");
   const [clientFilter, setClientFilter] = useState("");
   const [formMode, setFormMode] = useState<"new" | "edit" | null>(null);
@@ -3251,9 +3275,9 @@ function TracesLegacyView(): ReactNode {
   const [traces, setTraces] = useState<TraceRecord[]>(defaultTraceRecords);
   const [selectedTraceId, setSelectedTraceId] = useState(defaultTraceRecords[0]?.id ?? "");
   const [filtersVisible, setFiltersVisible] = useState(true);
-  const [fromDate, setFromDate] = useState("2026-09-18");
+  const [fromDate, setFromDate] = useState(() => currentOperationalWeek().from);
   const [fromTime, setFromTime] = useState("00:00");
-  const [toDate, setToDate] = useState("2026-09-18");
+  const [toDate, setToDate] = useState(() => currentOperationalWeek().to);
   const [toTime, setToTime] = useState("23:59");
   const [searchTerm, setSearchTerm] = useState("");
   const visibleTraces = traces.filter((trace) => trace.trace.toLowerCase().includes(searchTerm.trim().toLowerCase()));
@@ -3953,13 +3977,14 @@ function StationsLegacyView(): ReactNode {
 }
 
 const SYSTEM_CONFIG_DEFAULTS: Record<string, string | number | boolean> = {
-  "general.empresa": "Gamera Software - Cobros y Pagos",
+  "general.empresa": "Cobros y Pagos",
   "general.direccion": "Santiago de los Caballeros, República Dominicana",
   "general.telefono": "809-555-0100",
   "general.correo": "admin@cyp.local",
   "general.fax": "809-555-0199",
   "general.licencia": "CYP-DEMO-2026-ADM001",
   "general.moneda": "Peso Dominicano",
+  "companyLogoDataUrl": "",
   "clientes.modificarCodigo": true,
   "clientes.requerirIdentificacion": true,
   "clientes.identificacionUnica": true,
@@ -3991,6 +4016,7 @@ const SYSTEM_CONFIG_DEFAULTS: Record<string, string | number | boolean> = {
   "impresion.listadoUrl": "",
   "impresion.listadoPuerto": "",
   "impresion.listadoNombre": "",
+  "receiptFooterNote": "*** REVISE SU RECIBO ***",
   "interfaz.monitorInicio": true,
   "gps.latitud": "19.4499607086182",
   "gps.longitud": "-70.68701171875",
@@ -4002,6 +4028,8 @@ const CONFIG_TEXT_LIMITS: Record<string, number> = {
   "cargos.servicioTm": 160, "cargos.conceptoTm": 160,
   "impresion.url": 500, "impresion.listadoUrl": 500,
   "impresion.nombre": 160, "impresion.listadoNombre": 160,
+  "receiptFooterNote": 2000,
+  "companyLogoDataUrl": 24_576,
 };
 
 function validateSystemConfigInputs(config: Record<string, string | number | boolean>) {
@@ -4009,11 +4037,13 @@ function validateSystemConfigInputs(config: Record<string, string | number | boo
     if (!Object.hasOwn(config, key)) continue;
     if (typeof config[key] !== "string") throw new Error(`${key}: escribe un texto.`);
     if ((config[key] as string).length > maximum) throw new Error(`${key}: usa como máximo ${maximum} caracteres.`);
-    validateText(config[key] as string, key, maximum);
+    validateText(config[key] as string, key, maximum, { multiline: key === "receiptFooterNote" });
   }
   validateGeneralPhone(String(config["general.telefono"] ?? ""), "Teléfono");
   validateGeneralPhone(String(config["general.fax"] ?? ""), "Fax");
   validateEmail(String(config["general.correo"] ?? ""));
+  const logo = String(config.companyLogoDataUrl ?? "");
+  if (logo && !/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(logo)) throw new Error("El logo debe ser una imagen PNG, JPEG o WebP cargada desde un archivo.");
   for (const [key, initial] of Object.entries(SYSTEM_CONFIG_DEFAULTS)) {
     if (typeof initial === "boolean" && Object.hasOwn(config, key) && typeof config[key] !== "boolean") throw new Error(`${key}: selecciona verdadero o falso.`);
   }
@@ -4089,6 +4119,7 @@ function LegacyCodifierView({ page, snapshot, onRefresh, onAccount }: Readonly<{
       });
       if (generation !== cfgGeneration.current) return;
       setSavedCfg(config);
+      window.dispatchEvent(new Event("cyp-company-logo-updated"));
       toast.success("Configuración guardada");
     } catch (error) {
       if (generation !== cfgGeneration.current) return;
@@ -4132,6 +4163,19 @@ function LegacyCodifierView({ page, snapshot, onRefresh, onAccount }: Readonly<{
     });
     const chk = (key: string) => (value: boolean) =>
       setSystemCfg((current) => ({ ...current, [key]: value }));
+    const loadCompanyLogo = (file?: File) => {
+      if (!file || cfgLocked) return;
+      if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) { toast.error("Selecciona una imagen PNG, JPEG o WebP."); return; }
+      if (file.size > 18 * 1024) { toast.error("El logo debe ocupar como máximo 24 KiB al codificarse; usa un archivo de aproximadamente 18 KiB o menos."); return; }
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result !== "string") return;
+        if (reader.result.length > 24_576) { toast.error("El logo supera los 24 KiB de imagen codificada; reduce un poco el archivo e inténtalo de nuevo."); return; }
+        setSystemCfg((current) => ({ ...current, companyLogoDataUrl: String(reader.result) }));
+      };
+      reader.onerror = () => toast.error("No se pudo leer la imagen del logo.");
+      reader.readAsDataURL(file);
+    };
     return (
       <div className="legacy-config-layout">
         <div className="legacy-config-main">
@@ -4144,6 +4188,7 @@ function LegacyCodifierView({ page, snapshot, onRefresh, onAccount }: Readonly<{
             <fieldset className="legacy-config-fieldset">
               <legend>General</legend>
               <label>Empresa:<input {...fld("general.empresa")} /></label>
+              <div className="company-logo-setting"><label>Logo de la empresa:<input type="file" accept="image/png,image/jpeg,image/webp" disabled={cfgLocked} onChange={(event) => { loadCompanyLogo(event.target.files?.[0]); event.target.value = ""; }} /></label><small>PNG, JPEG o WebP: máximo 24 KiB codificados, aproximadamente 18 KiB de archivo. Se guarda al confirmar la configuración.</small>{systemCfg.companyLogoDataUrl && <img src={String(systemCfg.companyLogoDataUrl)} alt="Vista previa del logo de la empresa" />}<button type="button" disabled={cfgLocked || !systemCfg.companyLogoDataUrl} onClick={() => setSystemCfg((current) => ({ ...current, companyLogoDataUrl: "" }))}>Usar logo CyP</button></div>
               <label>Dirección:<input {...fld("general.direccion")} /></label>
               <div className="legacy-config-row">
                 <label>Teléfono:<input {...fld("general.telefono")} /></label>
@@ -4229,6 +4274,7 @@ function LegacyCodifierView({ page, snapshot, onRefresh, onAccount }: Readonly<{
                       <label>Puerto:<input {...fld("impresion.puerto")} /></label>
                     </div>
                     <label>Nombre:<input {...fld("impresion.nombre")} /></label>
+                    <label>Nota al pie del recibo:<textarea rows={3} {...fld("receiptFooterNote")} /></label>
                   </div>
                 )}
               </fieldset>
@@ -4451,6 +4497,40 @@ function Login({
 let snapshotReadVersion = 0;
 const invalidateSnapshotReads = () => { snapshotReadVersion++; };
 
+function OwnPasswordDialog({ userId, onClose, onChanged, onSessionEnd }: Readonly<{ userId: string; onClose: () => void; onChanged: () => void; onSessionEnd: () => void }>) {
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
+  const [uncertain, setUncertain] = useState(false);
+  const [error, setError] = useState("");
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (inFlight.current || uncertain) return;
+    if (!currentPassword || Array.from(password).length < 3 || password.length > INPUT_LIMITS.password) { setError("Escribe tu clave actual y una nueva clave de al menos 3 caracteres."); return; }
+    if (password !== confirmation) { setError("La confirmación no coincide con tu nueva clave."); return; }
+    inFlight.current = true; setBusy(true); setError("");
+    try {
+      // Explicit key avoids retaining credentials in the API client's retry map.
+      const result = await remittancesApi<{ ok: boolean }>(`/usuarios/${encodeURIComponent(userId)}/clave`, { method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify({ currentPassword, password }) });
+      if (result?.ok !== true) { setUncertain(true); setError("No se confirmó el cambio. Cierra sesión y comprueba tu nueva clave antes de repetirlo."); return; }
+      setCurrentPassword(""); setPassword(""); setConfirmation(""); onChanged();
+    } catch (failure) {
+      const pending = Boolean((failure as { uncertain?: boolean }).uncertain);
+      setUncertain(pending);
+      setError(pending ? "No se confirmó el cambio. Cierra sesión y comprueba tu nueva clave antes de repetirlo." : failure instanceof Error ? failure.message : "No se pudo cambiar tu clave.");
+    } finally { inFlight.current = false; setBusy(false); }
+  };
+  return <LegacyDialog title="Cambiar mi clave..." className="legacy-password-dialog" onClose={() => { if (!busy) onClose(); }}><form className="legacy-user-form" onSubmit={submit}>
+    <label className="legacy-form-row"><span>Clave actual:</span><input type="password" autoFocus required disabled={busy || uncertain} autoComplete="current-password" maxLength={INPUT_LIMITS.password} value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} /></label>
+    <label className="legacy-form-row"><span>Nueva clave:</span><input type="password" required disabled={busy || uncertain} autoComplete="new-password" minLength={3} maxLength={INPUT_LIMITS.password} value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+    <label className="legacy-form-row"><span>Confirmación:</span><input type="password" required disabled={busy || uncertain} autoComplete="new-password" maxLength={INPUT_LIMITS.password} value={confirmation} onChange={(event) => setConfirmation(event.target.value)} /></label>
+    <small>Mínimo 3 caracteres. Al guardar, inicia sesión con la nueva clave.</small>{error && <p role="alert">{error}</p>}
+    <div className="legacy-dialog-actions centered">{uncertain ? <button type="button" onClick={onSessionEnd}>Cerrar sesión y comprobar</button> : <button type="submit" disabled={busy}>{busy ? "Guardando…" : "Guardar"}</button>}<button type="button" disabled={busy} onClick={onClose}>Cancelar</button></div>
+  </form></LegacyDialog>;
+}
+
 export default function App() {
   const [authenticated, setAuthenticated] = useState(!!getToken()),
     [user, setUser] = useState<User | null>(null),
@@ -4473,6 +4553,7 @@ export default function App() {
     [notificationsOpen, setNotificationsOpen] = useState(false),
     [helpOpen, setHelpOpen] = useState(false),
     [accountOpen, setAccountOpen] = useState(false),
+    [ownPasswordOpen, setOwnPasswordOpen] = useState(false),
     [activeNavKey, setActiveNavKey] = useState(""),
     [selectedCollector, setSelectedCollector] = useState<Collector | null>(
       null,
@@ -4497,6 +4578,7 @@ export default function App() {
     setSnapshot(null);
     setUser(null);
     setAccountOpen(false);
+    setOwnPasswordOpen(false);
     setMdiWindows([]);
     highestZIndex.current = 140;
   }, []);
@@ -4852,12 +4934,12 @@ export default function App() {
               </div>
               <button
                 className="nav-item help-button"
-                aria-label="Centro de ayuda"
-                title="Centro de ayuda"
+                aria-label="Soporte Técnico"
+                title="Soporte Técnico"
                 onClick={() => setHelpOpen(true)}
               >
                 <CircleHelp size={19} />
-                <span>Centro de ayuda</span>
+                <span>Soporte Técnico</span>
                 <ArrowUpRight size={15} />
               </button>
               <div className="system-status">
@@ -4908,7 +4990,7 @@ export default function App() {
                 <span className="status-badge">
                   {snapshot?.totals.activeCollectors ?? 0} cobradores en calle
                 </span>
-                <span
+                <button type="button" onClick={() => openMdiWindow("dailySettlements", "daily-settlements")} title="Abrir Cuadres Diarios"
                   className={`status-badge ${
                     snapshot?.totals.difference ? "warning" : "ok"
                   }`}
@@ -4916,7 +4998,7 @@ export default function App() {
                   {snapshot?.totals.difference
                     ? "Cuadre en progreso"
                     : "Cuadre al día"}
-                </span>
+                </button>
                 <button
                   className="command-trigger"
                   aria-label="Buscar en tu operación"
@@ -5065,9 +5147,12 @@ export default function App() {
               </div>
             </header>
             <nav className="desktop-launchers" aria-label="Operaciones principales">
-              <button type="button" className="btn launcher-collections" onClick={() => openMdiWindow("charges", "charges")}>COBROS <small>Cargos</small></button>
-              <button type="button" className="btn launcher-payments" onClick={() => openMdiWindow("payouts", "payouts")}>PAGOS <small>Descargos</small></button>
+              <button type="button" className="btn launcher-collections" onClick={() => openMdiWindow("charges", "charges")}><FolderOpen size={17} />CARGOS</button>
+              <button type="button" className="btn launcher-collections" onClick={() => openMdiWindow("collections", "collections")}><ReceiptText size={17} />COBROS</button>
+              <button type="button" className="btn launcher-payments" onClick={() => openMdiWindow("payouts", "payouts")}><ArrowDownLeft size={17} />DESCARGOS</button>
+              <button type="button" className="btn launcher-payments" onClick={() => openMdiWindow("payments", "payments")}><Wallet size={17} />PAGOS</button>
               <button type="button" className="btn launcher-remittances" onClick={() => openMdiWindow("remittances", "remittances")}>REMESAS</button>
+              <button type="button" className="btn launcher-settlements" onClick={() => openMdiWindow("dailySettlements", "daily-settlements")}><FileCheck2 size={17} />CUADRES</button>
             </nav>
             <main id="main-content" className="main-content desktop-canvas" tabIndex={-1}>
           {snapshot && mdiWindows.filter((windowState) => isUiPageVisible(windowState.page)).map((windowState) => (
@@ -5084,6 +5169,8 @@ export default function App() {
                 <ReportesLauncher onLaunch={openMdiWindow} />
               ) : isReportPage(windowState.page) ? (
                 <ReportView page={windowState.page} snapshot={snapshot} onRefresh={() => void refresh()} />
+              ) : windowState.page === "banks" ? (
+                <ConnectedBanks actorId={effectiveUser.id} canManage={["ADMIN", "SUPERADMIN"].includes(normalizeRole(effectiveUser.role))} />
               ) : windowState.page === "exchangeRates" ? (
                 <ConnectedExchangeRates actorId={effectiveUser.id} isAdmin={["ADMIN", "SUPERADMIN"].includes(normalizeRole(effectiveUser.role))} />
               ) : windowState.page === "remittances" ? (
@@ -5363,7 +5450,7 @@ export default function App() {
           <Modal
             open={helpOpen}
             onClose={() => setHelpOpen(false)}
-            title="Siempre en control"
+            title="Soporte Técnico"
             description="Guía rápida de los procesos operativos."
           >
             <div className="help-content">
@@ -5393,6 +5480,9 @@ export default function App() {
                 </div>
               ))}
               <p className="help-demo">
+                Gamera Software · Guía de uso y consulta de los procesos del sistema.
+              </p>
+              <p className="help-demo">
                 Los datos de esta demostración son ficticios. Cada operación
                 requiere conexión con el servidor.
               </p>
@@ -5416,12 +5506,14 @@ export default function App() {
                 Acceso a clientes, rutas, autorizaciones, movimientos y cierres
                 diarios.
               </p>
+              <button className="btn full" onClick={() => { setAccountOpen(false); setOwnPasswordOpen(true); }}><KeyRound size={17} />Cambiar mi clave</button>
               <button className="btn full" onClick={logout}>
                 <LogOut size={17} />
                 Cerrar sesión
               </button>
             </div>
           </Modal>
+          {ownPasswordOpen && user && <OwnPasswordDialog userId={user.id} onClose={() => setOwnPasswordOpen(false)} onSessionEnd={clearLocalSession} onChanged={() => { setOwnPasswordOpen(false); toast.success("Clave actualizada. Inicia sesión con tu nueva clave."); clearLocalSession(); }} />}
           {snapshot && (
             <>
               <CollectorDrawer
@@ -5893,7 +5985,7 @@ function MasterDataView({
   );
 }
 
-const DENOMS = [2000, 1000, 500, 200, 100, 50, 20, 10, 5, 1];
+const DENOMS = [1, 5, 10, 20, 50, 100, 200, 500, 1000, 2000];
 const SETTLEMENT_DENOMS = [2000, 1000, 500, 200, 100, 50, 25, 20, 10, 5, 1];
 
 type LocalCharge = Charge & { currency: string; concept: string; note: string };
@@ -6065,7 +6157,7 @@ function CargoDialog({
           <div className="cargo-entry-row cargo-amount-row">
             <label htmlFor="cargo-amount">Importe:</label>
             <label>Monto<input id="cargo-amount" type="number" min="0" step="0.01" value={draft.amount} onChange={(event) => update("amount", event.target.value)} /></label>
-            <label>Tasa/Cantidad<input type="number" min="0.01" step="0.01" value={draft.quantity} onChange={(event) => update("quantity", event.target.value)} /></label>
+            <label>Cantidad<input type="number" min="0.01" step="0.01" value={draft.quantity} onChange={(event) => update("quantity", event.target.value)} /></label>
             <label>Total<input type="number" value={centsInput(totalCents)} disabled readOnly /></label>
           </div>
           <div className="cargo-entry-row">
@@ -6152,8 +6244,8 @@ function ChargesOperationalView({ snapshot, currentUser, onRefresh, onOpenRemitt
   const [clientQuery, setClientQuery] = useState("");
   const [zone, setZone] = useState("Todas");
   const [routeId, setRouteId] = useState("Todas");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  const [fromDate, setFromDate] = useState(() => currentOperationalWeek().from);
+  const [toDate, setToDate] = useState(() => currentOperationalWeek().to);
   const [status, setStatus] = useState("Activo");
   const [relation, setRelation] = useState("Todas");
   const [selectedCharge, setSelectedCharge] = useState<LocalCharge | null>(pendingCharge?.editing ? pendingCharge.charge : null);
@@ -6242,7 +6334,7 @@ function ChargesOperationalView({ snapshot, currentUser, onRefresh, onOpenRemitt
   const refreshCharges = async () => {
     await onRefresh();
     setMode("Todos"); setClientQuery(""); setZone("Todas"); setRouteId("Todas");
-    setFromDate(""); setToDate(""); setStatus("Activo"); setRelation("Todas"); setSelectedCharge(null);
+    setFromDate(currentOperationalWeek().from); setToDate(currentOperationalWeek().to); setStatus("Activo"); setRelation("Todas"); setSelectedCharge(null);
     toast.success("Cargos actualizados");
   };
   const requestCancel = () => {
@@ -6588,8 +6680,8 @@ function RecurringChargesOperationalView({ snapshot, currentUser, onRefresh }: R
   const [records, setRecords] = useState<RecurringChargeRecord[]>(() => loadRecurringCharges(snapshot));
   const [filterMode, setFilterMode] = useState<"Todos" | "por Cliente">("Todos");
   const [clientQuery, setClientQuery] = useState("");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  const [fromDate, setFromDate] = useState(() => currentOperationalWeek().from);
+  const [toDate, setToDate] = useState(() => currentOperationalWeek().to);
   const [status, setStatus] = useState("Activo");
   const [selectedRow, setSelectedRow] = useState<RecurringChargeRecord | null>(null);
   const [filtersVisible, setFiltersVisible] = useState(true);
@@ -6642,8 +6734,8 @@ function RecurringChargesOperationalView({ snapshot, currentUser, onRefresh }: R
     setSelectedRow(null);
     setFilterMode("Todos");
     setClientQuery("");
-    setFromDate("");
-    setToDate("");
+    setFromDate(currentOperationalWeek().from);
+    setToDate(currentOperationalWeek().to);
     setStatus("Activo");
   };
   const saveRecord = (record: RecurringChargeRecord) => {
@@ -6778,8 +6870,8 @@ function LegacyOperationView({
   const [collectionCollectorId, setCollectionCollectorId] = useState("Todas");
   const [collectionZone, setCollectionZone] = useState("Todas");
   const [collectionRouteId, setCollectionRouteId] = useState("Todas");
-  const [collectionFromDate, setCollectionFromDate] = useState("");
-  const [collectionToDate, setCollectionToDate] = useState("");
+  const [collectionFromDate, setCollectionFromDate] = useState(() => currentOperationalWeek().from);
+  const [collectionToDate, setCollectionToDate] = useState(() => currentOperationalWeek().to);
   const [collectionStatus, setCollectionStatus] = useState("Activo");
   const [collectionClientSearchOpen, setCollectionClientSearchOpen] = useState(false);
   const [collectionReceiptOpen, setCollectionReceiptOpen] = useState(() => Boolean(pendingMovementDraft(currentUser.id, "central-collection")));
@@ -6868,8 +6960,8 @@ function LegacyOperationView({
     setCollectionCollectorId("Todas");
     setCollectionZone("Todas");
     setCollectionRouteId("Todas");
-    setCollectionFromDate("");
-    setCollectionToDate("");
+    setCollectionFromDate(currentOperationalWeek().from);
+    setCollectionToDate(currentOperationalWeek().to);
     setCollectionStatus("Activo");
     setCollectionClientSearchOpen(false);
     setCollectionPrintChoiceOpen(false);
@@ -6975,6 +7067,19 @@ function LegacyOperationView({
       : orderedCollectionRows;
     if (scope === "current" && !selectedRow) {
       toast.info("Seleccione un cobro para imprimir el registro actual.");
+      return;
+    }
+    if (scope === "all") {
+      if (!targetRows.length) { toast.info("No hay cobros disponibles para imprimir."); return; }
+      const movements = targetRows.map((row) => row.__raw as unknown as Movement);
+      const currencies = Array.from(new Set(movements.map((movement) => currencyCode(movement.currency)))).sort();
+      const output: OutputSection[] = [
+        { title: "Filtros del listado", columns: ["Dato", "Valor"], rows: [["Desde", collectionFromDate || "Inicio"], ["Hasta", collectionToDate || "Fin"], ["Selección", mode], ["Cliente", collectionClientId ? snapshot.clients.find((client) => client.id === collectionClientId)?.name ?? collectionClientId : query || "Todos"], ["Cobrador", snapshot.collectors.find((collector) => collector.id === collectionCollectorId)?.name ?? "Todos"], ["Zona", collectionZone], ["Ruta", snapshot.routes.find((route) => route.id === collectionRouteId)?.name ?? "Todas"], ["Estado", collectionStatus]] },
+        { title: "Listado de cobros", columns: ["Fecha", "Identificación", "Cliente", "Cobrador", "Recibo", "Moneda", "Importe", "Estado", "Banco", "Referencia", "Nota"], rows: movements.map((movement) => { const client = snapshot.clients.find((item) => item.id === movement.clientId); return [businessTimestamp(movement.createdAt), client?.identification ?? "", client?.name ?? "Cliente no disponible", snapshot.collectors.find((collector) => collector.id === movement.collectorId)?.name ?? "", movement.receiptToken ?? "", currencyCode(movement.currency), nativeMoney(movement.amount, movement.currency), movement.cancelledAt ? "Cancelado" : "Activo", movement.bankName ?? "", movement.reference ?? "", movement.note ?? ""]; }) },
+        { title: "Totales por moneda", columns: ["Moneda", "Cantidad", "Cobros activos", "Cobros cancelados"], rows: currencies.map((currency) => { const grouped = movements.filter((movement) => currencyCode(movement.currency) === currency); return [currency, grouped.length, nativeTotals(grouped.filter((movement) => !movement.cancelledAt), currency), nativeTotals(grouped.filter((movement) => movement.cancelledAt), currency)]; }) },
+      ];
+      try { printSections("Listado de Cobros", output, "CyP · Cobros y pagos"); setCollectionPrintChoiceOpen(false); }
+      catch (failure) { toast.error(failure instanceof Error ? failure.message : "No se pudo abrir la impresión del listado."); }
       return;
     }
     const tickets = targetRows.map((row, index) => collectionTicketFromRow(row, index, snapshot));
@@ -7423,8 +7528,8 @@ function DepositsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
   const [collectorFilter, setCollectorFilter] = useState("Todas");
   const [zoneFilter, setZoneFilter] = useState("Todas");
   const [routeFilter, setRouteFilter] = useState("Todas");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  const [fromDate, setFromDate] = useState(() => currentOperationalWeek().from);
+  const [toDate, setToDate] = useState(() => currentOperationalWeek().to);
   const [status, setStatus] = useState("Todos");
   const [filtersVisible, setFiltersVisible] = useState(true);
   const [selectedRow, setSelectedRow] = useState<TableRow | null>(null);
@@ -7509,8 +7614,8 @@ function DepositsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
     setCollectorFilter("Todas");
     setZoneFilter("Todas");
     setRouteFilter("Todas");
-    setFromDate("");
-    setToDate("");
+    setFromDate(currentOperationalWeek().from);
+    setToDate(currentOperationalWeek().to);
     setStatus("Todos");
     setSelectedRow(null);
     setFlash(true);
@@ -7716,7 +7821,7 @@ function DepositDataDialog({ actorId, snapshot, movement, initialDraft, onClose,
       try { nonCashTotal = nonCashDepositAmount(nonCash); }
       catch (error) { toast.error(error instanceof Error ? error.message : "Completa los componentes del depósito."); return; }
       let remaining = Math.max(0, collectionCash(snapshot.movements, collector.id, currency) - nonCashTotal);
-      for (const denomination of DENOMS) {
+      for (const denomination of [...DENOMS].reverse()) {
         const quantity = Math.floor(remaining / denomination);
         loaded[denomination] = quantity ? String(quantity) : "";
         remaining -= denomination * quantity;
@@ -7777,8 +7882,8 @@ function CashDeliveriesOperationalView({ snapshot, currentUser, onRefresh }: Rea
   const permissions = permissionsFor(currentUser);
   const [mode, setMode] = useState("Todos");
   const [collectorFilter, setCollectorFilter] = useState("Todas");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  const [fromDate, setFromDate] = useState(() => currentOperationalWeek().from);
+  const [toDate, setToDate] = useState(() => currentOperationalWeek().to);
   const [status, setStatus] = useState("Todos");
   const [filtersVisible, setFiltersVisible] = useState(true);
   const [selectedId, setSelectedId] = useState("");
@@ -7788,6 +7893,13 @@ function CashDeliveriesOperationalView({ snapshot, currentUser, onRefresh }: Rea
   const [deliveryToCancel, setDeliveryToCancel] = useState<Movement | null>(() => pendingMovementDraft<{ movement: Movement }>(currentUser.id, "cancel-office_delivery")?.movement ?? null);
   const [printTicket, setPrintTicket] = useState<CollectionTicketModel | null>(null);
   const [flash, setFlash] = useState(false);
+  const [detailId, setDetailId] = useState("");
+  const [searchFields, setSearchFields] = useState({ reference: "", phone: "", name: "", identification: "", note: "", sender: "" });
+  const matchesText = (value: string, query: string) => value.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
+  const deliveryActor = (movement: Movement) => {
+    const source = movement as Movement & { createdBy?: string; createdByName?: string };
+    return source.createdByName ?? snapshot.accounts.find((account) => account.id === source.createdBy)?.name ?? "";
+  };
   const movementIds = snapshot.movements.filter((item) => item.type === "office_delivery").map((item) => item.id);
   const orderKey = movementIds.join("|");
 
@@ -7831,10 +7943,17 @@ function CashDeliveriesOperationalView({ snapshot, currentUser, onRefresh }: Rea
   const visibleRows = allRows.filter((row) => {
     const movement = row.__raw as unknown as Movement;
     const date = String(row.__date ?? "");
+    const collector = snapshot.collectors.find((item) => item.id === movement.collectorId);
     return (mode !== "Por Cobrador" || collectorFilter === "Todas" || movement.collectorId === collectorFilter)
       && (!fromDate || date >= fromDate)
       && (!toDate || date <= toDate)
-      && (status === "Todos" || row.__status === status);
+      && (status === "Todos" || row.__status === status)
+      && matchesText([movement.id, movement.reference, movement.receiptToken].filter(Boolean).join(" "), searchFields.reference)
+      && matchesText(collector?.cellular ?? "", searchFields.phone)
+      && matchesText(collector?.name ?? "", searchFields.name)
+      && matchesText([collector?.ident, collector?.id].filter(Boolean).join(" "), searchFields.identification)
+      && matchesText(movement.note ?? "", searchFields.note)
+      && matchesText(deliveryActor(movement), searchFields.sender);
   });
   const orderedRows = [...visibleRows].sort((left, right) => {
     const leftIndex = order.indexOf(String(left.__id ?? ""));
@@ -7842,6 +7961,8 @@ function CashDeliveriesOperationalView({ snapshot, currentUser, onRefresh }: Rea
     return (leftIndex < 0 ? Number.MAX_SAFE_INTEGER : leftIndex) - (rightIndex < 0 ? Number.MAX_SAFE_INTEGER : rightIndex);
   });
   const selectedRow = orderedRows.find((row) => String(row.__id ?? "") === selectedId) ?? null;
+  const detail = snapshot.movements.find((movement) => movement.id === detailId && movement.type === "office_delivery");
+  const detailCollector = snapshot.collectors.find((collector) => collector.id === detail?.collectorId);
 
   const moveSelected = (target: "first" | "previous" | "next" | "last") => {
     if (!selectedId) return;
@@ -7858,9 +7979,11 @@ function CashDeliveriesOperationalView({ snapshot, currentUser, onRefresh }: Rea
   const refresh = () => {
     setMode("Todos");
     setCollectorFilter("Todas");
-    setFromDate("");
-    setToDate("");
+    setFromDate(currentOperationalWeek().from);
+    setToDate(currentOperationalWeek().to);
     setStatus("Todos");
+    setSearchFields({ reference: "", phone: "", name: "", identification: "", note: "", sender: "" });
+    setDetailId("");
     setSelectedId("");
     setFlash(true);
     window.setTimeout(() => setFlash(false), 280);
@@ -7914,6 +8037,8 @@ function CashDeliveriesOperationalView({ snapshot, currentUser, onRefresh }: Rea
           <label className="field compact-field">Fecha Inicial:<input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} /></label>
           <label className="field compact-field">Fecha final:<input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} /></label>
           <label className="field compact-field">Estado:<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="Todos">Todos</option><option value="Activo">Activo</option><option value="Inactivo">Inactivo</option></select></label>
+          {([["reference", "Serie / referencia:"], ["phone", "Celular del cobrador:"], ["name", "Nombre del cobrador:"], ["identification", "Identificación del cobrador:"], ["sender", "Registrado por:"], ["note", "Nota:"]] as const).map(([key, label]) => <label key={key} className="field compact-field">{label}<input aria-label={label.replace(/:$/, "")} maxLength={key === "note" ? INPUT_LIMITS.note : 160} value={searchFields[key]} onChange={(event) => setSearchFields((current) => ({ ...current, [key]: event.target.value }))} /></label>)}
+          <p className="catalog-scope-note">Entregas de oficina al cobrador. Busca referencias guardadas y datos reales del cobrador; los registros antiguos pueden no indicar quién los creó.</p>
         </aside>}
         <section className="legacy-grid-panel cash-deliveries-grid-panel" aria-label="Grilla de entregas de dinero">
           <div className="legacy-mdi-table-wrap"><table className="legacy-mdi-table cash-deliveries-table">
@@ -7921,7 +8046,7 @@ function CashDeliveriesOperationalView({ snapshot, currentUser, onRefresh }: Rea
             <tbody>{orderedRows.length ? orderedRows.map((row, index) => {
               const movement = row.__raw as unknown as Movement;
               const isSelected = String(row.__id ?? "") === selectedId;
-              return <tr key={String(row.__id ?? index)} className={isSelected ? "selected-row" : undefined} aria-selected={isSelected} role="button" tabIndex={0} onClick={() => setSelectedId(String(row.__id ?? ""))} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedId(String(row.__id ?? "")))}>
+              return <tr key={String(row.__id ?? index)} className={isSelected ? "selected-row" : undefined} aria-selected={isSelected} role="button" tabIndex={0} onClick={() => setSelectedId(String(row.__id ?? ""))} onDoubleClick={() => { setSelectedId(movement.id); setDetailId(movement.id); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); setSelectedId(movement.id); setDetailId(movement.id); } else handleKeyboardActivation(event, () => setSelectedId(movement.id)); }}>
                 <td>{index + 1}</td><td>{String(row.date ?? "")}</td><td>{String(row.collector ?? "")}</td><td>{String(row.currency ?? "Peso Dominicano")}</td><td className="numeric-cell">{String(row.amount ?? money(0))}</td><td>{String(row.checks ?? "0")}</td><td className="numeric-cell">{String(row.checkAmount ?? money(0))}</td><td><LegacyCheck checked={!movement.cancelledAt} /></td><td><LegacyCheck checked={false} /></td>
               </tr>;
             }) : <tr><td colSpan={9} className="collections-empty-cell">Sin entregas de dinero registradas.</td></tr>}</tbody>
@@ -7931,6 +8056,7 @@ function CashDeliveriesOperationalView({ snapshot, currentUser, onRefresh }: Rea
       </div>
     </div>
     {formOpen && <CashDeliveryDataDialog actorId={currentUser.id} snapshot={snapshot} onClose={() => setFormOpen(false)} onSave={saveDelivery} />}
+    {detail && <LegacyDialog title="Detalle de la Entrega de Dinero..." className="cash-delivery-detail-dialog" onClose={() => setDetailId("")}><div className="legacy-dialog-form"><dl className="cash-delivery-detail"><dt>Referencia</dt><dd>{detail.reference || detail.receiptToken || detail.id}</dd><dt>Fecha</dt><dd>{businessTimestamp(detail.createdAt)}</dd><dt>Registrado por</dt><dd>{deliveryActor(detail) || "No registrado"}</dd><dt>Cobrador</dt><dd>{detailCollector?.name ?? "No disponible"}</dd><dt>Identificación del cobrador</dt><dd>{detailCollector?.ident || "No registrada"}</dd><dt>Celular</dt><dd>{detailCollector?.cellular || "No registrado"}</dd><dt>Moneda</dt><dd>{currencyCode(detail.currency)}</dd><dt>Importe</dt><dd>{nativeMoney(detail.amount, detail.currency)}</dd><dt>Estado</dt><dd>{detail.cancelledAt ? "Cancelada" : "Activa"}</dd><dt>Nota</dt><dd>{detail.note || "Sin nota"}</dd>{detail.cancelledAt && <><dt>Cancelación</dt><dd>{detail.cancellationNote || "Sin motivo registrado"}</dd></>}</dl><table className="legacy-mdi-table"><thead><tr><th>Denominación</th><th>Cantidad</th><th>Importe</th></tr></thead><tbody>{[...(detail.denominations ?? [])].sort((a, b) => a.denominacion - b.denominacion).map((line) => <tr key={line.denominacion}><td>{nativeMoney(line.denominacion, detail.currency)}</td><td>{line.cantidad}</td><td>{nativeMoney(line.denominacion * line.cantidad, detail.currency)}</td></tr>)}{!detail.denominations?.length && <tr><td colSpan={3}>Sin desglose registrado.</td></tr>}</tbody></table><div className="legacy-dialog-actions centered"><button type="button" onClick={() => setDetailId("")}>oK</button></div></div></LegacyDialog>}
     {deliveryToCancel && <MovementCancellationDialog actorId={currentUser.id} movement={deliveryToCancel} kind="entregas" onClose={() => setDeliveryToCancel(null)} onSaved={() => { setDeliveryToCancel(null); setSelectedId(""); onRefresh(); }} />}
     {printTicket && <CollectionReceiptPrintDialog receipts={[printTicket]} title="Imprimir Recibo de Entrega..." onClose={() => setPrintTicket(null)} />}
   </>;
@@ -7956,7 +8082,7 @@ function CashDeliveryDataDialog({ actorId, snapshot, onClose, onSave }: Readonly
       const paid = movements.filter((item) => item.type === "payout").reduce((sum, item) => sum + item.amount, 0);
       const capacity = Math.max(0, collector.payoutLimit - (delivered - paid));
       let remaining = Math.min(capacity, 50000);
-      for (const denomination of DENOMS) {
+      for (const denomination of [...DENOMS].reverse()) {
         const quantity = Math.floor(remaining / denomination);
         loaded[denomination] = quantity ? String(quantity) : "";
         remaining -= denomination * quantity;
@@ -8029,8 +8155,8 @@ function PayoutsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{
   const [filterClientId, setFilterClientId] = useState("");
   const [zone, setZone] = useState("Todas");
   const [routeId, setRouteId] = useState("Todas");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  const [fromDate, setFromDate] = useState(() => currentOperationalWeek().from);
+  const [toDate, setToDate] = useState(() => currentOperationalWeek().to);
   const [status, setStatus] = useState("Activo");
   const [filtersVisible, setFiltersVisible] = useState(true);
   const [selectedId, setSelectedId] = useState("");
@@ -8111,8 +8237,8 @@ function PayoutsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{
     setFilterClientId("");
     setZone("Todas");
     setRouteId("Todas");
-    setFromDate("");
-    setToDate("");
+    setFromDate(currentOperationalWeek().from);
+    setToDate(currentOperationalWeek().to);
     setStatus("Activo");
     setSelectedId("");
     setFlash(true);
@@ -8282,8 +8408,8 @@ function PaymentsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
   const [collectorId, setCollectorId] = useState("Todas");
   const [zone, setZone] = useState("Todas");
   const [routeId, setRouteId] = useState("Todas");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  const [fromDate, setFromDate] = useState(() => currentOperationalWeek().from);
+  const [toDate, setToDate] = useState(() => currentOperationalWeek().to);
   const [status, setStatus] = useState("Activo");
   const [filtersVisible, setFiltersVisible] = useState(true);
   const [selectedId, setSelectedId] = useState("");
@@ -8346,8 +8472,8 @@ function PaymentsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
     setCollectorId("Todas");
     setZone("Todas");
     setRouteId("Todas");
-    setFromDate("");
-    setToDate("");
+    setFromDate(currentOperationalWeek().from);
+    setToDate(currentOperationalWeek().to);
     setStatus("Activo");
     setSelectedId("");
     setFlash(true);
@@ -9048,7 +9174,7 @@ type ReceiptDetailLine = {
   amount: number;
 };
 
-type CentralCollectionDraft = { clientId: string; clientCode: string; collectorId: string; currency?: string; lines: ReceiptDetailLine[]; print: boolean };
+type CentralCollectionDraft = { clientId: string; clientCode: string; collectorId: string; currency?: string; bankId?: string; reference?: string; note?: string; lines: ReceiptDetailLine[]; print: boolean };
 type CentralCollectionResult = { movements: Movement[]; receipts: { movementId: string; token: string; url: string }[] };
 
 type CollectionRecordScope = "all" | "current";
@@ -9094,9 +9220,9 @@ function collectionTicketFromRow(row: TableRow, index: number, snapshot: Snapsho
     clientIdentification: client?.identification ?? "",
     collectorName: collector?.name ?? "",
     paymentForm: String(row.forma ?? "Efectivo"),
-    bank: String(row.banco ?? "No Definido"),
-    checkNumber: String(row.numero ?? ""),
-    note: movement?.cancelledAt ? "ANULADO · " + (movement.cancellationNote ?? "") : String(row.note ?? ""),
+    bank: movement?.bankName ?? String(row.banco ?? "No Definido"),
+    checkNumber: movement?.reference ?? String(row.numero ?? ""),
+    note: [movement?.note ?? String(row.note ?? ""), ...(movement?.cancelledAt ? ["ANULADO · " + (movement.cancellationNote ?? "")] : [])].filter(Boolean).join("\n"),
     amount,
     lines: [{
       service: charge?.service ?? "Cobro de servicio",
@@ -9185,19 +9311,30 @@ function RecurringPayoutArchiveDialog({ actorId, row, onClose, onSaved }: Readon
 
 function CollectionReceiptPrintDialog({ receipts, onClose, title = "Imprimir Recibo de Cobro..." }: Readonly<{ receipts: readonly CollectionTicketModel[]; onClose: () => void; title?: string }>) {
   const [paper, setPaper] = useState<ReceiptPaper>("auto");
+  const [printConfig, setPrintConfig] = useState<{ company: string; address: string; phone: string; footer: string } | null>(null);
+  const [configError, setConfigError] = useState("");
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  useEffect(() => {
+    let active = true; setConfigError("");
+    api<{ config: Record<string, string | number | boolean> }>("/configuracion").then(({ config }) => {
+      if (!config || typeof config !== "object" || Array.isArray(config)) throw new Error("No se pudo cargar la configuración de impresión.");
+      if (active) setPrintConfig({ company: String(config["general.empresa"] ?? "Cobros y Pagos"), address: String(config["general.direccion"] ?? ""), phone: String(config["general.telefono"] ?? ""), footer: String(config.receiptFooterNote ?? "") });
+    }).catch((failure) => { if (active) setConfigError(failure instanceof Error ? failure.message : "No se pudo cargar la configuración de impresión."); });
+    return () => { active = false; };
+  }, [loadAttempt]);
   const printedAt = new Date().toLocaleString("es-DO", { dateStyle: "short", timeStyle: "medium", timeZone: "America/Santo_Domingo" });
   return (
     <LegacyDialog title={title} onClose={onClose} className="collection-flow-dialog collection-ticket-dialog" overlayClassName={"collection-receipt-suboverlay collection-ticket-print-overlay cyp-print-paper-" + paper}>
       <div className="collection-ticket-print-content">
         <div className="collection-ticket-controls"><ReceiptPaperSelect value={paper} onChange={setPaper} /><p>Selecciona la impresora y el tamaño de papel en el diálogo del navegador. También puedes guardar como PDF.</p></div>
+        {configError && <p role="alert">{configError} <button type="button" onClick={() => setLoadAttempt((value) => value + 1)}>Volver a cargar</button></p>}{!printConfig && !configError && <p role="status">Cargando configuración de impresión…</p>}
         <div className="collection-ticket-preview-list">
           {receipts.map((receipt) => (
             <pre className="collection-ticket-preview" key={receipt.id}>{[
               "COBROS Y PAGOS",
-              "Gamera Software",
-              "Dirección: Oficina Principal",
-              "Teléfono: 809-555-0101",
-              "Servicio y confianza",
+              ...(printConfig?.company ? [printConfig.company] : []),
+              ...(printConfig?.address ? [`Dirección: ${printConfig.address}`] : []),
+              ...(printConfig?.phone ? [`Teléfono: ${printConfig.phone}`] : []),
               "================================",
               `Recibo: ${receipt.receiptNumber}`,
               `Ident: ${receipt.clientIdentification}`,
@@ -9210,17 +9347,17 @@ function CollectionReceiptPrintDialog({ receipts, onClose, title = "Imprimir Rec
               "--------------------------------",
               `Forma: ${receipt.paymentForm}`,
               ...(receipt.bank !== "No Definido" ? [`Banco: ${receipt.bank}`] : []),
-              ...(receipt.checkNumber ? [`Número: ${receipt.checkNumber}`] : []),
+              ...(receipt.checkNumber ? [`Referencia: ${receipt.checkNumber}`] : []),
               ...(receipt.note ? [`Nota: ${receipt.note}`] : []),
               `TOTAL: ${nativeMoney(receipt.amount, receipt.currency)}`,
               "================================",
-              "*** REVISE SU RECIBO ***",
+              ...(printConfig?.footer ? [printConfig.footer] : []),
               `Impreso: ${printedAt}`,
               "",
             ].join("\n")}</pre>
           ))}
         </div>
-        <div className="legacy-dialog-actions collection-ticket-actions"><button type="button" onClick={onClose}>oK</button><button type="button" className="primary" onClick={() => window.print()}>Imprimir / Guardar PDF</button></div>
+        <div className="legacy-dialog-actions collection-ticket-actions"><button type="button" onClick={onClose}>oK</button><button type="button" className="primary" disabled={!printConfig} onClick={() => window.print()}>Imprimir / Guardar PDF</button></div>
       </div>
     </LegacyDialog>
   );
@@ -9241,6 +9378,16 @@ function CollectionReceiptDialog({ snapshot, actorId, onClose, onSaved, onRefres
   const [clientId, setClientId] = useState(pending?.clientId ?? "");
   const [clientCode, setClientCode] = useState(pending?.clientCode ?? "");
   const [currency, setCurrency] = useState(currencyName(pending?.currency));
+  const [bankId, setBankId] = useState(pending?.bankId ?? "");
+  const [reference, setReference] = useState(pending?.reference ?? "");
+  const [note, setNote] = useState(pending?.note ?? "");
+  const [banks, setBanks] = useState<Bank[]>([]);
+  const [banksError, setBanksError] = useState("");
+  useEffect(() => {
+    let active = true;
+    remittancesApi<Bank[]>("/bancos").then((rows) => { if (!Array.isArray(rows)) throw new Error("Catálogo de bancos no válido."); if (active) setBanks(rows); }).catch((failure) => { if (active) setBanksError(failure instanceof Error ? failure.message : "No se pudieron cargar los bancos."); });
+    return () => { active = false; };
+  }, []);
   const [lines, setLines] = useState<ReceiptDetailLine[]>(pending?.lines ?? []);
   const [selectedLineId, setSelectedLineId] = useState("");
   const [clientSearchOpen, setClientSearchOpen] = useState(false);
@@ -9276,8 +9423,11 @@ function CollectionReceiptDialog({ snapshot, actorId, onClose, onSaved, onRefres
   const save = async (print: boolean) => {
     if (request.busy) return;
     setSaveError("");
-    const draft = pending ?? { clientId, clientCode, collectorId, currency, lines: lines.map((line) => ({ ...line })), print };
+    const draft = pending ?? { clientId, clientCode, collectorId, currency, bankId, reference: reference.trim(), note, lines: lines.map((line) => ({ ...line })), print };
     if (!request.uncertain) {
+      try { validateText(reference, "Referencia", 160); validateText(note, "Nota", INPUT_LIMITS.note, { multiline: true }); }
+      catch (failure) { setSaveError(failure instanceof Error ? failure.message : "Revisa banco, referencia y nota."); return; }
+      if (bankId && !banks.some((bank) => bank.id === bankId && bank.active)) { setSaveError("Selecciona un banco activo del catálogo."); return; }
       if (!client || client.active === false || !collector || collector.active === false) { setSaveError("Escoge un cliente activo con ruta y cobrador activos."); return; }
       if (!lines.length || !Number.isSafeInteger(total) || total <= 0) { setSaveError("Agrega al menos un cargo pendiente con importe válido."); return; }
       const invalidLine = lines.some((line) => {
@@ -9288,8 +9438,8 @@ function CollectionReceiptDialog({ snapshot, actorId, onClose, onSaved, onRefres
     }
     let result: CentralCollectionResult;
     try {
-      result = await request.run<CentralCollectionResult>("/cobros/central", { clientId: draft.clientId, collectorId: draft.collectorId, currency: currencyCode(draft.currency), lines: draft.lines.map((line) => ({ chargeId: line.chargeId, amount: line.amount })) }, draft, (data) =>
-        Array.isArray(data?.movements) && Array.isArray(data.receipts) && data.movements.length === draft.lines.length && new Set(data.movements.map((movement) => movement.id)).size === draft.lines.length && data.movements.every((movement) => Boolean(movement.id && movement.receiptToken) && movement.type === "collection" && draft.lines.some((line) => line.chargeId === movement.chargeId && line.amount === movement.amount) && data.receipts.some((receipt) => receipt.movementId === movement.id && receipt.token === movement.receiptToken)));
+      result = await request.run<CentralCollectionResult>("/cobros/central", { clientId: draft.clientId, collectorId: draft.collectorId, currency: currencyCode(draft.currency), ...(draft.bankId ? { bankId: draft.bankId } : {}), ...(draft.reference ? { reference: draft.reference } : {}), ...(draft.note ? { note: draft.note } : {}), lines: draft.lines.map((line) => ({ chargeId: line.chargeId, amount: line.amount })) }, draft, (data) =>
+        Array.isArray(data?.movements) && Array.isArray(data.receipts) && data.movements.length === draft.lines.length && new Set(data.movements.map((movement) => movement.id)).size === draft.lines.length && data.movements.every((movement) => Boolean(movement.id && movement.receiptToken) && movement.type === "collection" && (movement.bankId ?? "") === (draft.bankId ?? "") && (movement.reference ?? "").trim() === (draft.reference ?? "").trim() && (movement.note ?? "").trim() === (draft.note ?? "").trim() && draft.lines.some((line) => line.chargeId === movement.chargeId && line.amount === movement.amount) && data.receipts.some((receipt) => receipt.movementId === movement.id && receipt.token === movement.receiptToken)));
     } catch { return; }
     onSaved(result.movements, draft.print);
   };
@@ -9302,6 +9452,10 @@ function CollectionReceiptDialog({ snapshot, actorId, onClose, onSaved, onRefres
           <div className="collection-receipt-row collection-receipt-client-row"><label htmlFor="receipt-client-code">Cliente:</label><input id="receipt-client-code" maxLength={INPUT_LIMITS.id} autoFocus value={clientCode} onChange={(event) => resolveClientCode(event.target.value)} /><button type="button" aria-label="Buscar cliente" onClick={() => setClientSearchOpen(true)} title="Buscar cliente">[...]</button><input value={client?.name ?? ""} readOnly aria-label="Nombre del cliente" /></div>
           <div className="collection-receipt-row collection-receipt-labeled-row"><label htmlFor="receipt-collector">Cobrad.:</label><input id="receipt-collector" value={collector?.name ?? "Sin cobrador asignado"} readOnly /></div>
           <div className="collection-receipt-row collection-receipt-labeled-row"><label htmlFor="receipt-payment-form">Forma:</label><input id="receipt-payment-form" value="Efectivo · registrado desde central" readOnly /></div>
+          <div className="collection-receipt-row collection-receipt-labeled-row"><label htmlFor="receipt-bank">Banco:</label><select id="receipt-bank" value={bankId} onChange={(event) => setBankId(event.target.value)}><option value="">No definido</option>{banks.filter((bank) => bank.active || bank.id === bankId).map((bank) => <option key={bank.id} value={bank.id}>{bank.name}{bank.active ? "" : " (inactivo)"}</option>)}</select></div>
+          <div className="collection-receipt-row collection-receipt-labeled-row"><label htmlFor="receipt-reference">Referencia:</label><input id="receipt-reference" maxLength={160} value={reference} onChange={(event) => setReference(event.target.value)} /></div>
+          <div className="collection-receipt-row collection-receipt-labeled-row"><label htmlFor="receipt-note">Nota:</label><input id="receipt-note" maxLength={INPUT_LIMITS.note} value={note} onChange={(event) => setNote(event.target.value)} /></div>
+          {banksError && <p role="alert">{banksError}</p>}
         </div>
         <section className="collection-receipt-detail" aria-label="Detalle del recibo">
           <div className="collection-receipt-detail-toolbar">
@@ -11001,8 +11155,8 @@ function SettlementBreakdownCell({ summary, currency }: Readonly<{ summary: Sett
 
 function DailySettlementsView({ snapshot, onRefresh }: Readonly<{ snapshot: Snapshot; onRefresh: () => void }>) {
   const [filtersVisible, setFiltersVisible] = useState(true);
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  const [fromDate, setFromDate] = useState(() => currentOperationalWeek().from);
+  const [toDate, setToDate] = useState(() => currentOperationalWeek().to);
   const [currency, setCurrency] = useState("Peso Dominicano");
   const [rows, setRows] = useState(() => dailySettlementRows(snapshot, "Peso Dominicano"));
   const [selectedRow, setSelectedRow] = useState<DailySettlementGridRow | null>(null);
@@ -11043,8 +11197,8 @@ function DailySettlementsView({ snapshot, onRefresh }: Readonly<{ snapshot: Snap
   const refreshRows = () => {
     setRows(dailySettlementRows(snapshot, currency));
     setSelectedRow(null);
-    setFromDate("");
-    setToDate("");
+    setFromDate(currentOperationalWeek().from);
+    setToDate(currentOperationalWeek().to);
     onRefresh();
   };
 

@@ -1,5 +1,15 @@
 # Sugerencias V1: contrato de los datos añadidos
 
+Este documento conserva el contrato histórico de las sugerencias del 5 de octubre.
+La revisión del 9 de octubre añadió configuración central y reparto automático
+para remesas nuevas: [COMISIONES-CONFIGURACION.md](COMISIONES-CONFIGURACION.md) y
+[REMESAS-COTIZACION-REPARTO.md](REMESAS-COTIZACION-REPARTO.md). Las anotaciones
+manuales del gestor descritas aquí corresponden al contrato anterior y a registros
+históricos; no describen el cálculo vigente de una nueva remesa. La validación
+actual de estaciones sigue [RRAA-ESTACIONES.md](RRAA-ESTACIONES.md).
+La matriz de requisitos y límites actuales está en
+[OCTUBRE-09-CORRECCIONES.md](OCTUBRE-09-CORRECCIONES.md).
+
 Estos cambios amplían los formularios existentes. Los campos nuevos de referencia
 son opcionales y no reconstruyen información histórica desconocida. Importes
 monetarios siempre son centavos enteros; monedas admitidas: DOP, USD y EUR.
@@ -46,7 +56,7 @@ cotización antigua. Los recibos muestran fecha y hora en America/Santo_Domingo,
 independientemente de la zona del navegador. Los datos históricos ausentes se
 muestran como desconocidos.
 
-La comisión del negocio mantiene su fórmula existente. La comisión del gestor
+En el contrato histórico, la comisión del negocio mantiene su fórmula existente. La comisión del gestor
 es una anotación opcional introducida manualmente con nombre, importe y moneda
 explícitos; no se deduce del operador ni altera principal, fondos, comisión del
 negocio o roles. El informe la separa por gestor y moneda, distinguiendo las

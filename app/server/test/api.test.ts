@@ -762,7 +762,7 @@ test("account provisioning: create, login, scope, password rotation and disable"
       (
         await post(
           `/api/usuarios/${created.id}/clave`,
-          { password: "NuevaClave-2026!" },
+          { password: "NuevaClave-2026!", currentPassword: strong },
           session.token,
         )
       ).statusCode,

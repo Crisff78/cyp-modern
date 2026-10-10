@@ -20,6 +20,15 @@ let playwrightEntry: string | undefined;
 try { playwrightEntry = localRequire.resolve("playwright"); }
 catch { playwrightEntry = fs.existsSync(cache) ? fs.readdirSync(cache).map((entry) => path.join(cache, entry, "node_modules/playwright/index.mjs")).find((entry) => fs.existsSync(entry)) : undefined; }
 const available = process.platform === "win32" && fs.existsSync(edge) && Boolean(playwrightEntry);
+const knownAntivirusOrigin = "http://me.kis.v2.scr.kaspersky-labs.com";
+const isKnownAntivirusOrigin = (destination: URL) => destination.origin === knownAntivirusOrigin;
+
+test("antivirus classification accepts only the observed exact origin", () => {
+  assert.equal(isKnownAntivirusOrigin(new URL(knownAntivirusOrigin)), true);
+  for (const origin of ["https://me.kis.v2.scr.kaspersky-labs.com", "http://me.kis.v2.scr.kaspersky-labs.com:81",
+    "http://me.kis.v2.scr.kaspersky-labs.com.example.invalid", "http://example.invalid", "http://gc.kis.v2.scr.kaspersky-labs.com"])
+    assert.equal(isKnownAntivirusOrigin(new URL(origin)), false);
+});
 
 // Actual connected user catalog, draggable dialog, CSS, auth, Zod and API.
 // Only an isolated MemoryStore, synthetic accounts and a fresh browser profile.
@@ -29,7 +38,8 @@ test("user permission checkboxes, categories, cancel and backend saves work in t
   const app = await buildApp({ store, demo: true, secret: "synthetic-permissions-browser-secret-at-least-32-characters", origins: [], collectorUrl: "http://localhost:5174" });
   let browser: any, context: any, server: ReturnType<typeof createServer> | undefined;
   const writes: Array<{ path: string; key: string; body: unknown; status: number }> = [];
-  const errors: string[] = [], external: string[] = [];
+  const errors: string[] = [];
+  let blockedAntivirusAttempts = 0, unexpectedExternalAttempts = 0;
   let loseNextResponse = false;
   try {
     const login = (email: string, password: string) => app.inject({ method: "POST", url: "/api/auth/login", payload: { email, password } });
@@ -88,7 +98,14 @@ createRoot(document.getElementById("root")).render(<Fixture />);`, "utf8");
     browser = await chromium.launch({ executablePath: edge, headless: true });
     context = await browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: "block" });
     await context.route("**/*", (route: any) => {
-      if (new URL(route.request().url()).origin !== origin) { external.push(route.request().url()); return route.abort("blockedbyclient"); }
+      const destination = new URL(route.request().url());
+      if (destination.origin !== origin) {
+        // Abort every external request; keep anonymous counts without injected
+        // script paths, attributes, URLs or arbitrary origin names in evidence.
+        if (isKnownAntivirusOrigin(destination)) blockedAntivirusAttempts += 1;
+        else unexpectedExternalAttempts += 1;
+        return route.abort("blockedbyclient");
+      }
       return route.continue();
     });
     const page = await context.newPage(); page.setDefaultTimeout(15000);
@@ -169,7 +186,8 @@ createRoot(document.getElementById("root")).render(<Fixture />);`, "utf8");
       for (const name of ["Seleccionar Todos", "Desmarcar Todos", "Guardar"]) assert.equal(await dialog().getByRole("button", { name, exact: true }).isDisabled(), true);
       await dialog().getByRole("button", { name: "Cancelar", exact: true }).click(); assert.equal(writes.length, count);
     });
-    assert.deepEqual(errors, []); assert.deepEqual(external, []);
+    assert.deepEqual(errors, []); assert.equal(unexpectedExternalAttempts, 0, "The application must not attempt any unexpected external request.");
+    t.diagnostic(`Blocked known antivirus attempts: ${blockedAntivirusAttempts}; unexpected external attempts: ${unexpectedExternalAttempts}; no external URLs recorded or requests sent.`);
     t.diagnostic(`Synthetic UI artifacts: ${output}`);
   } finally {
     await context?.close(); await browser?.close();

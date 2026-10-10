@@ -78,6 +78,7 @@ export type Client = {
   email?: string;
   note?: string;
   identification?: string;
+  internalIdentification?: string;
   lat?: number;
   lng?: number;
 };
@@ -183,6 +184,11 @@ export type Movement = {
   currency?: "DOP" | "USD" | "EUR";
   note?: string;
   createdAt: string;
+  bankId?: string;
+  bankName?: string;
+  reference?: string;
+  createdBy?: string;
+  createdByName?: string;
   receiptToken?: string;
   receiptRevoked?: boolean;
   acceptedAt?: string;
@@ -257,6 +263,7 @@ export type Snapshot = {
     date: string;
     status: "closed";
     closedAt: string;
+    totalsByCurrency?: Partial<Record<"DOP" | "USD" | "EUR", Balance>>;
   })[];
   totals: {
     collected: number;
@@ -280,6 +287,7 @@ export type Page =
   | "servicesProducts"
   | "delayReasons"
   | "exchangeRates"
+  | "banks"
   | "remittances"
   | "sessions"
   | "traces"

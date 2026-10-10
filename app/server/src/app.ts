@@ -29,6 +29,7 @@ import {
   collectorForClient,
   DomainError,
   findAccount,
+  financialObligation,
   hashPassword,
   importCharges,
   importPayouts,
@@ -59,6 +60,7 @@ import { registerAdminToolsRoutes } from "./admin-tools-routes.js";
 import type { RraaValidator } from "./rraa.js";
 import { legacyFinancialFingerprintBody } from "./financial-currency-compat.js";
 import { boundedId, fourDecimalNumber, freeText, machineCounter, optionalEmail, phone, singleLine, systemConfigInput } from "./input-validation.js";
+import { claimClientIdentity, reserveClientIdentity } from "./client-identities.js";
 import { ACCOUNT_ROLES, isOperationalRole } from "./account-roles.js";
 import { permissionCatalog, permissionsForAccount, updateAccountPermissions, userPermissionsBody } from "./user-permissions.js";
 
@@ -120,7 +122,7 @@ const depositComponent = z.discriminatedUnion("method", [
   z.object({ method: z.literal("bank_deposit"), ...nonCashComponent }).strict(),
 ]);
 const depositBody = transferBody.extend({ depositComponents: z.array(depositComponent).min(1).max(20).optional() });
-const clientBody = z.object({
+const clientInput = z.object({
   name: text,
   code: singleLine(80, 1),
   phone: phone.pipe(phoneOrEmpty).default(""),
@@ -135,10 +137,13 @@ const clientBody = z.object({
   identification: singleLine(80).default(""),
   lat: z.number().min(-90).max(90).optional(),
   lng: z.number().min(-180).max(180).optional(),
-}).strict().refine((body) => (body.lat === undefined) === (body.lng === undefined), {
+}).strict();
+const clientBody = clientInput.refine((body) => (body.lat === undefined) === (body.lng === undefined), {
   message: "Latitud y longitud deben enviarse juntas.",
 });
-const newClientBody = clientBody.refine((body) => body.identification.length > 0, {
+const newClientBody = clientInput.extend({ code: singleLine(80).optional(), reservationId: id.optional() })
+  .refine((body) => (body.lat === undefined) === (body.lng === undefined), { message: "Latitud y longitud deben enviarse juntas." })
+  .refine((body) => body.identification.length > 0, {
   path: ["identification"],
   message: "Indica la cédula o el pasaporte del cliente.",
 });
@@ -263,12 +268,13 @@ export async function buildApp(config: Config) {
     await req.jwtVerify();
     const u = req.user as User & { authVersion?: string };
     assertAuthSession(await config.store.read(), u, (req.user as User & { sid?: string }).sid);
-    const legacyIdentity = config.demo
+    const persistedAccount = (await config.store.read()).accounts.find((account) => account.id === u.id);
+    const legacyIdentity = !persistedAccount && (config.demo
       ? (u.id === "demo-admin" && u.role === "admin") ||
         (u.id === "demo-collector" &&
           u.role === "collector" &&
           u.collectorId === "col-1")
-      : u.id === "configured-admin" && u.role === "admin";
+      : u.id === "configured-admin" && u.role === "admin");
     if (legacyIdentity) {
       if (u.authVersion !== authVersion)
         throw new DomainError(
@@ -426,6 +432,10 @@ export async function buildApp(config: Config) {
       salt,
       64,
     );
+  const bootstrapIdForLogin = (login: string) => config.demo
+    ? (login === "admin" || login === "admin@cyp.local" ? "demo-admin"
+      : login === "collector.demo" || login === "collector@cyp.local" ? "demo-collector" : undefined)
+    : login === config.adminEmail!.toLowerCase() ? "configured-admin" : undefined;
   app.post(
     "/api/auth/login",
     { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } },
@@ -450,31 +460,20 @@ export async function buildApp(config: Config) {
           };
       } else if (email === config.adminEmail!.toLowerCase())
         u = { id: "configured-admin", name: "Administración", role: "admin" };
-      if (u) {
+      const stored = await config.store.read();
+      const account = u ? stored.accounts.find((row) => row.id === u!.id) : findAccount(stored, email);
+      if (account) {
+        if (account.status !== "active" || !verifyPassword(body.password, account.salt, account.passwordHash))
+          throw new DomainError("INVALID_CREDENTIALS", "Usuario o contraseña incorrectos.", 401);
+        u = { id: account.id, name: account.name, role: account.role, ...(account.collectorId ? { collectorId: account.collectorId } : {}) };
+        version = String(account.credentialVersion);
+      } else if (u) {
         if (!matches)
           throw new DomainError(
             "INVALID_CREDENTIALS",
             "Correo o contraseña incorrectos.",
             401,
           );
-      } else {
-        const state = await config.store.read(),
-          account = findAccount(state, email);
-        if (
-          account &&
-          account.status === "active" &&
-          verifyPassword(body.password, account.salt, account.passwordHash)
-        ) {
-          u = {
-            id: account.id,
-            name: account.name,
-            role: account.role,
-            ...(account.collectorId
-              ? { collectorId: account.collectorId }
-              : {}),
-          };
-          version = String(account.credentialVersion);
-        }
       }
       if (!u)
         throw new DomainError(
@@ -497,7 +496,7 @@ export async function buildApp(config: Config) {
     return { id, name, role, collectorId };
   });
   describe("get", "/api/auth/me", "Usuario actual");
-  const emailField = z.email("Escribe un correo válido.").max(200);
+  const emailField = singleLine(200, 1);
   const passwordField = z
     .string()
     .min(3, "La contraseña debe tener al menos 3 caracteres.")
@@ -513,7 +512,7 @@ export async function buildApp(config: Config) {
       password: passwordField,
     })
     .strict();
-  const passwordBody = z.object({ password: passwordField }).strict();
+  const passwordBody = z.object({ password: passwordField, currentPassword: z.string().min(1).max(200).optional() }).strict();
   const accountStatusBody = z
     .object({ status: z.enum(["active", "disabled"]) })
     .strict();
@@ -546,6 +545,8 @@ export async function buildApp(config: Config) {
     (state, u, body) => {
       assertAdmin(u);
       const email = body.email.trim().toLowerCase();
+      if (bootstrapIdForLogin(email))
+        throw new DomainError("DUPLICATE_EMAIL", "Ese usuario de inicio corresponde a una cuenta existente.", 409);
       if (body.role === "collector" && !body.collectorId)
         throw new DomainError(
           "COLLECTOR_REQUIRED",
@@ -570,7 +571,7 @@ export async function buildApp(config: Config) {
       if (findAccount(state, email))
         throw new DomainError(
           "DUPLICATE_EMAIL",
-          "Ya existe una cuenta con ese correo.",
+          "Ya existe una cuenta con ese usuario de inicio.",
           409,
         );
       const now = new Date().toISOString(),
@@ -606,8 +607,11 @@ export async function buildApp(config: Config) {
     if (body.collectorId && !state.collectors.some((item) => item.id === body.collectorId && item.active !== false))
       throw new DomainError("COLLECTOR_INACTIVE", "Selecciona un cobrador activo.", 409);
     const email = body.email.trim().toLowerCase();
+    const bootstrapId = bootstrapIdForLogin(email);
+    if (bootstrapId && bootstrapId !== account.id)
+      throw new DomainError("DUPLICATE_EMAIL", "Ese usuario de inicio corresponde a una cuenta existente.", 409);
     if (state.accounts.some((item) => item.id !== account.id && item.email.toLowerCase() === email))
-      throw new DomainError("DUPLICATE_EMAIL", "Ya existe una cuenta con ese correo.", 409);
+      throw new DomainError("DUPLICATE_EMAIL", "Ya existe una cuenta con ese usuario de inicio.", 409);
     // Informative fields do not rotate credentials or revoke active sessions.
     // Keep the existing revocation behavior for changes reflected in auth claims.
     const authChanged = account.name !== body.name || account.email !== email ||
@@ -628,7 +632,24 @@ export async function buildApp(config: Config) {
     "Cambiar contraseña de una cuenta",
     passwordBody,
     (state, u, body, params) => {
-      const account = state.accounts.find((a) => a.id === params.id);
+      let account = state.accounts.find((a) => a.id === params.id);
+      const own = u.id === params.id;
+      if (own && !body.currentPassword)
+        throw new DomainError("CURRENT_PASSWORD_REQUIRED", "Indica tu contraseña actual.", 422);
+      if (own && !account) {
+        const bootstrap = config.demo ? ["demo-admin", "demo-collector"].includes(u.id) : u.id === "configured-admin";
+        if (bootstrap) {
+          if (!timingSafeEqual(scryptSync(body.currentPassword!, salt, 64), expectedPassword))
+            throw new DomainError("CURRENT_PASSWORD_INVALID", "La contraseña actual no es correcta.", 401);
+          const now = new Date().toISOString();
+          account = { id: u.id, name: u.name, email: config.demo ? (u.id === "demo-admin" ? "admin@cyp.local" : "collector@cyp.local") : config.adminEmail!.toLowerCase(),
+            role: u.role, ...(u.collectorId ? { collectorId: u.collectorId } : {}), ...hashPassword(body.currentPassword!),
+            credentialVersion: 0, status: "active", createdAt: now, updatedAt: now };
+          state.accounts.push(account);
+        }
+      } else if (own && account && !verifyPassword(body.currentPassword!, account.salt, account.passwordHash)) {
+        throw new DomainError("CURRENT_PASSWORD_INVALID", "La contraseña actual no es correcta.", 401);
+      }
       if (!account)
         throw new DomainError(
           "NOT_FOUND",
@@ -641,8 +662,8 @@ export async function buildApp(config: Config) {
           "Solo puedes cambiar tu propia contraseña.",
           403,
         );
-      const { salt, passwordHash } = hashPassword(body.password);
-      Object.assign(account, { salt, passwordHash });
+      const { salt: newSalt, passwordHash } = hashPassword(body.password);
+      Object.assign(account, { salt: newSalt, passwordHash });
       touch(account);
       revokeUserSessions(state, account.id, u.id);
       return { ok: true, credentialVersion: account.credentialVersion };
@@ -829,20 +850,28 @@ export async function buildApp(config: Config) {
     );
     describe("get", path, `Consultar ${type}`);
   }
+  mutate("/api/clientes/sugerencias", "Reservar código e identificación interna secuencial", z.object({}).strict(), (s, u) => {
+    const reservation = reserveClientIdentity(s, u);
+    return { reservationId: reservation.id, code: reservation.code, internalIdentification: reservation.internalIdentification };
+  });
   mutate("/api/clientes", "Crear cliente", newClientBody, (s, u, b) => {
     assertAdmin(u);
     if (!s.routes.some((route) => route.id === b.routeId))
       throw new DomainError("ROUTE_NOT_FOUND", "Selecciona una ruta válida.", 404);
-    if (s.clients.some((client) => client.code === b.code))
+    const clientId = randomUUID();
+    const identity = claimClientIdentity(s, u, clientId, b.reservationId);
+    const code = b.code || identity.code;
+    if (s.clients.some((client) => client.code === code) || s.clientIdentityReservations.some((row) => row.id !== b.reservationId && row.clientId !== clientId && row.code === code))
       throw new DomainError("CLIENT_CODE_EXISTS", "El código de cliente ya existe.", 409);
-    const client = { id: randomUUID(), active: true, ...b, preferredCurrency: b.preferredCurrency ?? "DOP" };
+    const { reservationId: _reservation, ...values } = b;
+    const client = { ...values, id: clientId, code, internalIdentification: identity.internalIdentification, active: true, preferredCurrency: b.preferredCurrency ?? "DOP" };
     s.clients.push(client);
     return client;
   });
-  mutate<{ name: string; code: string; phone: string; address: string; routeId: string; preferredCurrency?: LedgerCurrency; alias: string; sector: string; cellular: string; email: string; note: string; identification: string; lat?: number; lng?: number }, { id: string }>(
+  mutate<{ name: string; code: string; phone: string; address: string; routeId: string; preferredCurrency?: LedgerCurrency; alias: string; sector: string; cellular: string; email: string; note: string; identification: string; lat?: number; lng?: number; reservationId?: string }, { id: string }>(
     "/api/clientes/:id",
     "Actualizar cliente",
-    clientBody,
+    clientBody.safeExtend({ reservationId: id.optional() }),
     (s, u, b, params) => {
       assertAdmin(u);
       const current = s.clients.find((client) => client.id === params.id);
@@ -851,7 +880,14 @@ export async function buildApp(config: Config) {
         throw new DomainError("ROUTE_NOT_FOUND", "Selecciona una ruta válida.", 404);
       if (s.clients.some((client) => client.id !== params.id && client.code === b.code))
         throw new DomainError("CLIENT_CODE_EXISTS", "El código de cliente ya existe.", 409);
-      Object.assign(current, b);
+      if (b.reservationId) {
+        if (current.internalIdentification) throw new DomainError("CLIENT_IDENTITY_IMMUTABLE", "El cliente ya tiene una identificación interna permanente.", 409);
+        current.internalIdentification = claimClientIdentity(s, u, current.id, b.reservationId).internalIdentification;
+      }
+      if (s.clientIdentityReservations.some((row) => row.id !== b.reservationId && row.clientId !== current.id && row.code === b.code))
+        throw new DomainError("CLIENT_CODE_RESERVED", "El código está reservado por otra operación.", 409);
+      const { reservationId: _reservation, ...values } = b;
+      Object.assign(current, values);
       return current;
     },
   );
@@ -1003,7 +1039,7 @@ export async function buildApp(config: Config) {
     [
       "/api/cobros",
       "collection",
-      z.object({ chargeId: id, amount: money, currency: currency.optional() }).strict(),
+      z.object({ chargeId: id, amount: money, currency: currency.optional(), bankId: id.optional(), reference: singleLine(160).optional(), note: freeText(2000).optional() }).strict(),
     ],
     [
       "/api/pagos",
@@ -1023,6 +1059,8 @@ export async function buildApp(config: Config) {
         collectorId?: string;
         currency?: LedgerCurrency;
         note?: string;
+        bankId?: string;
+        reference?: string;
         denominations?: Array<{ denominacion: number; cantidad: number }>;
         depositComponents?: DepositComponent[];
       }>,
@@ -1050,6 +1088,7 @@ export async function buildApp(config: Config) {
       collectorId: id,
       currency: currency.default("DOP"),
       lines: z.array(z.object({ chargeId: id, amount: money }).strict()).min(1).max(100),
+      bankId: id.optional(), reference: singleLine(160).optional(), note: freeText(2000).optional(),
     }).strict(),
     (s, u, b) => {
       const movements = createCentralCollections(s, u, b);
@@ -1206,7 +1245,24 @@ export async function buildApp(config: Config) {
     const s = await config.store.read();
     if (!s.collectors.some((c) => c.id === q.collectorId))
       throw new DomainError("NOT_FOUND", "Cobrador no encontrado.", 404);
-    return preview(s, q.collectorId, q.date, q.currency);
+    const totalsByCurrency = Object.fromEntries(["DOP", "USD", "EUR"].map((code) => [code, preview(s, q.collectorId, q.date, code as LedgerCurrency)]));
+    const deliveriesByCurrency = Object.fromEntries(["DOP", "USD", "EUR"].map((code) => [code, s.movements.filter((m) =>
+      m.collectorId === q.collectorId && m.type === "office_delivery" && !m.cancelledAt && ledgerCurrency(m.currency) === code && businessDate(new Date(m.createdAt)) === q.date)]));
+    const collectorRouteIds = new Set(s.routes.filter((route) => route.collectorId === q.collectorId).map((route) => route.id));
+    const collectorClientIds = new Set(s.clients.filter((client) => collectorRouteIds.has(client.routeId)).map((client) => client.id));
+    const pendingCharges = s.charges.filter((charge) => collectorClientIds.has(charge.clientId) && charge.status !== "cancelled" &&
+      charge.amount > charge.collected && charge.dueDate <= q.date).map((charge) => financialObligation(s, charge, "collection"));
+    const pendingPayouts = s.payouts.filter((payout) => payout.collectorId === q.collectorId && payout.status !== "cancelled" &&
+      payout.amount > payout.paid && (!payout.dueDate || payout.dueDate <= q.date)).map((payout) => financialObligation(s, payout, "payout"));
+    const pendingByCurrency = Object.fromEntries(ledgerCurrencies.map((code) => [code, {
+      charges: pendingCharges.filter((charge) => supportedLedgerCurrency(charge.currency) === code),
+      payouts: pendingPayouts.filter((payout) => supportedLedgerCurrency(payout.currency) === code),
+    }]));
+    const pendingUnsupported = {
+      charges: pendingCharges.filter((charge) => charge.currencyUnsupported),
+      payouts: pendingPayouts.filter((payout) => payout.currencyUnsupported),
+    };
+    return { ...preview(s, q.collectorId, q.date, q.currency), totalsByCurrency, deliveriesByCurrency, pendingByCurrency, pendingUnsupported };
   });
   describe(
     "get",
@@ -1292,6 +1348,7 @@ export async function buildApp(config: Config) {
       businessDate: businessDate(new Date(m.createdAt)),
       createdAt: m.createdAt,
       type: m.type,
+      footerNote: typeof s.systemConfig?.receiptFooterNote === "string" ? s.systemConfig.receiptFooterNote : "",
     };
   };
   app.get<{ Params: { token: string } }>("/api/recibos/:token", (req) =>
@@ -1320,7 +1377,7 @@ export async function buildApp(config: Config) {
           .match(new RegExp(`.{1,${cols}}`, "g"))
           ?.join("\n") ?? "";
       const symbol = r.currency === "DOP" ? "RD$" : r.currency;
-      const body = `COBROS Y PAGOS\nRecibo operacional\n${"-".repeat(cols)}\n${clean(r.clientName)}\n${clean(r.concept)}\n${symbol} ${(r.amount / 100).toFixed(2)}\n${clean(r.collectorName)}\n${r.businessDate}\n${clean(r.id)}\nNo es comprobante fiscal\n\n\n`;
+      const body = `COBROS Y PAGOS\nRecibo operacional\n${"-".repeat(cols)}\n${clean(r.clientName)}\n${clean(r.concept)}\n${symbol} ${(r.amount / 100).toFixed(2)}\n${clean(r.collectorName)}\n${r.businessDate}\n${clean(r.id)}\nNo es comprobante fiscal\n${clean(r.footerNote)}\n\n\n`;
       return reply
         .header(
           "Content-Disposition",

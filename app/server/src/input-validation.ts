@@ -68,6 +68,8 @@ const configNumber = (min: number, max: number, empty = false, integer = false, 
 }, `Indica ${integer ? "un entero" : "un número decimal"} entre ${min} y ${max}${fourDecimals ? ", con hasta cuatro decimales" : ""}${empty ? ", o deja el campo vacío" : ""}.`);
 
 const knownConfigFields: Record<string, z.ZodType> = {
+  receiptFooterNote: freeText(2000),
+  companyLogoDataUrl: z.string().max(24576).refine((value) => value === "" || /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(value), "Usa una imagen PNG, JPEG o WebP en base64 de hasta 24 KiB, o deja el campo vacío."),
   "general.empresa": configText(160), "general.direccion": configText(500),
   "general.telefono": configText(40).refine((value) => generalPhone.safeParse(value).success, "Escribe un teléfono válido o deja el campo vacío."),
   "general.fax": configText(40).refine((value) => generalPhone.safeParse(value).success, "Escribe un teléfono válido o deja el campo vacío."),

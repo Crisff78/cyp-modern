@@ -7,11 +7,11 @@ const clean = <T>(row: Record<string, unknown>): T => Object.fromEntries(
 ) as T;
 
 export async function readRemittances(client: pg.PoolClient): Promise<RemittanceState> {
-  const rates = (await client.query(`SELECT r.id,r.currency,r.rate::text,r.effective_date::text AS date,
+  const rates = (await client.query(`SELECT r.id,r.currency,r.rate::text,r.purchase_rate::text AS "purchaseRate",r.sale_rate::text AS "saleRate",r.effective_date::text AS date,
     r.last_change_id AS "changeId",h.created_at AS "updatedAt",h.actor_id AS "updatedBy"
     FROM exchange_rates r LEFT JOIN remittance_rate_history h ON h.id=r.last_change_id
     WHERE r.currency IN ('DOP','USD','EUR') ORDER BY r.effective_date,r.currency`)).rows.map((row) => clean<ExchangeRate>(row));
-  const rateHistory = (await client.query(`SELECT id,currency,rate::text,effective_date::text AS date,
+  const rateHistory = (await client.query(`SELECT id,currency,rate::text,purchase_rate::text AS "purchaseRate",sale_rate::text AS "saleRate",effective_date::text AS date,
     created_at AS "createdAt",actor_id AS "actorId" FROM remittance_rate_history
     ORDER BY effective_date,created_at,id`)).rows.map((row) => clean<RateChange>(row));
   const cashSessions = (await client.query(`SELECT id,operator_id AS "operatorId",currency,date::text,
@@ -69,14 +69,14 @@ export async function saveRemittances(client: pg.PoolClient, state: RemittanceSt
   }
   for (const change of state.rateHistory ?? []) {
     if (oldHistory.has(change.id)) continue;
-    await client.query(`INSERT INTO remittance_rate_history(id,currency,effective_date,rate,created_at,actor_id)
-      VALUES($1,$2,$3,$4,$5,$6)`, [change.id,change.currency,change.date,change.rate,change.createdAt,change.actorId]);
+    await client.query(`INSERT INTO remittance_rate_history(id,currency,effective_date,rate,created_at,actor_id,purchase_rate,sale_rate)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, [change.id,change.currency,change.date,change.rate,change.createdAt,change.actorId,change.purchaseRate ?? null,change.saleRate ?? null]);
   }
   for (const rate of state.rates) {
     const old = before.rates.find((r) => r.id === rate.id);
     if (old && JSON.stringify(old) === JSON.stringify(rate)) continue;
-    await client.query(`INSERT INTO exchange_rates(id,currency,rate,effective_date,last_change_id) VALUES($1,$2,$3,$4,$5)
-      ON CONFLICT(currency,effective_date) DO UPDATE SET rate=EXCLUDED.rate,last_change_id=EXCLUDED.last_change_id`, [rate.id, rate.currency, rate.rate, rate.date,rate.changeId ?? null]);
+    await client.query(`INSERT INTO exchange_rates(id,currency,rate,effective_date,last_change_id,purchase_rate,sale_rate) VALUES($1,$2,$3,$4,$5,$6,$7)
+      ON CONFLICT(currency,effective_date) DO UPDATE SET rate=EXCLUDED.rate,last_change_id=EXCLUDED.last_change_id,purchase_rate=EXCLUDED.purchase_rate,sale_rate=EXCLUDED.sale_rate`, [rate.id, rate.currency, rate.rate, rate.date,rate.changeId ?? null,rate.purchaseRate ?? null,rate.saleRate ?? null]);
   }
   for (const cash of state.cashSessions) {
     if (before.cashSessions.some((c) => c.id === cash.id)) continue;

@@ -111,10 +111,12 @@ async function readState(client: pg.PoolClient): Promise<State> {
   state.clients = (
     await client.query(
       `SELECT c.id,c.name,c.code,c.phone,cp.address,c.route_id AS "routeId",c.collection_point_id AS "collectionPointId",
-       c.alias,c.sector,c.cellular,c.email,c.note,c.identification,c.lat,c.lng,c.active,c.preferred_currency AS "preferredCurrency"
+       c.alias,c.sector,c.cellular,c.email,c.note,c.identification,c.internal_identification AS "internalIdentification",c.lat,c.lng,c.active,c.preferred_currency AS "preferredCurrency"
        FROM clients c JOIN collection_points cp ON cp.id=c.collection_point_id ORDER BY c.id`,
     )
   ).rows.map(clean);
+  state.clientIdentityReservations = (await client.query(`SELECT id,sequence,code,internal_identification AS "internalIdentification",
+    actor_id AS "actorId",created_at AS "createdAt",client_id AS "clientId" FROM client_identity_reservations ORDER BY sequence`)).rows.map(clean);
   state.clientMachines = (
     await client.query(
       `SELECT id,client_id AS "clientId",number,entry,exit,
@@ -148,12 +150,12 @@ async function readState(client: pg.PoolClient): Promise<State> {
   state.movements = (
     await client.query(
       `SELECT id,collector_id AS "collectorId",client_id AS "clientId",charge_id AS "chargeId",
-        NULL::text AS "payoutId",'collection' AS type,amount,currency,NULL::text AS note,collected_at AS "createdAt",
+        NULL::text AS "payoutId",'collection' AS type,amount,currency,note,collected_at AS "createdAt",
         receipt_token AS "receiptToken",receipt_revoked AS "receiptRevoked",actor_id AS "actorId",
         registered_centrally AS "registeredCentrally",
         NULL::timestamptz AS "acceptedAt",NULL::text AS "acceptedBy",
         NULL::timestamptz AS "cancelledAt",NULL::text AS "cancelledBy",
-        NULL::jsonb AS "denominations",NULL::jsonb AS "depositComponents"
+        NULL::jsonb AS "denominations",NULL::jsonb AS "depositComponents",bank_id AS "bankId",bank_name AS "bankName",bank_reference AS reference
        FROM collections
        UNION ALL
        SELECT id,collector_id AS "collectorId",client_id AS "clientId",NULL::text AS "chargeId",
@@ -162,7 +164,7 @@ async function readState(client: pg.PoolClient): Promise<State> {
         registered_centrally AS "registeredCentrally",
         NULL::timestamptz AS "acceptedAt",NULL::text AS "acceptedBy",
         NULL::timestamptz AS "cancelledAt",NULL::text AS "cancelledBy",
-        NULL::jsonb AS "denominations",NULL::jsonb AS "depositComponents"
+        NULL::jsonb AS "denominations",NULL::jsonb AS "depositComponents",NULL::text AS "bankId",NULL::text AS "bankName",NULL::text AS reference
        FROM payments
        UNION ALL
        SELECT id,collector_id AS "collectorId",NULL::text AS "clientId",NULL::text AS "chargeId",
@@ -171,7 +173,7 @@ async function readState(client: pg.PoolClient): Promise<State> {
         NULL::boolean AS "registeredCentrally",
         accepted_at AS "acceptedAt",accepted_by AS "acceptedBy",
         cancelled_at AS "cancelledAt",cancelled_by AS "cancelledBy",
-        denominations AS "denominations",deposit_components AS "depositComponents"
+        denominations AS "denominations",deposit_components AS "depositComponents",NULL::text AS "bankId",NULL::text AS "bankName",NULL::text AS reference
        FROM cash_handovers
        ORDER BY "createdAt", id`,
     )
@@ -242,6 +244,7 @@ async function readState(client: pg.PoolClient): Promise<State> {
 async function saveState(client: pg.PoolClient, state: State, before: State) {
   for (const userId of new Set([
     ...state.movements.map((m) => m.actorId),
+    ...state.clientIdentityReservations.map((reservation) => reservation.actorId),
     ...state.depositEvents.map((event) => event.actorId),
     ...state.movementCancellations.map((event) => event.actorId),
     ...state.settlements.map((s) => s.actorId),
@@ -339,13 +342,14 @@ async function saveState(client: pg.PoolClient, state: State, before: State) {
       [pointId, clientRow.routeId, clientRow.address],
     );
     await client.query(
-      `INSERT INTO clients(id,name,code,phone,route_id,collection_point_id,alias,sector,cellular,email,note,identification,lat,lng,active,preferred_currency)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+      `INSERT INTO clients(id,name,code,phone,route_id,collection_point_id,alias,sector,cellular,email,note,identification,lat,lng,active,preferred_currency,internal_identification)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
        ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,code=EXCLUDED.code,phone=EXCLUDED.phone,
        route_id=EXCLUDED.route_id,collection_point_id=EXCLUDED.collection_point_id,
        alias=EXCLUDED.alias,sector=EXCLUDED.sector,cellular=EXCLUDED.cellular,
        email=EXCLUDED.email,note=EXCLUDED.note,identification=EXCLUDED.identification,
-       lat=EXCLUDED.lat,lng=EXCLUDED.lng,active=EXCLUDED.active,preferred_currency=EXCLUDED.preferred_currency`,
+       lat=EXCLUDED.lat,lng=EXCLUDED.lng,active=EXCLUDED.active,preferred_currency=EXCLUDED.preferred_currency,
+       internal_identification=COALESCE(clients.internal_identification,EXCLUDED.internal_identification)`,
       [
         clientRow.id,
         clientRow.name,
@@ -363,8 +367,15 @@ async function saveState(client: pg.PoolClient, state: State, before: State) {
         clientRow.lng ?? null,
         clientRow.active !== false,
         clientRow.preferredCurrency ?? "DOP",
+        clientRow.internalIdentification ?? null,
       ],
     );
+  }
+  for (const reservation of state.clientIdentityReservations) {
+    if (unchanged(before.clientIdentityReservations, reservation)) continue;
+    await client.query(`INSERT INTO client_identity_reservations(id,sequence,code,internal_identification,actor_id,created_at,client_id)
+      VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(id) DO UPDATE SET client_id=EXCLUDED.client_id`,
+      [reservation.id,reservation.sequence,reservation.code,reservation.internalIdentification,reservation.actorId,reservation.createdAt,reservation.clientId ?? null]);
   }
   for (const machine of state.clientMachines) {
     const previous = before.clientMachines.find((item) => item.id === machine.id);
@@ -462,8 +473,8 @@ async function saveState(client: pg.PoolClient, state: State, before: State) {
     }
     if (movement.type === "collection")
       await client.query(
-        `INSERT INTO collections(id,collector_id,client_id,charge_id,amount,collected_at,receipt_token,receipt_revoked,actor_id,registered_centrally,currency)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+        `INSERT INTO collections(id,collector_id,client_id,charge_id,amount,collected_at,receipt_token,receipt_revoked,actor_id,registered_centrally,currency,bank_id,bank_name,bank_reference,note)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
          ON CONFLICT(id) DO UPDATE SET receipt_revoked=EXCLUDED.receipt_revoked`,
         [
           movement.id,
@@ -477,6 +488,7 @@ async function saveState(client: pg.PoolClient, state: State, before: State) {
           movement.actorId,
           movement.registeredCentrally ?? null,
           movement.currency ?? "DOP",
+          movement.bankId ?? null, movement.bankName ?? null, movement.reference ?? null, movement.note ?? null,
         ],
       );
     else if (movement.type === "payout")

@@ -5,7 +5,7 @@ import {
 } from "./domain.js";
 import { fillDemoCatalogs } from "./demo-catalog-scenarios.js";
 import {
-  cancelRemittance, cashBalance, closeRemittanceCash, createRemittance,
+  cancelRemittance, cashBalance, closeRemittanceCash, createRemittance, getCommissionPolicy,
   openRemittanceCash, payRemittance, quoteRemittance, setDailyRate, type Currency,
 } from "./remittances.js";
 
@@ -197,7 +197,7 @@ function fillTransfers(fixture: State, existing: State, baseDate: string, now: D
       for (let index = 0; index < 3; index++) {
         const sourceCurrency = currencies[(index + offset + 6) % 3];
         const destinationCurrency = currencies[(index + offset + 7) % 3];
-        const quoteInput = { sourceCurrency, destinationCurrency, amount: sourceCurrency === "DOP" ? 180_000 : 12_000, commissionBps: 100 + index * 50 };
+        const quoteInput = { sourceCurrency, destinationCurrency, amount: sourceCurrency === "DOP" ? 180_000 : 12_000 };
         const createdAt = at(date, 9 + index);
         const quote = quoteRemittance(draft, quoteInput, createdAt).quote;
         // Supply existing transfers only as numbering context. The domain owns
@@ -277,6 +277,8 @@ export function enrichPublicDemo(state: State, now = new Date()) {
   if (state.idempotency.some((row) => row.id === markerId)) return;
   const baseDate = businessDate(now);
   const fixture = emptyState();
+  // Quotes use the current policy on a private fixture; the saved policy is not appended or changed.
+  fixture.remittances.commissionPolicy = getCommissionPolicy(state);
   createPeople(fixture, now);
   fillDemoCatalogs(fixture, now);
   fillCollections(fixture, baseDate, now);

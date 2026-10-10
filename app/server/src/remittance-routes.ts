@@ -60,6 +60,7 @@ export function registerRemittanceRoutes(
   }).strict(), (state, actor, input) => setCommissionPolicy(state, actor, input));
   mutate("/api/envios/tasas", "Registrar tasa diaria DOP por unidad", z.object({
     currency, rate: z.string().max(19), date: z.iso.date(),
+    purchaseRate: z.string().max(19).optional(), saleRate: z.string().max(19).optional(),
   }).strict(), (state, actor, input) => setDailyRate(state, actor, input));
   mutate("/api/envios", "Registrar envío y recibir principal más comisión", z.object({
     ...quoteFields, senderClientId: id, recipientClientId: id, sendingUserId: id.optional(),

@@ -1,0 +1,7 @@
+.connected-banks{display:flex;flex-direction:column;min-width:0;min-height:0;height:100%}
+.connected-banks .mdi-toolbar-extra label{display:inline-flex;align-items:center;gap:6px}
+.connected-banks .mdi-toolbar-extra input{min-width:100px;max-width:180px}
+.connected-banks .legacy-mdi-table tbody tr.selected-row td{background:var(--cyp-info-surface,#dbeafe);color:var(--cyp-info-text,#1e3a8a)}
+.bank-form-dialog{width:min(460px,calc(100vw - 24px))}
+.bank-form-dialog .legacy-dialog-form>label{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.bank-form-dialog .legacy-dialog-form>label:first-child input{flex:1;min-width:0}

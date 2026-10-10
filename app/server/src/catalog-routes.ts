@@ -79,6 +79,20 @@ function validateCollectorAccount(state: State, accountId?: string, current?: Co
     throw new DomainError("COLLECTOR_ACCOUNT_SCOPE", "La cuenta de cobrador está asignada a otro cobrador.", 409);
 }
 export function registerCatalogRoutes(app: FastifyInstance, store: Store, user: (req: FastifyRequest) => User, mutate: Mutate, describe: Describe) {
+  app.get("/api/bancos", async () => (await store.read()).banks);
+  describe("get", "/api/bancos", "Consultar catálogo de bancos reutilizable");
+  for (const editing of [false, true]) {
+    mutate(`/api/bancos${editing ? "/:id" : ""}`, "Guardar banco sin modificar movimientos anteriores",
+      z.object({ name, active: z.boolean() }).strict(), (state, actor, input, params) => {
+        assertAdmin(actor);
+        const current = editing ? requireRow(state.banks, params.id, "Banco") : undefined;
+        uniqueName(state.banks, input.name, current?.id);
+        if (current) { Object.assign(current, input); return current; }
+        const bank = { id: randomUUID(), ...input };
+        state.banks.push(bank);
+        return bank;
+      });
+  }
   for (const [path, key] of [
     ["/api/cobradores", "collectors"], ["/api/zonas", "zones"], ["/api/servicios", "services"],
     ["/api/motivos-atraso", "delayReasons"], ["/api/cargos-recurrentes", "recurringCharges"],

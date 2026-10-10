@@ -93,11 +93,11 @@ remittancesApi("/snapshot").then(initial=>createRoot(document.getElementById("ro
     browser = await chromium.launch({ executablePath: edge, headless: true });
     context = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale: "es-DO", serviceWorkers: "block" });
     await context.addInitScript((value: string) => localStorage.setItem("cyp-admin-token", value), token);
-    await context.route("**/*", async (route: any) => { if (new URL(route.request().url()).origin !== origin) { external.push(route.request().url()); return route.abort("blockedbyclient"); } return route.continue(); });
+    await context.route("**/*", async (route: any) => { const target = new URL(route.request().url()); if (target.origin !== origin) { external.push(target.origin); return route.abort("blockedbyclient"); } return route.continue(); });
     const page = await context.newPage(); page.setDefaultTimeout(15000); page.on("pageerror", (error: Error) => pageErrors.push(error.message));
     const open = async (view: string) => { await page.goto(`${origin}/?view=${view}`); await (view === "auxiliary" ? page.getByRole("dialog", { name: "Nueva cuenta", exact: true }) : page.getByRole("region", { name: view === "users" ? "Usuarios" : "Cobradores", exact: true })).waitFor(); };
     const roleLabels = async (select: any) => select.locator("option").allTextContents();
-    await t.test("main user creation defaults to No definido, saves it and edits the selected role", async () => {
+    await t.test("main user creation accepts a username without email and edits its identity and role", async () => {
       await open("users"); await page.getByTitle("Nuevo", { exact: true }).click();
       const dialog = page.getByRole("dialog", { name: "Datos de Usuario...", exact: true }), role = dialog.getByLabel("Rol", { exact: true });
       assert.equal(await role.inputValue(), "undefined"); assert.deepEqual(await roleLabels(role), ACCOUNT_ROLE_OPTIONS.map((row) => row.label));
@@ -109,24 +109,31 @@ remittancesApi("/snapshot").then(initial=>createRoot(document.getElementById("ro
       await association.selectOption("col-1"); await role.selectOption("undefined");
       assert.equal(await association.count(), 0);
       await dialog.getByLabel("Nombre", { exact: true }).fill("Cuenta nueva QA");
-      await dialog.getByLabel("Correo", { exact: true }).fill("qa-new@example.invalid");
+      const username = dialog.getByLabel("Usuario / correo", { exact: true });
+      assert.equal(await username.getAttribute("type"), "text");
+      await username.fill("qa.new");
+      assert.equal(await username.evaluate((input: HTMLInputElement) => input.checkValidity()), true);
       const password = dialog.getByLabel("Contraseña inicial (mínimo 3 caracteres)", { exact: true });
       assert.equal(await password.getAttribute("maxlength"), "200"); assert.equal(await password.getAttribute("minlength"), "3");
       await password.fill("Qa3+#'"); await dialog.getByRole("button", { name: "oK", exact: true }).click();
       await dialog.waitFor({ state: "detached" });
-      const created = (await store.read()).accounts.find((row) => row.email === "qa-new@example.invalid")!; assert.equal(created.role, "undefined");
+      const created = (await store.read()).accounts.find((row) => row.email === "qa.new")!; assert.equal(created.role, "undefined");
       await page.getByRole("row").filter({ hasText: created.email }).click(); await page.getByTitle("Editar", { exact: true }).click();
       assert.equal(await role.inputValue(), "undefined"); await role.selectOption("supervisor");
+      await username.fill("qa.edited");
       await dialog.getByRole("button", { name: "oK", exact: true }).click(); await dialog.waitFor({ state: "detached" });
-      assert.equal((await store.read()).accounts.find((row) => row.id === created.id)?.role, "supervisor");
-      await page.getByRole("row").filter({ hasText: created.email }).click(); await page.getByTitle("Editar", { exact: true }).click();
+      const edited = (await store.read()).accounts.find((row) => row.id === created.id)!;
+      assert.equal(edited.role, "supervisor"); assert.equal(edited.email, "qa.edited");
+      const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { email: "qa.edited", password: "Qa3+#'" } });
+      assert.equal(login.statusCode, 200); assert.equal(login.json().user.id, created.id);
+      await page.getByRole("row").filter({ hasText: edited.email }).click(); await page.getByTitle("Editar", { exact: true }).click();
       assert.equal(await role.inputValue(), "supervisor"); await dialog.getByRole("button", { name: "Cancelar", exact: true }).click();
     });
     await t.test("account picker excludes Admin, blocks the parent, and Cancel/OK keep draft and persisted state separate", async () => {
       await open("collectors"); await page.getByRole("row").filter({ hasText: "Cobrador QA" }).click(); await page.getByTitle("Editar", { exact: true }).click();
       const parent = page.getByRole("dialog", { name: "Datos de Cobrador...", exact: true }), field = parent.getByLabel("Cuenta", { exact: true });
       await parent.getByText(samples.user.email, { exact: true }).waitFor();
-      assert.ok(await parent.getByText(/El correo, rol y contraseña/).isVisible());
+      assert.ok(await parent.getByText(/El usuario o correo, rol y contraseña/).isVisible());
       assert.equal(await field.inputValue(), samples.user.name); assert.equal(await field.getAttribute("readonly"), "");
       const launch = () => parent.getByRole("button", { name: "Seleccionar cuenta", exact: true }).click();
       const picker = page.getByRole("dialog", { name: "Seleccionar cuenta del cobrador...", exact: true });
@@ -156,7 +163,7 @@ remittancesApi("/snapshot").then(initial=>createRoot(document.getElementById("ro
       await parent.getByRole("button", { name: "Cancelar", exact: true }).click();
       assert.equal((await store.read()).collectors[0].accountId, samples.supervisor.id);
     });
-    await t.test("auxiliary user form uses the same exact roles and No definido default", async () => {
+    await t.test("auxiliary user form accepts a username, retains the three-character minimum and explicit collector link", async () => {
       await open("auxiliary"); const dialog = page.getByRole("dialog", { name: "Nueva cuenta", exact: true }), role = dialog.getByLabel("Rol", { exact: true });
       assert.equal(await role.inputValue(), "undefined"); assert.deepEqual(await roleLabels(role), ACCOUNT_ROLE_OPTIONS.map((row) => row.label));
       await role.selectOption("collector");
@@ -164,7 +171,19 @@ remittancesApi("/snapshot").then(initial=>createRoot(document.getElementById("ro
       assert.equal(await association.inputValue(), "");
       assert.equal(await association.getAttribute("required"), "");
       assert.equal(await association.locator('option[value="qa-inactive-collector"]').count(), 0);
-      await dialog.getByRole("button", { name: "Cancelar", exact: true }).click(); await page.getByText("Ventana cerrada", { exact: true }).waitFor();
+      await dialog.getByLabel("Nombre", { exact: true }).fill("Cuenta auxiliar sin correo QA");
+      const username = dialog.getByLabel("Usuario / correo", { exact: true });
+      assert.equal(await username.getAttribute("type"), "text");
+      assert.equal(await username.getAttribute("autocomplete"), "username");
+      await username.fill("qa.auxiliary"); await association.selectOption("col-1");
+      const password = dialog.getByLabel("Contraseña (3 caracteres mínimo)", { exact: true });
+      await password.fill("Qa"); assert.equal(await password.evaluate((input: HTMLInputElement) => input.checkValidity()), false);
+      await password.fill("Qa3"); await dialog.getByRole("button", { name: "Crear cuenta", exact: true }).click();
+      await page.getByText("Ventana cerrada", { exact: true }).waitFor();
+      const saved = (await store.read()).accounts.find((row) => row.email === "qa.auxiliary")!;
+      assert.equal(saved.role, "collector"); assert.equal(saved.collectorId, "col-1");
+      const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { email: "qa.auxiliary", password: "Qa3" } });
+      assert.equal(login.statusCode, 200); assert.equal(login.json().user.id, saved.id);
     });
     await t.test("historical inactive collector remains visible but cannot be selected as a new association", async () => {
       await store.transaction((current) => { current.accounts.find((row) => row.id === samples.collector.id)!.collectorId = "qa-inactive-collector"; });
@@ -177,7 +196,13 @@ remittancesApi("/snapshot").then(initial=>createRoot(document.getElementById("ro
       const count = writes.length; await dialog.getByRole("button", { name: "Cancelar", exact: true }).click();
       assert.equal(writes.length, count); assert.equal((await store.read()).accounts.find((row) => row.id === samples.collector.id)?.collectorId, "qa-inactive-collector");
     });
-    assert.deepEqual(pageErrors, []); assert.deepEqual(external, []); t.diagnostic(`Synthetic role UI screenshot: ${output}`);
+    assert.deepEqual(pageErrors, []);
+    // The host antivirus may inject this script into the ephemeral profile.
+    // Every external request stays blocked; record only its origin, without attrs.
+    const antivirusOrigin = "http://me.kis.v2.scr.kaspersky-labs.com";
+    assert.deepEqual(external.filter((blockedOrigin) => blockedOrigin !== antivirusOrigin), [], "The application must not attempt any external request.");
+    t.diagnostic(`Blocked antivirus script attempts: ${external.length}; no external request was sent.`);
+    t.diagnostic(`Synthetic role UI screenshot: ${output}`);
   } finally {
     await context?.close(); await browser?.close(); if (server) await new Promise<void>((resolve) => server!.close(() => resolve())); await app.close();
   }

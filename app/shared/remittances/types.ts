@@ -11,9 +11,9 @@ export type CommissionAllocation = {
   baseAmount: number; transactionAmount: number; companyAmount: number; managerAmount: number;
   managerId?: string; managerName?: string;
 };
-export type Rate = { id: string; currency: Currency; rate: string; date: string; changeId?: string; updatedAt?: string; updatedBy?: string };
-export type RateChange = { id: string; currency: Currency; rate: string; date: string; createdAt: string; actorId: string };
-export type RemittanceContact = { id: string; code: string; name: string; phone: string; cellular: string; address: string };
+export type Rate = { id: string; currency: Currency; rate: string; purchaseRate?: string; saleRate?: string; date: string; changeId?: string; updatedAt?: string; updatedBy?: string };
+export type RateChange = { id: string; currency: Currency; rate: string; purchaseRate?: string; saleRate?: string; date: string; createdAt: string; actorId: string };
+export type RemittanceContact = { id: string; code: string; name: string; phone: string; cellular: string; address: string; identification?: string };
 export type ManagerCommission = { managerName: string; amount: number; currency: Currency };
 export type Quotation = { sourceCurrency: Currency; destinationCurrency: Currency; amount: number; commissionBps: number; commissionAmount: number; totalAmount: number; receiveAmount: number; quote: Quote;
   amountDop?: number; requestedReceiveAmount?: number; receiveRoundingDifference?: number; commissionAllocation?: CommissionAllocation };
@@ -33,6 +33,7 @@ export type Cash = {
 };
 export type RemittanceSnapshot = {
   businessDate: string; currencies: Currency[];
+  receiptFooterNote?: string;
   commissionPolicy?: CommissionPolicy;
   clients: { id: string; code: string; name: string; routeId: string; active: boolean; preferredCurrency?: Currency; canSendFrom: boolean; canReceive: boolean }[];
   operators: { id: string; name: string; role: "admin" | "collector"; collectorId?: string }[];

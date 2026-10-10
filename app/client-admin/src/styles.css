@@ -10999,3 +10999,36 @@ table {
 @media (max-width: 1100px) {
   .remittances-mdi-window { left: 12px !important; top: 12px !important; width: calc(100% - 24px) !important; max-width: none; height: min(760px, calc(100dvh - 110px)) !important; }
 }
+
+/* Requested operational controls keep the existing compact MDI layout. */
+.charges-view .mdi-toolbar-extra,
+.collections-legacy-view .legacy-mdi-toolbar .mdi-toolbar-extra { margin-left: 4px; }
+.legacy-mdi-toolbar button svg { display: block; flex-shrink: 0; overflow: visible; }
+.collections-table tbody tr.selected-row td,
+.collections-table tbody tr.selected-row:hover td { background: var(--cyp-info-surface, #dbeafe); color: var(--cyp-info-text, #1e3a8a); }
+.collections-table tbody tr.selected-row td:first-child { box-shadow: inset 3px 0 var(--cyp-info-text, #1e3a8a); }
+.sidebar .nav-group-trigger { color: var(--cyp-text, #334155); font-size: 11px; border: 1px solid var(--cyp-border, #d7e0ea); background: var(--cyp-surface-raised, #e5e7eb); }
+.sidebar .nav-group-trigger.active { color: var(--cyp-success-text, #047857); border-color: var(--cyp-success-text, #047857); background: var(--cyp-success-surface, #ecfdf5); }
+.topbar-actions button.status-badge { cursor: pointer; }
+.topbar-actions button.status-badge:hover,
+.topbar-actions button.status-badge:focus-visible { outline: 2px solid var(--cyp-success-text, #047857); outline-offset: 2px; }
+.desktop-launchers .launcher-settlements { --launcher-color: oklch(.43 .1 185); --launcher-hover: oklch(.36 .09 185); }
+.client-generated-field { display: grid; grid-template-columns: 136px minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.client-generated-field > label { white-space: normal; }
+.client-generated-field > input { width: 100%; min-width: 0; }
+.client-generated-field > button { padding: 4px 8px; white-space: nowrap; font-size: 11px; border: 1px solid var(--cyp-border-strong, #9ca3af); border-radius: 4px; color: var(--cyp-text, #334155); background: var(--cyp-surface, #fff); cursor: pointer; }
+.client-generated-field > button:disabled { opacity: .6; cursor: default; }
+.brand-company-logo { display: grid; place-items: center; width: 42px; height: 42px; flex: 0 0 42px; border-radius: 8px; background: var(--cyp-surface, #fff); }
+.brand-company-logo img { width: 100%; height: 100%; object-fit: contain; }
+.company-logo-setting { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-bottom: 16px; }
+.company-logo-setting img { width: 100px; height: 72px; object-fit: contain; background: var(--cyp-surface, #fff); border: 1px solid var(--cyp-border, #d7e0ea); }
+.legacy-config-fieldset textarea { width: 100%; max-width: 560px; padding: 7px; font: inherit; color: var(--cyp-text, #334155); background: var(--cyp-surface, #fff); border: 1px solid var(--cyp-border-strong, #9ca3af); resize: vertical; }
+.cash-delivery-detail-dialog { width: min(650px, calc(100vw - 24px)); }
+.cash-delivery-detail { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 8px 12px; margin: 0 0 16px; }
+.cash-delivery-detail dt { font-weight: 700; }
+.cash-delivery-detail dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+@media (max-width: 620px) {
+  .client-generated-field { grid-template-columns: 115px minmax(0, 1fr); }
+  .client-generated-field > button { grid-column: 2; justify-self: start; }
+  .cash-delivery-detail { grid-template-columns: 120px minmax(0, 1fr); }
+}

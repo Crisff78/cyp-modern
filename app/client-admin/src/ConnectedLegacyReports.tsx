@@ -3,6 +3,7 @@ import { Download, KeyRound, Printer, RefreshCw } from "lucide-react";
 import { exportSections, formatMoney, printSections, type OutputSection } from "../../shared/remittances/output";
 import { LegacyDialog } from "./LegacyConnectedUi";
 import type { Snapshot } from "./types";
+import { currentOperationalWeek } from "../../shared/operationalWeek";
 import "./connected-report-layout.css";
 
 type ReportRow = { id: string; date: string; clientId: string; routeId: string; zoneId: string; client: string; route: string; zone: string; collector: string; concept: string; currency: string; amount: number; received: number; pending: number };
@@ -12,8 +13,8 @@ const currencyOf = (value?: string) => !value || ["DOP", "Peso Dominicano"].incl
 export function ConnectedLegacyReports({ page, title, snapshot, onRefresh }: { page: string; title: string; snapshot: Snapshot; onRefresh: () => void }) {
   const pendingReport = ["reportClientPendingPayouts", "reportPendingPayoutsByRoutes", "reportPendingPayoutsByZones"].includes(page);
   const servicesReport = page === "reportServicesByZone";
-  const [from, setFrom] = useState(`${snapshot.businessDate.slice(0, 7)}-01`);
-  const [to, setTo] = useState(snapshot.businessDate);
+  const [from, setFrom] = useState(() => currentOperationalWeek().from);
+  const [to, setTo] = useState(() => currentOperationalWeek().to);
   const [routeId, setRouteId] = useState("");
   const [zone, setZone] = useState("");
   const [collectorId, setCollectorId] = useState("");
