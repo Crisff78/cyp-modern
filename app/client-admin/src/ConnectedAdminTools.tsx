@@ -6,7 +6,8 @@ import { remittancesApi } from "./remittancesApi";
 import { StrictApiError } from "../../shared/remittances/strictApi";
 import { INPUT_LIMITS, validatePhone, validateText } from "../../shared/inputRules";
 import { confirmedRraaPreview, type RraaPreview } from "./rraaValidation";
-import type { Snapshot } from "./types";
+import { StationInstallationPanel, pendingStationInstallationStationId } from "./StationInstallationPanel";
+import type { Snapshot, User } from "./types";
 import { currentOperationalWeek } from "../../shared/operationalWeek";
 import "./connected-admin-tools.css";
 
@@ -31,17 +32,18 @@ const dateTime = (date: unknown) => date ? new Date(String(date)).toLocaleString
 const states: Record<string, string> = { active: "Activa", closed: "Cerrada", expired: "Vencida", pending: "Pendiente", approved: "Aprobada", rejected: "Rechazada", cancelled: "Anulada" };
 const emptyFilter = (): Filter => ({ q: "", ...currentOperationalWeek(), status: "" });
 
-export function ConnectedAdminTools({ page, snapshot, onRefresh }: { page: AdminToolPage; snapshot: Snapshot; onRefresh: () => void }) {
+export function ConnectedAdminTools({ page, snapshot, user, onRefresh }: { page: AdminToolPage; snapshot: Snapshot; user?: Pick<User, "id" | "role">; onRefresh: () => void }) {
   const definition = definitions[page], paged = ["sessions", "traces", "authorizationRequests"].includes(page);
   const [records, setRecords] = useState<Row[]>([]), [groups, setGroups] = useState<Row[]>([]), [stations, setStations] = useState<Row[]>([]), [reasons, setReasons] = useState<Row[]>([]);
   const [filter, setFilter] = useState<Filter>(emptyFilter), [applied, setApplied] = useState<Filter>(emptyFilter), [offset, setOffset] = useState(0), [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true), [busy, setBusy] = useState(false), [error, setError] = useState(""), [message, setMessage] = useState("");
   const [dialog, setDialog] = useState<Dialog | null>(null), [draft, setDraft] = useState<Draft>({}), [formError, setFormError] = useState(""), [links, setLinks] = useState<string[]>([]);
-  const [selectedId, setSelectedId] = useState(""), [filtersVisible, setFiltersVisible] = useState(true), [groupFilter, setGroupFilter] = useState(""), [userFilter, setUserFilter] = useState(false);
+  const [selectedId, setSelectedId] = useState(() => page === "stations" ? pendingStationInstallationStationId(user) : ""), [filtersVisible, setFiltersVisible] = useState(true), [groupFilter, setGroupFilter] = useState(""), [userFilter, setUserFilter] = useState(false);
   const [selectedLink, setSelectedLink] = useState(""), [addingStation, setAddingStation] = useState(false), [stationChoice, setStationChoice] = useState(""), [uncertain, setUncertain] = useState(false);
   const [stationStatusReview, setStationStatusReview] = useState(false);
   const [rraa, setRraa] = useState<RraaStatus>({ configured: false }), [rraaPreview, setRraaPreview] = useState<RraaPreview | null>(null);
   const [rraaNeedsValidation, setRraaNeedsValidation] = useState(false);
+  const [installationLocked, setInstallationLocked] = useState(false);
   const requestVersion = useRef(0), pendingRequest = useRef<{ path: string; body: string } | null>(null), instanceId = useId();
   const locked = busy || uncertain;
   const refresh = useCallback(async () => {
@@ -69,7 +71,7 @@ export function ConnectedAdminTools({ page, snapshot, onRefresh }: { page: Admin
   useEffect(() => { void refresh(); return () => { requestVersion.current += 1; }; }, [refresh]);
   const close = () => { if (!locked) { if (stationStatusReview) { setStationStatusReview(false); setFormError(""); return; } setDialog(null); setDraft({}); setFormError(""); setAddingStation(false); } };
   const open = (next: Dialog) => {
-    if (locked || loading) return;
+    if (locked || loading || installationLocked) return;
     if (page === "stations" && !rraa.configured && next.type === "edit") return;
     pendingRequest.current = null; setUncertain(false); setStationStatusReview(false);
     setDialog(next); setFormError(""); setMessage(""); setRraaPreview(null); setRraaNeedsValidation(false);
@@ -171,10 +173,10 @@ export function ConnectedAdminTools({ page, snapshot, onRefresh }: { page: Admin
     (page !== "pcps" || !groupFilter || row.groupId === groupFilter) &&
     (value(row, "name") + " " + value(row, "number") + " " + value(row, "deviceId")).toLocaleLowerCase().includes(filter.q.toLocaleLowerCase())
   ), [records, paged, page, groupFilter, filter.q]);
-  useEffect(() => { setSelectedId((current) => visible.some((row) => row.id === current) ? current : visible[0]?.id ?? ""); }, [visible]);
+  useEffect(() => { if (!loading && !installationLocked) setSelectedId((current) => visible.some((row) => row.id === current) ? current : visible[0]?.id ?? ""); }, [visible, installationLocked, loading]);
   const selected = visible.find((row) => row.id === selectedId);
   const moveSelection = (direction: "first" | "previous" | "next" | "last") => {
-    if (loading || !visible.length) return;
+    if (loading || installationLocked || !visible.length) return;
     const index = Math.max(0, visible.findIndex((row) => row.id === selectedId));
     const target = { first: 0, previous: Math.max(0, index - 1), next: Math.min(visible.length - 1, index + 1), last: visible.length - 1 }[direction];
     setSelectedId(visible[target].id);
@@ -186,7 +188,7 @@ export function ConnectedAdminTools({ page, snapshot, onRefresh }: { page: Admin
     if (offset === 0 && JSON.stringify(next) === JSON.stringify(applied)) void refresh();
     else { setOffset(0); setApplied(next); }
   };
-  const updateFilter = (key: keyof Filter, entry: string) => setFilter((current) => ({ ...current, [key]: entry }));
+  const updateFilter = (key: keyof Filter, entry: string) => { if (!installationLocked) setFilter((current) => ({ ...current, [key]: entry })); };
   const clientFor = (row: Row) => snapshot.clients.find((client) => client.id === row.clientId);
   const clientLabel = (row: Row) => clientFor(row)?.name ?? value(row, "clientId");
   const collectorLabel = (row: Row) => snapshot.collectors.find((collector) => collector.id === row.collectorId)?.name ?? value(row, "collectorId");
@@ -215,7 +217,7 @@ export function ConnectedAdminTools({ page, snapshot, onRefresh }: { page: Admin
   const check = (key: string, label: string) => <label className="legacy-admin-checkbox"><input type="checkbox" checked={Boolean(draft[key])} disabled={locked} onChange={(event) => updateDraft(key, event.target.checked)} />{label}</label>;
   const formMessages = <>{formError && <p className="legacy-admin-feedback error" role="alert">{formError}</p>}{uncertain && <p className="legacy-admin-note">El resultado está pendiente de confirmación. Reintenta con estos mismos datos antes de cerrar.</p>}</>;
   const actions = (label = "oK") => <div className="legacy-dialog-actions centered"><button type="submit" disabled={busy}>{busy ? "Guardando…" : uncertain ? "Reintentar" : label}</button><button type="button" disabled={locked} onClick={close}>Cancelar</button></div>;
-  const search = <label className="legacy-admin-search">Buscar:<input aria-label="Buscar" value={filter.q} maxLength={160} onChange={(event) => updateFilter("q", event.target.value)} /></label>;
+  const search = <label className="legacy-admin-search">Buscar:<input aria-label="Buscar" value={filter.q} maxLength={160} disabled={installationLocked} onChange={(event) => updateFilter("q", event.target.value)} /></label>;
   const deleteTitle = page === "groups" ? "Eliminar grupo" : page === "authorizationRequests" ? "Anular solicitud" : selected?.active === false ? "Activar" : "Inactivar";
   const deleteSelected = () => {
     if (!selected) return;
@@ -232,10 +234,10 @@ export function ConnectedAdminTools({ page, snapshot, onRefresh }: { page: Admin
     </div>
     : <LegacyToolbar onToggleFilters={page === "pcps" || page === "authorizationRequests" ? () => setFiltersVisible((current) => !current) : undefined} filtersVisible={filtersVisible}
       onFirst={() => moveSelection("first")} onPrevious={() => moveSelection("previous")} onNext={() => moveSelection("next")} onLast={() => moveSelection("last")}
-      onNew={() => open({ type: "edit" })} disableNew={(page === "stations" && !rraa.configured) || loading || (page === "pcps" && !groups.length)} newTitle={page === "authorizationRequests" ? "Nueva solicitud" : "Nuevo"}
-      showEdit={page !== "authorizationRequests"} onEdit={() => selected && open({ type: "edit", row: selected })} disableEdit={(page === "stations" && !rraa.configured) || loading || !selected}
-      onDelete={deleteSelected} deleteTitle={deleteTitle} deleteIcon={page === "groups" ? "trash" : "x"} disableDelete={(page === "stations" && !rraa.configured && !selected?.active) || loading || !selected || (page === "authorizationRequests" && selected.status !== "pending")}
-      onRefresh={() => { if (!loading) void refresh(); }} extra={page === "pcps" ? <button type="button" className="pcp-stations-button" title="Estaciones del PCP" disabled={loading || !selected || selected.active === false} onClick={() => selected && open({ type: "stations", row: selected })}><Building2 size={15} /><span>Estaciones</span></button>
+      onNew={() => open({ type: "edit" })} disableNew={installationLocked || (page === "stations" && !rraa.configured) || loading || (page === "pcps" && !groups.length)} newTitle={page === "authorizationRequests" ? "Nueva solicitud" : "Nuevo"}
+      showEdit={page !== "authorizationRequests"} onEdit={() => selected && open({ type: "edit", row: selected })} disableEdit={installationLocked || (page === "stations" && !rraa.configured) || loading || !selected}
+      onDelete={deleteSelected} deleteTitle={deleteTitle} deleteIcon={page === "groups" ? "trash" : "x"} disableDelete={installationLocked || (page === "stations" && !rraa.configured && !selected?.active) || loading || !selected || (page === "authorizationRequests" && selected.status !== "pending")}
+      onRefresh={() => { if (!loading && !installationLocked) void refresh(); }} extra={page === "pcps" ? <button type="button" className="pcp-stations-button" title="Estaciones del PCP" disabled={loading || !selected || selected.active === false} onClick={() => selected && open({ type: "stations", row: selected })}><Building2 size={15} /><span>Estaciones</span></button>
         : page === "authorizationRequests" ? <><button type="button" disabled={loading || !selected} onClick={() => selected && open({ type: "detail", row: selected })}>Detalle</button><button type="button" disabled={loading || selected?.status !== "pending"} onClick={() => beginResolution()}>Resolver</button></> : search} />;
   const filterPanel = page === "pcps"
     ? <aside className="pcp-filter-panel legacy-admin-filters" aria-label="Filtros de PCP">
@@ -253,7 +255,7 @@ export function ConnectedAdminTools({ page, snapshot, onRefresh }: { page: Admin
     </form>;
   const grid = <div className={layout + "-grid-panel legacy-admin-grid-panel"}><div className="legacy-mdi-table-wrap"><table className={"legacy-mdi-table " + layout + "-grid"}>
     <thead><tr>{headers.map((heading) => <th key={heading}>{heading}</th>)}</tr></thead>
-    <tbody>{visible.map((row, index) => <tr key={row.id} className={selectedId === row.id ? "selected-row" : ""} tabIndex={0} aria-selected={selectedId === row.id} onClick={() => setSelectedId(row.id)} onDoubleClick={page === "authorizationRequests" ? () => open({ type: "detail", row }) : !paged ? () => open({ type: "edit", row }) : undefined} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedId(row.id))}>
+    <tbody>{visible.map((row, index) => <tr key={row.id} className={selectedId === row.id ? "selected-row" : ""} tabIndex={0} aria-selected={selectedId === row.id} aria-disabled={installationLocked || undefined} onClick={() => { if (!installationLocked) setSelectedId(row.id); }} onDoubleClick={page === "authorizationRequests" ? () => open({ type: "detail", row }) : !paged ? () => open({ type: "edit", row }) : undefined} onKeyDown={(event) => handleKeyboardActivation(event, () => { if (!installationLocked) setSelectedId(row.id); })}>
       <td><span className={"mdi-row-select " + (selectedId === row.id ? "selected" : "")}>{page === "stations" || page === "pcps" ? value(row, "number") : offset + index + 1}</span></td>{cells(row)}
     </tr>)}{!visible.length && <tr><td className="legacy-admin-empty" colSpan={headers.length}>{loading ? "Cargando…" : error ? "No se pudo cargar el listado." : "No hay registros para estos filtros."}</td></tr>}</tbody>
   </table></div></div>;
@@ -268,6 +270,7 @@ export function ConnectedAdminTools({ page, snapshot, onRefresh }: { page: Admin
     {error && <p className="legacy-admin-feedback error" role="alert">{error}</p>}{message && <p className="legacy-admin-feedback success" role="status">{message}</p>}
     {page === "pcps" && !loading && !groups.length && <p className="legacy-admin-note">Crea un grupo de PCPs para registrar el primer punto.</p>}
     {paged || page === "pcps" ? <div className={layout + "-workspace"}>{filtersVisible && filterPanel}{grid}</div> : grid}
+    {page === "stations" && <StationInstallationPanel station={selected ? { id: selected.id, name: value(selected, "name"), deviceId: value(selected, "deviceId"), active: selected.active === true, rraaValidated: selected.rraaValidated === true } : null} user={user} disabled={loading || locked || Boolean(dialog)} onLockChange={setInstallationLocked} />}
     {paged && <div className={"legacy-mdi-pager " + (page === "traces" ? "traces-pager" : "")}>
       <button type="button" title="Primera página" disabled={loading || !offset} onClick={() => setOffset(0)}>|&lt;</button><button type="button" title="Página anterior" disabled={loading || !offset} onClick={() => setOffset(Math.max(0, offset - 50))}>&lt;</button>
       <span>Página {Math.floor(offset / 50) + 1} de {totalPages}</span>
@@ -288,7 +291,7 @@ export function ConnectedAdminTools({ page, snapshot, onRefresh }: { page: Admin
           <fieldset className="legacy-config-fieldset station-general-fieldset"><legend>General</legend>
             <span className="station-internal-id" title={dialog.row?.id}>ID: {dialog.row?.id ?? "Nuevo"}</span>
             <label>Estación:{input("name", undefined, true)}</label>
-            <div className="legacy-dialog-row two-cols"><label>Nro.:{input("number")}</label><label>ID dispositivo:{input("deviceId")}</label></div>
+            <div className="legacy-dialog-row two-cols"><label>Nro.:{input("number")}</label><label>ID dispositivo RRAA:{input("deviceId")}</label></div>
             <label>Cliente RRAA:<input readOnly value={rraa.clientId ?? ""} /></label>
             <div className="license-row"><label>Lic.:<input readOnly value={rraaPreview?.license ?? String(draft.license ?? "")} /></label><button type="button" disabled title="VALSTAT solo valida la estación y devuelve su licencia; no proporciona datos del dispositivo.">Obtener Datos</button><button type="button" disabled={locked || !rraa.configured} onClick={() => void obtainLicense()}>Obtener Licencia</button></div>
             <label>Descrip.:<textarea rows={2} maxLength={1000} value={String(draft.description ?? "")} disabled={locked} onChange={(event) => updateDraft("description", event.target.value)} /></label>

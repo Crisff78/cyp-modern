@@ -96,6 +96,8 @@ const app = await buildApp({
   adminEmail: process.env.ADMIN_EMAIL,
   adminPassword: process.env.ADMIN_PASSWORD,
   rraa,
+  buildVersion: /^[a-f0-9]{40}$/i.test(process.env.RENDER_GIT_COMMIT ?? "")
+    ? process.env.RENDER_GIT_COMMIT : undefined,
 });
 if (publicWeb) await registerPublicWeb(app);
 await app.listen({

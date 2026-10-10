@@ -7,8 +7,8 @@ grupos/versiones ni emitir licencias independientemente de la validación.
 
 El 10 de octubre de 2026 Rardiel pidió redactar una especificación propia para
 avanzar el diseño. Está en [Propuesta de identidad y datos de CyP](RRAA-PROPUESTA-CYP.md),
-identificada como propuesta aún no implementada. No es documentación del
-proveedor ni añade operaciones a VALSTAT; el contrato recibido sigue intacto.
+implementada como identidad lógica y consulta propias de CyP. No es documentación
+del proveedor ni añade operaciones a VALSTAT; el contrato recibido sigue intacto.
 
 ## Configuración y confianza
 
