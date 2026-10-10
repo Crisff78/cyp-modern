@@ -1,27 +1,27 @@
 # Propuesta propia de CyP: identidad de instalación y consulta de datos
 
-**Versión:** 1.0, 10 de octubre de 2026. **Estado:** diseño propuesto, sin
-implementación ni aprobación del proveedor. Redactado para CyP a petición de
+**Versión:** 1.1, 10 de octubre de 2026. **Estado:** implementación propia de CyP,
+sin aprobación del proveedor. Redactado para CyP a petición de
 Rardiel; no es documentación oficial de Gamera/RRAA.
 
 El único contrato externo recibido sigue siendo `GET /VALSTAT` y sus respuestas
 de licencia o error, descritos en [RRAA — estaciones](RRAA-ESTACIONES.md).
-Las rutas de este documento pertenecen al diseño de una API propia de CyP:
-**no existen todavía, no deben llamarse ni presentarse como endpoints de RRAA**.
+Las rutas de este documento pertenecen a la API propia de CyP;
+**no deben presentarse como endpoints de RRAA**.
 
 ## 1. Objetivo y separación de identificadores
 
 | Campo | Significado | Origen y edición |
 |---|---|---|
 | `stationId` | Registro de estación del catálogo CyP | Servidor CyP; identificador interno existente. |
-| `installationId` | Identidad lógica de una instalación/perfil de navegador | Servicio propio propuesto; solo lectura tras el registro. |
+| `installationId` | Identidad lógica de una instalación/perfil de navegador | Clave del navegador, verificada por CyP; solo lectura. |
 | `stationCode` | Código de estación RRAA | Valor autorizado por el proveedor, conservado en el catálogo. |
 | `deviceId` / `idestacion` | Identificador que acepta VALSTAT | Contrato del proveedor; permanece independiente. |
 
 No convertir automáticamente `installationId` en `idestacion`, ni una clave
 generada por CyP en licencia RRAA. El Nro. de catálogo conserva su significado.
 
-## 2. Identidad lógica propuesta
+## 2. Identidad lógica implementada
 
 1. El navegador, en un contexto seguro, genera un par ECDSA P-256 mediante
    Web Crypto. La clave privada se crea con `extractable: false`, uso `sign`;
@@ -47,16 +47,17 @@ o componente con vinculación verificable al equipo. Este diseño lógico no cie
 ese requisito. Las credenciales sincronizables tampoco se deben contar como
 prueba de un único equipo.
 
-## 3. Operaciones propias propuestas, aún no implementadas
+## 3. Operaciones propias de CyP
 
-| Ruta propuesta | Uso | Requisitos |
+| Ruta | Uso | Requisitos |
 |---|---|---|
+| `GET /api/estaciones/:id/instalaciones` | Listar registros y revisiones | Admin o Supervisor; no genera identidad. |
 | `POST /api/estaciones/:id/instalaciones/desafios` | Emitir desafío para registro o consulta | Sesión autorizada, estación de la empresa y propósito permitido. |
 | `POST /api/estaciones/:id/instalaciones` | Registrar clave pública y prueba firmada | Admin, confirmación, desafío de registro e `Idempotency-Key`. |
 | `POST /api/estaciones/:id/datos` | «Obtener Datos» del catálogo CyP con prueba de posesión | Sesión autorizada y desafío de consulta; operación de lectura. |
 | `POST /api/estaciones/:id/instalaciones/:installationId/revocar` | Revocar instalación | Admin, motivo, revisión esperada e `Idempotency-Key`. |
 
-Se propone POST para consultar datos porque la firma y el desafío se envían en
+Se utiliza POST para consultar datos porque la firma y el desafío se envían en
 el cuerpo; no se colocan pruebas de acceso en URL. La respuesta no contiene
 clave privada ni cambia la estación, licencias, vínculos o estado RRAA.
 
@@ -77,7 +78,21 @@ clave privada ni cambia la estación, licencias, vínculos o estado RRAA.
   original antes de intentar consumir de nuevo el desafío. Un fallo de lectura
   requiere un desafío nuevo, sin repetir mutaciones.
 
-### Datos de respuesta propuestos
+La representación firmada es `JSON.stringify` del arreglo ordenado: versión,
+propósito, challengeId, nonce, scopeId, stationId, installationId, actorId,
+sessionId, origin y expiresAt. La clave pública usa DER SPKI P-256 canónico de
+91 bytes en base64url sin relleno; la firma usa IEEE-P1363 de 64 bytes en
+base64url. El ID contiene el SHA-256 hexadecimal de 64 caracteres de ese DER.
+El ámbito combina un UUID persistido del servidor con el idcliente configurado
+de RRAA, o `null` si no está configurado. No se deriva del Host del navegador.
+
+Los POST exigen un Origin permitido por la configuración del servidor. Todas
+las rutas tienen límite de cuerpo de 4096 bytes y controles de frecuencia por
+actor/ruta. Se admiten como máximo 20 desafíos vigentes por actor; al emitir
+uno se eliminan los vencidos. Una firma inválida consume su desafío dentro de
+la transacción. El servidor no conserva la firma en auditoría ni idempotencia.
+
+### Datos de respuesta
 
 `stationId`, `stationCode`, `installationId`, `installationStatus`,
 `active`, `rraaValidationStatus`, `rraaValidatedAt?`, `queriedAt` y
@@ -89,17 +104,45 @@ no las proporcione. `rraaValidationStatus` informa la comprobación registrada,
 no declara que el proveedor haya autorizado esta consulta propia. No se devuelve
 el texto de una licencia en esta respuesta.
 
-## 4. Persistencia y presentación propuestas
+## 4. Persistencia y presentación
 
 Guardar empresa, estación, identificador lógico, clave pública, algoritmo,
 estado, revisión, fecha/actor de registro y fecha/actor/motivo de revocación.
 No modificar claves históricas ni registrar una nueva instalación por refrescar
 una pantalla. Los desafíos caducados se eliminan según una retención acotada.
 
-La pantalla separará «ID de instalación CyP» de «ID del proveedor RRAA».
-El primero será de solo lectura. «Obtener Datos de CyP» indicará su origen y
-mostrará fecha de consulta; el control de RRAA permanecerá separado. Hasta que
-este diseño se implemente, el botón actual sin contrato sigue deshabilitado.
+La migración aditiva `030_station_installations.sql` añade ámbito persistido,
+registros y desafíos. Las migraciones anteriores permanecen intactas. Las
+claves y el historial son inmutables; solo se admite revocación irreversible
+con una revisión nueva. La misma transacción conserva sesión, desafío,
+idempotencia y auditoría. FileStore mantiene compatibilidad con archivos
+anteriores sin instalaciones; leer no genera el UUID del ámbito.
+La instalación PostgreSQL debe aplicar las migraciones antes de iniciar esta
+versión; el despliegue de la demo conserva ese paso en su comando de arranque.
+
+En Administración → Estaciones, selecciona una estación y usa el panel
+«Instalación de CyP»:
+
+1. **Registrar este navegador:** genera/conserva la clave en IndexedDB y abre
+   una revisión; **Confirmar registro** registra la prueba firmada como Admin.
+2. **Obtener Datos de CyP:** firma un desafío de consulta y muestra datos y hora
+   del servidor. Si no hay clave local, solicita registrar el navegador; consultar
+   o refrescar no crea claves ni registros.
+3. **Revocar…:** pide motivo, revisión y confirmación de Admin. Conserva el ID y
+   el historial, y rechaza consultas nuevas con esa clave. Una clave revocada no
+   se reactiva; otro perfil necesita un registro explícito nuevo.
+
+La pantalla separa «ID de instalación CyP» de «ID dispositivo RRAA», ambos de
+solo lectura en este panel. El botón externo de RRAA sin contrato permanece
+deshabilitado. Supervisor puede listar y consultar con una clave ya registrada;
+el rol Cobrador no tiene estas operaciones administrativas.
+
+Si una respuesta de registro/revocación no se puede confirmar, se conserva el
+cuerpo y la clave idempotente para reintentar exactamente la misma solicitud.
+La selección y las acciones incompatibles quedan bloqueadas. Esa continuidad
+existe durante la sesión de página, incluso al cerrar y reabrir la ventana;
+una recarga completa pierde el intento en memoria. En ese caso hay que revisar
+el listado antes de iniciar otra operación. La clave de instalación sí persiste.
 
 ## 5. Compatibilidad con la integración actual
 
@@ -112,7 +155,7 @@ Antes de habilitar la adaptación externa debe acordarse cómo RRAA emite/regist
 `idestacion`, cómo se vincula al equipo y qué operación aporta sus datos. El
 contrato propio puede desarrollarse separadamente; no inventa compatibilidad.
 
-## 6. Criterios para una futura implementación
+## 6. Verificación y límites
 
 Pruebas con datos ficticios y almacén aislado: persistencia de clave/registro,
 ID textual copiado sin clave rechazado, firma incorrecta, repetición, caducidad,
@@ -120,8 +163,9 @@ revocación, aislamiento entre empresas/estaciones, concurrencia de desafíos,
 reintentos idempotentes y consulta sin cambios. Comprobar registro, revocación,
 campos de solo lectura y pérdida del perfil en el navegador.
 
-Estos son criterios de aceptación futuros; **no son pruebas ejecutadas**. No
-acreditan identidad física ni interacción con RRAA.
+Los recibos de ejecución se registran en la matriz de
+[correcciones de octubre](OCTUBRE-09-CORRECCIONES.md). No acreditan identidad
+física, almacenamiento en hardware, interacción con RRAA ni cobertura total.
 
 ## Referencias técnicas
 

@@ -57,6 +57,7 @@ import { registerCatalogRoutes } from "./catalog-routes.js";
 import { registerDemoAccess, type DemoAccessConfig } from "./demo-access.js";
 import { assertAuthSession, createAuthSession, recordMutationTrace, revokeUserSessions } from "./admin-tools.js";
 import { registerAdminToolsRoutes } from "./admin-tools-routes.js";
+import { registerStationInstallationRoutes } from "./station-installation-routes.js";
 import type { RraaValidator } from "./rraa.js";
 import { legacyFinancialFingerprintBody } from "./financial-currency-compat.js";
 import { boundedId, fourDecimalNumber, freeText, machineCounter, optionalEmail, phone, singleLine, systemConfigInput } from "./input-validation.js";
@@ -75,6 +76,7 @@ type Config = {
   adminEmail?: string;
   adminPassword?: string;
   rraa?: RraaValidator;
+  buildVersion?: string;
 };
 const money = z.number().int().positive().max(MAX_MONEY_AMOUNT);
 const currency = singleLine(40, 1)
@@ -1447,6 +1449,12 @@ export async function buildApp(config: Config) {
   }
   registerCatalogRoutes(app, config.store, user, mutate, describe);
   registerAdminToolsRoutes(app, config.store, user, mutate, describe, config.publicWeb ? undefined : config.rraa);
+  registerStationInstallationRoutes(app, config.store, user, describe, {
+    rraaClientId: config.publicWeb ? undefined : config.rraa?.clientId,
+    origins: config.origins,
+    publicOrigin: config.demoAccess?.origin,
+    buildVersion: config.buildVersion,
+  });
   registerRemittanceRoutes(app, config.store, user, mutate, describe, config.demo ? [
     { id: "demo-admin", name: "Administración", role: "admin" },
     { id: "demo-collector", name: "Cobrador", role: "collector", collectorId: "col-1" },

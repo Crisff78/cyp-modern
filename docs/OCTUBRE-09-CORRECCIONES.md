@@ -321,3 +321,77 @@ pendientes del recibo anterior; no cambia los resultados históricos de pruebas.
 Este lote cambia documentación; no altera código, migraciones, porcentajes,
 datos compartidos, permisos ni configuración de Render. No requiere recompilar
 la demo ni repetir las suites aprobadas. No elimina el contrato pendiente de RRAA.
+
+## Identidad y consulta propias de CyP — implementación del 10 de octubre
+
+Rardiel autorizó implementar la propuesta anterior. Administración → Estaciones
+incorpora «Registrar este navegador», «Obtener Datos de CyP» y revocación con
+motivo, revisión y confirmación. La clave P-256 no exportable se conserva en
+IndexedDB del perfil; el servidor verifica posesión mediante un desafío firmado
+de 60 segundos y un solo uso. Consultar o refrescar no crea identidades.
+
+Se añade únicamente la migración `030_station_installations.sql`; 001–029
+permanecen intactas. PostgreSQL conserva ámbito, registros y desafíos; impide
+modificar claves e historial o reactivar una revocación. El reintento confirmado
+de registro/revocación devuelve el resultado idempotente original, incluso tras
+reabrir el almacén. La auditoría no guarda firmas, nonces ni cuerpos de prueba.
+
+Esta implementación acredita una identidad lógica de la instalación de CyP.
+No convierte ese ID en `idestacion`, no emite licencias ni sustituye VALSTAT.
+El «Obtener Datos» externo sin contrato permanece deshabilitado; la consulta
+nueva informa expresamente que los datos proceden de CyP. Identidad física y
+datos propios del proveedor siguen necesitando su contrato. La demo no lo llama.
+
+La revisión independiente encontró una incompatibilidad concreta: un idcliente
+válido de 80 caracteres podía superar el límite SQL al serializarse con escapes.
+Se ampliaron ambas cotas de ámbito a 1024 y la prueba PostgreSQL incluyó ese caso.
+La migración final tiene SHA-256
+`0d478f59e23c4373c37839f7d1fe880beff40512079218ce0d188a20a346fb0f`.
+
+### Evidencia local de este lote
+
+- Dominio y rutas nuevas: diez casos distintos aprobados. La ejecución inicial
+  probó nueve casos; una ejecución focalizada probó tres, incluido uno nuevo de
+  interoperabilidad Web Crypto → Node. Son ejecuciones solapadas, no doce casos.
+  Cubren firma ajena, origen/sesión/estación/empresa/propósito, vencimiento,
+  consumo de firma fallida, roles, revisión, concurrencia, idempotencia, límite
+  real de frecuencia y cuerpo máximo. No hubo fallos en las ejecuciones finales.
+- `station-installations-file.test.ts`: 1/1 aprobado, sin omisiones. Archivo
+  legado sin identidad, registro, consulta y revocación sobreviven a reapertura
+  del FileStore. No es una prueba de reinicio de proceso ni de equipo físico.
+- `station-installations-postgres.test.ts`: 1/1 aprobado, sin omisiones, sobre
+  PostgreSQL 17 y una base nueva exclusivamente ficticia en loopback. Ledger
+  001–030 verificado por hash, reapertura, consumo concurrente entre dos apps,
+  prueba fallida consumida, historial inmutable, revocación irreversible y
+  ámbito con escapes. La primera corrida con 030 inicial también pasó; la
+  corrida final utilizó la migración corregida y una base recreada únicamente
+  dentro del laboratorio. Cero llamadas RRAA y licencias/configuración intactas.
+- Regresiones `admin-tools.test.ts`, `rraa.test.ts`, `auth-restart.test.ts`:
+  21 aprobadas, ninguna fallida y dos PostgreSQL omitidas por no estar configuradas
+  en esa ejecución. Esas dos no se cuentan como ejecutadas; la nueva prueba
+  PostgreSQL anterior se ejecutó y se acredita por separado.
+- Comprobaciones de tipos: servidor y Cobrador aprobados; Administración aprobó
+  después de corregir el paso de usuario nullable al panel. No se redujo la
+  configuración de TypeScript ni se suprimieron errores.
+- `station-installation-ui.test.ts`: seis aprobaciones (cinco subcasos y su
+  contenedor), cero fallos, cancelaciones y omisiones; exit 0. Edge instalado
+  con perfil temporal, Vite y MemoryStore, con solicitudes externas bloqueadas.
+  Verifica consulta inicial sin clave, revisión/cancelación/registro, rechazo de
+  exportación de clave privada, reapertura de página sin registro automático,
+  consulta propia, respuesta perdida tras registro confirmado y reintento de
+  exactamente el mismo cuerpo/firma/clave, bloqueo de cambios durante
+  incertidumbre, revisión/motivo/revocación y creación concurrente entre pestañas.
+  Las estaciones y RRAA permanecen intactos; cero errores de página.
+  Un intento anterior agotó el límite global durante preparación/cierre en
+  Windows: no se consideró aprobado. La ejecución final aumentó únicamente ese
+  presupuesto a 240 segundos; las comprobaciones UI conservan diez segundos.
+- Compilaciones finales de servidor, Administración y Cobrador: 3/3 aprobadas
+  con `pnpm -r build`, exit 0. Vite 7.3.6 mantiene el aviso preexistente de tamaño
+  de chunks, sin elevar ni desactivar su umbral.
+- El laboratorio PostgreSQL se detuvo tras las pruebas, con cero listeners en
+  su puerto propio. No se modificaron el VPS ni bases operativas locales.
+
+Los porcentajes siguen siendo manuales y modificables por Admin. Papel continúa
+fuera del alcance del asistente. Las pruebas de este lote usan datos aislados;
+ninguna escritura de prueba se realiza en registros compartidos o reales.
+La CI de GitHub y el despliegue son verificaciones separadas de estos resultados.

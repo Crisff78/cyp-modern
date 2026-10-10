@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { assertAdmin, DomainError, type State, type User } from "./domain.js";
+import type { StationInstallation, StationInstallationChallenge } from "./station-installation-protocol.js";
 
 export type PcpStation = {
   id: string; number: string; name: string; deviceId: string; description: string;
@@ -23,13 +24,20 @@ export type AdminTrace = { id: string; actorId: string; action: string; resource
 export type AdminToolsState = {
   stations: PcpStation[]; pcpGroups: PcpGroup[]; pcps: Pcp[]; pcpStations: PcpStationLink[];
   sessions: AuthSession[]; authorizationRequests: AuthorizationRequest[]; traces: AdminTrace[];
+  installationScopeId?: string;
+  installations: StationInstallation[]; installationChallenges: StationInstallationChallenge[];
 };
 export const emptyAdminToolsState = (): AdminToolsState => ({
   stations: [], pcpGroups: [], pcps: [], pcpStations: [], sessions: [], authorizationRequests: [], traces: [],
+  installations: [], installationChallenges: [],
 });
 export function getAdminTools(state: State): AdminToolsState {
   const holder = state as State & { adminTools?: AdminToolsState };
   holder.adminTools ??= emptyAdminToolsState();
+  // Legacy FileStore snapshots do not contain these arrays. Reading must not
+  // generate a namespace: its first value belongs to a persisted transaction.
+  holder.adminTools.installations ??= [];
+  holder.adminTools.installationChallenges ??= [];
   return holder.adminTools;
 }
 export function requireAdminRow<T extends { id: string }>(rows: T[], id: string, label: string): T {

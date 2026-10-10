@@ -5178,7 +5178,7 @@ export default function App() {
               ) : isConnectedCatalog(windowState.page) ? (
                 <ConnectedCatalog page={windowState.page} snapshot={snapshot} actorId={effectiveUser.id} canManagePermissions={["ADMIN", "SUPERADMIN"].includes(normalizeRole(effectiveUser.role))} onRefresh={() => void refresh()} />
               ) : isConnectedAdminTool(windowState.page) ? (
-                <ConnectedAdminTools page={windowState.page} snapshot={snapshot} onRefresh={() => void refresh()} />
+                <ConnectedAdminTools page={windowState.page} snapshot={snapshot} user={user ?? undefined} onRefresh={() => void refresh()} />
               ) : windowState.page === "clients" ? (
                 <ClientsLegacyView snapshot={snapshot} actorId={user?.id ?? ""} onRefresh={async () => { if (!await refresh()) throw new Error("No se pudieron recargar los clientes. Inténtalo de nuevo."); }} />
               ) : windowState.page === "charges" ? (
