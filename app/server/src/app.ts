@@ -269,8 +269,12 @@ export async function buildApp(config: Config) {
       return;
     await req.jwtVerify();
     const u = req.user as User & { authVersion?: string };
-    assertAuthSession(await config.store.read(), u, (req.user as User & { sid?: string }).sid);
-    const persistedAccount = (await config.store.read()).accounts.find((account) => account.id === u.id);
+    // Validate this request against one consistent state. Each store.read()
+    // fetches the full PostgreSQL state, including operational histories.
+    // Mutating routes retain their own fresh checks inside the transaction.
+    const state = await config.store.read();
+    assertAuthSession(state, u, (req.user as User & { sid?: string }).sid);
+    const persistedAccount = state.accounts.find((account) => account.id === u.id);
     const legacyIdentity = !persistedAccount && (config.demo
       ? (u.id === "demo-admin" && u.role === "admin") ||
         (u.id === "demo-collector" &&
@@ -285,7 +289,7 @@ export async function buildApp(config: Config) {
           401,
         );
       if (u.role === "collector") {
-        const collector = (await config.store.read()).collectors.find((c) => c.id === u.collectorId);
+        const collector = state.collectors.find((c) => c.id === u.collectorId);
         if (!collector || collector.active === false) throw new DomainError("COLLECTOR_INACTIVE", "El cobrador está inactivo.", 403);
       }
       if (config.demo && u.id === "demo-collector" && u.role === "collector" && u.collectorId === "col-1")
@@ -294,8 +298,7 @@ export async function buildApp(config: Config) {
     }
     // Provisioned accounts: the token carries the account's credential
     // version, so a password change or a disable revokes older sessions.
-    const state = await config.store.read(),
-      account = state.accounts.find((a) => a.id === u.id);
+    const account = persistedAccount;
     if (
       !account ||
       account.status !== "active" ||
