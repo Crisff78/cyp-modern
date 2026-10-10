@@ -75,7 +75,7 @@ Estados de esta matriz:
 | 6.8 | Comisión del gestor | Estático; regla vigente coincide con C8. El registro manual anterior se conserva solo como anotación histórica. | `remittance-allocation.test.ts`, `remittance-commission-policy.test.ts`; porcentaje comercial pendiente. |
 | 7.1 | Reporte de comisiones por fechas | Estático. Coincide con C1; fechas inclusivas de emisión en Santo Domingo y estado actual. | `remittance-commission-report.test.ts`, `remittance-suggestions.test.ts`; no reporte de devolución por fecha de cancelación. |
 
-Se corrigió el comprobante de remesas en `commissionOutput.ts` y
+Se corrigió el comprobante de remesas en `output.ts` y
 `RemittancesWorkspace.tsx`: la impresión tras guardar y desde el detalle conserva
 el total recibido, que incluye la comisión, y omite su desglose en el recibo del
 cliente. El reporte administrativo conserva sus columnas de transacción, empresa
@@ -126,13 +126,22 @@ a `october-nine-financial-ui.test.ts`, **reporting** a
 ## Comprobación final y pendientes externos
 
 Esta sección registra las pruebas efectivamente ejecutadas y el corte de cada
-recibo. Falta incorporar el resultado de la comprobación general final y las
-evidencias de publicación y CI. Una lectura de fuente, un build
-anterior o CI de otro commit no equivale a esa comprobación. No se usa la base
+recibo. La comprobación local general terminó correctamente; la evidencia de
+publicación se debe contrastar con el PR y el deployment correspondiente.
+Una lectura de fuente, un build anterior o CI de otro commit no equivale a esa
+comprobación. No se usa la base
 compartida para habilitar casos omitidos. TestSprite está excluido por decisión
 del usuario.
 
 Comprobaciones aisladas ejecutadas durante este turno:
+
+- `pnpm check`: **exit 0**, tres typechecks, tres builds, servidor **248 PASS /
+  12 SKIP**, Cobrador **12 PASS / 0 SKIP** y Administración **165 PASS / 0 SKIP**;
+  cero fallos en las tres suites. Recibo
+  `.codex-lab/oct9-review/check-publication.log`. La fase de servidor precedió al
+  arreglo final de bootstrap: después se reemplazó ese corte por la ejecución
+  completa **251 PASS / 12 SKIP / 0 FAIL** descrita abajo, además de su tipado y
+  build. Las suites intactas no se suman dos veces ni se presentan como CI.
 
 - `pnpm --filter @cyp/server exec tsx --test --test-concurrency=1 ../client-admin/test/october-nine-shell-ui.test.ts`:
   **9/9 PASS**, ocho casos funcionales y su contenedor, sin omitidos. Usa el App
@@ -181,6 +190,15 @@ Comprobaciones aisladas ejecutadas durante este turno:
   contratos nuevos, reservas serializadas de identidad, referencias bancarias
   e instantáneas financieras/contactos inmutables. No usa una base compartida
   ni demuestra que esas migraciones estén aplicadas en producción.
+- `app/server/test/demo-bootstrap.test.ts`: **3/3 PASS**, después de reproducir
+  dos fallos `COMMISSION_POLICY_MISMATCH` con una demo sin marcador V2. Los
+  ejemplos ahora usan la política central activa dentro de un borrador privado;
+  no cambian los porcentajes guardados. Se comprobaron política cero, una pareja
+  sintética distinta y conservación exacta del estado con marcador V2 existente.
+  Después del arreglo se ejecutó de nuevo la suite completa del servidor:
+  **251 PASS, 12 SKIP, 0 FAIL**, con typecheck y build PASS. Recibo privado
+  `.codex-lab/oct9-review/server-bootstrap-final.log`; los omitidos PostgreSQL
+  permanecieron deshabilitados y su integración se comprobó por separado.
 - Suite de contratos del servidor: corte ejecutado de **246 PASS y 12 SKIP**,
   anterior a los últimos casos agregados. Después se ejecutaron por separado
   **1/1 PASS** de contactos legales congelados y **2/2 PASS** de previsualización
@@ -235,6 +253,14 @@ peticiones externas. La prueba shell monta el App real y ejercita los casos
 descritos; las composiciones auxiliares cubren sus pantallas específicas. Ninguna
 certifica todas las rutas del producto, impresora, proveedor RRAA o DB publicada.
 
+Los workflows de GitHub del primer commit `26634f7` y del PR20 no iniciaron
+ningún paso: la anotación informó un bloqueo de cuenta por facturación.
+Runs `38021641503` y `38021671283`; no constituyen pruebas ejecutadas ni CI verde.
+La configuración del workflow y la protección de ramas se conservan. La cuenta
+actual tiene permiso de publicación, pero no administración de la cuenta dueña;
+el titular debe revisar Billing & Licensing o consultar soporte de GitHub.
+Referencia: [Acceso a facturación de GitHub](https://docs.github.com/en/billing/get-started/introduction-to-billing).
+
 - RRAA: el contrato actual valida mediante VALSTAT un `deviceId` introducido
   manualmente antes de guardar, activar o agregar un vínculo nuevo. La detección
   automática de identidad física del equipo sigue pendiente del proveedor;
@@ -245,7 +271,7 @@ certifica todas las rutas del producto, impresora, proveedor RRAA o DB publicada
   comprobación independiente realizada por el asistente.
 - Impresión física y legibilidad pendientes de Mayo. PDF, HTML o cola no prueban
   salida física. GPS físico cuenta con la confirmación humana anterior.
-- La matriz no certifica cobertura del 100%, ausencia de defectos adicionales
-  ni publicación de los cambios de este turno. Tampoco afirma una comprobación
-  general final verde ni CI/despliegue de estos cambios; ese resultado se agregará
-  cuando exista el recibo correspondiente.
+- La matriz no certifica cobertura del 100% ni ausencia de defectos adicionales.
+  El gate local pasó; CI no inició por el bloqueo de facturación. La publicación
+  se acredita mediante el estado del PR y el recibo de deployment, y la revisión
+  pública por sus observaciones sin escritura en registros compartidos.

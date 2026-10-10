@@ -40,7 +40,7 @@ proyecto separado de Hermes-BI.
 
 ## Current state
 
-**Last updated:** 2026-10-09, hora dominicana, por Codex.
+**Last updated:** 2026-10-10, hora dominicana, por Codex.
 
 ### Done so far
 
@@ -66,6 +66,18 @@ proyecto separado de Hermes-BI.
   con escritura en datos compartidos. Tres tipos y tres builds locales PASS.
   Pruebas de navegador reales con Edge temporal y MemoryStore están en la
   matriz; las omitidas de CI no se cuentan como ejecutadas.
+- PR20 abierto con fuente inicial26634f7. Corregido también el bootstrap de
+  demos sin marcadorV2 para usar la política central activa sin cambiarla.
+  Tres casos nuevos PASS; servidor final251PASS/12SKIP/0FAIL y tipos/build PASS.
+  La reserva temporal del cliente ya no se reenvía tras un refresco fallido:
+  Shell9/9 prueba tres refrescos503 y ubicación/edición200.
+- GitHub no inició los jobs del push ni del PR por bloqueo de facturación;
+  runs38021641503/38021671283, cero steps. No es CI verde. `pnpm check` local
+  terminó exit0: Cobrador12PASS, Administración165PASS, servidor previo
+  248PASS/12SKIP reemplazado por final251PASS/12SKIP del arreglo; tres tipos
+  y tres builds PASS. Recibo en `.codex-lab/oct9-review/check-publication.log`;
+  revisión de rollout
+  confirma001–023 intactas y024–029 aditivas, sin consultar ledger remoto.
 - GitHub y Render son la fuente del estado de publicación. El servicio
   existente usa `codex/public-browser-demo`; no crear otra demo ni repetir
   merges antiguos. Las migraciones del arranque son transaccionales y solo
@@ -79,8 +91,9 @@ proyecto separado de Hermes-BI.
 
 ### Next step
 
-1. Verificar CI del commit actual antes de fusionar y actualizar la misma rama
-   de demo; comprobar Live/health y UI sin guardar pruebas compartidas.
+1. Cerrar comprobación local y actualizar PR20 con el arreglo de bootstrap;
+   consultar el estado de CI y comprobar Live/health y UI de la misma demo.
+   GitHub no puede iniciar CI hasta resolver el bloqueo de facturación.
 2. Para completar identidad automática de estación, obtener del proveedor el
    contrato de obtención/registro/vinculación de `idestacion`; VALSTAT solo
    valida una combinación ya recibida. No usar un UUID de navegador como
@@ -105,3 +118,6 @@ proyecto separado de Hermes-BI.
 - La instalación local3001/5173/5174 es independiente. Render gratuito puede
   dormir; los evaluadores comparten datos ficticios y cuotas de alojamiento.
 - Jev/MoA son asesores selectivos, sin veto sobre este alcance autorizado.
+- La cuenta rardiel888 publica en el repositorio de Crisff78, sin permiso admin.
+  El titular debe revisar su bloqueo de facturación o acudir a soporte de GitHub;
+  no se presenta un gate local como ejecución de CI.
