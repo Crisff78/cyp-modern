@@ -2,6 +2,11 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 
 export type DemoAccessConfig = { code: string; origin: string };
+export const DEMO_ACCESS_CODE_MIN_LENGTH = 9;
+export function validateDemoAccessCode(code: string | undefined): asserts code is string {
+  if (typeof code !== "string" || code.length < DEMO_ACCESS_CODE_MIN_LENGTH || code.length > 256)
+    throw new Error(`DEMO_ACCESS_CODE must contain between ${DEMO_ACCESS_CODE_MIN_LENGTH} and 256 characters.`);
+}
 const cookieName = "__Host-cyp-demo";
 const lifetime = 8 * 60 * 60;
 const digest = (value: string) => createHash("sha256").update(value).digest();
@@ -58,8 +63,7 @@ const accessScript = `"use strict";
 })();`;
 
 export async function registerDemoAccess(app: FastifyInstance, config: DemoAccessConfig) {
-  if (config.code.length < 10 || config.code.length > 256)
-    throw new Error("DEMO_ACCESS_CODE must contain between 10 and 256 characters.");
+  validateDemoAccessCode(config.code);
   const origin = new URL(config.origin).origin;
   if (!origin.startsWith("https://")) throw new Error("The public demo requires HTTPS.");
   const sign = (expiry: string) => createHmac("sha256", config.code).update(`cyp-demo:${expiry}`).digest("base64url");
