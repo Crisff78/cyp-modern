@@ -4641,7 +4641,8 @@ export default function App() {
       .catch(() => clearLocalSession());
     void refresh();
     const interval = setInterval(() => {
-      void refresh();
+      if (document.visibilityState === "visible" && navigator.onLine)
+        void refresh();
     }, 30000);
     return () => clearInterval(interval);
   }, [authenticated, refresh, clearLocalSession]);
@@ -10553,7 +10554,8 @@ function FinancialMonitorView({ page, snapshot, refreshing, onRefresh }: Readonl
     const timer = window.setInterval(() => {
       setRemaining((current) => {
         if (current <= 1) {
-          onRefreshRef.current();
+          if (document.visibilityState === "visible" && navigator.onLine)
+            onRefreshRef.current();
           return refreshSeconds;
         }
         return current - 1;
