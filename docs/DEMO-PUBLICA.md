@@ -6,9 +6,10 @@ Los visitantes no necesitan cuenta de ChatGPT ni instalar el proyecto.
 
 La base PostgreSQL dedicada `cyp_demo` puede alojarse en Neon o Supabase. En una
 instalación nueva autorizada, al estar vacía, el servidor agrega datos ficticios
-de clientes, cobradores, cobros, pagos, tasas y envíos. Para trasladar una demo
-existente se deben copiar primero todos sus registros; una base vacía no
-sustituye esa transferencia. No se copia la base de la laptop ni se publica `.env`.
+de clientes, cobradores, cobros, pagos, tasas y envíos. La decisión vigente es
+iniciar una demo nueva de pruebas en Supabase con esos ejemplos y conservar
+Neon intacto. No se transfieren registros anteriores ni datos reales.
+No se copia la base de la laptop ni se publica `.env`.
 Las credenciales ficticias de ambos roles se describen en el README. Los
 cambios que haga un evaluador serán visibles para los demás porque comparten
 la misma base de demostración. No introduzcas datos de personas ni operaciones
@@ -34,9 +35,11 @@ la base dedicada `cyp_demo`. Las instalaciones locales normales quedan intactas.
   con cargos y autorizaciones de pago pendientes. Los límites, fondos, jornadas
   y permisos normales siguen aplicándose al operar.
 
-Los datos anteriores se conservan. El historial nuevo se construye aparte usando
-las reglas del dominio, con cierres equilibrados y detección de colisiones antes
-de incorporarlo. No se alteran cajas anteriores ni tasas que ya existían.
+La ampliación conserva los datos que ya existan en su misma base. El historial
+nuevo se construye aparte usando las reglas del dominio, con cierres equilibrados
+y detección de colisiones antes de incorporarlo. No se alteran cajas anteriores
+ni tasas que ya existían. En la nueva base Supabase vacía se crean ejemplos nuevos;
+los registros de Neon no se trasladan a esa base.
 Las fechas se fijan en la primera carga; no avanzan artificialmente cada día.
 Los teléfonos de los nuevos ejemplos están vacíos y los correos usan
 `example.invalid`. Las coordenadas son de demostración.
@@ -58,13 +61,44 @@ que CI y el deployment exitoso pertenecen al mismo SHA. Reutilizar el servicio
 Render y su URL existentes. La comprobación pública es de lectura; las pruebas
 con escritura se ejecutan en entornos aislados con ejemplos ficticios.
 
-### Trasladar la base de Neon a Supabase conservando todos los registros
+### Iniciar la nueva demo de pruebas en Supabase
 
-**Estado: procedimiento preparado; migración pendiente.** La solicitud vigente
-es conservar todos los registros de Neon y el mismo servicio y URL de Render.
+**Estado: autorizado; despliegue no acreditado por esta guía.** La decisión humana
+vigente es «deja los datos y crea nuevos y ya, esto para probar». Se inicia una
+base `cyp_demo` vacía en Supabase con datos ficticios nuevos, conservando el
+servicio `cyp-modern-demo` y su URL de Render. La base anterior de Neon permanece
+intacta y no se elimina. No se requiere copiarla para iniciar esta nueva demo.
+
+1. Prepara una base PostgreSQL dedicada `cyp_demo` vacía en el proyecto Supabase
+   y mantén apagada su Data API. La aplicación conserva su API Fastify y su
+   autenticación. Comprueba que la conexión apunta al destino nuevo y no a Neon;
+   este procedimiento no necesita borrar ni modificar registros del origen.
+2. Copia desde **Connect → Session pooler** el host y el usuario reales del
+   proyecto, puerto **5432**, base `cyp_demo`. Usa `sslmode=verify-full` y
+   `sslrootcert=/etc/secrets/supabase-root-2021.crt`. En **Secret Files** de
+   Render agrega ese archivo con el certificado raíz público del dashboard de
+   Supabase (no contiene credenciales). Su SHA256 verificado es
+   `700723581420dd1ac98fd7e9ac529f0ef210eadcaf87fc868a3ad7d114c2f3b7`;
+   vence el 26 de abril de 2031. Valida el certificado del pooler antes de
+   actualizarlo; no desactives la verificación TLS. Conserva la cadena de
+   conexión y sus credenciales en la configuración privada del servicio.
+   [Conexiones PostgreSQL y TLS de Supabase](https://supabase.com/docs/guides/database/connecting-to-postgres).
+3. Configura esa conexión en `DATABASE_URL` del servicio Render existente.
+   Conserva su URL, las variables de autenticación e invitación y ambos modos de
+   demo activados. Al arrancar con la base nueva vacía, el servidor aplica sus
+   migraciones y agrega los ejemplos ficticios. No restaures datos de Neon ni
+   de la instalación local sobre esta base de pruebas.
+4. Comprueba `GET /api/health`, `/`, `/collector/`, la invitación y el acceso de
+   Administración y Cobrador. Verifica que los ejemplos nuevos se cargaron y que
+   otro arranque no los duplica. Registra el resultado real del despliegue antes
+   de presentarlo como completado.
+
+### Copia completa de Neon a Supabase: procedimiento opcional
+
+Este procedimiento conserva la alternativa de transferir todos los registros,
+pero no es requisito ni forma parte de la nueva demo de pruebas autorizada.
 Se ha comunicado que Neon está suspendido y muestra 5,57 GB de transferencia;
-esa cifra de tráfico no determina el tamaño de la base. No hay autorización
-para reemplazar sus registros por ejemplos nuevos.
+esa cifra de tráfico no determina el tamaño de la base.
 
 1. Conserva Neon y consigue una copia completa y consistente mediante
    `pg_dump`, con esquema y datos de `cyp_demo`, o un respaldo completo existente
@@ -111,14 +145,14 @@ para reemplazar sus registros por ejemplos nuevos.
    compartida. No elimines Neon ni el respaldo. Si ya entraron escrituras en
    Supabase, reconcílialas antes de volver al origen para evitar perderlas.
 
-Una instalación con datos nuevos solo puede sustituir esta copia completa si
-se autoriza expresamente renunciar a los registros anteriores. Esa autorización
-no se ha recibido.
+Una copia completa posterior debe prepararse en un destino vacío y verificarse
+antes del cambio de conexión. No la mezcles con los ejemplos de la nueva demo.
 
-### Crear una instalación nueva
+### Crear otro servicio para una instalación adicional
 
-Estos pasos son para una instalación nueva autorizada. El traslado anterior
-reutiliza Render; no necesita otro servicio ni otro dominio.
+Estos pasos son una referencia para otra instalación que necesite su propio
+servicio. La nueva demo de pruebas autorizada arriba reutiliza Render y su URL;
+no necesita otro servicio ni otro dominio.
 
 1. Revisa y fusiona la rama de la demo en `main`.
 2. En la cuenta de Render que ya tiene conectado `Crisff78/cyp-modern`, crea un
@@ -166,8 +200,9 @@ límites de caja. Las licencias de estaciones son metadatos registrados manualme
   operativo para datos reales.
 - Supabase Free incluye **500 MB de base de datos**, **5 GB de transferencia**,
   un máximo de **dos proyectos activos** y pausa proyectos tras una semana
-  de inactividad. La copia completa debe caber en la cuota del destino; cambiar
-  de proveedor no elimina los límites ni garantiza disponibilidad permanente.
+  de inactividad. Los ejemplos y cualquier copia completa posterior deben caber
+  en la cuota del destino; cambiar de proveedor no elimina los límites ni
+  garantiza disponibilidad permanente.
   [Cuotas de Supabase](https://supabase.com/pricing).
 - Los cambios actuales reducen de cuatro a dos las llamadas `Store.read` por
   snapshot persistido. Los intervalos automáticos de Administración solo
