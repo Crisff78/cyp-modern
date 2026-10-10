@@ -6,14 +6,37 @@ import { buildApp } from "../src/app.js";
 import { MemoryStore } from "../src/store.js";
 import { seed } from "../src/seed.js";
 import { registerPublicWeb } from "../src/public-web.js";
+import { validateDemoAccessCode } from "../src/demo-access.js";
 
 const origin = "https://demo.example.test";
 const code = "test-only-invitation-with-more-than-32-characters";
-async function setup() {
-  const app = await buildApp({ store: new MemoryStore(seed()), secret: "test-only-secret-with-more-than-32-characters", demo: true, publicWeb: true, demoAccess: { code, origin }, origins: [origin], collectorUrl: origin + "/collector" });
+async function setup(invitation = code) {
+  const app = await buildApp({ store: new MemoryStore(seed()), secret: "test-only-secret-with-more-than-32-characters", demo: true, publicWeb: true, demoAccess: { code: invitation, origin }, origins: [origin], collectorUrl: origin + "/collector" });
   await registerPublicWeb(app);
   return app;
 }
+test("invitation configuration consistently accepts 9 to 256 characters without exposing its value", () => {
+  for (const length of [9, 10, 256]) validateDemoAccessCode("x".repeat(length));
+  for (const value of [undefined, "", "x".repeat(8), "x".repeat(257)])
+    assert.throws(() => validateDemoAccessCode(value), { message: "DEMO_ACCESS_CODE must contain between 9 and 256 characters." });
+});
+
+test("nine-character invitation grants only the existing secure demo access", async () => {
+  const invitation = "x".repeat(9);
+  const app = await setup(invitation);
+  try {
+    const response = await app.inject({ method: "POST", url: "/demo-access",
+      headers: { origin, accept: "application/json", "content-type": "application/x-www-form-urlencoded" },
+      payload: new URLSearchParams({ code: invitation }).toString() });
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(response.json(), { ok: true });
+    const cookie = String(response.headers["set-cookie"]);
+    assert.match(cookie, /HttpOnly; Secure; SameSite=Strict; Max-Age=28800/);
+    assert.ok(!response.body.includes(invitation));
+    const protectedResponse = await app.inject({ url: "/api/auth/me", headers: { cookie: cookie.split(";")[0] } });
+    assert.equal(protectedResponse.statusCode, 401);
+  } finally { await app.close(); }
+});
 test("public demo protects static pages, login, schema and receipts before invitation", async () => {
   const app = await setup();
   try {

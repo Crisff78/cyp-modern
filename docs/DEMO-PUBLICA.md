@@ -64,7 +64,7 @@ se ejecutan en entornos aislados con ejemplos ficticios.
 3. Antes de confirmar, comprueba que el único recurso es el servicio web `free`.
    Guarda la conexión de la base Neon `cyp_demo` en `DATABASE_URL`, con TLS
    (`sslmode=verify-full`). Render genera `JWT_SECRET`. Configura
-   `DEMO_ACCESS_CODE` con 10 a 256 caracteres; una invitación más corta es más
+   `DEMO_ACCESS_CODE` con 9 a 256 caracteres; una invitación más corta es más
    fácil de adivinar y debe compartirse solo para esta demo de datos ficticios.
    No introduzcas contraseñas de la instalación local ni publiques estas variables.
 4. Espera el deploy y comprueba `GET /api/health`, `/`, `/collector/`, el login
