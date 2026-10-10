@@ -25,8 +25,11 @@ Estados de esta matriz:
   temporal, según el recibo indicado. No certifica producción.
 - **En curso:** el responsable está modificando el módulo; la ubicación indicada
   es el lugar del cambio, no una certificación de su resultado.
-- **Pendiente externo:** falta contrato o decisión del proveedor, porcentaje
-  comercial o observación física que no sustituye un caso automatizado.
+- **Pendiente externo:** falta un contrato o una operación del proveedor.
+- **Propuesta:** especificación propia redactada; no equivale a código implementado
+  ni a una operación del proveedor.
+- **Fuera del alcance del asistente:** comprobación física a cargo del equipo,
+  excluida por Rardiel el 10 de octubre; no se presenta como ejecutada.
 - **Sin requisito:** la entrada del documento no contiene una solicitud.
 
 ## Ocho correcciones del handoff
@@ -40,7 +43,7 @@ Estados de esta matriz:
 | C5 | Autocompletado de login y contraseña visible | Estático. `app/shared/LoginPasswordInput.tsx`, `loginCredentials.ts`, los formularios de Admin/PWA: `name`, `autocomplete` y lectura de valores actuales. | `collector-login-ui.test.ts`, `login-notifications.test.ts`. Guardado del navegador confirmado por el usuario, sin comprobación independiente del asistente. |
 | C6 | Botones grandes Cobros verde, Pagos rojo y Remesas azul | Implementado; comprobación aislada PASS. `App.tsx`, `styles.css` y `suggestions-shell.css` conservan controles grandes y colores distintos; Cargos, Cobros, Descargos, Pagos, Remesas y Cuadres tienen destinos propios. | `october-nine-shell-ui.test.ts`: caso de Dashboard. Sustituye el comportamiento histórico donde Cobros abría Cargos y Pagos abría Descargos. |
 | C7 | Cotizar desde origen o destino y equivalente DOP de solo lectura | Estático. `app/server/src/remittances.ts` convierte con BigInt; `RemittancesWorkspace.tsx` muestra intención, resultado real y diferencia de redondeo. | `remittance-allocation.test.ts`, `remittance-quote-allocation-ui.test.ts`. DOP es indicativo y no crea otro saldo. |
-| C8 | Configuración central y reparto automático; gestor sobre importe final de destino | Estático; porcentaje comercial pendiente. `remittances.ts` conserva revisión e importes al crear; `RemittancesWorkspace.tsx` aplica la política como solo lectura. | `remittance-commission-policy.test.ts`, `remittance-allocation.test.ts`. Configuración inicial 0%; Gerencia aún debe indicar los porcentajes comerciales. |
+| C8 | Configuración central y reparto automático; gestor sobre importe final de destino | Estático; valores manuales a cargo de Admin, modificables. `remittances.ts` conserva revisión e importes al crear; `RemittancesWorkspace.tsx` aplica la política como solo lectura. | `remittance-commission-policy.test.ts`, `remittance-allocation.test.ts`. Configuración inicial 0%; no falta un porcentaje que deba elegir el asistente. |
 
 ## Veintiocho sugerencias anteriores
 
@@ -64,7 +67,7 @@ Estados de esta matriz:
 | 3.3 | Copiar teléfono a celular/nota | Estático. `copyPhoneIntoEmptyFields` y acción explícita del formulario de cliente. | `client-search-alerts-suggestions.test.ts`; conserva los valores ya escritos. |
 | 4.1 | Pares de moneda y tasa de origen a destino | Estático. `crossRate.ts`, `RemittancesWorkspace.tsx`, conversión del servidor. | `crossRate.test.ts`, `remittance-client-picker.test.ts`; presentación aproximada identificada. |
 | 4.2 | Contactos en remesa y recibos | Estático. El servidor captura ambos contactos y la UI los consulta individualmente. | `remittance-suggestions.test.ts`, `remittance-client-picker.test.ts`; históricos ausentes no se rellenan con datos actuales. |
-| 5.1 | Depósitos mixtos, banco, referencia y comprobante | Estático. `depositComponents.ts`, schemas de `app.ts`, validación del dominio y flujo de recibos. | `deposit-components-suggestions.test.ts`, `deposit-components.test.ts`; suma exacta, denominaciones solo del efectivo, impresión física pendiente. |
+| 5.1 | Depósitos mixtos, banco, referencia y comprobante | Estático. `depositComponents.ts`, schemas de `app.ts`, validación del dominio y flujo de recibos. | `deposit-components-suggestions.test.ts`, `deposit-components.test.ts`; suma exacta, denominaciones solo del efectivo, impresión física fuera del alcance del asistente. |
 | 6.1 | Botones principales | Implementado; comprobación aislada PASS. Coincide con C6; se conservan diseño, colores y botones, con destinos explícitos. | Caso de Dashboard de `october-nine-shell-ui.test.ts`; la evidencia histórica SHELL-LAUNCHERS corresponde a la versión anterior. |
 | 6.2 | Listado inicial y Nuevo envío | Estático. `RemittancesWorkspace.tsx` inicia con el formulario cerrado y conserva listado. | UI de remesas y cotización/reparto. |
 | 6.3 | Remesas del Exterior separada de Cargos | Estático. Alta de Cargos redirige al formulario completo; edición de un cargo histórico conserva su contrato. | `App.tsx`; evidencia histórica SHELL-PICKER-CARGO. |
@@ -72,7 +75,7 @@ Estados de esta matriz:
 | 6.5 | Búsqueda predictiva | Estático. Resultados acotados y selección explícita; respuestas tardías descartadas. | `remittance-client-picker.test.ts`: teclado, homónimos, errores y consultas tardías. |
 | 6.6 | Monedas propias de cada cliente | Estático. Seleccionar cada contacto aplica su preferencia e invalida cotización anterior. | Pruebas compartidas de sugerencias y picker; importes confirmados en servidor. |
 | 6.7 | Hora de cotización e historial intradía de tasa | Estático. Marca UTC del servidor, actor y revisión explícita; presentación Santo Domingo. | `remittance-suggestions.test.ts`; A→B→A no revive una cotización y no inventa horas históricas. |
-| 6.8 | Comisión del gestor | Estático; regla vigente coincide con C8. El registro manual anterior se conserva solo como anotación histórica. | `remittance-allocation.test.ts`, `remittance-commission-policy.test.ts`; porcentaje comercial pendiente. |
+| 6.8 | Comisión del gestor | Estático; regla vigente coincide con C8. El registro manual anterior se conserva solo como anotación histórica. | `remittance-allocation.test.ts`, `remittance-commission-policy.test.ts`; porcentaje configurable manualmente por Admin. |
 | 7.1 | Reporte de comisiones por fechas | Estático. Coincide con C1; fechas inclusivas de emisión en Santo Domingo y estado actual. | `remittance-commission-report.test.ts`, `remittance-suggestions.test.ts`; no reporte de devolución por fecha de cancelación. |
 
 Se corrigió el comprobante de remesas en `output.ts` y
@@ -121,7 +124,7 @@ a `october-nine-financial-ui.test.ts`, **reporting** a
 | 5.6 | Entrada vacía en el documento | Sin requisito | Se conserva el ID; no se crea una función para un texto ausente. |
 | 6.1 | Color consistente o mayor visibilidad de iconos | Implementado; comprobación aislada PASS | SVG y contraste de barras en `App.tsx`, `components.tsx` y `styles.css`; **shell** comprueba iconos visibles. Capturas de recibo y detalle de entrega inspeccionadas visualmente; no es una auditoría exhaustiva de todos los iconos del sistema. |
 | 6.2 | Fechas inicial/final predeterminadas de la semana en curso | Implementado; comprobación aislada PASS | `app/shared/operationalWeek.ts`: lunes–domingo en `America/Santo_Domingo`, usado por filtros de `App.tsx`, recurrentes, Cuadres y reportes de remesas. **Reporting** cubre medianoche UTC y cambio de año; **shell** y `recurring-filters` verifican fechas iniciales y conservación de la elección al actualizar. |
-| 6.3 | Herramienta para definir la nota impresa al pie de los recibos | Implementado; comprobación aislada PASS | Configuración `receiptFooterNote` (máximo 2000 caracteres), recibos de Cobros/Entregas/Depósitos en `App.tsx`, salida de remesas y recibos del servidor. **Shell**, **financial**, **reporting** y **contratos** comprueban texto literal, saltos de línea, escape HTML y nota vacía; impresión física pendiente. |
+| 6.3 | Herramienta para definir la nota impresa al pie de los recibos | Implementado; comprobación aislada PASS | Configuración `receiptFooterNote` (máximo 2000 caracteres), recibos de Cobros/Entregas/Depósitos en `App.tsx`, salida de remesas y recibos del servidor. **Shell**, **financial**, **reporting** y **contratos** comprueban texto literal, saltos de línea, escape HTML y nota vacía; impresión física fuera del alcance del asistente. |
 
 ## Comprobación final y pendientes externos
 
@@ -265,12 +268,14 @@ Referencia: [Acceso a facturación de GitHub](https://docs.github.com/en/billing
   manualmente antes de guardar, activar o agregar un vínculo nuevo. La detección
   automática de identidad física del equipo sigue pendiente del proveedor;
   el UUID de catálogo y los fixtures no la acreditan.
-- Gerencia no ha definido el porcentaje comercial; se conserva el valor inicial
-  0% hasta su decisión. No se anticipan saldos, pagos o repartos históricos.
+- Ambos porcentajes son manuales y modificables por Admin; se conserva la
+  configuración persistida. Su valor comercial no es un bloqueo de implementación
+  según la instrucción del 10 de octubre. No se recalculan registros históricos.
 - Guardado del navegador cerrado según reporte del usuario; no es una
   comprobación independiente realizada por el asistente.
-- Impresión física y legibilidad pendientes de Mayo. PDF, HTML o cola no prueban
-  salida física. GPS físico cuenta con la confirmación humana anterior.
+- Impresión física y legibilidad a cargo de Mayo, excluidas del alcance del
+  asistente el 10 de octubre. PDF, HTML o cola no prueban salida física. GPS físico
+  cuenta con la confirmación humana anterior.
 - La matriz no certifica cobertura del 100% ni ausencia de defectos adicionales.
   El gate local pasó; CI no inició por el bloqueo de facturación. La publicación
   se acredita mediante el estado del PR y el recibo de deployment, y la revisión
@@ -295,3 +300,24 @@ Referencia: [Acceso a facturación de GitHub](https://docs.github.com/en/billing
 - Continúan los tres requisitos externos: contrato de identidad física y
   Obtener Datos de RRAA, porcentajes aprobados por Gerencia y prueba de impresión
   física con Mayo. No se sustituyen por fixtures, porcentajes supuestos ni PDF.
+
+## Cambio de alcance confirmado — 10 de octubre de 2026
+
+Esta instrucción posterior sustituye la clasificación de los dos últimos
+pendientes del recibo anterior; no cambia los resultados históricos de pruebas.
+
+1. Rardiel pidió redactar documentación propia de identidad y datos. Se entregó
+   [RRAA-PROPUESTA-CYP.md](RRAA-PROPUESTA-CYP.md), marcada como diseño aún no
+   implementado. Separa una identidad lógica CyP, prueba de posesión y consulta
+   propia de la identidad/licencia del proveedor. No inventa una API oficial,
+   no acredita identidad física y no habilita el botón externo Obtener Datos.
+   La integración automática real continúa necesitando el contrato del proveedor.
+2. Los porcentajes total y del gestor los introduce y cambia Admin desde
+   Envíos de Dinero → Tasas → Reparto de comisiones. Esta funcionalidad ya existe; no se
+   inventan valores ni se exige recibirlos para cerrar su implementación.
+3. La impresión física queda fuera del trabajo del asistente y la realizará Mayo.
+   La evidencia digital conserva su alcance; no se declara que garantiza papel.
+
+Este lote cambia documentación; no altera código, migraciones, porcentajes,
+datos compartidos, permisos ni configuración de Render. No requiere recompilar
+la demo ni repetir las suites aprobadas. No elimina el contrato pendiente de RRAA.
