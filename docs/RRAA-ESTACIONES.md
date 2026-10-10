@@ -5,6 +5,11 @@ Respuesta de texto: `OK|licencia` o `ER|Estación no encontrada.`.
 No existe en este contrato una operación para crear estaciones en RRAA, consultar
 grupos/versiones ni emitir licencias independientemente de la validación.
 
+El 10 de octubre de 2026 Rardiel pidió redactar una especificación propia para
+avanzar el diseño. Está en [Propuesta de identidad y datos de CyP](RRAA-PROPUESTA-CYP.md),
+identificada como propuesta aún no implementada. No es documentación del
+proveedor ni añade operaciones a VALSTAT; el contrato recibido sigue intacto.
+
 ## Configuración y confianza
 
 La API usa `RRAA_ENDPOINT` (URL de VALSTAT) y `RRAA_CLIENT_ID` en el entorno del
@@ -67,7 +72,13 @@ El navegador decide si ofrece guardarla; no se guardan claves en localStorage.
 Confirmar guardado/autocompletado en el perfil habitual requiere al usuario y
 su configuración de navegador. Una prueba de impresión verifica contenido, ruta
 de impresión y cola, pero solo observar el papel acredita salida/legibilidad física.
-El porcentaje comercial del gestor es una decisión de gerencia, no un dato de RRAA.
+Los porcentajes comerciales los configura Admin; no son datos proporcionados por RRAA.
+
+Alcance actualizado por Rardiel el 10 de octubre: ambos porcentajes se introducen
+y modifican manualmente por Admin desde la configuración existente; no se requiere
+recibir números externos para cerrar esa funcionalidad. La prueba de papel queda
+a cargo de Mayo, fuera del trabajo del asistente. La comprobación digital no
+certifica la salida física ni su legibilidad.
 
 Pasos para comprobar estos puntos en el puesto habitual:
 [Validación de navegador e impresora](VALIDACION-NAVEGADOR-IMPRESORA.md).

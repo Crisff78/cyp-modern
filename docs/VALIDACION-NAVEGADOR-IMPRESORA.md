@@ -1,9 +1,9 @@
 # Comprobación en el puesto de trabajo
 
 La aplicación ya ofrece el login compatible con el gestor de contraseñas del
-navegador y la impresión de recibos. Estas comprobaciones requieren el perfil
-habitual y la salida física; no se certifican con pruebas automatizadas. No hay
-restricciones por marca de navegador o impresora: se usan formularios HTML,
+navegador y la impresión de recibos. El guardado requiere el perfil habitual;
+la salida física requiere observar el papel. No se certifican con pruebas
+automatizadas. No hay restricciones por marca de navegador o impresora: se usan formularios HTML,
 autocomplete, FormData y window.print(). El usuario elige el dispositivo en el
 diálogo nativo de impresión.
 
@@ -52,6 +52,12 @@ puente de impresión. La impresión estándar no depende de ESC/POS.
 
 No se certificó salida física en una impresora durante estas pruebas.
 
+**Alcance del asistente actualizado el 10 de octubre de 2026:** Rardiel excluyó
+esta prueba física y la dejó a cargo de Mayo. No condiciona el cierre del trabajo
+digital autorizado. Los pasos anteriores quedan como guía para el puesto; un
+resultado digital correcto no garantiza papel, controlador, márgenes o corte
+correctos en una impresora concreta.
+
 ## Estado confirmado por el usuario — 9 de octubre de 2026
 
 El usuario confirmó que su navegador ofrece guardar la contraseña y que la
@@ -63,14 +69,16 @@ física y legibilidad. La impresión por el diálogo nativo permanece disponible
 
 La regla de reparto está implementada: el gestor recibe su porcentaje del monto
 final en moneda de destino y la empresa recibe el resto de la comisión total.
-Gerencia debe aprobar el porcentaje total de la transacción y el porcentaje del
-gestor; RRAA no proporciona esos datos.
+El porcentaje total de la transacción y el del gestor los decide Admin según
+sus criterios comerciales; RRAA no proporciona esos datos. Esto no es un paso
+pendiente de implementación: ambos se introducen manualmente por Admin
+y se pueden modificar cuando lo necesite, según la instrucción del 10 de octubre.
 
-El administrador lo configura en Remesas → Tasas → Reparto de comisiones. El
+El administrador lo configura en Envíos de Dinero → Tasas → Reparto de comisiones. El
 valor inicial de ambos es 0%; no equivale a una tasa comercial aprobada. Los
 cambios se aplican a nuevas remesas y las anteriores conservan el reparto guardado. Las
 canceladas no incrementan el saldo vigente del gestor.
 
-No se han recibido porcentajes comerciales aprobados; se conservan ambos en 0%
-hasta recibirlos. Se actualizarán desde este panel, sin cambiar saldos ni
-repartos anteriores para anticipar esa decisión.
+El asistente no elige porcentajes. Se conserva la configuración guardada y el
+valor inicial de 0% cuando aún no haya cambios del Admin. No se cambian saldos
+ni repartos anteriores para anticipar una decisión comercial.
