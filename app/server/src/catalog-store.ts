@@ -8,6 +8,7 @@ export const frequencyCodes: Record<string, string> = {
 };
 const frequencyLabels = Object.fromEntries(Object.entries(frequencyCodes).map(([label, code]) => [code, label]));
 export async function readCatalogs(client: pg.PoolClient, state: State) {
+  state.banks = (await client.query(`SELECT id,name,active FROM banks ORDER BY name,id`)).rows;
   state.zones = (await client.query(`SELECT id,name,sector,number,range_from AS "from",range_to AS "to",active FROM zones ORDER BY name,id`)).rows;
   state.services = (await client.query(`SELECT id,name AS service,abbreviation AS abbr,caption,required_by_default AS obligated,
     fixed_amount AS "fixedAmount",status='active' AS active,reference_price_cents AS "referencePriceCents",
@@ -32,6 +33,11 @@ export async function readCatalogs(client: pg.PoolClient, state: State) {
     }));
 }
 export async function saveCatalogMasters(client: pg.PoolClient, state: State, before: State) {
+  for (const bank of state.banks) {
+    if (JSON.stringify(before.banks.find((row) => row.id === bank.id)) === JSON.stringify(bank)) continue;
+    await client.query(`INSERT INTO banks(id,name,active) VALUES($1,$2,$3)
+      ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,active=EXCLUDED.active`, [bank.id,bank.name,bank.active]);
+  }
   for (const zone of state.zones) {
     if (JSON.stringify(before.zones.find((z) => z.id === zone.id)) === JSON.stringify(zone)) continue;
     await client.query(`INSERT INTO zones(id,name,sector,number,range_from,range_to,active) VALUES($1,$2,$3,$4,$5,$6,$7)

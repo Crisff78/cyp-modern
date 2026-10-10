@@ -156,6 +156,11 @@ export type Receipt = {
   amount: number;
   createdAt: string;
   type: string;
+  currency?: "DOP" | "USD" | "EUR";
+  footerNote?: string;
+  bankName?: string;
+  reference?: string;
+  note?: string;
 };
 export type Operation = {
   id: string;

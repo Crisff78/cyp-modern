@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import { api, getToken } from "./api";
 import { isMockToken } from "./mock";
 import { operationKey } from "../../shared/remittances/strictApi";
-import { INPUT_LIMITS, validateEmail, validateText } from "../../shared/inputRules";
+import { INPUT_LIMITS, validateText } from "../../shared/inputRules";
 import { ACCOUNT_ROLE_OPTIONS, accountRoleLabel, type AccountRole } from "../../shared/accountRoles";
 import { pendingMovementDraft, useMovementRequest } from "./useMovementRequest";
 import { collectorOptionsForAccount } from "./collectorAccountOptions";
@@ -122,8 +122,6 @@ function AccountForm({
     event.preventDefault();
     if (busy || mockInFlight.current) return;
     if (creating && !name.trim()) return setError("Escribe el nombre.");
-    if (creating && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-      return setError("Escribe un correo válido.");
     if ((creating || rotating) && Array.from(password).length < MIN_LENGTH)
       return setError(
         `La contraseña debe tener al menos ${MIN_LENGTH} caracteres.`,
@@ -132,7 +130,7 @@ function AccountForm({
     try {
       if (creating) {
         validateText(name, "Nombre", INPUT_LIMITS.name, { required: true });
-        validateEmail(email, "Correo", { required: true });
+        validateText(email, "Usuario / correo", INPUT_LIMITS.email, { required: true });
         validateText(nickname, "Apodo", INPUT_LIMITS.userNickname);
         validateText(note, "Nota", INPUT_LIMITS.userNote, { multiline: true });
         if (!request.attempt && role === "collector" && !snapshot.collectors.some((collector) => collector.id === collectorId && collector.active !== false)) throw new Error("Selecciona un cobrador activo para vincular esta cuenta.");
@@ -170,7 +168,7 @@ function AccountForm({
       title={labelFor(operation)}
       description={
         creating
-          ? "El cobrador o administrador entra al portal con su propio correo y contraseña."
+          ? "La cuenta entra al portal con su nombre de usuario o correo y contraseña."
           : rotating
             ? `La nueva contraseña cierra las sesiones abiertas de ${operation.account.email}.`
             : operation.status === "disabled"
@@ -196,13 +194,13 @@ function AccountForm({
             <label className="field">Apodo<input maxLength={INPUT_LIMITS.userNickname} value={nickname} onChange={(event) => setNickname(event.target.value)} /></label>
             <label className="field">Nota<textarea maxLength={INPUT_LIMITS.userNote} value={note} onChange={(event) => setNote(event.target.value)} rows={2} /></label>
             <label className="field">
-              Correo
+              Usuario / correo
               <input
-                type="email"
+                type="text"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
-                placeholder="correo@empresa.com"
-                autoComplete="email"
+                placeholder="usuario o correo@empresa.com"
+                autoComplete="username"
                 maxLength={INPUT_LIMITS.email}
                 required
               />
@@ -247,7 +245,7 @@ function AccountForm({
               <strong>{operation.account.name}</strong>
             </div>
             <div>
-              <span>Correo</span>
+              <span>Usuario / correo</span>
               <strong>{operation.account.email}</strong>
             </div>
             <div>

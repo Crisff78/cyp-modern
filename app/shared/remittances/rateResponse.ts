@@ -2,7 +2,7 @@ import { INPUT_LIMITS, isPositiveRate } from "../inputRules";
 import { StrictApiError } from "./strictApi";
 import type { Rate } from "./types";
 
-type ExpectedRate = Pick<Rate, "currency" | "date" | "rate">;
+type ExpectedRate = Pick<Rate, "currency" | "date" | "rate" | "purchaseRate" | "saleRate">;
 
 const rateUnits = (rate: string): bigint => {
   const [whole, fraction = ""] = rate.split(".");
@@ -16,7 +16,9 @@ export function confirmedRateResponse(result: unknown, expected: ExpectedRate): 
     || response.id.length > INPUT_LIMITS.id || /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(response.id)
     || response.currency !== expected.currency || response.date !== expected.date
     || typeof response.rate !== "string" || !isPositiveRate(response.rate) || !isPositiveRate(expected.rate)
-    || rateUnits(response.rate) !== rateUnits(expected.rate))
+    || rateUnits(response.rate) !== rateUnits(expected.rate)
+    || (["purchaseRate", "saleRate"] as const).some((key) => expected[key] !== undefined &&
+      (typeof response[key] !== "string" || !isPositiveRate(response[key]!) || !isPositiveRate(expected[key]!) || rateUnits(response[key]!) !== rateUnits(expected[key]!))))
     throw new StrictApiError("La respuesta no confirmó la tasa guardada. Conservamos los datos: reintenta esta misma operación sin cambiarlos.", 200, true, "RATE_CONFIRMATION_INVALID");
   // Cached legacy responses may lack changeId/updatedAt; do not invent metadata.
   return response as Rate;

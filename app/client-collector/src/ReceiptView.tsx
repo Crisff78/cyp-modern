@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { api, dateLabel, money } from "./api";
 import type { Receipt } from "./types";
 import { ReceiptPaperSelect, type ReceiptPaper } from "../../shared/ReceiptPaperSelect";
+import { formatMoney } from "../../shared/remittances/output";
 
 export function ReceiptView({
   token,
@@ -162,7 +163,7 @@ export function ReceiptView({
                   : "Importe recibido"}
               </p>
               <strong className="receipt-amount">
-                {money(receipt.amount)}
+                {receipt.currency && receipt.currency !== "DOP" ? formatMoney(receipt.amount, receipt.currency) : money(receipt.amount)}
               </strong>
               <dl>
                 <div>
@@ -186,9 +187,14 @@ export function ReceiptView({
                   <dd className="receipt-id">{receipt.id}</dd>
                 </div>
               </dl>
+              {(receipt.bankName || receipt.reference || receipt.note) && <dl>
+                {receipt.bankName && <div><dt>Banco</dt><dd>{receipt.bankName}</dd></div>}
+                {receipt.reference && <div><dt>Referencia bancaria</dt><dd>{receipt.reference}</dd></div>}
+                {receipt.note && <div><dt>Nota</dt><dd>{receipt.note}</dd></div>}
+              </dl>}
               <footer>
                 <span className="receipt-dots" aria-hidden="true" />
-                <p>Gracias por tu confianza.</p>
+                {receipt.footerNote && <p style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{receipt.footerNote}</p>}
                 <small>Comprobante operativo · No fiscal</small>
               </footer>
             </article>

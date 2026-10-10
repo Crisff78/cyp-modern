@@ -40,37 +40,68 @@ proyecto separado de Hermes-BI.
 
 ## Current state
 
-**Last updated:** 2026-10-05 por Codex (hora dominicana).
+**Last updated:** 2026-10-09, hora dominicana, por Codex.
 
 ### Done so far
 
-- PR3/4 fusionados; antes de este cambio main y demo comprobados en 6df34267.
-  Render y Neon ya están desplegados; el servicio existente escucha
-  codex/public-browser-demo. No recrear recursos ni repetir merges anteriores.
-- Auditoría de 28 sugerencias: 24 conservan la implementación al alcance
-  acordado; este cambio completa 2.3, 3.1, 4.1 y 6.4. Ver
-  docs/SUGERENCIAS-CIERRE.md para comportamiento, pruebas y límites.
-- Se conserva Z/L/R, límites DOP persistidos, multimoneda separada,
-  comisiones manuales, diseños y recibos 58/80 mm. Sin migraciones nuevas.
-- Pruebas de escritura únicamente sobre ejemplos aislados. Ninguna operación
-  de prueba en registros compartidos o reales. Sin VPS ni variables privadas.
+- Base actual incorporada por fast-forward: main del compañero
+  `60191c943a8cd5118fd8a4d5909f45ec9bbba8b3`; rama de trabajo
+  `codex/october-nine-corrections`. Se conservan roles, permisos, tema,
+  cotización inversa, política central y reparto de comisiones, referencias de
+  productos y validación real de RRAA del compañero.
+- Las 27 solicitudes no vacías de `C Y P NUEVO.txt` tienen implementación.
+  Matriz de las 36 anteriores, las 27 nuevas y la entrada vacía5.6:
+  `docs/OCTUBRE-09-CORRECCIONES.md`. Evidencia local distingue ejecución,
+  lectura estática y límites externos; no certifica el100% del producto.
+- Cambios nuevos: bancos y referencias/notas de cobro; filtros/detalle de
+  entregas; tasas centrales readonly en Remesas, recientes primero y compra/
+  venta separadas; cuadres DOP/USD/EUR separados; código e identificación
+  interna reservados por servidor, sin inventar cédulas; logo, soporte,
+  clave propia con revocación, semana de Santo Domingo, herramientas visibles
+  y listado/recibo individual con pie configurable. El comprobante de remesa
+  omite el reparto de comisión y conserva el total recibido.
+- Migraciones aditivas027–029. PostgreSQL17.6 aislado en loopback probó
+  hashes001–029, concurrencia, persistencia, constraints, contactos congelados
+  y cambio de clave; clúster privado detenido al terminar. No hubo pruebas
+  con escritura en datos compartidos. Tres tipos y tres builds locales PASS.
+  Pruebas de navegador reales con Edge temporal y MemoryStore están en la
+  matriz; las omitidas de CI no se cuentan como ejecutadas.
+- GitHub y Render son la fuente del estado de publicación. El servicio
+  existente usa `codex/public-browser-demo`; no crear otra demo ni repetir
+  merges antiguos. Las migraciones del arranque son transaccionales y solo
+  aceptan la base dedicada `cyp_demo`. La versión y CI vigentes deben
+  consultarse antes de cualquier actualización.
+- Antecedentes preservados: PR3/4 y PR7–10 publicaron validaciones, mínimo de
+  clave3, ruta No definida y hora/reintentos de tasas; PR18/19 conservaron
+  cambios del compañero y contraste oscuro. Evidencia detallada y recibos
+  en Superbrain/Activity/2026-10-05,2026-10-06 y2026-10-08; no repetir
+  publicaciones ni rehacer el video histórico de mínimo10 sin petición.
 
 ### Next step
 
-1. Antes de otro cambio, consultar en GitHub los recibos de CI y deployment
-   del commit actual. La publicación usa PR hacia main y demo por fast-forward;
-   los recibos remotos son la fuente del estado de publicación.
-2. Registrar el resultado final en el handoff local y Superbrain. Mantener
-   Codex Superbrain Vault Sync Disabled; sin sync remoto ni Agent Mail.
-3. Si llega otro fallo, reproducirlo en un entorno aislado antes de cambiarlo.
+1. Verificar CI del commit actual antes de fusionar y actualizar la misma rama
+   de demo; comprobar Live/health y UI sin guardar pruebas compartidas.
+2. Para completar identidad automática de estación, obtener del proveedor el
+   contrato de obtención/registro/vinculación de `idestacion`; VALSTAT solo
+   valida una combinación ya recibida. No usar un UUID de navegador como
+   prueba de identidad del equipo; Obtener Datos sigue sin contrato.
+3. Gerencia debe definir los porcentajes comerciales; conservar0% y no
+   recalcular remesas anteriores. Mayo debe comprobar la impresión física.
+4. Mantener continuidad local y Codex Superbrain Vault Sync Disabled; sin
+   sync remoto, Agent Mail, VPS, credenciales ni pruebas reales/compartidas.
 
 ### Blockers / límites
 
-- Los identificadores de CI/deployment viven en GitHub y en el handoff local;
-  no deducir su estado a partir de una nota histórica.
-- No se afirma cobertura del 100 %. Las pruebas PostgreSQL omitidas no cuentan
-  como ejecutadas; no usar la base pública para habilitarlas.
-- TestSprite e impresión física excluidos. GPS físico ya confirmado por Rardiel.
-  Punto 2.2: rraa eliminado; ID interno readonly conservado.
-- Plan gratuito sujeto a suspensión por inactividad y cuotas; demo compartida.
-  La instalación definitiva local mantiene su estado independiente.
+- El ejemplo VALSTAT recibido no añade una operación de identidad automática.
+  La licencia y el ID del proveedor no se persisten en Git ni Superbrain.
+- Compra/venta se guardan como valores separados; las remesas conservan su
+  tasa operativa y no se inventa una fórmula comercial. Los datos históricos
+  ausentes o monedas incompatibles no se rellenan automáticamente.
+- Impresión física pendiente de Mayo; PDF y navegador no la acreditan.
+  GPS físico y guardado de contraseña del navegador tienen confirmación
+  humana previa, no una nueva prueba física de Codex. TestSprite excluido.
+- Las pruebas omitidas en CI siguen omitidas; no cobertura100% ni promesa de
+  ausencia de otros bugs. No se restauran ni resetean registros compartidos.
+- La instalación local3001/5173/5174 es independiente. Render gratuito puede
+  dormir; los evaluadores comparten datos ficticios y cuotas de alojamiento.
+- Jev/MoA son asesores selectivos, sin veto sobre este alcance autorizado.

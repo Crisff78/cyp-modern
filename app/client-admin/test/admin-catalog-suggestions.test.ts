@@ -10,6 +10,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { buildApp } from "../../server/src/app.js";
 import { seed } from "../../server/src/seed.js";
 import { MemoryStore } from "../../server/src/store.js";
+import { currentOperationalWeek } from "../../shared/operationalWeek";
 
 // Optional native-browser regression: uses already installed Edge/Playwright,
 // an ephemeral loopback HTTP server and MemoryStore. Never downloads a browser,
@@ -28,10 +29,10 @@ const hash = (file: string) => createHash("sha256").update(fs.readFileSync(file)
 test("administration suggestions run in real components with a synthetic isolated API", { skip: canRunBrowser ? false : "Installed Windows Edge and Playwright are required; no download attempted." }, async (t) => {
   const output = fs.mkdtempSync(path.join(os.tmpdir(), "cyp-admin-suggestions-"));
   const selection = process.env.CYP_QA_CATALOG_CASE ?? "all";
-  const ownedSources = selection === "station-status" ? ["app/client-admin/src/ConnectedAdminTools.tsx"] : ["app/client-admin/src/ConnectedCatalog.tsx", "app/client-admin/src/CollectorAssignmentsDialog.tsx", "app/client-admin/src/collectorAssignmentsState.ts", "app/client-admin/src/collector-assignments.css", "app/client-admin/src/ConnectedAdminTools.tsx", "app/client-admin/src/ConnectedExchangeRates.tsx", "app/client-admin/src/ConnectedUserPermissionsDialog.tsx", "app/client-admin/src/Users.tsx", "app/server/src/catalog-routes.ts"];
+  const ownedSources = selection === "station-status" ? ["app/client-admin/src/ConnectedAdminTools.tsx"] : selection === "recurring-filters" ? ["app/client-admin/src/ConnectedCatalog.tsx", "app/shared/operationalWeek.ts"] : ["app/client-admin/src/ConnectedCatalog.tsx", "app/client-admin/src/CollectorAssignmentsDialog.tsx", "app/client-admin/src/collectorAssignmentsState.ts", "app/client-admin/src/collector-assignments.css", "app/client-admin/src/ConnectedAdminTools.tsx", "app/client-admin/src/ConnectedExchangeRates.tsx", "app/client-admin/src/ConnectedUserPermissionsDialog.tsx", "app/client-admin/src/Users.tsx", "app/server/src/catalog-routes.ts"];
   const before = Object.fromEntries(ownedSources.map((file) => [file, hash(path.join(projectRoot, file))]));
   const report: Record<string, unknown> = { startedUtc: new Date().toISOString(), sourceBases: ["655a54e37d0dc91fbc7d20919082f7a26744b07d", "94d38a8bba1b43e0a84bb216d0dd4a35c473a8e9"], runnerSha256: hash(fileURLToPath(import.meta.url)), sourceHashes: before, scope: "Actual connected components in a QA composition; real buildApp/MemoryStore API; no full App or provider claim.", output, cases: [], externalAttemptsBlocked: [], pageErrors: [] };
-  assert(["all", "collector-integration", "account-modal", "account-mock", "service-reference", "station-status"].includes(selection), "Only the documented QA case selection is allowed.");
+  assert(["all", "collector-integration", "account-modal", "account-mock", "service-reference", "station-status", "recurring-filters"].includes(selection), "Only the documented QA case selection is allowed.");
   report.caseSelection = selection;
   const cases = report.cases as Array<{ id: string; status: string }>;
   const external = report.externalAttemptsBlocked as string[];
@@ -50,6 +51,13 @@ test("administration suggestions run in real components with a synthetic isolate
     { id: "qa-fixed-inactive", service: "QA fijo inactivo", fixedAmount: true, active: false },
     { id: "qa-free-inactive", service: "QA libre inactivo", fixedAmount: false, active: false },
   ].map((row) => ({ ...row, abbr: "QA", caption: "Producto sintético", obligated: false }));
+  const week = currentOperationalWeek();
+  state.clients[0].code = "QA-CLIENT-CODE";
+  state.clients[0].name = "Cliente semanal QA";
+  state.recurringCharges = [
+    { id: "qa-recurring-current", concept: "Concepto semanal QA", startDate: week.from, note: "Nota semanal QA", active: true },
+    { id: "qa-recurring-old", concept: "Concepto anterior QA", startDate: "2020-01-01", note: "Nota antigua QA", active: false },
+  ].map((row) => ({ ...row, clientId: state.clients[0].id, registeredAt: `${row.startDate}T12:00:00.000Z`, endDate: "", frequency: "weekly", day1: "1", day2: "", currency: "DOP", service: row.active ? "Servicio semanal QA" : "Servicio anterior QA", useConceptAmount: false, amount: 10000 }));
   const store = new MemoryStore(state);
   const app = await buildApp({ store, demo: true, secret: "synthetic-ui-catalog-secret-at-least-32-characters", origins: ["http://localhost:5173"], collectorUrl: "http://localhost:5174" });
   const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { email: "admin@cyp.local", password: "Demo-CyP-2026!" } });
@@ -158,6 +166,7 @@ remittancesApi("/snapshot").then(snapshot => { if (new URLSearchParams(location.
       if (selection === "service-reference" && !id.includes("service manual references")) return;
       if (selection === "collector-integration" && !id.startsWith("SUG-2.1") && !id.startsWith("PR3 Z/L/R")) return;
       if (selection === "station-status" && !id.includes("station")) return;
+      if (selection === "recurring-filters" && !id.includes("recurring filters")) return;
       await t.test(id, async () => { try { await body(); cases.push({ id, status: "PASS" }); } catch (error) { cases.push({ id, status: "FAIL" }); throw error; } });
     };
 
@@ -428,18 +437,22 @@ remittancesApi("/snapshot").then(snapshot => { if (new URLSearchParams(location.
       await open("rates"); await page.getByTitle("Nuevo", { exact: true }).waitFor();
       await page.waitForFunction(() => !document.querySelector<HTMLButtonElement>('button[title="Nuevo"]')?.disabled);
       await page.getByTitle("Nuevo", { exact: true }).click();
-      await page.getByLabel("Tasa", { exact: true }).fill("0.005000"); await page.getByRole("button", { name: "Revisar tasa", exact: true }).click();
+      await page.getByLabel("Tasa de remesas", { exact: true }).fill("0.005000");
+      await page.getByLabel("Compra", { exact: true }).fill("0.004000");
+      await page.getByLabel("Venta", { exact: true }).fill("0.006000");
+      await page.getByRole("button", { name: "Revisar tasa", exact: true }).click();
       await page.getByRole("button", { name: "Confirmar", exact: true }).click();
       await page.getByText("Tasa del día guardada. Los envíos anteriores conservan su tasa.", { exact: true }).waitFor();
-      assert.equal(await page.getByRole("columnheader", { name: "Tasa", exact: true }).count(), 1);
+      for (const name of ["Tasa de remesas", "Compra", "Venta"]) assert.equal(await page.getByRole("columnheader", { name, exact: true }).count(), 1);
       const saved = writes.findLast((row) => row.pathname === "/api/envios/tasas")!;
       assert.equal(saved.status, 200); assert.equal(saved.body.rate, "0.005000");
+      assert.equal(saved.body.purchaseRate, "0.004000"); assert.equal(saved.body.saleRate, "0.006000");
     });
     await run("SUG-2.8/2.9 account metadata and the authorized three-character minimum", async () => {
       await open("users"); await page.getByTitle("Nuevo", { exact: true }).click();
       const dialog = page.getByRole("dialog", { name: "Datos de Usuario...", exact: true });
       await dialog.getByLabel("Nombre", { exact: true }).fill("Cuenta sintética QA");
-      await dialog.getByLabel("Correo", { exact: true }).fill("qa-catalog@example.invalid");
+      await dialog.getByLabel("Usuario / correo", { exact: true }).fill("qa-catalog@example.invalid");
       await dialog.getByLabel("Rol", { exact: true }).selectOption("collector");
       await dialog.getByLabel("Apodo", { exact: true }).fill("QA apodo"); await dialog.getByLabel("Nota", { exact: true }).fill("Nota sintética conservada");
       await dialog.getByLabel("Cobrador asociado", { exact: true }).selectOption("col-1");
@@ -456,7 +469,7 @@ remittancesApi("/snapshot").then(snapshot => { if (new URLSearchParams(location.
       await open("account");
       const dialog = page.getByRole("dialog", { name: "Nueva cuenta", exact: true });
       await dialog.getByLabel("Nombre", { exact: true }).fill("Cuenta modal sintética");
-      await dialog.getByLabel("Correo", { exact: true }).fill("qa-modal@example.invalid");
+      await dialog.getByLabel("Usuario / correo", { exact: true }).fill("qa-modal@example.invalid");
       await dialog.getByLabel("Apodo", { exact: true }).fill("QA modal");
       await dialog.getByLabel("Nota", { exact: true }).fill("Nota de modal sintética");
       const password = dialog.getByLabel("Contraseña (3 caracteres mínimo)", { exact: true });
@@ -520,7 +533,7 @@ remittancesApi("/snapshot").then(snapshot => { if (new URLSearchParams(location.
       await open("account-mock");
       const dialog = page.getByRole("dialog", { name: "Nueva cuenta", exact: true });
       await dialog.getByLabel("Nombre", { exact: true }).fill("Cuenta mock sintética");
-      await dialog.getByLabel("Correo", { exact: true }).fill("qa-mock@example.invalid");
+      await dialog.getByLabel("Usuario / correo", { exact: true }).fill("qa-mock@example.invalid");
       await dialog.getByLabel("Contraseña (3 caracteres mínimo)", { exact: true }).fill("Qa3");
       const count = writes.length;
       await dialog.getByRole("button", { name: "Crear cuenta", exact: true }).click();
@@ -532,13 +545,42 @@ remittancesApi("/snapshot").then(snapshot => { if (new URLSearchParams(location.
       await dialog.getByRole("button", { name: "Cancelar", exact: true }).click();
       await page.getByText("Ventana cerrada", { exact: true }).waitFor();
     });
+    await run("OCT-3.2.1/6.2 recurring filters explain fields and keep the current RD week", async () => {
+      await open("recurringCharges");
+      const panel = page.getByRole("complementary", { name: "Panel de filtro de cargos recurrentes", exact: true });
+      const from = panel.getByLabel("Fecha Inicial:", { exact: true });
+      const to = panel.getByLabel("Fecha final:", { exact: true });
+      assert.equal(await from.inputValue(), week.from);
+      assert.equal(await to.inputValue(), week.to);
+      const search = panel.getByLabel("Buscar:", { exact: true });
+      const helpId = await search.getAttribute("aria-describedby");
+      assert(helpId);
+      assert.match(await panel.locator(`[id=${JSON.stringify(helpId)}]`).innerText(), /concepto, nota, código o nombre del cliente/);
+      await page.getByRole("cell", { name: "Servicio semanal QA", exact: true }).waitFor();
+      assert.equal(await page.getByRole("cell", { name: "Servicio anterior QA", exact: true }).count(), 0);
+      for (const query of ["Concepto semanal", "Nota semanal", "QA-CLIENT-CODE", "Cliente semanal"]) {
+        await search.fill(query);
+        assert.equal(await page.getByRole("cell", { name: "Servicio semanal QA", exact: true }).count(), 1);
+      }
+      await search.fill("sin coincidencia QA");
+      await page.getByRole("cell", { name: "No hay registros para estos filtros.", exact: true }).waitFor();
+      await search.fill("");
+      await from.fill("2020-01-01");
+      await page.getByRole("cell", { name: "Servicio anterior QA", exact: true }).waitFor();
+      await page.getByTitle("Refrescar", { exact: true }).click();
+      assert.equal(await from.inputValue(), "2020-01-01", "Refreshing must preserve dates chosen by the user.");
+      await to.fill("2019-12-31");
+      await panel.getByRole("alert").waitFor();
+      assert.equal(await page.getByRole("cell", { name: "Servicio semanal QA", exact: true }).count(), 0);
+      assert.equal(await page.getByRole("cell", { name: "Servicio anterior QA", exact: true }).count(), 0);
+    });
     assert.deepEqual(pageErrors, []);
     const after = Object.fromEntries(ownedSources.map((file) => [file, hash(path.join(projectRoot, file))]));
     assert.deepEqual(after, before, "Owned source files must remain unchanged during the run.");
     report.sourceHashesAfter = after;
     report.sourcesStable = true;
     report.writes = writes;
-    report.functionalStatus = cases.length === (selection === "all" ? 18 : selection === "collector-integration" ? 7 : selection === "station-status" ? 4 : 1) && cases.every((row) => row.status === "PASS") ? "PASS" : "FAIL";
+    report.functionalStatus = cases.length === (selection === "all" ? 19 : selection === "collector-integration" ? 7 : selection === "station-status" ? 4 : 1) && cases.every((row) => row.status === "PASS") ? "PASS" : "FAIL";
     report.isolation = "All HTTP served on the owned loopback listener; all backend writes in MemoryStore. External browser attempts were blocked and reported separately.";
   } finally {
     await context?.close(); report.contextClosed = true;

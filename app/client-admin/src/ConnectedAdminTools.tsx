@@ -7,6 +7,7 @@ import { StrictApiError } from "../../shared/remittances/strictApi";
 import { INPUT_LIMITS, validatePhone, validateText } from "../../shared/inputRules";
 import { confirmedRraaPreview, type RraaPreview } from "./rraaValidation";
 import type { Snapshot } from "./types";
+import { currentOperationalWeek } from "../../shared/operationalWeek";
 import "./connected-admin-tools.css";
 
 export type AdminToolPage = "stations" | "groups" | "pcps" | "sessions" | "traces" | "authorizationRequests";
@@ -28,7 +29,7 @@ const stationIds = (row: Row) => Array.isArray(row.stationIds) ? row.stationIds.
 const errorText = (error: unknown) => error instanceof Error ? error.message : "No se pudo completar la operación.";
 const dateTime = (date: unknown) => date ? new Date(String(date)).toLocaleString("es-DO", { timeZone: "America/Santo_Domingo" }) : "—";
 const states: Record<string, string> = { active: "Activa", closed: "Cerrada", expired: "Vencida", pending: "Pendiente", approved: "Aprobada", rejected: "Rechazada", cancelled: "Anulada" };
-const emptyFilter: Filter = { q: "", from: "", to: "", status: "" };
+const emptyFilter = (): Filter => ({ q: "", ...currentOperationalWeek(), status: "" });
 
 export function ConnectedAdminTools({ page, snapshot, onRefresh }: { page: AdminToolPage; snapshot: Snapshot; onRefresh: () => void }) {
   const definition = definitions[page], paged = ["sessions", "traces", "authorizationRequests"].includes(page);

@@ -34,7 +34,8 @@ test("actual Admin MDI and Collector PWA quote both directions and persist commi
   });
   const app = await buildApp({ store, demo: true, secret: "quote-allocation-synthetic-secret-32", origins: [], collectorUrl: "/collector/" });
   let server: ReturnType<typeof createServer> | undefined, browser: any;
-  const errors: string[] = [], external: string[] = [];
+  const errors: string[] = [];
+  let blockedAntivirusAttempts = 0, blockedFontAttempts = 0, unexpectedExternalAttempts = 0;
   try {
     const tokens: Record<string, string> = {};
     for (const [surface, email] of [["admin", "admin@cyp.local"], ["collector", "collector@cyp.local"]]) {
@@ -79,12 +80,20 @@ createRoot(document.getElementById("root")).render(<App />);`);
     });
     await new Promise<void>((resolve, reject) => { server!.once("error", reject); server!.listen(0, "127.0.0.1", resolve); });
     const address = server.address(); assert(address && typeof address !== "string"); const origin = `http://127.0.0.1:${address.port}`;
+    const routeLocalOnly = (route: any) => {
+      const destination = new URL(route.request().url());
+      if (destination.origin === origin) return route.continue();
+      if (destination.origin === "http://me.kis.v2.scr.kaspersky-labs.com") blockedAntivirusAttempts += 1;
+      else if (["https://fonts.googleapis.com", "https://fonts.gstatic.com"].includes(destination.origin)) blockedFontAttempts += 1;
+      else unexpectedExternalAttempts += 1;
+      return route.abort("blockedbyclient");
+    };
     browser = await chromium.launch({ executablePath: edge, headless: true });
     await t.test("Admin registers both central rates once and future remittances display them readonly", async () => {
       const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: "es-DO", serviceWorkers: "block" });
       try {
         await context.addInitScript((token: string) => localStorage.setItem("cyp-admin-token", token), tokens.admin);
-        await context.route("**/*", async (route: any) => new URL(route.request().url()).origin === origin ? route.continue() : route.abort("blockedbyclient"));
+        await context.route("**/*", routeLocalOnly);
         const page = await context.newPage(); page.setDefaultTimeout(15000); page.on("pageerror", (error: Error) => errors.push(error.message));
         const openWorkspace = async () => { await page.goto(`${origin}/admin/`); await page.getByRole("button", { name: "REMESAS", exact: true }).click(); };
         await openWorkspace();
@@ -116,11 +125,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
         await context.addInitScript(({ token, surface }: { token: string; surface: string }) => {
           if (surface === "admin") localStorage.setItem("cyp-admin-token", token); else sessionStorage.setItem("cyp-collector-token", token);
         }, { token: tokens[surface], surface });
-        await context.route("**/*", async (route: any) => {
-          const url = new URL(route.request().url());
-          if (url.origin !== origin) { if (!["fonts.googleapis.com", "fonts.gstatic.com"].includes(url.hostname)) external.push(url.origin); return route.abort("blockedbyclient"); }
-          return route.continue();
-        });
+        await context.route("**/*", routeLocalOnly);
         const page = await context.newPage(); page.setDefaultTimeout(15000); page.on("pageerror", (error: Error) => errors.push(error.message));
         await page.goto(`${origin}/${surface}/?view=remittances`);
         if (surface === "admin") await page.getByRole("button", { name: "REMESAS", exact: true }).click();
@@ -151,19 +156,35 @@ createRoot(document.getElementById("root")).render(<App />);`);
         await workspace.getByRole("button", { name: "Revisar y confirmar envío", exact: true }).click();
         const confirmation = page.getByRole("dialog", { name: "Confirmar envío", exact: true });
         assert.match(await confirmation.innerText(), /EUR 1\.60/); assert.match(await confirmation.innerText(), /EUR 2\.40/);
+        const savedReply = page.waitForResponse((reply: any) => reply.request().method() === "POST" && new URL(reply.url()).pathname === "/api/envios");
         await confirmation.getByRole("button", { name: "Confirmar", exact: true }).click();
+        const registered = await savedReply;
+        assert.equal(registered.status(), 200);
+        const registeredTransfer = await registered.json();
         const print = page.getByRole("dialog", { name: "¿Quieres imprimir el recibo?", exact: true }); await print.waitFor();
         await print.getByRole("button", { name: "No imprimir", exact: true }).click();
-        const saved = (await store.read()).remittances.transfers.at(-1)!;
+        const saved = (await store.read()).remittances.transfers.find((row) => row.id === registeredTransfer.id)!;
+        assert.ok(saved, "The exact transfer returned by the creation response must exist in the ledger.");
+        assert.equal(saved.status, "pending");
         assert.equal(saved.requestedReceiveAmount, 8000); assert.equal(saved.commissionAllocation!.managerAmount, 160);
         assert.equal(saved.sendingUserId, surface === "admin" ? admin.id : collector.id);
         await workspace.getByRole("button", { name: saved.envioReference, exact: true }).click();
         const detail = page.getByRole("dialog", { name: `${saved.envioReference} · ${saved.reciboReference}`, exact: true });
         await detail.getByLabel("Motivo de cancelación", { exact: true }).fill("Cancelación sintética QA");
         await detail.getByRole("button", { name: "Revisar cancelación", exact: true }).click();
+        const cancelledReply = page.waitForResponse((reply: any) => reply.request().method() === "POST" &&
+          new URL(reply.url()).pathname === `/api/envios/${encodeURIComponent(saved.id)}/cancelar`);
         await page.getByRole("dialog", { name: "Cancelar envío pendiente", exact: true }).getByRole("button", { name: "Confirmar", exact: true }).click();
-        await page.waitForFunction(() => document.querySelector('.remittance-status.cancelled') !== null);
-        assert.equal((await store.read()).remittances.transfers.find((row) => row.id === saved.id)!.status, "cancelled");
+        const cancelledResponse = await cancelledReply;
+        assert.equal(cancelledResponse.status(), 200);
+        const cancelledTransfer = await cancelledResponse.json();
+        assert.equal(cancelledTransfer.id, saved.id); assert.equal(cancelledTransfer.status, "cancelled");
+        await detail.locator('.remittance-status.cancelled').waitFor();
+        const savedRow = workspace.getByRole("row").filter({ has: page.getByRole("button", { name: saved.envioReference, exact: true }) });
+        await savedRow.locator('.remittance-status.cancelled').waitFor();
+        const afterCancel = await store.read();
+        assert.equal(afterCancel.remittances.transfers.find((row) => row.id === saved.id)!.status, "cancelled");
+        assert.equal(afterCancel.remittances.events.filter((event) => event.type === "cancelled" && event.transferId === saved.id).length, 1);
         await detail.getByRole("button", { name: `Cerrar ${saved.envioReference} · ${saved.reciboReference}`, exact: true }).click();
         await workspace.getByRole("button", { name: "Nuevo envío", exact: true }).click();
         await workspace.getByLabel("Moneda del destinatario").selectOption("DOP");
@@ -190,11 +211,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
       const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: "es-DO", serviceWorkers: "block", acceptDownloads: true });
       try {
         await context.addInitScript(({ token }: { token: string }) => { localStorage.setItem("cyp-admin-token", token); (window as any).__qaPrinted = false; window.print = () => { (window as any).__qaPrinted = true; }; }, { token: tokens.admin });
-        await context.route("**/*", async (route: any) => {
-          const url = new URL(route.request().url());
-          if (url.origin !== origin) { if (!["fonts.googleapis.com", "fonts.gstatic.com"].includes(url.hostname)) external.push(url.origin); return route.abort("blockedbyclient"); }
-          return route.continue();
-        });
+        await context.route("**/*", routeLocalOnly);
         const page = await context.newPage(); page.setDefaultTimeout(15000); page.on("pageerror", (error: Error) => errors.push(error.message));
         await page.goto(`${origin}/admin/`); await page.getByRole("button", { name: "REMESAS", exact: true }).click();
         const workspace = page.getByRole("region", { name: "Envíos de Dinero", exact: true });
@@ -238,7 +255,8 @@ createRoot(document.getElementById("root")).render(<App />);`);
         assert.match(await totals.innerText(), /No hay resultados/);
       } finally { await context.close(); }
     });
-    assert.deepEqual(errors, []); assert.deepEqual(external, []);
+    assert.deepEqual(errors, []); assert.equal(unexpectedExternalAttempts, 0, "The application must not attempt any unexpected external request.");
+    t.diagnostic(`Blocked known antivirus attempts: ${blockedAntivirusAttempts}; blocked existing font attempts: ${blockedFontAttempts}; unexpected external attempts: ${unexpectedExternalAttempts}; no external URLs recorded or requests sent.`);
     t.diagnostic(`QA screenshots: ${output}`);
   } finally { await browser?.close(); if (server) await new Promise<void>((resolve) => server!.close(() => resolve())); await app.close(); }
 });

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useState, type FormEvent, type ReactNode } from "react";
 import { KeyRound, ShieldCheck, Users, Wallet } from "lucide-react";
 import { LegacyToolbar, LegacyDialog, LegacyCheck, LegacyDenseTable } from "./LegacyConnectedUi";
 import { ConnectedUserPermissionsDialog } from "./ConnectedUserPermissionsDialog";
@@ -11,6 +11,7 @@ import { pendingMovementDraft, useMovementRequest } from "./useMovementRequest";
 import { decimalCents, formatMoney } from "../../shared/remittances/output";
 import { INPUT_LIMITS, assertCentsLimit, isDecimalDraft, isIntegerDraft, parseDay, validateEmail, validatePhone, validateText } from "../../shared/inputRules";
 import { recurringDayFromInput } from "../../shared/recurringDays";
+import { currentOperationalWeek } from "../../shared/operationalWeek";
 import { ACCOUNT_ROLE_OPTIONS, accountRoleLabel } from "../../shared/accountRoles";
 import type { PublicAccount, Snapshot } from "./types";
 import "./connected-catalog.css";
@@ -46,8 +47,10 @@ export function ConnectedCatalog({ page, snapshot, actorId, canManagePermissions
   const [filtersVisible, setFiltersVisible] = useState(true);
   const [filterMode, setFilterMode] = useState<"all" | "client">("all");
   const [filterClientId, setFilterClientId] = useState("");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
+  const [initialWeek] = useState(currentOperationalWeek);
+  const [from, setFrom] = useState(initialWeek.from);
+  const [to, setTo] = useState(initialWeek.to);
+  const recurringSearchHelpId = useId();
   const [statusFilter, setStatusFilter] = useState("all");
   const [relation, setRelation] = useState<"zones" | "limits" | "routes" | "balances" | "clients" | "permissions" | null>(null);
   const [relationRow, setRelationRow] = useState<RecordRow | null>(null);
@@ -100,7 +103,7 @@ export function ConnectedCatalog({ page, snapshot, actorId, canManagePermissions
     { key: "referenceQuantity", label: "Cantidad de referencia (indica unidad)", maxLength: INPUT_LIMITS.quantity },
   ] : page === "delayReasons" ? [{ key: "reason", label: "Motivo", required: true, maxLength: INPUT_LIMITS.name }] : page === "users" ? [
     { key: "nickname", label: "Apodo", maxLength: INPUT_LIMITS.userNickname }, { key: "note", label: "Nota", maxLength: INPUT_LIMITS.userNote, multiline: true },
-    { key: "name", label: "Nombre", required: true, maxLength: INPUT_LIMITS.name }, { key: "email", label: "Correo", type: "email", required: true, maxLength: INPUT_LIMITS.email }, { key: "role", label: "Rol", required: true, options: ACCOUNT_ROLE_OPTIONS }, { key: "collectorId", label: "Cobrador asociado", options: accountCollectorOptions, required: draft.role === "collector" }, ...(editing === "new" ? [{ key: "password", label: `Contraseña inicial (mínimo ${MIN_ACCOUNT_PASSWORD_LENGTH} caracteres)`, type: "password" as const, required: true, maxLength: INPUT_LIMITS.password }] : []),
+    { key: "name", label: "Nombre", required: true, maxLength: INPUT_LIMITS.name }, { key: "email", label: "Usuario / correo", required: true, maxLength: INPUT_LIMITS.email }, { key: "role", label: "Rol", required: true, options: ACCOUNT_ROLE_OPTIONS }, { key: "collectorId", label: "Cobrador asociado", options: accountCollectorOptions, required: draft.role === "collector" }, ...(editing === "new" ? [{ key: "password", label: `Contraseña inicial (mínimo ${MIN_ACCOUNT_PASSWORD_LENGTH} caracteres)`, type: "password" as const, required: true, maxLength: INPUT_LIMITS.password }] : []),
   ] : [
     { key: "clientId", label: "Cliente", required: true, options: snapshot.clients.map((row) => ({ value: row.id, label: row.name })) }, { key: "service", label: "Servicio", required: true, maxLength: INPUT_LIMITS.name }, { key: "concept", label: "Concepto", required: true, maxLength: INPUT_LIMITS.name },
     { key: "startDate", label: "Fecha inicial", type: "date", required: true }, { key: "endDate", label: "Fecha final", type: "date" },
@@ -290,7 +293,7 @@ export function ConnectedCatalog({ page, snapshot, actorId, canManagePermissions
       <div className="legacy-dialog-row two-cols"><label>Ident.:{control("ident")}</label><label>Celular:{control("cellular")}</label></div>
       <label>Cuenta:<span className="collector-account-field"><input aria-label="Cuenta" readOnly value={pickedAccount?.name ?? snapshot.accounts.find((account) => account.id === draft.accountId)?.name ?? String(draft.accountId ?? "")} title={String(draft.accountId ?? "")} /><button type="button" aria-label="Seleccionar cuenta" disabled={busy} onClick={() => setAccountPickerOpen(true)}>...</button><button type="button" aria-label="Quitar cuenta" disabled={busy || !draft.accountId} onClick={() => { setPickedAccount(null); setDraft((current) => ({ ...current, accountId: "" })); }}>Quitar</button></span></label>
       {linkedAccount && <p className="catalog-linked-account">Cuenta de acceso: <strong>{linkedAccount.email}</strong> · {accountRoleLabel(linkedAccount.role)} · {linkedAccount.status === "active" ? "Activa" : "Inactiva"}</p>}
-      <p className="catalog-association-note">Nombre y celular pertenecen al cobrador. El correo, rol y contraseña de su cuenta se editan desde Usuarios.</p>
+      <p className="catalog-association-note">Nombre y celular pertenecen al cobrador. El usuario o correo, rol y contraseña de su cuenta se editan desde Usuarios.</p>
       <fieldset className="legacy-config-fieldset"><legend>Límites en DOP</legend><div className="legacy-dialog-row two-cols"><label>Cobro:{control("collectionLimit")}</label><label>Pago:{control("payoutLimit")}</label></div></fieldset>
     </>;
     if (page === "routes") return <>
@@ -395,7 +398,8 @@ export function ConnectedCatalog({ page, snapshot, actorId, canManagePermissions
         <label className="field compact-field">Fecha Inicial:<input type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></label>
         <label className="field compact-field">Fecha final:<input type="date" value={to} onChange={(event) => setTo(event.target.value)} /></label>
         <label className="field compact-field">Estado:<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">Todos</option><option value="active">Activo</option><option value="inactive">Inactivo</option></select></label>
-        <label className="field compact-field">Buscar:<input value={query} onChange={(event) => setQuery(event.target.value)} /></label>
+        <label className="field compact-field">Buscar:<input aria-describedby={recurringSearchHelpId} placeholder="Concepto, nota o cliente" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
+        <p id={recurringSearchHelpId}>Busca por concepto, nota, código o nombre del cliente. Se combina con los filtros de cliente, fecha de inicio y estado.</p>
         {invalidRange && <p role="alert">La fecha inicial debe ser anterior o igual a la final.</p>}
       </aside>}
       <div className={page === "recurringCharges" ? "charges-grid-panel" : "catalog-grid-panel"}>

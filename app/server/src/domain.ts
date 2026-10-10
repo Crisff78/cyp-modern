@@ -37,7 +37,7 @@ export function obligationCurrencyConflict(state: State, row: Charge | Payout, t
   return movements.some((movement) => ledgerCurrency(movement.currency) !== currency) ||
     (currency !== "DOP" && aggregate !== nativeTotal);
 }
-function financialObligation<T extends Charge | Payout>(state: State, row: T, type: "collection" | "payout"): Omit<T, "currency"> & {
+export function financialObligation<T extends Charge | Payout>(state: State, row: T, type: "collection" | "payout"): Omit<T, "currency"> & {
   currency: string; currencyConflict?: true; currencyUnsupported?: true;
   collectedByCurrency?: Record<LedgerCurrency, number>; paidByCurrency?: Record<LedgerCurrency, number>;
 } {
@@ -78,6 +78,7 @@ export type Account = {
 export type PublicAccount = Omit<Account, "salt" | "passwordHash">;
 export type Client = {
   id: string;
+  internalIdentification?: string;
   active?: boolean;
   name: string;
   code: string;
@@ -202,6 +203,11 @@ export type DepositComponent = {
   bank?: string;
   reference?: string;
 };
+export type Bank = { id: string; name: string; active: boolean };
+export type ClientIdentityReservation = {
+  id: string; sequence: number; code: string; internalIdentification: string;
+  actorId: string; createdAt: string; clientId?: string;
+};
 export type Movement = {
   id: string;
   collectorId: string;
@@ -212,6 +218,9 @@ export type Movement = {
   amount: number;
   currency?: LedgerCurrency;
   note?: string;
+  bankId?: string;
+  bankName?: string;
+  reference?: string;
   createdAt: string;
   receiptToken?: string;
   receiptRevoked?: boolean;
@@ -275,6 +284,8 @@ export type MovementCancellation = {
 export type State = {
   remittances: RemittanceState;
   clients: Client[];
+  banks: Bank[];
+  clientIdentityReservations: ClientIdentityReservation[];
   clientMachines: ClientMachine[];
   clientMachineLogs: ClientMachineLog[];
   routes: Route[];
@@ -314,6 +325,8 @@ export const businessDate = (date = new Date()) =>
 export const emptyState = (): State => ({
   remittances: { rates: [], transfers: [], cashSessions: [], events: [] },
   clients: [],
+  banks: [],
+  clientIdentityReservations: [],
   clientMachines: [],
   clientMachineLogs: [],
   routes: [],
@@ -806,11 +819,17 @@ export function postMovement(
     collectorId?: string;
     currency?: LedgerCurrency;
     note?: string;
+    bankId?: string;
+    reference?: string;
     denominations?: Array<{ denominacion: number; cantidad: number }>;
     depositComponents?: DepositComponent[];
   },
   now = new Date(),
 ) {
+  const bank = body.bankId ? state.banks.find((row) => row.id === body.bankId && row.active) : undefined;
+  if (body.bankId && !bank) throw new DomainError("BANK_UNAVAILABLE", "Selecciona un banco activo del catálogo.", 422);
+  if ((body.bankId || body.reference) && type !== "collection")
+    throw new DomainError("COLLECTION_METADATA_ONLY", "El banco y la referencia corresponden a un cobro.", 422);
   let collectorId = body.collectorId,
     clientId: string | undefined,
     charge: Charge | undefined,
@@ -918,6 +937,8 @@ export function postMovement(
     amount: body.amount,
     currency,
     ...(body.note ? { note: body.note } : {}),
+    ...(bank ? { bankId: bank.id, bankName: bank.name } : {}),
+    ...(body.reference ? { reference: body.reference } : {}),
     ...(body.denominations ? { denominations: body.denominations } : {}),
     ...(body.depositComponents ? { depositComponents: structuredClone(body.depositComponents) } : {}),
     createdAt: now.toISOString(),
@@ -944,7 +965,7 @@ export function postMovement(
 export function createCentralCollections(
   state: State,
   user: User,
-  input: { clientId: string; collectorId: string; currency?: LedgerCurrency; lines: Array<{ chargeId: string; amount: number }> },
+  input: { clientId: string; collectorId: string; currency?: LedgerCurrency; bankId?: string; reference?: string; note?: string; lines: Array<{ chargeId: string; amount: number }> },
   now = new Date(),
 ) {
   assertAdmin(user);
@@ -970,7 +991,10 @@ export function createCentralCollections(
   }
   // Validate the complete receipt before publishing any of its movements.
   const draft = structuredClone(state);
-  const movements = input.lines.map((line) => postMovement(draft, user, "collection", line, now));
+  const movements = input.lines.map((line) => postMovement(draft, user, "collection", {
+    ...line, ...(input.bankId ? { bankId: input.bankId } : {}),
+    ...(input.reference ? { reference: input.reference } : {}), ...(input.note ? { note: input.note } : {}),
+  }, now));
   state.charges = draft.charges;
   state.movements = draft.movements;
   return movements;
@@ -1117,6 +1141,8 @@ export function snapshot(state: State, user: User) {
     .filter((m) => allowed(m.collectorId) && (administration || ledgerCurrency(m.currency) === "DOP"))
     .map(({ actorId, receiptRevoked, ...m }) => ({
       ...m,
+      createdBy: actorId,
+      createdByName: state.accounts.find((account) => account.id === actorId)?.name ?? actorId,
       currency: ledgerCurrency(m.currency),
       ...(receiptRevoked || m.cancelledAt ? { receiptToken: undefined } : {}),
     }));
@@ -1169,6 +1195,7 @@ export function snapshot(state: State, user: User) {
   return {
     businessDate: date,
     clients,
+    banks: state.banks,
     routes,
     zones: state.zones.filter((z) => administration || routes.some((r) => r.zoneId === z.id)),
     services: state.services,

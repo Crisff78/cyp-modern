@@ -33,5 +33,5 @@ export function remittanceClientContact(state: State, actor: User, id: string, s
   if (side === "sender" && actor.role !== "admin" && !state.routes.some((route) => route.id === client.routeId && route.collectorId === actor.collectorId))
     throw new DomainError("FORBIDDEN", "El remitente no pertenece a tu ruta.", 403);
   return { id: client.id, code: client.code, name: client.name, phone: client.phone ?? "",
-    cellular: client.cellular ?? "", address: client.address ?? "" };
+    cellular: client.cellular ?? "", address: client.address ?? "", ...(client.identification ? { identification: client.identification } : {}) };
 }

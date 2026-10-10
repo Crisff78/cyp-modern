@@ -19,16 +19,33 @@ import {
   useMap,
 } from "react-leaflet";
 import { divIcon, latLngBounds } from "leaflet";
-import { money, statusLabel, timeLabel } from "./api";
+import { api, getToken, money, statusLabel, timeLabel } from "./api";
 import type { Collector, Snapshot } from "./types";
 
 export function Logo({ compact = false }: { compact?: boolean }) {
+  const [companyLogo, setCompanyLogo] = useState("");
+  const [companyName, setCompanyName] = useState("Logo de la empresa");
+  const token = getToken();
+  useEffect(() => {
+    let active = true;
+    const load = () => {
+      if (!token) { setCompanyLogo(""); return; }
+      api<{ config: Record<string, string | number | boolean> }>("/configuracion").then(({ config }) => {
+        if (!active) return;
+        const image = String(config?.companyLogoDataUrl ?? "");
+        setCompanyLogo(/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(image) ? image : "");
+        setCompanyName(String(config?.["general.empresa"] ?? "Logo de la empresa"));
+      }).catch(() => { if (active) setCompanyLogo(""); });
+    };
+    load(); window.addEventListener("cyp-company-logo-updated", load);
+    return () => { active = false; window.removeEventListener("cyp-company-logo-updated", load); };
+  }, [token]);
   return (
-    <div className="brand">
-      <span className="brand-mark">
+    <div className="brand" aria-label="CyP · Cobros y Pagos">
+      {companyLogo ? <span className="brand-company-logo"><img src={companyLogo} alt={companyName} /></span> : <span className="brand-mark">
         <ArrowUpRight size={21} />
         <ArrowDownLeft size={21} />
-      </span>
+      </span>}
       {!compact && (
         <span className="brand-word">
           cyp<span>COBROS Y PAGOS</span>

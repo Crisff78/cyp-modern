@@ -2,14 +2,21 @@
 
 Contrato de las etapas 2–4 acordado con Gerencia, 9 de octubre de 2026.
 
-## Estaciones pendientes de RRAA
+## Estaciones y contrato de RRAA
 
-La consulta del catálogo sigue disponible. El alta, la edición y la activación
-manual devuelven `409 STATION_RRAA_REQUIRED`, incluso para Admin. No se emiten
-licencias ni se valida un dispositivo con datos digitados. Los registros históricos
-se conservan y se muestran como no validados. No se permiten nuevas asociaciones
-de estaciones a PCPs; se conservan o retiran las existentes. Este bloqueo se
-retirará únicamente al integrar el contrato real de RRAA.
+El bloqueo anterior a la recepción del contrato de VALSTAT es un antecedente.
+El contrato vigente está en [RRAA-ESTACIONES.md](RRAA-ESTACIONES.md): una instalación
+configurada consulta al proveedor antes de guardar o activar una estación y antes
+de agregarla a un PCP. Un rechazo, timeout o respuesta inválida impide la mutación.
+La licencia procede de la respuesta del servidor. Las asociaciones históricas
+pueden conservarse o retirarse sin validarlas retroactivamente.
+
+Si la instalación no tiene RRAA configurado, incluido el modo demo público, el
+alta, la edición y la activación permanecen bloqueadas con `STATION_RRAA_REQUIRED`.
+El catálogo y la inactivación administrativa siguen disponibles. El ID de dispositivo
+se introduce según el contrato recibido; VALSTAT no ofrece identificación física
+automática del equipo. Esa vinculación requiere un contrato adicional del proveedor
+y no queda acreditada por el UUID interno del catálogo.
 
 ## Cotización
 

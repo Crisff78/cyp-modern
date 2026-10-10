@@ -15,9 +15,9 @@ export type CommissionAllocation = {
   baseAmount: number; transactionAmount: number; companyAmount: number; managerAmount: number;
   managerId?: string; managerName?: string;
 };
-export type ExchangeRate = { id: string; currency: Currency; rate: string; date: string; changeId?: string; updatedAt?: string; updatedBy?: string };
-export type RateChange = { id: string; currency: Currency; rate: string; date: string; createdAt: string; actorId: string };
-export type RemittanceContact = { id: string; code: string; name: string; phone: string; cellular: string; address: string };
+export type ExchangeRate = { id: string; currency: Currency; rate: string; purchaseRate?: string; saleRate?: string; date: string; changeId?: string; updatedAt?: string; updatedBy?: string };
+export type RateChange = { id: string; currency: Currency; rate: string; purchaseRate?: string; saleRate?: string; date: string; createdAt: string; actorId: string };
+export type RemittanceContact = { id: string; code: string; name: string; phone: string; cellular: string; address: string; identification?: string };
 // An optional manual annotation, independent of the business commission/cash ledger.
 export type ManagerCommission = { managerName: string; amount: number; currency: Currency };
 export type Remittance = {
@@ -166,7 +166,7 @@ export function quoteRemittance(state: State, input: QuoteInput, now = new Date(
     },
   };
 }
-export function setDailyRate(state: State, user: User, input: Pick<ExchangeRate, "currency" | "rate" | "date">, now = new Date()) {
+export function setDailyRate(state: State, user: User, input: Pick<ExchangeRate, "currency" | "rate" | "date" | "purchaseRate" | "saleRate">, now = new Date()) {
   remittanceOperators(state, user);
   assertAdmin(user);
   assertCurrency(input.currency);
@@ -174,14 +174,20 @@ export function setDailyRate(state: State, user: User, input: Pick<ExchangeRate,
   const rate = normalizeRate(input.rate);
   if (input.currency === "DOP" && rate !== "1.000000") fail("DOP_RATE", "La tasa DOP debe ser uno.");
   const existing = state.remittances.rates.find((r) => r.currency === input.currency && r.date === input.date);
+  if ((input.purchaseRate === undefined) !== (input.saleRate === undefined)) fail("RATE_PAIR_REQUIRED", "Registra compra y venta juntas.");
+  const purchaseRate = input.purchaseRate === undefined ? existing?.purchaseRate : normalizeRate(input.purchaseRate);
+  const saleRate = input.saleRate === undefined ? existing?.saleRate : normalizeRate(input.saleRate);
+  if (input.currency === "DOP" && ((purchaseRate !== undefined && purchaseRate !== "1.000000") || (saleRate !== undefined && saleRate !== "1.000000")))
+    fail("DOP_RATE", "Las tasas de compra y venta de DOP deben ser uno.");
+  const commercial = purchaseRate !== undefined && saleRate !== undefined ? { purchaseRate, saleRate } : {};
   // A retry/no-op does not manufacture a change. A legacy rate obtains its first
   // known timestamp only when explicitly confirmed; its earlier time stays unknown.
-  if (existing?.changeId && existing.rate === rate) return existing;
-  const change: RateChange = { id: randomUUID(), currency: input.currency, date: input.date, rate, createdAt: now.toISOString(), actorId: user.id };
+  if (existing?.changeId && existing.rate === rate && existing.purchaseRate === purchaseRate && existing.saleRate === saleRate) return existing;
+  const change: RateChange = { id: randomUUID(), currency: input.currency, date: input.date, rate, ...commercial, createdAt: now.toISOString(), actorId: user.id };
   (state.remittances.rateHistory ??= []).push(change);
   const metadata = { changeId: change.id, updatedAt: change.createdAt, updatedBy: change.actorId };
-  if (existing) { Object.assign(existing, { rate, ...metadata }); return existing; }
-  const row = { currency: input.currency, date: input.date, rate, id: randomUUID(), ...metadata };
+  if (existing) { Object.assign(existing, { rate, ...commercial, ...metadata }); return existing; }
+  const row = { currency: input.currency, date: input.date, rate, ...commercial, id: randomUUID(), ...metadata };
   state.remittances.rates.push(row);
   return row;
 }
@@ -322,7 +328,7 @@ export function createRemittance(state: State, user: User, input: CreateRemittan
 function contactSnapshot(state: State, id: string): RemittanceContact {
   const client = state.clients.find((row) => row.id === id)!;
   return { id: client.id, code: client.code, name: client.name, phone: client.phone ?? "",
-    cellular: client.cellular ?? "", address: client.address ?? "" };
+    cellular: client.cellular ?? "", address: client.address ?? "", ...(client.identification ? { identification: client.identification } : {}) };
 }
 function pendingTransfer(state: State, user: User, id: string) {
   const transfer = state.remittances.transfers.find((t) => t.id === id);
@@ -358,12 +364,14 @@ export function remittanceSnapshot(state: State, user: User, systemOperators: Us
   const date = businessDate(now);
   return {
     businessDate: date, currencies, commissionPolicy: getCommissionPolicy(state),
+    receiptFooterNote: typeof state.systemConfig?.receiptFooterNote === "string" ? state.systemConfig.receiptFooterNote : "",
     clients: state.clients.map((c) => ({ id: c.id, code: c.code, name: c.name, routeId: c.routeId, active: c.active !== false, preferredCurrency: c.preferredCurrency ?? "DOP",
       canSendFrom: clientInRoute(state, user, c.id), canReceive: clientInRoute(state, user, c.id) })),
     operators: remittanceOperators(state, user, systemOperators),
     rates: [state.remittances.rates.find((r) => r.currency === "DOP" && r.date === date) ?? { id: `DOP-${date}`, currency: "DOP" as Currency, rate: "1.000000", date }, ...state.remittances.rates.filter((r) => r.currency !== "DOP")]
+      .sort((a, b) => b.date.localeCompare(a.date) || (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "") || a.currency.localeCompare(b.currency))
       .map(({ updatedBy, ...row }) => ({ ...row, ...(user.role === "admin" && updatedBy ? { updatedBy } : {}) })),
-    rateHistory: user.role === "admin" ? state.remittances.rateHistory ?? [] : [],
+    rateHistory: user.role === "admin" ? [...(state.remittances.rateHistory ?? [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.date.localeCompare(a.date) || b.id.localeCompare(a.id)) : [],
     transfers: state.remittances.transfers.filter((t) => canSeeOutgoing(state, user, t) || canSeeReceipt(state, user, t)).map((t) => transferView(state, user, t)),
     cashSessions: state.remittances.cashSessions.filter((c) => user.role === "admin" || c.operatorId === user.id).map((c) => cashView(state, user, c)),
   };

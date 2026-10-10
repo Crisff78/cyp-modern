@@ -24,6 +24,7 @@ test("login selection and receipt navigation work in the actual Admin UI", { ski
   const output = fs.mkdtempSync(path.join(os.tmpdir(), "cyp-login-notifications-"));
   let browser: any, context: any, server: ReturnType<typeof createServer> | undefined;
   const pageErrors: string[] = [], networkAttempts: string[] = [];
+  let blockedAntivirusScriptAttempts = 0;
   try {
     const fixture = path.join(output, "fixture.tsx");
     const module = (name: string) => JSON.stringify(path.join(adminRoot, "src", name).replaceAll("\\", "/"));
@@ -66,7 +67,13 @@ createRoot(document.getElementById("root")).render(<App />);
     browser = await chromium.launch({ executablePath: edge, headless: true });
     context = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale: "es-DO", serviceWorkers: "block" });
     await context.route("**/*", async (route: any) => {
-      if (new URL(route.request().url()).origin !== origin) { networkAttempts.push(route.request().url()); return route.abort("blockedbyclient"); }
+      const target = new URL(route.request().url());
+      if (target.origin !== origin) {
+        // The known local antivirus injector is counted, never allowed or logged by URL.
+        if (target.origin === "http://me.kis.v2.scr.kaspersky-labs.com") blockedAntivirusScriptAttempts++;
+        else networkAttempts.push(target.origin);
+        return route.abort("blockedbyclient");
+      }
       return route.continue();
     });
     const page = await context.newPage(); page.setDefaultTimeout(15000);
@@ -152,13 +159,17 @@ createRoot(document.getElementById("root")).render(<App />);
       await credentials("admin@cyp.local");
       await page.getByRole("button", { name: /^Notificaciones,/ }).waitFor();
     });
-    await t.test("native printing supports printer paper and thermal widths, with separate receipts and no MDI controls", async () => {
+    await t.test("native printing supports printer paper and thermal widths for an individual receipt without MDI controls", async () => {
       await page.getByRole("button", { name: "Cobros", exact: true }).click();
       const view = page.locator(".collections-legacy-view"); await view.waitFor();
+      await view.locator(".collections-table tbody tr[role=button]").first().click();
       await view.getByTitle("Imprimir", { exact: true }).click();
-      await page.getByRole("dialog", { name: "Seleccione...", exact: true }).getByRole("button", { name: "oK", exact: true }).click();
+      const scope = page.getByRole("dialog", { name: "Seleccione...", exact: true });
+      assert.equal(await scope.getByLabel("Listado de registros", { exact: true }).isChecked(), true);
+      await scope.getByLabel("Registro actual", { exact: true }).check();
+      await scope.getByRole("button", { name: "oK", exact: true }).click();
       const ticket = page.getByRole("dialog", { name: "Imprimir Recibo de Cobro...", exact: true }); await ticket.waitFor();
-      assert.ok(await ticket.locator(".collection-ticket-preview").count() >= 2);
+      assert.equal(await ticket.locator(".collection-ticket-preview").count(), 1);
       assert.equal(await ticket.getByLabel("Papel de impresión", { exact: true }).inputValue(), "auto");
       await page.evaluate(() => { (window as any).__qaPrint = 0; (window as any).__qaOriginalPrint = window.print; window.print = () => { (window as any).__qaPrint++; }; });
       await ticket.getByRole("button", { name: "Imprimir / Guardar PDF", exact: true }).click();
@@ -169,7 +180,7 @@ createRoot(document.getElementById("root")).render(<App />);
         assert.equal(await ticket.locator(".collection-ticket-controls").evaluate((node: HTMLElement) => getComputedStyle(node).display), "none");
         assert.equal(await ticket.locator(".collection-ticket-preview-list").evaluate((node: HTMLElement) => getComputedStyle(node).display), "block");
         const size = await ticket.locator(".collection-ticket-preview").first().evaluate((node: HTMLElement) => ({ width: node.getBoundingClientRect().width, scroll: node.scrollWidth, client: node.clientWidth, breakAfter: getComputedStyle(node).breakAfter }));
-        assert.ok(Math.abs(size.width - millimeters * 96 / 25.4) < 1); assert.ok(size.scroll <= size.client + 1); assert.equal(size.breakAfter, "page");
+        assert.ok(Math.abs(size.width - millimeters * 96 / 25.4) < 1); assert.ok(size.scroll <= size.client + 1); assert.equal(size.breakAfter, "auto", "An individual receipt must not create an extra blank print page.");
         assert.equal(await ticket.locator(".collection-ticket-preview").last().evaluate((node: HTMLElement) => getComputedStyle(node).breakAfter), "auto");
         await page.screenshot({ path: path.join(output, `admin-print-${paper}.png`) }); await page.emulateMedia({ media: "screen" });
       }
@@ -215,9 +226,11 @@ createRoot(document.getElementById("root")).render(<App />);
       assert.equal(await themeButton().getAttribute("aria-pressed"), "false");
       const token = await page.evaluate(() => localStorage.getItem("cyp-admin-token"));
       const launchers = page.getByRole("navigation", { name: "Operaciones principales" }).getByRole("button");
-      assert.deepEqual(await launchers.allTextContents(), ["COBROS Cargos", "PAGOS Descargos", "REMESAS"]);
+      assert.deepEqual(await launchers.allTextContents(), ["CARGOS", "COBROS", "DESCARGOS", "PAGOS", "REMESAS", "CUADRES"]);
       const lightLauncherColors = await launchers.evaluateAll((nodes: HTMLElement[]) => nodes.map((node) => ({ color: getComputedStyle(node).color, background: getComputedStyle(node).backgroundColor, height: node.getBoundingClientRect().height })));
-      assert.equal(new Set(lightLauncherColors.map((row: { background: string }) => row.background)).size, 3);
+      assert.equal(lightLauncherColors[0].background, lightLauncherColors[1].background);
+      assert.equal(lightLauncherColors[2].background, lightLauncherColors[3].background);
+      assert.equal(new Set(lightLauncherColors.map((row: { background: string }) => row.background)).size, 4);
       assert.ok(lightLauncherColors.every((row: { height: number }) => row.height >= 48));
       const loginCount = await page.evaluate(() => (window as any).__qaLoginRequests);
       const lightSidebar = await page.locator(".sidebar").evaluate((node: HTMLElement) => getComputedStyle(node).backgroundColor);
@@ -231,10 +244,10 @@ createRoot(document.getElementById("root")).render(<App />);
       assert.equal(await themeButton().getAttribute("aria-pressed"), "true");
       const darkLauncherColors = await launchers.evaluateAll((nodes: HTMLElement[]) => nodes.map((node) => ({ color: getComputedStyle(node).color, background: getComputedStyle(node).backgroundColor, height: node.getBoundingClientRect().height })));
       assert.deepEqual(darkLauncherColors, lightLauncherColors);
-      await launchers.nth(0).click();
+      await launchers.filter({ hasText: /^CARGOS$/ }).click();
       const chargesWindow = page.locator(".mdi-window").filter({ has: page.getByText("Cargos", { exact: true }) });
       await chargesWindow.waitFor(); await chargesWindow.getByRole("button", { name: "Cerrar Cargos", exact: true }).click();
-      await launchers.nth(1).click(); await page.locator(".payouts-legacy-view").waitFor();
+      await launchers.filter({ hasText: /^DESCARGOS$/ }).click(); await page.locator(".payouts-legacy-view").waitFor();
       await page.locator(".mdi-window").filter({ has: page.locator(".payouts-legacy-view") }).getByRole("button", { name: "Cerrar Descargos", exact: true }).click();
       assert.notEqual(await page.locator(".sidebar").evaluate((node: HTMLElement) => getComputedStyle(node).backgroundColor), lightSidebar);
       assert.equal(await page.evaluate(() => localStorage.getItem("cyp-admin-token")), token);
@@ -288,9 +301,10 @@ createRoot(document.getElementById("root")).render(<App />);
       assert.equal(await page.evaluate(() => localStorage.getItem("cyp-admin-token")), token);
     });
     assert.deepEqual(pageErrors, []); assert.deepEqual(networkAttempts, []);
-    t.diagnostic(`Synthetic UI screenshots: ${output}`);
+    t.diagnostic(`Synthetic UI screenshots: ${output}; blocked antivirus attempts: ${blockedAntivirusScriptAttempts}`);
   } finally {
     await context?.close(); await browser?.close();
     if (server) await new Promise<void>((resolve) => server!.close(() => resolve()));
+    fs.writeFileSync(path.join(output, "network-report.json"), JSON.stringify({ blockedAntivirusScriptAttempts, unexpectedNetworkAttempts: networkAttempts.length }, null, 2));
   }
 });

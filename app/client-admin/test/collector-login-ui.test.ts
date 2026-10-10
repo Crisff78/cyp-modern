@@ -20,6 +20,7 @@ test("Collector login supports password visibility/autofill without saving secre
   const output = fs.mkdtempSync(path.join(os.tmpdir(), "cyp-collector-login-ui-"));
   const cleanup: (() => Promise<void>)[] = [];
   const errors: string[] = [], network: string[] = [];
+  let blockedAntivirusScriptAttempts = 0, blockedFontAttempts = 0;
   try {
     const module = (name: string) => JSON.stringify(path.join(collectorRoot, "src", name).replaceAll("\\", "/"));
     const fixture = path.join(output, "fixture.tsx");
@@ -58,8 +59,11 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
     await context.route("**/*", async (route: any) => {
       const target = new URL(route.request().url());
       if (target.origin !== origin) {
-        // Existing optional web fonts are blocked too; the UI uses its fallback.
-        if (!["fonts.googleapis.com", "fonts.gstatic.com"].includes(target.hostname)) network.push(route.request().url());
+        // Count the known local antivirus injector without storing its URL.
+        // Every external request remains blocked, including optional web fonts.
+        if (target.origin === "http://me.kis.v2.scr.kaspersky-labs.com") blockedAntivirusScriptAttempts++;
+        else if (["fonts.googleapis.com", "fonts.gstatic.com"].includes(target.hostname)) blockedFontAttempts++;
+        else network.push(target.origin);
         return route.abort("blockedbyclient");
       }
       return route.continue();
@@ -122,6 +126,9 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         await page.screenshot({ path: path.join(output, `collector-print-${paper}.png`) }); await page.emulateMedia({ media: "screen" });
       }
     });
-    assert.deepEqual(errors, []); assert.deepEqual(network, []); t.diagnostic(`Synthetic PWA screenshot: ${output}`);
-  } finally { for (const close of cleanup.reverse()) await close(); }
+    assert.deepEqual(errors, []); assert.deepEqual(network, []); t.diagnostic(`Synthetic PWA screenshot: ${output}; blocked antivirus attempts: ${blockedAntivirusScriptAttempts}; blocked font attempts: ${blockedFontAttempts}`);
+  } finally {
+    for (const close of cleanup.reverse()) await close();
+    fs.writeFileSync(path.join(output, "network-report.json"), JSON.stringify({ blockedAntivirusScriptAttempts, blockedFontAttempts, unexpectedNetworkAttempts: network.length }, null, 2));
+  }
 });
