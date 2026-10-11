@@ -248,6 +248,9 @@ function validateAndAppend(state: State, fixture: State) {
       .map((name) => ({ name: `adminTools.${name}`, current: state.adminTools[name], incoming: fixture.adminTools[name] })),
   ];
   for (const batch of batches) noCollision(batch.name, batch.current, batch.incoming, (row) => row.id);
+  // The history is optional in older states, so it is handled outside the fixed batches.
+  const incomingRateHistory = fixture.remittances.rateHistory ?? [];
+  noCollision("remittances.rateHistory", state.remittances.rateHistory ?? [], incomingRateHistory, (row) => row.id);
   noCollision("códigos de clientes", state.clients, fixture.clients, (row) => row.code);
   noCollision("puntos de cobro", state.clients, fixture.clients, (row) => row.collectionPointId || `cp-${row.id}`);
   noCollision("zonas", state.zones, fixture.zones, (row) => row.name.toLowerCase());
@@ -269,6 +272,9 @@ function validateAndAppend(state: State, fixture: State) {
   // All collision checks finish before the first append. Existing rows and array
   // entries retain their values, including any user-edited original demo data.
   for (const batch of batches) batch.current.push(...batch.incoming);
+  // Rates and transfers of the earlier demo dates point to these revisions; PostgreSQL
+  // enforces that link (migration 018), so they must be saved with them.
+  if (incomingRateHistory.length) (state.remittances.rateHistory ??= []).push(...incomingRateHistory);
   state.adminTools.pcpStations.push(...fixture.adminTools.pcpStations);
 }
 
