@@ -836,3 +836,20 @@ test("B15 a recurring charge template cannot use a remittance service of the cat
   assert.equal(rejected.json().error.code, "REMITTANCE_SERVICE");
   assert.deepEqual(await env.store.read(), before);
 });
+
+test("B21 a new number for a record with phone and cellular goes first in the copy and keeps the cellular", () => {
+  const { collector, record, send } = recipientPhoneScenario("8095550100", "8295550200");
+  const transfer = send(collector, "849-555-0300");
+  assert.equal(transfer.recipientContact?.phone, "849-555-0300");
+  assert.equal(transfer.recipientContact?.cellular, "8295550200");
+  assert.equal(record.phone, "8095550100");
+  assert.equal(record.cellular, "8295550200");
+});
+
+test("B21 two numbers that only share their last digits are different phones", () => {
+  const { admin, record, send } = recipientPhoneScenario("8095550100", "");
+  const transfer = send(admin, "8295550100");
+  assert.equal(transfer.recipientContact?.phone, "8295550100");
+  assert.equal(transfer.recipientContact?.cellular, "8095550100");
+  assert.equal(record.phone, "8095550100");
+});
