@@ -1,15 +1,19 @@
-// Server tests for the October review corrections (points C4.2.1, B9, C5.4, B15 and the access fixes).
+// Server tests for the October review corrections (points C4.2.1, B5, B9, B21, C5.4, B15 and the access fixes).
 // Everything runs in memory with synthetic data: no database, no network and no real credentials.
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { generateKeyPairSync, randomUUID, sign } from "node:crypto";
 import test, { type TestContext } from "node:test";
 import { buildApp } from "../src/app.js";
 import type { AccountRole } from "../src/account-roles.js";
-import { getAdminTools, type AuthorizationRequest } from "../src/admin-tools.js";
-import { businessDate, type State, type User } from "../src/domain.js";
+import { createAuthSession, getAdminTools, type AuthorizationRequest } from "../src/admin-tools.js";
+import { businessDate, emptyState, type State, type User } from "../src/domain.js";
 import { createRemittance, openRemittanceCash, quoteRemittance, remittanceOperators, setCommissionPolicy, setDailyRate,
   type CreateRemittanceInput, type Currency } from "../src/remittances.js";
+import { createDemoStationControl, type RraaValidator } from "../src/rraa.js";
 import { seed } from "../src/seed.js";
+import { createStationInstallationChallenge, installationIdForPublicKey, listStationInstallations, queryStationInstallation,
+  registerStationInstallation, type StationInstallationOptions } from "../src/station-installations.js";
+import { signingPayload, type StationInstallationChallenge } from "../src/station-installation-protocol.js";
 import { MemoryStore } from "../src/store.js";
 
 const demoPassword = "Demo-CyP-2026!";
@@ -852,4 +856,214 @@ test("B21 two numbers that only share their last digits are different phones", (
   assert.equal(transfer.recipientContact?.phone, "8295550100");
   assert.equal(transfer.recipientContact?.cellular, "8095550100");
   assert.equal(record.phone, "8095550100");
+});
+
+// ---------------------------------------------------------------------------------------------
+// B5 — practice station control of the demo: station data must be in the company control
+// ---------------------------------------------------------------------------------------------
+
+async function stationApp(t: TestContext, extra: { publicWeb?: boolean; rraa?: RraaValidator; control?: boolean } = {}) {
+  const store = new MemoryStore(seed());
+  const app = await buildApp({ store, demo: true, secret: "synthetic-station-control-secret-at-least-32-characters", origins: [],
+    collectorUrl: "http://127.0.0.1:5174", publicWeb: extra.publicWeb, rraa: extra.rraa,
+    demoStationControl: extra.control === false ? undefined : createDemoStationControl() });
+  t.after(async () => { await app.close(); await store.close(); });
+  const token = (await app.inject({ method: "POST", url: "/api/auth/login", payload: { email: "admin@cyp.local", password: demoPassword } })).json().token as string;
+  const post = (url: string, payload: object) => app.inject({ method: "POST", url, payload, headers: { authorization: `Bearer ${token}`, "idempotency-key": randomUUID() } });
+  const get = (url: string) => app.inject({ method: "GET", url, headers: { authorization: `Bearer ${token}` } });
+  return { store, post, get };
+}
+const stationInput = (name: string, deviceId: string, active = true) => ({ name, number: "PRUEBA-1", deviceId, description: "", group: "", type: "", active });
+
+test("B5 the practice control of the demo finds only the stations registered for the example company", async () => {
+  const control = createDemoStationControl();
+  assert.equal(control.simulated, true);
+  const found = await control.validate(" EST-PRUEBA-01 ", " DISP-PRUEBA-01 ");
+  assert.ok(Number.isFinite(Date.parse(found.validatedAt)));
+  assert.deepEqual({ ...found, validatedAt: "" }, { clientId: "EMPRESA-DEMO", stationCode: "EST-PRUEBA-01", deviceId: "DISP-PRUEBA-01", license: "LIC-DEMO-01", validatedAt: "" });
+  assert.equal((await control.validate("EST-PRUEBA-99", "DISP-PRUEBA-99")).license, "LIC-DEMO-99");
+  // The example stations of the demo catalogue are registered too.
+  assert.equal((await control.validate("DEMO V2 · Estación 2", "DEMO-V2-DISPOSITIVO-02")).license, "LIC-DEMO-V2-02");
+  for (const example of control.examples ?? []) assert.match((await control.validate(example.stationCode, example.deviceId)).license, /^LIC-DEMO-\d\d$/);
+  const unknown = [["Cualquier estación", "123"], ["EST-PRUEBA-01", "DISP-PRUEBA-02"], ["EST-PRUEBA-00", "DISP-PRUEBA-00"], ["est-prueba-01", "DISP-PRUEBA-01"],
+    ["EST-PRUEBA-1", "DISP-PRUEBA-1"], ["EST-PRUEBA-100", "DISP-PRUEBA-100"], ["DEMO V2 · Estación 2", "DEMO-V2-DISPOSITIVO-03"], ["EST-PRUEBA-01", "disp-prueba-01"],
+    // A valid code with text before or after it is other data: the expressions are anchored at both ends.
+    ["EST-PRUEBA-100", "DISP-PRUEBA-10"], ["EST-PRUEBA-01 extra", "DISP-PRUEBA-01"], ["X EST-PRUEBA-01", "DISP-PRUEBA-01"],
+    ["X DEMO V2 · Estación 2", "DEMO-V2-DISPOSITIVO-02"], ["DEMO V2 · Estación 2 bis", "DEMO-V2-DISPOSITIVO-02"],
+    // The catalogue of the demo has six example stations.
+    ["DEMO V2 · Estación 7", "DEMO-V2-DISPOSITIVO-07"], ["DEMO V2 · Estación 0", "DEMO-V2-DISPOSITIVO-00"]];
+  for (const [stationCode, deviceId] of unknown)
+    await assert.rejects(control.validate(stationCode, deviceId), errorCode("RRAA_STATION_NOT_FOUND", /Estación no encontrada/), `${stationCode} / ${deviceId}`);
+  for (const [stationCode, deviceId] of [["", "x"], ["x", ""], ["a|b", "x"], ["x", "a\nb"]])
+    await assert.rejects(control.validate(stationCode, deviceId), errorCode("RRAA_INPUT_INVALID"));
+});
+
+test("B5 with the practice control a station is created, edited and activated only with data of the company control", async (t) => {
+  const env = await stationApp(t);
+  const status = (await env.get("/api/estaciones/rraa")).json();
+  assert.deepEqual({ configured: status.configured, simulated: status.simulated, clientId: status.clientId }, { configured: true, simulated: true, clientId: "EMPRESA-DEMO" });
+  assert.deepEqual(status.examples, [1, 2, 3].map((number) => ({ stationCode: `EST-PRUEBA-0${number}`, deviceId: `DISP-PRUEBA-0${number}` })));
+  assert.deepEqual(status.exampleRange, ["EST-PRUEBA-01", "EST-PRUEBA-99"]);
+
+  const before = await env.store.read();
+  for (const [name, deviceId] of [["Estación inventada", "DISPOSITIVO-CUALQUIERA"], ["EST-PRUEBA-01", "OTRO-DISPOSITIVO"]]) {
+    const rejected = await env.post("/api/estaciones", stationInput(name, deviceId));
+    assert.equal(rejected.statusCode, 422, rejected.body);
+    assert.equal(rejected.json().error.code, "RRAA_STATION_NOT_FOUND");
+    const preview = await env.post("/api/estaciones/validar", { stationCode: name, deviceId });
+    assert.equal(preview.statusCode, 422, preview.body);
+  }
+  assert.deepEqual(await env.store.read(), before);
+
+  const created = await env.post("/api/estaciones", stationInput("EST-PRUEBA-01", "DISP-PRUEBA-01"));
+  assert.equal(created.statusCode, 200, created.body);
+  const station = created.json();
+  assert.deepEqual({ license: station.license, validated: station.rraaValidated, active: station.active, client: station.rraaClientId },
+    { license: "LIC-DEMO-01", validated: true, active: true, client: "EMPRESA-DEMO" });
+  // Its identifier cannot be changed to data the control does not know; the saved record stays as it was.
+  const edited = await env.post(`/api/estaciones/${station.id}`, stationInput("EST-PRUEBA-01", "DISPOSITIVO-CAMBIADO"));
+  assert.equal(edited.statusCode, 422, edited.body);
+  assert.equal(getAdminTools(await env.store.read()).stations.find((row) => row.id === station.id)!.deviceId, "DISP-PRUEBA-01");
+  // The window now offers the next pairs that are still free (names and devices are unique).
+  assert.deepEqual((await env.get("/api/estaciones/rraa")).json().examples.map((item: { stationCode: string }) => item.stationCode), ["EST-PRUEBA-02", "EST-PRUEBA-03", "EST-PRUEBA-04"]);
+  // A registered station can be inactivated and activated again.
+  assert.equal((await env.post(`/api/estaciones/${station.id}/actividad`, { active: false })).json().active, false);
+  const activated = await env.post(`/api/estaciones/${station.id}/actividad`, { active: true });
+  assert.equal(activated.statusCode, 200, activated.body);
+  assert.equal(activated.json().rraaValidated, true);
+  // Activation asks the control every time: stations it does not know stay inactive.
+  await env.store.transaction((state) => { getAdminTools(state).stations.push(
+    { id: "unknown-station", number: "LEG-1", name: "Estación inventada", deviceId: "X-1", description: "", group: "", type: "", license: "", version: "", active: false },
+    { id: "no-device-station", number: "LEG-2", name: "Estación sin dispositivo", deviceId: "", description: "", group: "", type: "", license: "", version: "", active: false }); });
+  const unknown = await env.post("/api/estaciones/unknown-station/actividad", { active: true });
+  assert.equal(unknown.statusCode, 422, unknown.body);
+  assert.equal(unknown.json().error.code, "RRAA_STATION_NOT_FOUND");
+  const noDevice = await env.post("/api/estaciones/no-device-station/actividad", { active: true });
+  assert.equal(noDevice.statusCode, 422, noDevice.body);
+  assert.match(noDevice.json().error.message, /no tiene ID dispositivo/);
+  for (const id of ["unknown-station", "no-device-station"]) assert.equal(getAdminTools(await env.store.read()).stations.find((row) => row.id === id)!.active, false);
+});
+
+test("B5 the practice control exists only in demo mode; the public demo never calls a real validator", async (t) => {
+  await assert.rejects(buildApp({ store: new MemoryStore(seed()), demo: false, secret: "synthetic-station-control-secret-at-least-32-characters", origins: [],
+    collectorUrl: "http://127.0.0.1:5174", adminEmail: "admin@example.invalid", adminPassword: "Clave-Sintetica-Larga-2026", demoStationControl: createDemoStationControl() }),
+    /solo existe en modo demo/);
+  // Neither can it be passed as if it were the provider.
+  await assert.rejects(buildApp({ store: new MemoryStore(seed()), demo: false, secret: "synthetic-station-control-secret-at-least-32-characters", origins: [],
+    collectorUrl: "http://127.0.0.1:5174", adminEmail: "admin@example.invalid", adminPassword: "Clave-Sintetica-Larga-2026", rraa: createDemoStationControl() }),
+    /solo existe en modo demo/);
+
+  let realCalls = 0;
+  const real: RraaValidator = { clientId: "QA-COMPANY", async validate(stationCode, deviceId) {
+    realCalls += 1; return { clientId: "QA-COMPANY", stationCode, deviceId, license: "QA-LICENSE", validatedAt: new Date().toISOString() };
+  } };
+  // Public demo: the practice control answers even if a real validator was supplied.
+  const publicDemo = await stationApp(t, { publicWeb: true, rraa: real });
+  assert.equal((await publicDemo.get("/api/estaciones/rraa")).json().clientId, "EMPRESA-DEMO");
+  assert.equal((await publicDemo.post("/api/estaciones", stationInput("Estación inventada", "X-1"))).statusCode, 422);
+  assert.equal((await publicDemo.post("/api/estaciones", stationInput("EST-PRUEBA-02", "DISP-PRUEBA-02"))).statusCode, 200);
+  assert.equal(realCalls, 0);
+  // Local demo with the provider configured: the provider comes first.
+  const withProvider = await stationApp(t, { rraa: real });
+  assert.deepEqual((await withProvider.get("/api/estaciones/rraa")).json(), { configured: true, clientId: "QA-COMPANY" });
+  assert.equal((await withProvider.post("/api/estaciones", stationInput("Estación del proveedor", "X-1"))).json().license, "QA-LICENSE");
+  assert.equal(realCalls, 1);
+  // With a provider the activation is not judged by CyP first: even a station without device goes to the provider, as before.
+  await withProvider.store.transaction((state) => { getAdminTools(state).stations.push(
+    { id: "provider-no-device", number: "LEG-3", name: "Estación histórica", deviceId: "", description: "", group: "", type: "", license: "", version: "", active: false }); });
+  assert.equal((await withProvider.post("/api/estaciones/provider-no-device/actividad", { active: true })).statusCode, 200);
+  assert.equal(realCalls, 2);
+  // Without any control everything stays closed, as before.
+  const closed = await stationApp(t, { control: false });
+  assert.deepEqual((await closed.get("/api/estaciones/rraa")).json(), { configured: false });
+  const refused = await closed.post("/api/estaciones", stationInput("EST-PRUEBA-01", "DISP-PRUEBA-01"));
+  assert.equal(refused.statusCode, 409, refused.body);
+  assert.equal(refused.json().error.code, "STATION_RRAA_REQUIRED");
+});
+
+// A P-256 installation identity like the one the browser keeps.
+function installationIdentity() {
+  const { privateKey, publicKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const publicKeySpki = publicKey.export({ type: "spki", format: "der" }).toString("base64url");
+  return { publicKeySpki, installationId: installationIdForPublicKey(publicKeySpki),
+    prove: (challenge: StationInstallationChallenge) => sign("sha256", Buffer.from(signingPayload(challenge)), { key: privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url") };
+}
+
+test("B5 the installation data of a practice station report the same validation as the list", () => {
+  const now = new Date("2026-10-12T12:00:00Z"), origin = "https://installation.test";
+  const state = emptyState(), admin: User = { id: "fictional-admin", name: "Admin ficticio", role: "admin" };
+  const actor = { ...admin, sid: createAuthSession(state, admin, now).id };
+  getAdminTools(state).stations.push({ id: "practice-station", name: "EST-PRUEBA-01", number: "P-1", deviceId: "DISP-PRUEBA-01", description: "", group: "", type: "",
+    license: "LIC-DEMO-01", version: "", active: true, rraaClientId: "EMPRESA-DEMO", rraaStationCode: "EST-PRUEBA-01", rraaDeviceId: "DISP-PRUEBA-01",
+    rraaValidatedAt: now.toISOString(), rraaValidatedBy: admin.id });
+  const register = (key: ReturnType<typeof installationIdentity>, options: StationInstallationOptions) => {
+    const challenge = createStationInstallationChallenge(state, actor, "practice-station", { purpose: "register", installationId: key.installationId, publicKeySpki: key.publicKeySpki }, origin, options, now);
+    registerStationInstallation(state, actor, "practice-station", { challengeId: challenge.challengeId, installationId: key.installationId, publicKeySpki: key.publicKeySpki,
+      signature: key.prove(challenge), confirmed: true }, origin, options, now);
+  };
+  const query = (key: ReturnType<typeof installationIdentity>, options: StationInstallationOptions) => {
+    const challenge = createStationInstallationChallenge(state, actor, "practice-station", { purpose: "query", installationId: key.installationId }, origin, options, now);
+    return queryStationInstallation(state, actor, "practice-station", { challengeId: challenge.challengeId, installationId: key.installationId, signature: key.prove(challenge) }, origin, options, now);
+  };
+  // Public demo: installations are stored without a provider company; the practice control only names who validated.
+  const withControl: StationInstallationOptions = { validationClientId: "EMPRESA-DEMO" }, withoutControl: StationInstallationOptions = {};
+  const first = installationIdentity(); register(first, withControl);
+  const seen = query(first, withControl);
+  assert.equal(seen.rraaValidationStatus, "validated");
+  assert.equal(seen.rraaValidatedAt, now.toISOString());
+  // The scope did not change: the same installation is found without the control, and there the station is not validated.
+  assert.equal(listStationInstallations(state, actor, "practice-station", withoutControl).installations.length, 1);
+  assert.equal(query(first, withoutControl).rraaValidationStatus, "not_validated");
+  // Another provider company is another scope: the installation is not listed there.
+  const otherScope: StationInstallationOptions = { rraaClientId: "other-company", validationClientId: "EMPRESA-DEMO" };
+  assert.equal(listStationInstallations(state, actor, "practice-station", otherScope).installations.length, 0);
+  // When both companies are given, the provider one decides only the scope and the validation one decides the state.
+  const second = installationIdentity(); register(second, otherScope);
+  assert.equal(query(second, otherScope).rraaValidationStatus, "validated");
+  assert.equal(query(second, { rraaClientId: "other-company" }).rraaValidationStatus, "not_validated");
+});
+
+test("B5 through the app, the data of an installation match the list and the practice control leaves the installation scope alone", async (t) => {
+  const origin = "http://localhost:5173";
+  const run = async (extra: { publicWeb?: boolean; rraa?: RraaValidator }, name: string, deviceId: string) => {
+    const store = new MemoryStore(seed());
+    const app = await buildApp({ store, demo: true, secret: "synthetic-station-control-secret-at-least-32-characters", origins: [origin],
+      collectorUrl: "http://127.0.0.1:5174", ...extra, demoStationControl: createDemoStationControl() });
+    t.after(async () => { await app.close(); await store.close(); });
+    const token = (await app.inject({ method: "POST", url: "/api/auth/login", headers: { origin }, payload: { email: "admin@cyp.local", password: demoPassword } })).json().token as string;
+    const post = (url: string, payload: object) => app.inject({ method: "POST", url, payload, headers: { origin, authorization: `Bearer ${token}`, "idempotency-key": randomUUID() } });
+    const created = await post("/api/estaciones", stationInput(name, deviceId));
+    assert.equal(created.statusCode, 200, created.body);
+    const base = `/api/estaciones/${created.json().id}`, key = installationIdentity();
+    const registration = await post(`${base}/instalaciones/desafios`, { purpose: "register", installationId: key.installationId, publicKeySpki: key.publicKeySpki });
+    assert.equal(registration.statusCode, 200, registration.body);
+    const registered = await post(`${base}/instalaciones`, { challengeId: registration.json().challengeId, installationId: key.installationId, publicKeySpki: key.publicKeySpki,
+      signature: key.prove(registration.json()), confirmed: true });
+    assert.equal(registered.statusCode, 200, registered.body);
+    const question = await post(`${base}/instalaciones/desafios`, { purpose: "query", installationId: key.installationId });
+    assert.equal(question.statusCode, 200, question.body);
+    const answer = await post(`${base}/datos`, { challengeId: question.json().challengeId, installationId: key.installationId, signature: key.prove(question.json()) });
+    assert.equal(answer.statusCode, 200, answer.body);
+    const rows = (await app.inject({ method: "GET", url: "/api/estaciones", headers: { origin, authorization: `Bearer ${token}` } })).json() as Array<{ id: string; rraaValidated: boolean; rraaValidatedAt: string }>;
+    const saved = (getAdminTools(await store.read()) as unknown as { installations: Array<{ scopeId: string }> }).installations;
+    assert.equal(saved.length, 1);
+    return { data: answer.json() as { rraaValidationStatus: string; rraaValidatedAt?: string }, listed: rows.find((row) => row.id === created.json().id)!,
+      scope: JSON.parse(saved[0].scopeId) as [string, string | null] };
+  };
+  const real: RraaValidator = { clientId: "QA-COMPANY", async validate(stationCode, deviceId) {
+    return { clientId: "QA-COMPANY", stationCode, deviceId, license: "QA-LICENSE", validatedAt: new Date().toISOString() };
+  } };
+  // Public demo and local demo without provider: the practice control validates and installations keep their scope without a company.
+  for (const extra of [{ publicWeb: true }, { publicWeb: true, rraa: real }, {}]) {
+    const seen = await run(extra, "EST-PRUEBA-01", "DISP-PRUEBA-01");
+    assert.equal(seen.listed.rraaValidated, true);
+    assert.equal(seen.data.rraaValidationStatus, "validated");
+    assert.equal(seen.data.rraaValidatedAt, seen.listed.rraaValidatedAt);
+    assert.equal(seen.scope[1], null);
+  }
+  // Local demo with a provider: nothing changes, the scope carries the provider company.
+  const provider = await run({ rraa: real }, "Estación del proveedor", "X-1");
+  assert.equal(provider.data.rraaValidationStatus, "validated");
+  assert.equal(provider.data.rraaValidatedAt, provider.listed.rraaValidatedAt);
+  assert.equal(provider.scope[1], "QA-COMPANY");
 });

@@ -77,6 +77,8 @@ type Config = {
   adminEmail?: string;
   adminPassword?: string;
   rraa?: RraaValidator;
+  // Practice control with fictional stations, for demo mode only (see rraa.ts).
+  demoStationControl?: RraaValidator;
   buildVersion?: string;
 };
 const money = z.number().int().positive().max(MAX_MONEY_AMOUNT);
@@ -166,6 +168,9 @@ const loginBody = z
 export async function buildApp(config: Config) {
   if (config.secret.length < 32)
     throw new Error("JWT_SECRET must contain at least 32 characters.");
+  // Its licences are fictional: it can never stand in for the provider outside demo mode.
+  if ((config.demoStationControl || config.rraa?.simulated) && !config.demo)
+    throw new Error("El control de prueba de estaciones solo existe en modo demo.");
   if (
     !config.demo &&
     (!config.adminPassword ||
@@ -1479,9 +1484,14 @@ export async function buildApp(config: Config) {
     );
   }
   registerCatalogRoutes(app, config.store, user, mutate, describe);
-  registerAdminToolsRoutes(app, config.store, user, mutate, describe, config.publicWeb ? undefined : config.rraa);
+  // The public demo never talks to the provider. In demo mode the practice control stands in, so the
+  // station flow can be tried; outside the public demo a configured provider always comes first.
+  const stationControl = config.publicWeb ? config.demoStationControl : config.rraa ?? config.demoStationControl;
+  registerAdminToolsRoutes(app, config.store, user, mutate, describe, stationControl);
   registerStationInstallationRoutes(app, config.store, user, describe, {
     rraaClientId: config.publicWeb ? undefined : config.rraa?.clientId,
+    // Only to report the same validation state as the list; the scope of the installations does not change.
+    validationClientId: stationControl?.clientId,
     origins: config.origins,
     publicOrigin: config.demoAccess?.origin,
     buildVersion: config.buildVersion,

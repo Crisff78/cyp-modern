@@ -5,7 +5,7 @@ import { enrichPublicDemo } from "./demo-scenarios.js";
 import { enrichCollectorDemo } from "./demo-collector-scenarios.js";
 import { FileStore, PostgresStore, type Store } from "./store.js";
 import { registerPublicWeb } from "./public-web.js";
-import { createRraaValidator } from "./rraa.js";
+import { createDemoStationControl, createRraaValidator } from "./rraa.js";
 import { validateDemoAccessCode } from "./demo-access.js";
 
 const requestedDemo = process.env.DEMO_MODE === "true";
@@ -96,6 +96,7 @@ const app = await buildApp({
   adminEmail: process.env.ADMIN_EMAIL,
   adminPassword: process.env.ADMIN_PASSWORD,
   rraa,
+  demoStationControl: demo ? createDemoStationControl() : undefined,
   buildVersion: /^[a-f0-9]{40}$/i.test(process.env.RENDER_GIT_COMMIT ?? "")
     ? process.env.RENDER_GIT_COMMIT : undefined,
 });

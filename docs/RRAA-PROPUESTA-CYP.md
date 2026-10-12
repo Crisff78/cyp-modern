@@ -147,9 +147,13 @@ el listado antes de iniciar otra operación. La clave de instalación sí persis
 ## 5. Compatibilidad con la integración actual
 
 Se mantienen la validación real VALSTAT antes de guardar/activar y la comprobación
-de nuevas asociaciones de PCP. No hay modo de aprobación por ID generado,
-respuesta simulada, documentación o ausencia del proveedor. La demo pública no
-se conecta al proveedor real ni adquiere una licencia por publicar esta propuesta.
+de nuevas asociaciones de PCP. En una instalación real no hay modo de aprobación
+por ID generado, respuesta simulada, documentación o ausencia del proveedor. La
+demo pública no se conecta al proveedor real ni adquiere una licencia por publicar
+esta propuesta. Excepción decidida por Rardiel el 12 de octubre de 2026, solo para
+el modo demo con datos ficticios: un control de prueba propio de CyP responde en
+lugar del proveedor (ver «Control de prueba de la demo» en
+[RRAA-ESTACIONES.md](RRAA-ESTACIONES.md)); sus licencias son ficticias.
 
 Antes de habilitar la adaptación externa debe acordarse cómo RRAA emite/registra
 `idestacion`, cómo se vincula al equipo y qué operación aporta sus datos. El

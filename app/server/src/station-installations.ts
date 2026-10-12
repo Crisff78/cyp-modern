@@ -7,7 +7,9 @@ import { INSTALLATION_PROTOCOL_VERSION, signingPayload, type InstallationPurpose
   type StationInstallationSummary } from "./station-installation-protocol.js";
 
 export type InstallationActor = User & { sid?: string };
-export type StationInstallationOptions = { rraaClientId?: string; publicOrigin?: string; origins?: string[]; buildVersion?: string };
+// validationClientId: company used only to report whether the station is validated (it may be the practice
+// control of the demo); rraaClientId stays part of the scope under which installations are stored.
+export type StationInstallationOptions = { rraaClientId?: string; validationClientId?: string; publicOrigin?: string; origins?: string[]; buildVersion?: string };
 type InstallationState = { installationScopeId?: string; installations: StationInstallation[]; installationChallenges: StationInstallationChallenge[] };
 export type InstallationChallengeInput = { purpose: InstallationPurpose; installationId: string; publicKeySpki?: string };
 export type InstallationRegistrationInput = { challengeId: string; installationId: string; publicKeySpki: string; signature: string; confirmed: true };
@@ -132,7 +134,7 @@ export function queryStationInstallation(state: State, actor: InstallationActor,
   assertAdminRead(actor); const station = requireAdminRow(getAdminTools(state).stations, stationId, "Estación");
   const row = activeInstallation(state, stationId, input.installationId, options);
   consumeProof(state, actor, stationId, "query", input, row.publicKeySpki, origin, options, now);
-  const validated = stationRraaValidated(station, options.rraaClientId);
+  const validated = stationRraaValidated(station, options.validationClientId ?? options.rraaClientId);
   return { stationId, stationCode: station.name, installationId: row.installationId, installationStatus: row.status,
     active: station.active, rraaValidationStatus: validated ? "validated" : "not_validated",
     ...(validated ? { rraaValidatedAt: station.rraaValidatedAt } : {}), queriedAt: now.toISOString(),

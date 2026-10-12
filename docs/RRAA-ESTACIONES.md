@@ -27,10 +27,44 @@ limita la espera y el tamaño de respuesta. Solo admite `OK` con licencia no vac
 o `ER` del contrato. Un error HTTP, timeout o respuesta malformada nunca autoriza.
 El transporte es HTTP según el proveedor, sin cifrado TLS ni firma de respuesta.
 
+## Control de prueba de la demo
+
+Decisión de Rardiel del 12 de octubre de 2026, a raíz de la observación «aunque sea como
+prueba, los datos para poder crear la estación deberían estar referenciados al control de la
+empresa». En modo demo (datos ficticios), cuando el arranque normal del servidor (`index.ts`)
+no tiene un RRAA real configurado —y siempre en la demo pública— la API usa un control de
+prueba propio de CyP (`createDemoStationControl`, en `rraa.ts`). Responde como VALSTAT para la
+empresa ficticia `EMPRESA-DEMO` sin contactar ningún servicio y solo encuentra:
+
+- `EST-PRUEBA-01` a `EST-PRUEBA-99`, cada una con su dispositivo `DISP-PRUEBA-NN`;
+- las seis estaciones de ejemplo del catálogo, `DEMO V2 · Estación 1` a `6`, con su
+  `DEMO-V2-DISPOSITIVO-0N`.
+
+Con cualquier otro dato responde «Estación no encontrada». Permite probar el alta, la edición,
+la activación y la asociación a PCP con datos referenciados al control de la empresa mientras
+no existe la conexión con el proveedor. Sus licencias `LIC-DEMO-…` son ficticias y no
+acreditan nada. `GET /api/estaciones/rraa` lo anuncia con `simulated: true`, tres parejas que
+siguen libres en el catálogo (`examples`) y el rango completo (`exampleRange`); la pantalla
+de Estaciones lo dice en dos líneas, con un par libre de ejemplo, y sus etiquetas y ayudas
+nombran el control de prueba en lugar de RRAA (el aviso aclara «no es RRAA real»).
+
+La «Estación de demostración» (Nro. DEMO-001) no tiene ID dispositivo y no está en el
+control: se puede inactivar, con un aviso previo, y para volver a activarla hay que editarla
+con un par registrado; el intento de activarla lo dice. La identidad de instalación de CyP
+no usa el control para su ámbito (en la demo
+pública sigue sin empresa RRAA), pero «Obtener Datos de CyP» informa el mismo estado de
+validación que la lista.
+
+Fuera del modo demo no se puede activar: `buildApp` lo rechaza, también si se pasa como
+proveedor. No cambia el contrato recibido del proveedor ni la validación real de las
+instalaciones. Los servidores auxiliares que construyen la app por su cuenta (por ejemplo
+`scripts/serve-review-api.mts`) no lo activan.
+
 ## Flujo de CyP
 
 - GET `/api/estaciones/rraa`: configuración disponible e idcliente, para lectores
-  administrativos. No expone credenciales ni habilita edición en la demo pública.
+  administrativos. No expone credenciales ni usa el servicio real en la demo pública,
+  donde responde el control de prueba descrito arriba.
 - POST `/api/estaciones/validar`: Admin, `{stationCode,deviceId}`; consulta de solo
   lectura a RRAA para mostrar la licencia y su fecha. No crea/activa una estación.
   Devuelve `{clientId,stationCode,deviceId,license,validatedAt}`. La interfaz exige

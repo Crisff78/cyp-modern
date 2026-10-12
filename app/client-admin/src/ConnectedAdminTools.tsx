@@ -20,7 +20,7 @@ const definitions: Record<AdminToolPage, { title: string; path: string }> = {
 export const isConnectedAdminTool = (page: string): page is AdminToolPage => Object.hasOwn(definitions, page);
 type Row = { id: string; [key: string]: unknown };
 type PageResult = { items: Row[]; total: number; limit: number; offset: number };
-type RraaStatus = { configured: boolean; clientId?: string };
+type RraaStatus = { configured: boolean; clientId?: string; simulated?: boolean; examples?: Array<{ stationCode: string; deviceId: string }>; exampleRange?: [string, string] };
 type Draft = Record<string, string | boolean>;
 type Filter = { q: string; from: string; to: string; status: string };
 type Dialog = { type: "edit" | "stations" | "resolve" | "confirm" | "detail"; row?: Row; action?: "deactivate" | "activate" | "delete" | "close" };
@@ -43,6 +43,8 @@ export function ConnectedAdminTools({ page, snapshot, user, onRefresh }: { page:
   const [stationStatusReview, setStationStatusReview] = useState(false);
   const [rraa, setRraa] = useState<RraaStatus>({ configured: false }), [rraaPreview, setRraaPreview] = useState<RraaPreview | null>(null);
   const [rraaNeedsValidation, setRraaNeedsValidation] = useState(false);
+  // The note about the station control is shown only once its state is known.
+  const [rraaLoaded, setRraaLoaded] = useState(false);
   const [installationLocked, setInstallationLocked] = useState(false);
   const requestVersion = useRef(0), pendingRequest = useRef<{ path: string; body: string } | null>(null), instanceId = useId();
   const locked = busy || uncertain;
@@ -63,7 +65,7 @@ export function ConnectedAdminTools({ page, snapshot, user, onRefresh }: { page:
       const items = Array.isArray(result) ? result : result.items;
       if (!Array.isArray(items)) throw new Error("La API no devolvió un listado válido.");
       const count = Array.isArray(result) ? result.length : result.total;
-      setRecords(items); setTotal(count); setGroups(groupRows); setStations(stationRows); setReasons(reasonRows); setRraa(rraaStatus);
+      setRecords(items); setTotal(count); setGroups(groupRows); setStations(stationRows); setReasons(reasonRows); setRraa(rraaStatus); setRraaLoaded(page === "stations" || page === "pcps");
       if (paged && offset > 0 && offset >= count) setOffset(Math.max(0, Math.ceil(count / 50) - 1) * 50);
     } catch (failure) { if (version === requestVersion.current) setError(errorText(failure)); }
     finally { if (version === requestVersion.current) setLoading(false); }
@@ -208,7 +210,7 @@ export function ConnectedAdminTools({ page, snapshot, user, onRefresh }: { page:
     : page === "traces" ? ["Nro.", "Fecha", "Traza"] : ["Nro.", "Fecha", "Registrada por", "Cobrador", "Código", "Cliente", "Teléfono", "Celular", "Estado"];
   const unavailable = (description: string) => <span title={description}>—</span>;
   const cells = (row: Row): ReactNode => page === "groups" ? <td>{value(row, "name")}</td>
-    : page === "stations" ? <><td title={value(row, "description")}>{value(row, "name")}</td><td>{value(row, "deviceId") || "—"}</td><td title={row.rraaValidated ? "Licencia recibida de RRAA" : "Licencia histórica sin validar por RRAA"}>{value(row, "license") || "—"}</td><td>{value(row, "version") || "—"}</td><td>{unavailable("La versión recibida no está disponible.")}</td><td title={row.active === true && row.rraaValidated !== true ? "Marcada como activa, pero RRAA aún no la ha validado" : undefined}><LegacyCheck checked={row.active === true} /></td><td>{row.rraaValidated ? "Validada · " + dateTime(row.rraaValidatedAt) : "No validado"}</td></>
+    : page === "stations" ? <><td title={value(row, "description")}>{value(row, "name")}</td><td>{value(row, "deviceId") || "—"}</td><td title={row.rraaValidated ? rraa.simulated ? "Licencia ficticia del control de prueba de la demo" : "Licencia recibida de RRAA" : rraa.simulated ? "Sin validar por el control de prueba" : "Licencia histórica sin validar por RRAA"}>{value(row, "license") || "—"}</td><td>{value(row, "version") || "—"}</td><td>{unavailable("La versión recibida no está disponible.")}</td><td title={row.active === true && row.rraaValidated !== true ? rraa.simulated ? "Marcada como activa, pero el control de prueba aún no la ha validado" : "Marcada como activa, pero RRAA aún no la ha validado" : undefined}><LegacyCheck checked={row.active === true} /></td><td>{row.rraaValidated ? "Validada · " + dateTime(row.rraaValidatedAt) : "No validado"}</td></>
     : page === "pcps" ? <><td title={[value(row, "address"), value(row, "phone"), "Estaciones: " + (stationIds(row).map((id) => stations.find((station) => station.id === id)?.name ?? id).join(", ") || "Sin asignar")].filter(Boolean).join(" · ")}>{value(row, "name")}</td><td>{unavailable("El PCP es independiente de los clientes.")}</td><td>{groups.find((group) => group.id === row.groupId)?.name as string ?? "—"}</td><td>{unavailable("El PCP no tiene una ruta de cobro asignada.")}</td><td><LegacyCheck checked={row.active !== false} /></td></>
     : page === "sessions" ? <><td title={value(row, "role") === "admin" ? "Administración" : "Cobrador"}>{value(row, "userName")}{row.current ? " (esta sesión)" : ""}</td><td>{unavailable("Las sesiones no registran una estación de PCP.")}</td><td>{dateTime(row.startedAt)}</td><td title={row.revokedAt ? "Cerrada: " + dateTime(row.revokedAt) : undefined}>{states[value(row, "status")] ?? value(row, "status")}</td><td>{dateTime(row.expiresAt)}</td></>
     : page === "traces" ? <><td>{dateTime(row.createdAt)}</td><td className="legacy-admin-trace-cell">{row.action === "session.started" ? "Inicio de sesión" : row.action === "mutation.completed" ? "Cambio guardado" : value(row, "action")} · {value(row, "resource")} · Usuario: {value(row, "actorId")}{row.resourceId ? " · Referencia: " + value(row, "resourceId") : ""}</td></>
@@ -221,6 +223,18 @@ export function ConnectedAdminTools({ page, snapshot, user, onRefresh }: { page:
   const actions = (label = "oK") => <div className="legacy-dialog-actions centered"><button type="submit" disabled={busy}>{busy ? "Guardando…" : uncertain ? "Reintentar" : label}</button><button type="button" disabled={locked} onClick={close}>Cancelar</button></div>;
   const search = <label className="legacy-admin-search">Buscar:<input aria-label="Buscar" value={filter.q} maxLength={160} disabled={installationLocked} onChange={(event) => updateFilter("q", event.target.value)} /></label>;
   const deleteTitle = page === "groups" ? "Eliminar grupo" : page === "authorizationRequests" ? "Anular solicitud" : selected?.active === false ? "Activar" : "Inactivar";
+  // First practice pair that is still free, to name it in the window and in the form.
+  const practiceExample = rraa.simulated ? rraa.examples?.[0] : undefined;
+  // Number at the end of a practice code ("EST-PRUEBA-07" -> "07"), to name the range briefly.
+  const practiceNumber = (code: string) => code.slice(code.lastIndexOf("-") + 1);
+  const practiceNote = `Control de prueba de esta demo; no es RRAA real. Solo se guarda o activa una estación del control de «${rraa.clientId ?? ""}».`
+    + (practiceExample ? ` Prueba «${practiceExample.stationCode}» con ID dispositivo «${practiceExample.deviceId}»`
+      + (rraa.exampleRange ? ` (del ${practiceNumber(rraa.exampleRange[0])} al ${practiceNumber(rraa.exampleRange[1])}, mismo número en ambos)` : "") + "." : "");
+  // With the practice control a station without device cannot be validated again: inactivating it is a
+  // one-way step until it is edited, so say it before confirming. Nothing changes with the real provider.
+  const deactivateWarning = (row: Row) => !rraa.configured ? " Importante: sin la conexión RRAA no se podrá volver a activar."
+    : rraa.simulated && !value(row, "deviceId") ? " Importante: esta estación no tiene ID dispositivo; para volver a activarla habrá que editarla antes con una Estación y un ID dispositivo del control de prueba."
+    : "";
   const deleteSelected = () => {
     if (!selected) return;
     if (page === "authorizationRequests") beginResolution(true);
@@ -267,12 +281,12 @@ export function ConnectedAdminTools({ page, snapshot, user, onRefresh }: { page:
   const formClass = dialog?.type === "stations" ? "legacy-relation-manager legacy-admin-relations" : page === "stations" && dialog?.type === "edit" && !stationStatusReview ? "legacy-dialog-form pcp-station-form" : page === "pcps" && dialog?.type === "edit" ? "legacy-dialog-form pcp-data-form legacy-pcp-form" : page === "authorizationRequests" ? "authorization-form" : "legacy-dialog-form";
   return <section className={"connected-admin-tools legacy-mdi-view " + layout + "-mdi-view"} aria-label={definition.title} aria-busy={loading}>
     {toolbar}
-    {page === "stations" && <p className="legacy-admin-note" role="status">{rraa.configured ? "RRAA configurado. Obtener Licencia consulta VALSTAT; guardar y activar vuelven a validar la estación y el dispositivo. Una licencia histórica no acredita autorización." : "No validado. Deshabilitado temporalmente hasta conexión RRAA: no se permite crear, editar ni activar estaciones. Solo puedes desactivar registros históricos."}</p>}
+    {page === "stations" && rraaLoaded && <p className="legacy-admin-note" role="status" title={rraa.configured && rraa.simulated ? "Con datos que no estén en el control responde «Estación no encontrada». Las estaciones «DEMO V2 · Estación 1» a «6» del catálogo también están en él." : undefined}>{rraa.configured && rraa.simulated ? practiceNote : rraa.configured ? "RRAA configurado. Obtener Licencia consulta VALSTAT; guardar y activar vuelven a validar la estación y el dispositivo. Una licencia histórica no acredita autorización." : "No validado. Deshabilitado temporalmente hasta conexión RRAA: no se permite crear, editar ni activar estaciones. Solo puedes desactivar registros históricos."}</p>}
     {page === "authorizationRequests" && <p className="legacy-admin-note">Solicitudes de revisión administrativa de un cliente y su cobrador responsable. <strong>Quién las genera:</strong> un administrador las registra aquí con el botón Nuevo; el cobrador no las crea desde su terminal y el sistema no las genera solo. La columna «Registrada por» muestra quién la creó. Después un administrador la resuelve como aprobada, rechazada o anulada. La decisión queda en el historial; no registra cobros o pagos ni amplía límites o permisos.</p>}
     {error && <p className="legacy-admin-feedback error" role="alert">{error}</p>}{message && <p className="legacy-admin-feedback success" role="status">{message}</p>}
     {page === "pcps" && !loading && !groups.length && <p className="legacy-admin-note">Crea un grupo de PCPs para registrar el primer punto.</p>}
     {paged || page === "pcps" ? <div className={layout + "-workspace"}>{filtersVisible && filterPanel}{grid}</div> : grid}
-    {page === "stations" && <StationInstallationPanel station={selected ? { id: selected.id, name: value(selected, "name"), deviceId: value(selected, "deviceId"), active: selected.active === true, rraaValidated: selected.rraaValidated === true } : null} user={user} disabled={loading || locked || Boolean(dialog)} onLockChange={setInstallationLocked} />}
+    {page === "stations" && <StationInstallationPanel station={selected ? { id: selected.id, name: value(selected, "name"), deviceId: value(selected, "deviceId"), active: selected.active === true, rraaValidated: selected.rraaValidated === true } : null} user={user} disabled={loading || locked || Boolean(dialog)} onLockChange={setInstallationLocked} simulatedControl={rraa.configured && rraa.simulated === true} />}
     {paged && <div className={"legacy-mdi-pager " + (page === "traces" ? "traces-pager" : "")}>
       <button type="button" title="Primera página" disabled={loading || !offset} onClick={() => setOffset(0)}>|&lt;</button><button type="button" title="Página anterior" disabled={loading || !offset} onClick={() => setOffset(Math.max(0, offset - 50))}>&lt;</button>
       <span>Página {Math.floor(offset / 50) + 1} de {totalPages}</span>
@@ -293,13 +307,13 @@ export function ConnectedAdminTools({ page, snapshot, user, onRefresh }: { page:
           <fieldset className="legacy-config-fieldset station-general-fieldset"><legend>General</legend>
             <span className="station-internal-id" title={dialog.row?.id}>ID: {dialog.row?.id ?? "Nuevo"}</span>
             <label>Estación:{input("name", undefined, true)}</label>
-            <div className="legacy-dialog-row two-cols"><label>Nro.:{input("number")}</label><label>ID dispositivo RRAA:{input("deviceId")}</label></div>
-            <label>Cliente RRAA:<input readOnly value={rraa.clientId ?? ""} /></label>
-            <div className="license-row"><label>Lic.:<input readOnly value={rraaPreview?.license ?? String(draft.license ?? "")} /></label><button type="button" disabled title="VALSTAT solo valida la estación y devuelve su licencia; no proporciona datos del dispositivo.">Obtener Datos</button><button type="button" disabled={locked || !rraa.configured} onClick={() => void obtainLicense()}>Obtener Licencia</button></div>
+            <div className="legacy-dialog-row two-cols"><label>Nro.:{input("number")}</label><label>{rraa.simulated ? "ID dispositivo:" : "ID dispositivo RRAA:"}{input("deviceId")}</label></div>
+            <label>{rraa.simulated ? "Empresa del control de prueba:" : "Cliente RRAA:"}<input readOnly value={rraa.clientId ?? ""} /></label>
+            <div className="license-row"><label>Lic.:<input readOnly value={rraaPreview?.license ?? String(draft.license ?? "")} /></label><button type="button" disabled title={rraa.simulated ? "El control de prueba solo valida la estación y devuelve su licencia; no proporciona datos del dispositivo." : "VALSTAT solo valida la estación y devuelve su licencia; no proporciona datos del dispositivo."}>Obtener Datos</button><button type="button" disabled={locked || !rraa.configured} onClick={() => void obtainLicense()}>Obtener Licencia</button></div>
             <label>Descrip.:<textarea rows={2} maxLength={1000} value={String(draft.description ?? "")} disabled={locked} onChange={(event) => updateDraft("description", event.target.value)} /></label>
             <div className="legacy-dialog-row two-cols"><label>Grupo:{input("group")}</label><label>Tipo:{input("type")}</label></div>
             <div className="legacy-dialog-row two-cols"><label>Versión registrada:<input readOnly value={String(draft.version ?? "")} /></label><label className="legacy-admin-checkbox"><input type="checkbox" checked={Boolean(draft.active)} disabled={locked || !draftValidated} onChange={(event) => updateDraft("active", event.target.checked)} /><span>Activa</span></label></div>
-          </fieldset><p className="legacy-admin-note">{rraaPreview ? "Validación recibida: " + dateTime(rraaPreview.validatedAt) + ". Se comprobará nuevamente al guardar." : "Introduce el código RRAA en Estación y el ID del dispositivo. Obtener Licencia no guarda ni activa el registro."}</p>
+          </fieldset><p className="legacy-admin-note">{rraaPreview ? "Validación recibida: " + dateTime(rraaPreview.validatedAt) + ". Se comprobará nuevamente al guardar." : rraa.simulated ? `Escribe una Estación y un ID dispositivo registrados en el control de prueba${practiceExample ? `, por ejemplo «${practiceExample.stationCode}» y «${practiceExample.deviceId}»` : ""}. Obtener Licencia no guarda ni activa el registro.` : "Introduce el código RRAA en Estación y el ID del dispositivo. Obtener Licencia no guarda ni activa el registro."}</p>
         </>}
         {dialog.type === "edit" && page === "groups" && <label>Nombre:{input("name", undefined, true)}</label>}
         {dialog.type === "edit" && page === "pcps" && <>
@@ -330,7 +344,7 @@ export function ConnectedAdminTools({ page, snapshot, user, onRefresh }: { page:
           <label>Motivo:<textarea autoFocus required rows={3} maxLength={2000} value={String(draft.note ?? "")} disabled={locked} onChange={(event) => updateDraft("note", event.target.value)} /></label>
           <p className="legacy-admin-note">La decisión quedará registrada y no podrá editarse después. No crea pagos ni modifica límites de efectivo.</p>
         </>}
-        {dialog.type === "confirm" && <div className="legacy-confirm-content"><span className="legacy-question-icon">?</span><p>{dialog.action === "close" ? dialog.row?.current ? "Tu sesión se cerrará y tendrás que iniciar sesión de nuevo." : "Se cerrará la sesión de " + (dialog.row ? value(dialog.row, "userName") : "este usuario") + ". No podrá seguir usando el sistema hasta que vuelva a entrar." : dialog.action === "delete" ? "El grupo se eliminará si no tiene PCPs asociados." : page === "stations" && dialog.row ? `¿Está seguro que desea ${dialog.action === "activate" ? "activar" : "inactivar"} la estación ${value(dialog.row, "name")} (código ${value(dialog.row, "number")})? Su historial y asociaciones se conservan.${dialog.action !== "activate" && !rraa.configured ? " Importante: sin la conexión RRAA no se podrá volver a activar." : ""}` : "El registro quedará " + (dialog.action === "activate" ? "activo" : "inactivo") + "."}</p></div>}
+        {dialog.type === "confirm" && <div className="legacy-confirm-content"><span className="legacy-question-icon">?</span><p>{dialog.action === "close" ? dialog.row?.current ? "Tu sesión se cerrará y tendrás que iniciar sesión de nuevo." : "Se cerrará la sesión de " + (dialog.row ? value(dialog.row, "userName") : "este usuario") + ". No podrá seguir usando el sistema hasta que vuelva a entrar." : dialog.action === "delete" ? "El grupo se eliminará si no tiene PCPs asociados." : page === "stations" && dialog.row ? `¿Está seguro que desea ${dialog.action === "activate" ? "activar" : "inactivar"} la estación ${value(dialog.row, "name")} (código ${value(dialog.row, "number")})? Su historial y asociaciones se conservan.${dialog.action !== "activate" ? deactivateWarning(dialog.row) : ""}` : "El registro quedará " + (dialog.action === "activate" ? "activo" : "inactivo") + "."}</p></div>}
         {stationStatusReview && <div className="legacy-confirm-content"><span className="legacy-question-icon">?</span><p>¿Está seguro que desea {draft.active ? "activar" : "inactivar"} la estación {String(draft.name ?? "")} (código {String(draft.number ?? "")})? Su historial y asociaciones se conservan.</p><p>También se guardarán los demás cambios del formulario. Cancelar vuelve a los datos sin guardarlos.</p></div>}
         {dialog.type !== "stations" && <>{formMessages}{actions(dialog.type === "confirm" || stationStatusReview ? "Confirmar" : "oK")}</>}
       </form>}
