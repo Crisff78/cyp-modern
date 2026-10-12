@@ -429,7 +429,7 @@ remittancesApi("/snapshot").then(snapshot => { if (new URLSearchParams(location.
       await open("authorizationRequests"); await page.getByText(/Solicitudes de revisión administrativa de un cliente/).waitFor();
       assert.match(await page.locator("main").innerText(), /no registra cobros o pagos ni amplía límites o permisos/);
       await open("users"); await page.getByRole("button", { name: "Permisos", exact: true }).click();
-      assert.match(await page.getByRole("dialog").innerText(), /No cambian los permisos efectivos de un rol ni conceden operaciones en el servidor/);
+      assert.match(await page.getByRole("dialog").innerText(), /Esta lista queda guardada como referencia para este usuario\. No cambia lo que la cuenta puede hacer/);
       assert.equal(writes.length, count);
       await page.getByRole("button", { name: "Cerrar Permisos del Usuario...", exact: true }).click();
     });

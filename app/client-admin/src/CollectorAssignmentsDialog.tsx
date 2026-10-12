@@ -155,7 +155,7 @@ export function CollectorAssignmentsDialog({ collectorId, collectorName, kind, i
         <button type="button" onClick={refresh} disabled={loading}><RefreshCw size={13} className={loading ? "animate-spin" : ""} />Refrescar</button>
       </div>
       {error && <p className="collector-assignment-error" role="alert">{error}</p>}
-      <div className="collector-assignment-scope">{collectorName} · {kind === "limits" ? "Guardado de sesión: límites por moneda. No modifica los límites operativos DOP persistidos." : "Guardado de sesión. Las asignaciones operativas de la API se administran en los catálogos conectados."}</div>
+      <div className="collector-assignment-scope">{collectorName} · {kind === "limits" ? "Para cambiar los límites que se aplican al cobrador pulsa «Modificar límites operativos DOP». La lista por moneda de esta ventana es solo una anotación temporal de esta sesión: no cambia los límites reales." : "Esta lista es una anotación temporal de esta sesión. Para asignar de verdad una ruta o una zona al cobrador usa Rutas y Zonas en el Panel de Control."}</div>
       <div className="legacy-relation-footer"><button type="button" onClick={save}>oK</button><button type="button" onClick={onClose}>Cancelar</button></div>
     </div>
     {pickerOpen && kind !== "limits" && <AreaPicker kind={kind} options={options} assigned={rows} onSelect={add} onClose={() => setPickerOpen(false)} />}

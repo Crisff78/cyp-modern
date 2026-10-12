@@ -32,6 +32,8 @@ function inDateRange(value: string, from?: string, to?: string) {
   return (!from || day >= from) && (!to || day <= to);
 }
 function contains(value: string, query: string) { return value.toLocaleLowerCase().includes(query.toLocaleLowerCase()); }
+// Built-in accounts that are not stored in the accounts catalog.
+const SYSTEM_ACCOUNT_NAMES: Record<string, string> = { "demo-admin": "Administración", "configured-admin": "Administración", "demo-collector": "Cobrador" };
 
 export function registerAdminToolsRoutes(app: FastifyInstance, store: Store, user: (req: FastifyRequest) => User, mutate: Mutate, describe: Describe, rraa?: RraaValidator) {
   const validator = () => {
@@ -135,7 +137,13 @@ export function registerAdminToolsRoutes(app: FastifyInstance, store: Store, use
       const client = state.clients.find((item) => item.id === row.clientId);
       return inDateRange(row.createdAt, input.from, input.to) && (!input.status || row.status === input.status) && contains(`${client?.name ?? ""} ${client?.code ?? ""}`, input.q);
     }).sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id));
-    return { items: items.slice(input.offset, input.offset + input.limit), total: items.length, limit: input.limit, offset: input.offset };
+    // The author is stored by account id; the screen needs the person's name.
+    const reader = user(req);
+    const personName = (accountId?: string) => !accountId ? undefined
+      : state.accounts.find((account) => account.id === accountId)?.name
+        ?? (accountId === reader.id ? reader.name : Object.hasOwn(SYSTEM_ACCOUNT_NAMES, accountId) ? SYSTEM_ACCOUNT_NAMES[accountId] : undefined);
+    return { items: items.slice(input.offset, input.offset + input.limit).map((row) => ({ ...row,
+      createdByName: personName(row.createdBy), resolvedByName: personName(row.resolvedBy) })), total: items.length, limit: input.limit, offset: input.offset };
   });
   describe("get", "/api/solicitudes-autorizacion", "Solicitudes administrativas y decisiones registradas");
   mutate("/api/solicitudes-autorizacion", "Registrar solicitud administrativa pendiente", requestBody, (state, actor, body) => createAuthorizationRequest(state, actor, body));

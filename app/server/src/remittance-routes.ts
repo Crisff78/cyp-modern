@@ -9,7 +9,7 @@ import {
   currencies, openRemittanceCash, payRemittance, quoteRemittance, remittanceReports,
   remittanceSnapshot, setDailyRate, setCommissionPolicy, transferView,
 } from "./remittances.js";
-import { boundedId, freeText, singleLine } from "./input-validation.js";
+import { boundedId, freeText, phone, singleLine } from "./input-validation.js";
 
 type Mutate = <T, P = Record<string, string>>(
   path: string, summary: string, schema: z.ZodType<T>,
@@ -63,7 +63,7 @@ export function registerRemittanceRoutes(
     purchaseRate: z.string().max(19).optional(), saleRate: z.string().max(19).optional(),
   }).strict(), (state, actor, input) => setDailyRate(state, actor, input));
   mutate("/api/envios", "Registrar envío y recibir principal más comisión", z.object({
-    ...quoteFields, senderClientId: id, recipientClientId: id, sendingUserId: id.optional(),
+    ...quoteFields, senderClientId: id, recipientClientId: id, sendingUserId: id.optional(), recipientPhone: phone.optional(),
     requestedReceiveAmount: amount.positive().optional(),
     quote: z.object({ date: z.iso.date(), sourceRate: z.string().max(19), destinationRate: z.string().max(19),
       quotedAt: z.iso.datetime().optional(), sourceRateChangeId: id.optional(), destinationRateChangeId: id.optional(),

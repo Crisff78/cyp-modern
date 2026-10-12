@@ -16,6 +16,7 @@ import {
   acceptDeposit,
   assertAdmin,
   assertAdminRead,
+  assertChargeService,
   assertCollectorAccess,
   assertCollectorReadAccess,
   businessDate,
@@ -61,7 +62,7 @@ import { registerStationInstallationRoutes } from "./station-installation-routes
 import type { RraaValidator } from "./rraa.js";
 import { legacyFinancialFingerprintBody } from "./financial-currency-compat.js";
 import { boundedId, fourDecimalNumber, freeText, machineCounter, optionalEmail, phone, singleLine, systemConfigInput } from "./input-validation.js";
-import { claimClientIdentity, reserveClientIdentity } from "./client-identities.js";
+import { claimClientIdentity, reserveClientIdentity, SYSTEM_CLIENT_CODE } from "./client-identities.js";
 import { ACCOUNT_ROLES, isOperationalRole } from "./account-roles.js";
 import { permissionCatalog, permissionsForAccount, updateAccountPermissions, userPermissionsBody } from "./user-permissions.js";
 
@@ -476,14 +477,14 @@ export async function buildApp(config: Config) {
         if (!matches)
           throw new DomainError(
             "INVALID_CREDENTIALS",
-            "Correo o contraseña incorrectos.",
+            "Usuario o contraseña incorrectos.",
             401,
           );
       }
       if (!u)
         throw new DomainError(
           "INVALID_CREDENTIALS",
-          "Correo o contraseña incorrectos.",
+          "Usuario o contraseña incorrectos.",
           401,
         );
       if (u.role === "collector" && !(await config.store.read()).collectors.some((c) => c.id === u!.collectorId && c.active !== false))
@@ -855,19 +856,33 @@ export async function buildApp(config: Config) {
     );
     describe("get", path, `Consultar ${type}`);
   }
-  mutate("/api/clientes/sugerencias", "Reservar código e identificación interna secuencial", z.object({}).strict(), (s, u) => {
-    const reservation = reserveClientIdentity(s, u);
-    return { reservationId: reservation.id, code: reservation.code, internalIdentification: reservation.internalIdentification };
+  mutate("/api/clientes/sugerencias", "Reservar código e identificación interna secuencial", z.object({ identificationOnly: z.boolean().optional() }).strict(), (s, u, b) => {
+    // `identificationOnly`: the client already has a code and only needs its internal identification.
+    const reservation = reserveClientIdentity(s, u, new Date(), !b.identificationOnly);
+    return { reservationId: reservation.id, ...(b.identificationOnly ? {} : { code: reservation.code }), internalIdentification: reservation.internalIdentification };
   });
   mutate("/api/clientes", "Crear cliente", newClientBody, (s, u, b) => {
     assertAdmin(u);
     if (!s.routes.some((route) => route.id === b.routeId))
       throw new DomainError("ROUTE_NOT_FOUND", "Selecciona una ruta válida.", 404);
     const clientId = randomUUID();
-    const identity = claimClientIdentity(s, u, clientId, b.reservationId);
-    const code = b.code || identity.code;
-    if (s.clients.some((client) => client.code === code) || s.clientIdentityReservations.some((row) => row.id !== b.reservationId && row.clientId !== clientId && row.code === code))
+    // Checked before reserving: a code typed by hand must be free, and one reserved by
+    // another open form is reported as reserved instead of as an existing client.
+    if (b.code && s.clients.some((client) => client.code === b.code))
       throw new DomainError("CLIENT_CODE_EXISTS", "El código de cliente ya existe.", 409);
+    const ownReservation = b.reservationId ? s.clientIdentityReservations.find((row) => row.id === b.reservationId) : undefined;
+    // An identification-only reservation carries its identification as a placeholder: that is not a code to use.
+    const reservedCode = ownReservation && ownReservation.code !== ownReservation.internalIdentification ? ownReservation.code : undefined;
+    if (b.code && reservedCode !== b.code) {
+      if (s.clientIdentityReservations.some((row) => row.code === b.code && row.id !== ownReservation?.id))
+        throw new DomainError("CLIENT_CODE_RESERVED", "Ese código quedó reservado por otro formulario. Usa Generar código para obtener el siguiente.", 409);
+      if (SYSTEM_CLIENT_CODE.test(b.code))
+        throw new DomainError("CLIENT_CODE_SYSTEM_FORMAT", "Los códigos formados por CLI o INT y números los asigna el sistema. Pulsa Generar código o escribe otro.", 422);
+    }
+    // With its own code the client only needs the internal identification.
+    const identity = claimClientIdentity(s, u, clientId, b.reservationId, !b.code);
+    const code = b.code || identity.code;
+    if (!code) throw new DomainError("CLIENT_RESERVATION_UNAVAILABLE", "La reserva no trae un código. Pulsa Generar código o escribe uno.", 409);
     const { reservationId: _reservation, ...values } = b;
     const client = { ...values, id: clientId, code, internalIdentification: identity.internalIdentification, active: true, preferredCurrency: b.preferredCurrency ?? "DOP" };
     s.clients.push(client);
@@ -885,12 +900,21 @@ export async function buildApp(config: Config) {
         throw new DomainError("ROUTE_NOT_FOUND", "Selecciona una ruta válida.", 404);
       if (s.clients.some((client) => client.id !== params.id && client.code === b.code))
         throw new DomainError("CLIENT_CODE_EXISTS", "El código de cliente ya existe.", 409);
+      const hadIdentification = Boolean(current.internalIdentification);
       if (b.reservationId) {
         if (current.internalIdentification) throw new DomainError("CLIENT_IDENTITY_IMMUTABLE", "El cliente ya tiene una identificación interna permanente.", 409);
         current.internalIdentification = claimClientIdentity(s, u, current.id, b.reservationId).internalIdentification;
       }
       if (s.clientIdentityReservations.some((row) => row.id !== b.reservationId && row.clientId !== current.id && row.code === b.code))
         throw new DomainError("CLIENT_CODE_RESERVED", "El código está reservado por otra operación.", 409);
+      // A system-format code is accepted only if the client already had it or it is the code of its reservation
+      // (an identification-only reservation has none: its placeholder is the identification itself).
+      if (b.code !== current.code && SYSTEM_CLIENT_CODE.test(b.code) &&
+          !s.clientIdentityReservations.some((row) => row.code === b.code && row.code !== row.internalIdentification && (row.id === b.reservationId || row.clientId === current.id)))
+        // "Generar código" is offered only to a client without identification.
+        throw new DomainError("CLIENT_CODE_SYSTEM_FORMAT", hadIdentification
+          ? "Los códigos formados por CLI o INT y números los asigna el sistema. Escribe otro código."
+          : "Los códigos formados por CLI o INT y números los asigna el sistema. Pulsa Generar código o escribe otro.", 422);
       const { reservationId: _reservation, ...values } = b;
       Object.assign(current, values);
       return current;
@@ -966,6 +990,7 @@ export async function buildApp(config: Config) {
   describe("get", "/api/clientes/{id}/tragamonedas/registros", "Historial de máquinas tragamonedas del cliente");
   mutate("/api/cargos", "Crear cargo", chargeBody, (s, u, b) => {
     assertAdmin(u);
+    assertChargeService(b.service);
     collectorForClient(s, b.clientId);
     const charge = {
       id: randomUUID(),
@@ -988,6 +1013,8 @@ export async function buildApp(config: Config) {
     if (charge.collected > 0 || s.movements.some((movement) => movement.type === "collection" && movement.chargeId === charge.id && !movement.cancelledAt))
       throw new DomainError("CARGO_HAS_COLLECTIONS", "No se puede modificar un cargo que ya tiene cobros.", 409);
     collectorForClient(s, b.clientId);
+    // A charge that already had that service (older data) can still be corrected.
+    assertChargeService(b.service, charge.service);
     Object.assign(charge, b);
     return charge;
   });
@@ -1003,6 +1030,7 @@ export async function buildApp(config: Config) {
           "La selección contiene clientes duplicados.",
         );
       b.clientIds.forEach((clientId) => collectorForClient(s, clientId));
+      assertChargeService(b.service);
       const charges = b.clientIds.map((clientId) => ({
         id: randomUUID(),
         clientId,
@@ -1382,7 +1410,7 @@ export async function buildApp(config: Config) {
           .match(new RegExp(`.{1,${cols}}`, "g"))
           ?.join("\n") ?? "";
       const symbol = r.currency === "DOP" ? "RD$" : r.currency;
-      const body = `COBROS Y PAGOS\nRecibo operacional\n${"-".repeat(cols)}\n${clean(r.clientName)}\n${clean(r.concept)}\n${symbol} ${(r.amount / 100).toFixed(2)}\n${clean(r.collectorName)}\n${r.businessDate}\n${clean(r.id)}\nNo es comprobante fiscal\n${clean(r.footerNote)}\n\n\n`;
+      const body = `COBROS Y PAGOS\nRecibo operacional\n${"-".repeat(cols)}\n${clean(r.clientName)}\n${clean(r.concept)}\n${symbol} ${(r.amount / 100).toFixed(2)}\n${clean(r.collectorName)}\n${r.businessDate}\n${clean(r.id)}\nNo es comprobante fiscal\n${r.footerNote.split(/\r?\n/).map(clean).filter(Boolean).join("\n")}\n\n\n`;
       return reply
         .header(
           "Content-Disposition",

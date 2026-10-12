@@ -5,7 +5,7 @@ import { decimalCents, exportSections, formatDate, formatMoney, printSections, t
 import { clientCurrency, clientLabel, commissionSections, contactRows, eligibleClients, LatestRequestGate, managerCommissionRows, managerCommissionSections, matchingClients, quoteHistoryRows, rateMoment, selectRemittanceClient, type ClientSide, type RemittanceClient } from "./suggestions";
 import "./remittances.css";
 import { formatCrossRate } from "./crossRate";
-import { INPUT_LIMITS, isDecimalDraft, validateText } from "../inputRules";
+import { INPUT_LIMITS, isDecimalDraft, validatePhone, validateText } from "../inputRules";
 import { confirmedRateResponse } from "./rateResponse";
 import { useClientContact } from "./useClientContact";
 import { confirmedCreatedTransfer } from "./createdTransferResponse";
@@ -14,16 +14,22 @@ import { confirmedCommissionPolicy } from "./commissionPolicyResponse";
 import type { CommissionPolicy } from "./types";
 import { currentOperationalWeek } from "../operationalWeek";
 
-type Tab = "envios" | "recibos" | "tasas" | "caja" | "reportes";
+type Tab = "envios" | "recibos" | "tasas" | "comisiones" | "caja" | "reportes";
+const adminTabs: readonly Tab[] = ["tasas", "comisiones"];
+// A phone matches however it was typed: with spaces, dashes, parentheses or country code.
+const digitsOf = (value: string) => value.replace(/\D/g, "");
+// Text matches without regard to case or accents: "maria" finds "María".
+const fold = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase();
 type Actor = { id: string; name: string };
 type Confirmation = { title: string; path: string; body: Record<string, unknown>; description: ReactNode; kind: "create" | "pay" | "cancel" | "rate" | "policy" | "open" | "close"; idempotencyKey?: string; expectedQuotation?: Quotation };
 // Only in-memory: retain an uncertain action across route changes and same-actor login.
 const pendingByActor = new Map<string, Confirmation>();
 // These domain errors are produced only after the server's idempotency lookup.
-const definitiveDomainErrors = new Set(["QUOTE_CHANGED", "COMMISSION_POLICY_MISMATCH", "CASH_NOT_OPEN", "RATE_MISSING", "RATE_DATE", "DOP_RATE", "CASH_EXISTS", "PREVIOUS_CASH_OPEN", "CASH_CLOSED", "CASH_UNBALANCED", "CASH_NOT_FOUND", "CLIENT_INACTIVE", "CLIENT_NOT_FOUND", "SAME_CLIENT", "TRANSFER_NOT_PENDING", "TRANSFER_NOT_FOUND", "INSUFFICIENT_CASH", "SEQUENCE_EXHAUSTED", "MONEY_RANGE", "INVALID_AMOUNT", "INVALID_RATE", "INVALID_CURRENCY", "INVALID_COMMISSION", "INVALID_AMOUNT_MODE", "COMMISSION_EXCEEDS_TOTAL", "AMOUNT_TOO_SMALL", "REASON_REQUIRED"]);
+// VALIDATION comes before it, for a body that could never have been saved: the same body cannot succeed on a retry.
+const definitiveDomainErrors = new Set(["QUOTE_CHANGED", "COMMISSION_POLICY_MISMATCH", "CASH_NOT_OPEN", "RATE_MISSING", "RATE_DATE", "DOP_RATE", "CASH_EXISTS", "PREVIOUS_CASH_OPEN", "CASH_CLOSED", "CASH_UNBALANCED", "CASH_NOT_FOUND", "CLIENT_INACTIVE", "CLIENT_NOT_FOUND", "SAME_CLIENT", "TRANSFER_NOT_PENDING", "TRANSFER_NOT_FOUND", "INSUFFICIENT_CASH", "SEQUENCE_EXHAUSTED", "MONEY_RANGE", "INVALID_AMOUNT", "INVALID_RATE", "INVALID_CURRENCY", "INVALID_COMMISSION", "INVALID_AMOUNT_MODE", "COMMISSION_EXCEEDS_TOTAL", "AMOUNT_TOO_SMALL", "REASON_REQUIRED", "VALIDATION"]);
 type Draft = { senderClientId: string; recipientClientId: string; sendingUserId: string; sourceCurrency: Currency; destinationCurrency: Currency; amount: string; amountMode: "source" | "destination"; note: string };
 const statusText = { pending: "Pendiente de entrega", paid: "Pagado", cancelled: "Cancelado" };
-const tabs: { id: Tab; label: string }[] = [{ id: "envios", label: "Envíos" }, { id: "recibos", label: "Recibos" }, { id: "tasas", label: "Tasas" }, { id: "caja", label: "Caja" }, { id: "reportes", label: "Reportes" }];
+const tabs: { id: Tab; label: string }[] = [{ id: "envios", label: "Envíos" }, { id: "recibos", label: "Recibos" }, { id: "tasas", label: "Tasas" }, { id: "comisiones", label: "Comisiones" }, { id: "caja", label: "Caja" }, { id: "reportes", label: "Reportes" }];
 const money = formatMoney;
 const moneyInputLength = 17;
 
@@ -108,8 +114,13 @@ export function ClientPicker({ api, side, senderId, label, clients, value, query
   </div>;
 }
 
-export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = "envios", reportRequest }: { api: StrictApi; user: Actor; isAdmin: boolean; initialTab?: Tab; reportRequest?: number }) {
-  const [tab, setTab] = useState<Tab>(reportRequest ? "reportes" : initialTab === "tasas" && !isAdmin ? "envios" : initialTab);
+// Last request to open the delivery list that was already applied. The request object
+// outlives the window, so reopening the module later must not repeat an old search.
+let appliedPayoutRequest = 0;
+
+export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = "envios", reportRequest, payoutRequest }: { api: StrictApi; user: Actor; isAdmin: boolean; initialTab?: Tab; reportRequest?: number; payoutRequest?: { id: number; search: string } }) {
+  const pendingPayout = payoutRequest && payoutRequest.id > appliedPayoutRequest ? payoutRequest : undefined;
+  const [tab, setTab] = useState<Tab>(reportRequest ? "reportes" : pendingPayout ? "recibos" : adminTabs.includes(initialTab) && !isAdmin ? "envios" : initialTab);
   const [snapshot, setSnapshot] = useState<RemittanceSnapshot | null>(null);
   const [sent, setSent] = useState<Transfer[]>([]);
   const [received, setReceived] = useState<Transfer[]>([]);
@@ -118,7 +129,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   const [error, setError] = useState("");
   const [outputError, setOutputError] = useState("");
   const [notice, setNotice] = useState("");
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(pendingPayout?.search ?? "");
   const [status, setStatus] = useState("all");
   const [formOpen, setFormOpen] = useState(false);
   const [draft, setDraft] = useState<Draft>({ senderClientId: "", recipientClientId: "", sendingUserId: user.id, sourceCurrency: "DOP", destinationCurrency: "DOP", amount: "", amountMode: "source", note: "" });
@@ -126,6 +137,13 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   const [transactionPolicyPercent, setTransactionPolicyPercent] = useState<string | null>(null);
   const senderContact = useClientContact(api, formOpen ? draft.senderClientId : "", "sender", "", snapshot);
   const recipientContact = useClientContact(api, formOpen ? draft.recipientClientId : "", "recipient", draft.senderClientId, snapshot);
+  // Phone of the recipient: it starts with the one of the client record and can be typed or corrected.
+  const knownRecipientPhone = recipientContact.contact ? recipientContact.contact.phone || recipientContact.contact.cellular || "" : "";
+  const [recipientPhone, setRecipientPhone] = useState("");
+  // What the user typed wins: the record refills the field only while it is untouched for this recipient.
+  const recipientPhoneTyped = useRef(false);
+  useEffect(() => { recipientPhoneTyped.current = false; }, [draft.recipientClientId]);
+  useEffect(() => { if (!recipientPhoneTyped.current) setRecipientPhone(knownRecipientPhone); }, [draft.recipientClientId, knownRecipientPhone]);
   const [senderSearch, setSenderSearch] = useState("");
   const [recipientSearch, setRecipientSearch] = useState("");
   const [quote, setQuote] = useState<Quotation | null>(null);
@@ -155,6 +173,12 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   const retireQuote = useCallback(() => { quoteRequests.current.invalidate(); quoteLock.current = false; setQuoteBusy(false); setQuote(null); }, []);
   const changeTab = useCallback((next: Tab) => { retireQuote(); reportRequests.current.invalidate(); setReportBusy(false); setTab(next); setError(""); setOutputError(""); }, [retireQuote]);
   useEffect(() => { if (reportRequest) changeTab("reportes"); }, [reportRequest, changeTab]);
+  // Coming from "Entregas de Dinero": show the remittances to deliver, already filtered.
+  useEffect(() => {
+    if (!payoutRequest || payoutRequest.id <= appliedPayoutRequest) return;
+    appliedPayoutRequest = payoutRequest.id;
+    changeTab("recibos"); setSearch(payoutRequest.search); setStatus("pending");
+  }, [payoutRequest, changeTab]);
 
   const refresh = useCallback(async () => {
     const request = refreshRequests.current.begin();
@@ -168,6 +192,26 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
     finally { if (refreshRequests.current.accepts(request)) setLoading(false); }
   }, [api, retireQuote]);
   useEffect(() => { void refresh(); return () => { refreshRequests.current.invalidate(); quoteRequests.current.invalidate(); reportRequests.current.invalidate(); }; }, [refresh]);
+  // The rates tab is a read-only view of Administración: read it again on entry.
+  const ratesTabSeen = useRef(false);
+  // Only the rates are read: the lists and a quote in progress are left untouched.
+  const refreshRates = useCallback(async () => {
+    try {
+      const data = await api<RemittanceSnapshot>("/envios/snapshot");
+      setSnapshot((current) => current ? { ...current, rates: data.rates, rateHistory: data.rateHistory } : current);
+    } catch { /* The "Actualizar" button reports a failed read. */ }
+  }, [api]);
+  useEffect(() => {
+    if (tab !== "tasas") { ratesTabSeen.current = true; return; }
+    if (ratesTabSeen.current) void refreshRates();
+    ratesTabSeen.current = true;
+  }, [tab, refreshRates]);
+  // Administración announces a saved rate; the view shows it without leaving the tab.
+  useEffect(() => {
+    const onRates = () => { void refreshRates(); };
+    window.addEventListener("cyp-exchange-rates-updated", onRates);
+    return () => window.removeEventListener("cyp-exchange-rates-updated", onRates);
+  }, [refreshRates]);
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => { if (uncertain || busy) { event.preventDefault(); event.returnValue = ""; } };
     window.addEventListener("beforeunload", warn);
@@ -228,7 +272,8 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
       const savedTransfer = confirmation.kind === "create" ? confirmedCreatedTransfer(result, confirmation.body, user.id, confirmation.expectedQuotation) : null;
       pendingByActor.delete(user.id);
       setNotice("Operación registrada correctamente.");
-      if (confirmation.kind === "create") { setFormOpen(false); setQuote(null); setDraft((current) => ({ ...current, amount: "", note: "" })); }
+      // The phone typed for this transfer is not carried to the next one.
+      if (confirmation.kind === "create") { setFormOpen(false); setQuote(null); setDraft((current) => ({ ...current, amount: "", note: "" })); recipientPhoneTyped.current = false; setRecipientPhone(""); }
       if (confirmation.kind === "policy") { setPolicyPercent(null); setTransactionPolicyPercent(null); }
       if (confirmation.kind === "close") { setClosing(null); setCounted(""); }
       if (confirmation.kind === "cancel") setCancelReason("");
@@ -265,15 +310,20 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   function confirmCreate() {
     if (!quote) return;
     if (!senderContact.contact || !recipientContact.contact) { setError("Espera a que se carguen el teléfono y la dirección de ambos clientes. Si hubo un error, pulsa Actualizar y vuelve a cotizar."); return; }
+    // Sent only when it differs from the record; it is checked here with the same rule the server applies.
+    const typedRecipientPhone = recipientPhone.trim() !== knownRecipientPhone ? recipientPhone.trim() : "";
     try {
       validateText(draft.note, "La nota", INPUT_LIMITS.freeNote, { multiline: true });
+      validatePhone(typedRecipientPhone, "Teléfono del destinatario");
     }
     catch (failure) { setError(failureMessage(failure)); return; }
+    setError("");
     confirm({ title: "Confirmar envío", path: "/envios", kind: "create", expectedQuotation: quote, body: {
       senderClientId: draft.senderClientId, recipientClientId: draft.recipientClientId,
+      ...(typedRecipientPhone ? { recipientPhone: typedRecipientPhone } : {}),
       ...(isAdmin ? { sendingUserId: draft.sendingUserId } : {}), sourceCurrency: quote.sourceCurrency, destinationCurrency: quote.destinationCurrency,
       amount: quote.amount, commissionBps: quote.commissionBps, quote: quote.quote, note: draft.note.trim(), ...(quote.requestedReceiveAmount === undefined ? {} : { requestedReceiveAmount: quote.requestedReceiveAmount }),
-    }, description: <><p><strong>{senderContact.contact.name}</strong> envía a <strong>{recipientContact.contact.name}</strong>.</p><h3>Remitente</h3><ContactDetails contact={senderContact.contact} label="Remitente" /><h3>Destinatario</h3><ContactDetails contact={recipientContact.contact} label="Destinatario" /><p className="remittance-help">Datos actuales de las fichas de clientes. El comprobante conserva la copia guardada al registrar el envío.</p><QuoteDetails quote={quote} /><p>Operador: {operatorName(draft.sendingUserId)}. Registrado por: {user.name}.</p><p>Confirma después de recibir el total del remitente. La tasa queda guardada para este envío.</p></> });
+    }, description: <><p><strong>{senderContact.contact.name}</strong> envía a <strong>{recipientContact.contact.name}</strong>.</p><h3>Remitente</h3><ContactDetails contact={senderContact.contact} label="Remitente" /><h3>Destinatario</h3><ContactDetails contact={recipientContact.contact} label="Destinatario" />{typedRecipientPhone && <p><strong>Teléfono para este envío: {typedRecipientPhone}.</strong>{isAdmin && !recipientContact.contact.phone && digitsOf(typedRecipientPhone) !== digitsOf(recipientContact.contact.cellular) ? " También quedará guardado en la ficha del cliente, que no tiene teléfono." : " Sale en el comprobante; la ficha del cliente no cambia."}</p>}<p className="remittance-help">Datos actuales de las fichas de clientes. El comprobante conserva la copia guardada al registrar el envío.</p><QuoteDetails quote={quote} /><p>Operador: {operatorName(draft.sendingUserId)}. Registrado por: {user.name}.</p><p>Confirma después de recibir el total del remitente. La tasa queda guardada para este envío.</p></> });
   }
 
   function prepareCommissionPolicy(event: FormEvent) {
@@ -357,18 +407,33 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   const displayedReport = allocationReport ?? report;
   const reportTitle = displayedReport ? `${allocationReport ? "Reporte consolidado de comisiones" : "Envíos"} · ${displayedReport.from} a ${displayedReport.to} · ${displayedReport.grouping === "day" ? "Diario" : "Resumido"}` : "Envíos";
   const reportManagers = [...new Map((snapshot?.transfers ?? []).flatMap((transfer) => transfer.commissionAllocation?.managerId ? [[transfer.commissionAllocation.managerId, { id: transfer.commissionAllocation.managerId, name: transfer.commissionAllocation.managerName ?? transfer.commissionAllocation.managerId }] as const] : [])).values()].sort((a, b) => a.name.localeCompare(b.name));
-  const list = (tab === "recibos" ? received : sent).filter((transfer) => (status === "all" || transfer.status === status) && [transfer.envioReference, transfer.reciboReference, transfer.operatingCode, transfer.note, clientName(transfer.senderClientId), clientName(transfer.recipientClientId), ...[transfer.senderContact, transfer.recipientContact].flatMap((contact) => contact ? [contact.code, contact.name, contact.phone, contact.cellular, contact.address, contact.identification ?? ""] : [])].join(" ").toLocaleLowerCase().includes(search.toLocaleLowerCase())).sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.sequence - a.sequence);
+  // Text matches anywhere, without accents. A search made only of digits (four or more)
+  // is also compared with the digits of phone, mobile, code and identification, in both
+  // directions: "+509 3456 7890" finds a client saved as "3456-7890".
+  const searchDigits = /^[\d\s()+.-]+$/.test(search) ? digitsOf(search) : "";
+  const matchesSearch = (transfer: Transfer) => {
+    const contacts = [transfer.senderContact, transfer.recipientContact].flatMap((contact) => contact ? [contact] : []);
+    const texts = [transfer.envioReference, transfer.reciboReference, transfer.operatingCode, transfer.note, clientName(transfer.senderClientId), clientName(transfer.recipientClientId),
+      ...contacts.flatMap((contact) => [contact.code, contact.name, contact.phone, contact.cellular, contact.address, contact.identification ?? ""])];
+    if (fold(texts.join(" ")).includes(fold(search))) return true;
+    if (searchDigits.length < 4) return false;
+    return contacts.flatMap((contact) => [contact.code, contact.phone, contact.cellular, contact.identification ?? ""]).some((value) => {
+      const stored = digitsOf(value ?? "");
+      return stored.length > 0 && (stored.includes(searchDigits) || (stored.length >= 7 && searchDigits.endsWith(stored)));
+    });
+  };
+  const list = (tab === "recibos" ? received : sent).filter((transfer) => (status === "all" || transfer.status === status) && matchesSearch(transfer)).sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.sequence - a.sequence);
 
   return <section className="remittances" aria-label="Envíos de Dinero">
     <header className="remittance-heading"><div><h1>Envíos de Dinero</h1><p>{snapshot ? `Fecha de operación: ${snapshot.businessDate}` : "Conexión con la API"} · {user.name}</p></div><button type="button" onClick={() => void refresh()} disabled={loading || working}>{loading ? "Cargando…" : "Actualizar"}</button></header>
-    <nav className="remittance-tabs" aria-label="Secciones de Envíos">{tabs.filter((item) => item.id !== "tasas" || isAdmin).map((item) => <button key={item.id} type="button" aria-current={tab === item.id ? "page" : undefined} onClick={() => changeTab(item.id)}>{item.label}</button>)}</nav>
+    <nav className="remittance-tabs" aria-label="Secciones de Envíos">{tabs.filter((item) => !adminTabs.includes(item.id) || isAdmin).map((item) => <button key={item.id} type="button" aria-current={tab === item.id ? "page" : undefined} onClick={() => changeTab(item.id)}>{item.label}</button>)}</nav>
     {error && <div className="remittance-error" role="alert">{error}</div>}
     {outputError && <div className="remittance-error" role="alert">{outputError}</div>}
     {notice && <div className="remittance-notice" role="status">{notice}</div>}
     {!snapshot ? <div className="remittance-empty">{loading ? "Cargando clientes, tasas y cajas…" : "No hay datos conectados. Actualiza para volver a intentar."}</div> : <>
-      {(snapshot.commissionPolicy?.managerCommissionBps ?? 0) > (snapshot.commissionPolicy?.transactionCommissionBps ?? 0) && <p className="remittance-error" role="alert">La comisión total configurada no cubre el porcentaje del gestor. Un administrador debe revisar Remesas → Tasas → Reparto de comisiones antes de registrar nuevos envíos. Los recibos anteriores conservan sus importes.</p>}
+      {(snapshot.commissionPolicy?.managerCommissionBps ?? 0) > (snapshot.commissionPolicy?.transactionCommissionBps ?? 0) && <p className="remittance-error" role="alert">La comisión total configurada no cubre el porcentaje del gestor. Un administrador debe revisar Remesas → Comisiones antes de registrar nuevos envíos. Los recibos anteriores conservan sus importes.</p>}
       {(tab === "envios" || tab === "recibos") && <>
-        <div className="remittance-toolbar"><label>Buscar<input type="search" maxLength={INPUT_LIMITS.name} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Serie, teléfono, nombre, identificación, dirección o nota" /></label><label>Estado<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">Todos</option><option value="pending">Pendientes</option><option value="paid">Pagados</option><option value="cancelled">Cancelados</option></select></label>{tab === "envios" && <button type="button" className="remittance-primary" disabled={busy || uncertain} onClick={() => { if (formOpen) closeForm(); else { setFormOpen(true); clearErrors(); } }}>{formOpen ? "Cancelar nuevo envío" : "Nuevo envío"}</button>}</div>
+        <div className="remittance-toolbar"><label>Buscar<input type="search" maxLength={INPUT_LIMITS.name} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Serie, teléfono, nombre, identificación, dirección o nota" title="El teléfono se encuentra aunque lo escribas sin guiones ni espacios." /></label><label>Estado<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">Todos</option><option value="pending">Pendientes</option><option value="paid">Pagados</option><option value="cancelled">Cancelados</option></select></label>{tab === "envios" && <button type="button" className="remittance-primary" disabled={busy || uncertain} onClick={() => { if (formOpen) closeForm(); else { setFormOpen(true); clearErrors(); } }}>{formOpen ? "Cancelar nuevo envío" : "Nuevo envío"}</button>}</div>
         {tab === "envios" && formOpen && <form className="remittance-panel" onSubmit={(event) => void requestQuote(event)}>
           <h2>Nuevo envío</h2><fieldset disabled={working || uncertain} className="remittance-form-grid">
             <div className="remittance-party-fields" role="group" aria-label="Datos del remitente">
@@ -382,6 +447,8 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
             </div>
             <div className="remittance-party-fields" role="group" aria-label="Datos del destinatario">
               <ClientPicker api={api} side="recipient" senderId={draft.senderClientId} label="Destinatario" clients={eligibleClients(snapshot.clients, "recipient", draft.senderClientId)} value={draft.recipientClientId} query={recipientSearch} onQuery={(value) => { setRecipientSearch(value); updateDraft("recipientClientId", ""); }} onSelect={(client) => chooseClient("recipient", client)} contactState={recipientContact} />
+              <label className="remittance-phone-field">Teléfono del destinatario<input type="tel" inputMode="tel" autoComplete="off" maxLength={INPUT_LIMITS.phone} value={recipientPhone} disabled={!draft.recipientClientId} onChange={(event) => { recipientPhoneTyped.current = true; setRecipientPhone(event.target.value); setError(""); }} placeholder="Escríbelo si no aparece" /></label>
+              {recipientContact.contact && !knownRecipientPhone && !recipientPhone.trim() && <p className="remittance-client-warning" role="status">Este destinatario no tiene teléfono registrado. Escríbelo en «Teléfono del destinatario» para poder ubicarlo.</p>}
               <label>Moneda del destinatario<select value={draft.destinationCurrency} onChange={(event) => updateDraft("destinationCurrency", event.target.value as Currency)}>{snapshot.currencies.map((currency) => <option key={currency}>{currency}</option>)}</select></label>
             </div>
             {isAdmin && <label className="remittance-wide">Operador del envío<select required value={draft.sendingUserId} onChange={(event) => updateDraft("sendingUserId", event.target.value)}>{snapshot.operators.map((operator) => <option key={operator.id} value={operator.id}>{operator.name}</option>)}</select></label>}
@@ -392,13 +459,13 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
           {quote && <div className="remittance-quote"><QuoteDetails quote={quote} /><button type="button" className="remittance-primary" disabled={working || uncertain} onClick={confirmCreate}>Revisar y confirmar envío</button></div>}
         </form>}
         <p className="remittance-help">{tab === "recibos" ? "Recibos por destino. Abre un pendiente para registrar su entrega completa." : "Envíos registrados por tu operación. Abre una referencia para consultar su detalle."}</p>
-        <div className="remittance-table-wrap"><table className="remittance-table remittance-transfer-table"><caption>{tab === "recibos" ? "Recepción de dinero" : "Listado de envíos"} · {list.length}</caption><thead><tr><th>Referencia</th><th>Fecha</th><th>Remitente → destinatario</th><th>Total recibido</th><th>A entregar</th><th>Estado</th></tr></thead><tbody>{list.map((transfer) => <tr key={transfer.id} onDoubleClick={() => { setDetailId(transfer.id); setCancelReason(""); }}><td data-label="Referencia"><button type="button" className="remittance-link" onClick={() => { setDetailId(transfer.id); setCancelReason(""); }}>{tab === "recibos" ? transfer.reciboReference : transfer.envioReference}</button><small>{transfer.operatingCode}</small></td><td data-label="Fecha">{formatDate(transfer.createdAt)}</td><td data-label="Clientes">{clientName(transfer.senderClientId)}<br />→ {clientName(transfer.recipientClientId)}</td><td data-label="Total recibido">{money(transfer.totalAmount, transfer.sourceCurrency)}</td><td data-label="A entregar">{money(transfer.receiveAmount, transfer.destinationCurrency)}</td><td data-label="Estado"><span className={`remittance-status ${transfer.status}`}>{statusText[transfer.status]}</span></td></tr>)}{!list.length && <tr><td colSpan={6}>No hay {tab === "envios" ? "envíos" : "recibos"} para estos filtros.</td></tr>}</tbody></table></div>
+        <div className="remittance-table-wrap"><table className="remittance-table remittance-transfer-table"><caption>{tab === "recibos" ? "Recepción de dinero" : "Listado de envíos"} · {list.length}</caption><thead><tr><th>Referencia</th><th>Fecha</th><th>Remitente → destinatario · teléfono</th><th>Total recibido</th><th>A entregar</th><th>Estado</th></tr></thead><tbody>{list.map((transfer) => <tr key={transfer.id} onDoubleClick={() => { setDetailId(transfer.id); setCancelReason(""); }}><td data-label="Referencia"><button type="button" className="remittance-link" onClick={() => { setDetailId(transfer.id); setCancelReason(""); }}>{tab === "recibos" ? transfer.reciboReference : transfer.envioReference}</button><small>{transfer.operatingCode}</small></td><td data-label="Fecha">{formatDate(transfer.createdAt)}</td><td data-label="Clientes"><span className="remittance-client-cell">{clientName(transfer.senderClientId)}{transfer.senderContact?.phone || transfer.senderContact?.cellular ? <span className="remittance-client-phone"> · {transfer.senderContact.phone || transfer.senderContact.cellular}</span> : null}<br />→ {clientName(transfer.recipientClientId)}{transfer.recipientContact?.phone || transfer.recipientContact?.cellular ? <span className="remittance-client-phone"> · {transfer.recipientContact.phone || transfer.recipientContact.cellular}</span> : null}</span></td><td data-label="Total recibido">{money(transfer.totalAmount, transfer.sourceCurrency)}</td><td data-label="A entregar">{money(transfer.receiveAmount, transfer.destinationCurrency)}</td><td data-label="Estado"><span className={`remittance-status ${transfer.status}`}>{statusText[transfer.status]}</span></td></tr>)}{!list.length && <tr><td colSpan={6}>No hay {tab === "envios" ? "envíos" : "recibos"} para estos filtros.</td></tr>}</tbody></table></div>
       </>}
+      {tab === "comisiones" && isAdmin && <form className="remittance-panel" onSubmit={prepareCommissionPolicy}><h2>Reparto de comisiones</h2><p>Registra aquí los porcentajes aprobados por Gerencia. Cada nueva remesa los toma automáticamente en Admin y en la terminal del cobrador. Ambos empiezan en 0% hasta definir las tasas comerciales. Los cambios afectan solo remesas futuras.</p><fieldset disabled={working || uncertain} className="remittance-form-grid"><label>Comisión total de la transacción (%)<input aria-label="Comisión total de la transacción (%)" required inputMode="decimal" maxLength={6} value={transactionPolicyPercent ?? String((snapshot.commissionPolicy?.transactionCommissionBps ?? 0) / 100)} onChange={(event) => { if (isDecimalDraft(event.target.value, { wholeDigits: 3 })) setTransactionPolicyPercent(event.target.value); }} /><small>Se cobra sobre el monto a enviar en moneda de origen.</small></label><label>Comisión del gestor (%)<input aria-label="Comisión del gestor (%)" required inputMode="decimal" maxLength={6} value={policyPercent ?? String((snapshot.commissionPolicy?.managerCommissionBps ?? 0) / 100)} onChange={(event) => { if (isDecimalDraft(event.target.value, { wholeDigits: 3 })) setPolicyPercent(event.target.value); }} /><small>Se calcula sobre el importe final de destino. La empresa conserva el resto.</small></label></fieldset><button className="remittance-primary" disabled={working || uncertain}>Revisar reparto</button></form>}
       {tab === "tasas" && isAdmin && <>
-        <form className="remittance-panel" onSubmit={prepareCommissionPolicy}><h2>Reparto de comisiones</h2><p>Registra aquí los porcentajes aprobados por Gerencia. Cada nueva remesa los toma automáticamente en Admin y en la terminal del cobrador. Ambos empiezan en 0% hasta definir las tasas comerciales. Los cambios afectan solo remesas futuras.</p><fieldset disabled={working || uncertain} className="remittance-form-grid"><label>Comisión total de la transacción (%)<input aria-label="Comisión total de la transacción (%)" required inputMode="decimal" maxLength={6} value={transactionPolicyPercent ?? String((snapshot.commissionPolicy?.transactionCommissionBps ?? 0) / 100)} onChange={(event) => { if (isDecimalDraft(event.target.value, { wholeDigits: 3 })) setTransactionPolicyPercent(event.target.value); }} /><small>Se cobra sobre el monto a enviar en moneda de origen.</small></label><label>Comisión del gestor (%)<input aria-label="Comisión del gestor (%)" required inputMode="decimal" maxLength={6} value={policyPercent ?? String((snapshot.commissionPolicy?.managerCommissionBps ?? 0) / 100)} onChange={(event) => { if (isDecimalDraft(event.target.value, { wholeDigits: 3 })) setPolicyPercent(event.target.value); }} /><small>Se calcula sobre el importe final de destino. La empresa conserva el resto.</small></label></fieldset><button className="remittance-primary" disabled={working || uncertain}>Revisar reparto</button></form>
-        <p className="remittance-help">Consulta de tasas de Administración. Para registrar o modificar una tasa utiliza Archivos → Tasas de Cambio. Los envíos conservan la tasa aplicada al confirmarlos.</p>
-        <DataTable section={{ title: "Tasas vigentes", columns: ["Fecha", "Moneda", "Tasa", "Último cambio (America/Santo_Domingo)"], rows: [...snapshot.rates].sort((a, b) => b.date.localeCompare(a.date) || (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "")).map((row) => [row.date, row.currency, row.rate, rateMoment(row.updatedAt)]) }} />
-        <DataTable section={{ title: "Historial de cambios de tasa", columns: ["Fecha de operación", "Moneda", "Tasa", "Fecha y hora (America/Santo_Domingo)", "Registrado por"], rows: [...(snapshot.rateHistory ?? [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map((row) => [row.date, row.currency, row.rate, rateMoment(row.createdAt), operatorName(row.actorId)]) }} />
+        <p className="remittance-help">Consulta de tasas de Administración: esta pantalla solo muestra el historial. Para registrar o modificar una tasa utiliza Archivos → Admin. → Tasas de cambio. Los envíos conservan la tasa aplicada al confirmarlos.</p>
+        <DataTable section={{ title: "Tasas registradas por día · la más reciente arriba", columns: ["Fecha", "Moneda", "Tasa de remesas", "Compra", "Venta", "Último cambio (hora de Santo Domingo)"], rows: [...snapshot.rates].sort((a, b) => b.date.localeCompare(a.date) || (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "")).map((row) => [row.date, row.currency, row.rate, row.purchaseRate ?? "Sin configurar", row.saleRate ?? "Sin configurar", rateMoment(row.updatedAt)]) }} />
+        <DataTable section={{ title: "Historial de cambios de tasa · el más reciente arriba", columns: ["Fecha de operación", "Moneda", "Tasa de remesas", "Compra", "Venta", "Fecha y hora (hora de Santo Domingo)", "Registrado por"], rows: [...(snapshot.rateHistory ?? [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map((row) => [row.date, row.currency, row.rate, row.purchaseRate ?? "Sin configurar", row.saleRate ?? "Sin configurar", rateMoment(row.createdAt), operatorName(row.actorId)]) }} />
       </>}
       {tab === "caja" && <>
         <p className="remittance-help">Caja exclusiva de envíos. Saldo = apertura + ingresos de envíos − devoluciones − pagos. Cada moneda se cuenta por separado.</p>

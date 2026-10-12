@@ -58,6 +58,7 @@ export function ConnectedExchangeRates({ actorId, isAdmin }: { actorId: string; 
     try {
       await request.run<Rate>("/envios/tasas", draft, draft, (result) => { confirmedRateResponse(result, draft); return true; });
       setDraft(null); setReviewing(false); setNotice("Tasa del día guardada. Los envíos anteriores conservan su tasa.");
+      window.dispatchEvent(new Event("cyp-exchange-rates-updated"));
       await refresh();
     } catch { /* The request retains its submitted draft and a reusable key when the outcome is uncertain. */ }
   };
@@ -70,7 +71,7 @@ export function ConnectedExchangeRates({ actorId, isAdmin }: { actorId: string; 
     {notice && <p className="location-feedback" role="status">{notice}</p>}
     <div className="legacy-mdi-table-wrap">
       <table className="legacy-mdi-table exchange-rates-grid">
-        <thead><tr><th>Fecha</th><th>Moneda</th><th>Abrev</th><th>Tasa de remesas</th><th>Compra</th><th>Venta</th><th>Último cambio (America/Santo_Domingo)</th></tr></thead>
+        <thead><tr><th>Fecha</th><th>Moneda</th><th>Abrev</th><th>Tasa de remesas</th><th>Compra</th><th>Venta</th><th>Último cambio (hora de Santo Domingo)</th></tr></thead>
         <tbody>{rates.map((rate) => <tr key={rate.id} role="button" tabIndex={0} className={selected?.id === rate.id ? "selected-row" : ""}
           onClick={() => setSelectedId(rate.id)} onDoubleClick={() => rate.date === snapshot?.businessDate && open(rate)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedId(rate.id))}>
           <td><span className={`mdi-row-select ${selected?.id === rate.id ? "selected" : ""}`}>{rate.date}</span></td><td>{names[rate.currency]}</td><td>{rate.currency}</td><td>{rate.rate}</td><td>{rate.purchaseRate ?? "Sin configurar"}</td><td>{rate.saleRate ?? "Sin configurar"}</td><td>{rateMoment(rate.updatedAt)}</td>
@@ -94,6 +95,9 @@ export function ConnectedExchangeRates({ actorId, isAdmin }: { actorId: string; 
         <label className="exchange-rate-row exchange-date-row"><span className="exchange-rate-label">Fecha:</span><input type="date" value={draft.date} readOnly /></label>
         <RateRegistrationTime rate={rates.find((row) => row.currency === draft.currency && row.date === draft.date)} className="exchange-rate-row" labelClassName="exchange-rate-label" />
         {([['rate', 'Tasa de remesas'], ['purchaseRate', 'Compra'], ['saleRate', 'Venta']] as const).map(([key, label]) => <label className="exchange-rate-row" key={key}><span className="exchange-rate-label">{label}:</span><input aria-label={label} required inputMode="decimal" maxLength={RATE_INPUT_MAX_LENGTH} value={draft[key] ?? ""} readOnly={draft.currency === "DOP"} onChange={(event) => { setDraft({ ...draft, [key]: rateInputDraft(event.target.value) }); setFormError(""); }} /></label>)}
+        <p className="exchange-rate-hint" role="note">{draft.currency === "DOP"
+          ? "El peso dominicano es la moneda base: siempre vale 1 y por eso aquí no se puede cambiar. Para registrar una tasa, elige Dólar Americano o Euro en «Moneda»."
+          : `Escribe cuántos pesos dominicanos (DOP) vale 1 ${draft.currency}. Los tres valores se pueden editar.`}</p>
         {formError && <p role="alert">{formError}</p>}
         <div className="legacy-dialog-actions centered exchange-rate-actions"><button type="submit">Revisar tasa</button><button type="button" onClick={close}>Cancelar</button></div>
       </form>}
