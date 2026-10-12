@@ -32,6 +32,8 @@ function inDateRange(value: string, from?: string, to?: string) {
   return (!from || day >= from) && (!to || day <= to);
 }
 function contains(value: string, query: string) { return value.toLocaleLowerCase().includes(query.toLocaleLowerCase()); }
+// Built-in accounts that are not stored in the accounts catalog.
+const SYSTEM_ACCOUNT_NAMES: Record<string, string> = { "demo-admin": "Administración", "configured-admin": "Administración", "demo-collector": "Cobrador" };
 
 export function registerAdminToolsRoutes(app: FastifyInstance, store: Store, user: (req: FastifyRequest) => User, mutate: Mutate, describe: Describe, rraa?: RraaValidator) {
   const validator = () => {
@@ -41,7 +43,17 @@ export function registerAdminToolsRoutes(app: FastifyInstance, store: Store, use
   const stationView = (station: ReturnType<typeof getAdminTools>["stations"][number]) =>
     ({ ...station, rraaValidated: stationRraaValidated(station, rraa?.clientId) });
   app.get("/api/estaciones", async (req) => { assertAdminRead(user(req)); return getAdminTools(await store.read()).stations.map(stationView); });
-  app.get("/api/estaciones/rraa", async (req) => { assertAdminRead(user(req)); return { configured: Boolean(rraa), clientId: rraa?.clientId }; });
+  app.get("/api/estaciones/rraa", async (req) => {
+    assertAdminRead(user(req));
+    if (!rraa?.simulated) return { configured: Boolean(rraa), clientId: rraa?.clientId };
+    // Practice control: names and devices are unique in the catalogue and the demo is shared, so offer pairs that are still free.
+    const rows = getAdminTools(await store.read()).stations, lower = (text: unknown) => String(text ?? "").toLocaleLowerCase();
+    const names = new Set(rows.map((row) => lower(row.name))), devices = new Set(rows.map((row) => lower(row.deviceId)));
+    const all = rraa.examples ?? [];
+    const examples = all.filter((item) => !names.has(lower(item.stationCode)) && !devices.has(lower(item.deviceId))).slice(0, 3);
+    return { configured: true, clientId: rraa.clientId, simulated: true, examples,
+      ...(all.length ? { exampleRange: [all[0].stationCode, all[all.length - 1].stationCode] } : {}) };
+  });
   app.post("/api/estaciones/validar", async (req) => {
     assertAdmin(user(req)); const body = stationValidationBody.parse(req.body);
     return validator().validate(body.stationCode, body.deviceId);
@@ -50,7 +62,12 @@ export function registerAdminToolsRoutes(app: FastifyInstance, store: Store, use
   describe("post", "/api/estaciones/validar", "Consultar VALSTAT sin guardar ni activar la estación", stationValidationBody, false, false);
   mutate("/api/estaciones/:id/actividad", "Activar con RRAA o desactivar estación", z.object({ active: z.boolean() }).strict(), async (state, actor, body, params) => {
     assertAdmin(actor); const station = requireAdminRow(getAdminTools(state).stations, params.id, "Estación");
-    if (body.active) applyRraaValidation(station, await validator().validate(station.name, station.deviceId), actor.id);
+    if (body.active) {
+      const service = validator();
+      // Practice control only: a station without device can never be found, so say what is missing. The provider keeps its own answer.
+      if (service.simulated && !String(station.deviceId ?? "").trim()) throw new DomainError("RRAA_INPUT_INVALID", "Esta estación no tiene ID dispositivo. Edítala con una Estación y un ID dispositivo registrados en el control de prueba antes de activarla.", 422);
+      applyRraaValidation(station, await service.validate(station.name, station.deviceId), actor.id);
+    }
     station.active = body.active; return stationView(station);
   });
   app.get("/api/grupos-pcp", async (req) => { assertAdminRead(user(req)); return getAdminTools(await store.read()).pcpGroups; });
@@ -104,7 +121,7 @@ export function registerAdminToolsRoutes(app: FastifyInstance, store: Store, use
       const station = requireAdminRow(data.stations, stationId, "Estación");
       const existing = data.pcpStations.some((link) => link.pcpId === pcp.id && link.stationId === stationId);
       if (!existing && !stationRraaValidated(station, rraa?.clientId))
-        throw new DomainError("STATION_RRAA_REQUIRED", "Solo puedes agregar estaciones validadas por RRAA para esta instalación.", 409);
+        throw new DomainError("STATION_RRAA_REQUIRED", rraa?.simulated ? "Solo puedes agregar estaciones validadas por el control de prueba de la demo." : "Solo puedes agregar estaciones validadas por RRAA para esta instalación.", 409);
       if (!existing && !station.active) throw new DomainError("STATION_INACTIVE", "Solo puedes agregar estaciones activas.", 409);
       if (!existing) applyRraaValidation(station, await validator().validate(station.name, station.deviceId), actor.id);
     }
@@ -135,7 +152,13 @@ export function registerAdminToolsRoutes(app: FastifyInstance, store: Store, use
       const client = state.clients.find((item) => item.id === row.clientId);
       return inDateRange(row.createdAt, input.from, input.to) && (!input.status || row.status === input.status) && contains(`${client?.name ?? ""} ${client?.code ?? ""}`, input.q);
     }).sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id));
-    return { items: items.slice(input.offset, input.offset + input.limit), total: items.length, limit: input.limit, offset: input.offset };
+    // The author is stored by account id; the screen needs the person's name.
+    const reader = user(req);
+    const personName = (accountId?: string) => !accountId ? undefined
+      : state.accounts.find((account) => account.id === accountId)?.name
+        ?? (accountId === reader.id ? reader.name : Object.hasOwn(SYSTEM_ACCOUNT_NAMES, accountId) ? SYSTEM_ACCOUNT_NAMES[accountId] : undefined);
+    return { items: items.slice(input.offset, input.offset + input.limit).map((row) => ({ ...row,
+      createdByName: personName(row.createdBy), resolvedByName: personName(row.resolvedBy) })), total: items.length, limit: input.limit, offset: input.offset };
   });
   describe("get", "/api/solicitudes-autorizacion", "Solicitudes administrativas y decisiones registradas");
   mutate("/api/solicitudes-autorizacion", "Registrar solicitud administrativa pendiente", requestBody, (state, actor, body) => createAuthorizationRequest(state, actor, body));

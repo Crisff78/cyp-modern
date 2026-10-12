@@ -99,7 +99,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
         await openWorkspace();
         const workspace = page.getByRole("region", { name: "Envíos de Dinero", exact: true });
         const savePolicy = async (transaction: string, manager: string) => {
-          await workspace.getByRole("button", { name: "Tasas", exact: true }).click();
+          await workspace.getByRole("button", { name: "Comisiones", exact: true }).click();
           await workspace.getByLabel("Comisión total de la transacción (%)", { exact: true }).fill(transaction);
           await workspace.getByLabel("Comisión del gestor (%)", { exact: true }).fill(manager);
           await workspace.getByRole("button", { name: "Revisar reparto", exact: true }).click();
@@ -109,7 +109,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
         };
         await savePolicy("6", "2");
         assert.equal((await store.read()).remittances.commissionPolicy!.transactionCommissionBps, 600);
-        await openWorkspace(); await workspace.getByRole("button", { name: "Tasas", exact: true }).click();
+        await openWorkspace(); await workspace.getByRole("button", { name: "Comisiones", exact: true }).click();
         assert.equal(await workspace.getByLabel("Comisión total de la transacción (%)", { exact: true }).inputValue(), "6", "configuration survives reload");
         await workspace.getByLabel("Comisión del gestor (%)", { exact: true }).fill("7");
         await workspace.getByRole("button", { name: "Revisar reparto", exact: true }).click();

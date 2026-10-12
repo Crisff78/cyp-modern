@@ -676,6 +676,12 @@ function findClientByIdentificacion(state: State, identificacion: string) {
   return client;
 }
 
+// Remittances have their own module with sender, recipient, rate and commissions:
+// they are never registered as a charge.
+export function assertChargeService(service: string, previous?: string) {
+  if (service !== previous && /remesa/i.test(service))
+    throw new DomainError("REMITTANCE_SERVICE", "Los envíos de dinero se registran en Envíos de Dinero, no como cargo.", 422);
+}
 export function importCharges(
   state: State,
   user: User,
@@ -700,6 +706,7 @@ export function importCharges(
   filas.forEach((fila, index) => {
     try {
       assertImportAmount(fila.importe);
+      assertChargeService(fila.servicio.trim());
       const client = findClientByIdentificacion(state, fila.identificacion);
       collectorForClient(state, client.id);
       state.charges.push({

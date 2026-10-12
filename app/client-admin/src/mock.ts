@@ -740,7 +740,7 @@ export async function mockApi<T>(
         .toLowerCase(),
       record = users[key];
     if (!record || body.password !== record.password)
-      throw new MockApiError("Correo o contraseña incorrectos.", 401);
+      throw new MockApiError("Usuario o contraseña incorrectos.", 401);
     const { password: _password, ...user } = record;
     const enriched = enrichUserRole(user);
     setCurrentUser(enriched);

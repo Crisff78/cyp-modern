@@ -186,7 +186,9 @@ El esquema incluye las migraciones 014 (anulaciones con historial inmutable) y
 de cobros guarda todas sus líneas o ninguna. Las anulaciones se limitan a la
 jornada actual abierta y respetan los fondos disponibles. Las solicitudes de
 autorización registran una decisión administrativa; no crean pagos ni alteran
-límites de caja. Las licencias de estaciones son metadatos registrados manualmente.
+límites de caja. En la demo las licencias de estaciones son ficticias y las entrega el
+control de prueba al validar (ver [RRAA-ESTACIONES.md](RRAA-ESTACIONES.md)); no se
+escriben a mano.
 
 ## Límites de esta demo gratuita
 

@@ -2,7 +2,9 @@ import { DomainError } from "./domain.js";
 import type { PcpStation } from "./admin-tools.js";
 
 export type RraaValidation = { clientId: string; stationCode: string; deviceId: string; license: string; validatedAt: string };
-export type RraaValidator = { clientId: string; validate: (stationCode: string, deviceId: string) => Promise<RraaValidation> };
+export type RraaExample = { stationCode: string; deviceId: string };
+// `simulated` marks the practice control of the demo; `examples` are data it accepts, shown to whoever tries it.
+export type RraaValidator = { clientId: string; validate: (stationCode: string, deviceId: string) => Promise<RraaValidation>; simulated?: boolean; examples?: readonly RraaExample[] };
 export type RraaConfig = { endpoint: string; clientId: string; timeoutMs?: number; fetch?: typeof fetch };
 const validParameter = (value: string, max = 160) => typeof value === "string" && value.trim().length > 0 && value.length <= max && !/[|\u0000-\u001f\u007f]/.test(value);
 export function parseRraaResponse(text: string): string {
@@ -48,6 +50,31 @@ export function createRraaValidator(config: RraaConfig): RraaValidator {
       throw new DomainError("RRAA_UNAVAILABLE", controller.signal.aborted ? "RRAA no respondió a tiempo. La estación no fue autorizada; reintenta." : "No pudimos consultar RRAA. La estación no fue autorizada; reintenta.", 502);
     } finally { clearTimeout(timer); }
   } };
+}
+// Demo only: a practice "company control" so the station flow can be tried before the provider is
+// connected. It answers like VALSTAT for the fictional company of the demo and contacts no service:
+// only the stations registered in that fictional control are found; any other data is rejected.
+export const DEMO_STATION_CLIENT = "EMPRESA-DEMO";
+const twoDigits = (value: number) => String(value).padStart(2, "0");
+function demoLicense(stationCode: string, deviceId: string): string | undefined {
+  const practice = /^EST-PRUEBA-(0[1-9]|[1-9]\d)$/.exec(stationCode);
+  if (practice) return deviceId === `DISP-PRUEBA-${practice[1]}` ? `LIC-DEMO-${practice[1]}` : undefined;
+  // The example stations that come with the demo catalogue are registered too.
+  const seeded = /^DEMO V2 · Estación ([1-6])$/.exec(stationCode);
+  if (seeded) return deviceId === `DEMO-V2-DISPOSITIVO-${twoDigits(Number(seeded[1]))}` ? `LIC-DEMO-V2-${twoDigits(Number(seeded[1]))}` : undefined;
+  return undefined;
+}
+export function createDemoStationControl(): RraaValidator {
+  return { clientId: DEMO_STATION_CLIENT, simulated: true,
+    // Every practice pair the control knows; the status route offers the first ones that are still free.
+    examples: Array.from({ length: 99 }, (_, index) => index + 1).map((number) => ({ stationCode: `EST-PRUEBA-${twoDigits(number)}`, deviceId: `DISP-PRUEBA-${twoDigits(number)}` })),
+    async validate(stationCode, deviceId) {
+      if (!validParameter(stationCode) || !validParameter(deviceId))
+        throw new DomainError("RRAA_INPUT_INVALID", "Indica el código de Estación y el ID dispositivo, sin separadores | ni controles.", 422);
+      const license = demoLicense(stationCode.trim(), deviceId.trim());
+      if (!license) throw new DomainError("RRAA_STATION_NOT_FOUND", "Control de prueba: Estación no encontrada.", 422);
+      return { clientId: DEMO_STATION_CLIENT, stationCode: stationCode.trim(), deviceId: deviceId.trim(), license, validatedAt: new Date().toISOString() };
+    } };
 }
 export function stationRraaValidated(station: PcpStation, clientId?: string) {
   return Boolean(clientId && station.license && station.rraaClientId === clientId && station.rraaStationCode === station.name &&

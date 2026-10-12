@@ -233,9 +233,9 @@ test("October nine shell changes work in actual App with isolated synthetic APIs
       const deposits = await openNav("Depósitos por Cobradores", ".deposits-legacy-view"); await deposits.getByTitle("Nuevo", { exact: true }).click();
       const deposit = page.getByRole("dialog", { name: "Datos del Depósito...", exact: true }); await deposit.waitFor();
       const names = await deposit.locator(".deposit-denominations-table input").evaluateAll((nodes: HTMLInputElement[]) => nodes.map((node) => node.getAttribute("aria-label")));
-      assert.deepEqual(names, [1, 5, 10, 20, 50, 100, 200, 500, 1000, 2000].map((value) => `Cantidad ${value / 100}`));
+      assert.deepEqual(names, [1, 100, 500, 1000, 2000, 2500, 5000, 10000, 20000, 50000, 100000, 200000].map((value) => `Cantidad ${value / 100}`));
       await deposit.locator(".deposit-denominations-toolbar").getByRole("button", { name: "Refrescar", exact: true }).click();
-      assert.equal(await deposit.getByLabel("Cantidad 20", { exact: true }).inputValue(), "6"); assert.equal(await deposit.getByLabel("Cantidad 0.01", { exact: true }).inputValue(), "");
+      assert.equal(await deposit.getByLabel("Cantidad 100", { exact: true }).inputValue(), "1"); assert.equal(await deposit.getByLabel("Cantidad 20", { exact: true }).inputValue(), "1"); assert.equal(await deposit.getByLabel("Cantidad 0.01", { exact: true }).inputValue(), "45");
       await page.screenshot({ path: path.join(output, "deposit-denominations.png") });
     });
     await run("collection bank reference and note persist; selected row highlights; list printing is a single table and current receipt uses configured footer", async () => {

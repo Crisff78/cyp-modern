@@ -77,7 +77,9 @@ async function sendPending(request: PendingRequest): Promise<unknown> {
   finally { if (request.inFlight === response) request.inFlight = undefined; }
 }
 
-export function StationInstallationPanel({ station, user, disabled = false, onLockChange }: {
+export function StationInstallationPanel({ station, user, disabled = false, onLockChange, simulatedControl = false }: {
+  // True when the practice control of the demo answers instead of the provider: the texts do not say RRAA.
+  simulatedControl?: boolean;
   station: InstallationStation | null;
   user?: Actor;
   disabled?: boolean;
@@ -163,7 +165,7 @@ export function StationInstallationPanel({ station, user, disabled = false, onLo
       if (version === epoch.current) {
         setUncertain(false); setReview(null); setReason(""); setRevocationReview(false);
         if (request.kind !== "query") setData(null);
-        setMessage(request.kind === "register" ? "Este navegador quedó registrado en CyP para esta estación." : request.kind === "revoke" ? "Instalación revocada en CyP." : "Datos de CyP consultados. La estación y su estado RRAA se conservan.");
+        setMessage(request.kind === "register" ? "Este navegador quedó registrado en CyP para esta estación." : request.kind === "revoke" ? "Instalación revocada en CyP." : simulatedControl ? "Datos de CyP consultados. La estación y su validación se conservan." : "Datos de CyP consultados. La estación y su estado RRAA se conservan.");
         await refresh();
       }
     } catch (failure) {
@@ -234,9 +236,9 @@ export function StationInstallationPanel({ station, user, disabled = false, onLo
       <div className="cyp-installation-fields">
         <label>Estación CyP<input readOnly value={station.name} /></label>
         <label>ID de instalación CyP<input readOnly value={identity?.installationId ?? "Sin identidad guardada"} /></label>
-        <label>ID dispositivo RRAA<input readOnly value={station.deviceId || "Sin ID RRAA"} /></label>
+        <label>{simulatedControl ? "ID dispositivo" : "ID dispositivo RRAA"}<input readOnly value={station.deviceId || (simulatedControl ? "Sin ID" : "Sin ID RRAA")} /></label>
         <label>Vínculo de este navegador<input readOnly value={!listConfirmed ? "Sin comprobar" : statusText(current?.status)} /></label>
-        <label className="cyp-installation-readonly-check"><input type="checkbox" readOnly disabled checked={station.active && station.rraaValidated} /><span>Estación activa y validada por RRAA</span></label>
+        <label className="cyp-installation-readonly-check"><input type="checkbox" readOnly disabled checked={station.active && station.rraaValidated} /><span>{simulatedControl ? "Estación activa y validada por el control de prueba" : "Estación activa y validada por RRAA"}</span></label>
       </div>
       <p className="cyp-installation-note">Este ID identifica una clave guardada en el perfil del navegador. El registro requiere confirmación de un Admin y no obtiene licencias ni activa la estación.</p>
       <div className="cyp-installation-actions">
@@ -251,8 +253,8 @@ export function StationInstallationPanel({ station, user, disabled = false, onLo
         <label>Código de estación<input readOnly value={data.stationCode} /></label>
         <label>Instalación<input readOnly value={statusText(data.installationStatus)} /></label>
         <label>Estado de la estación<input readOnly value={data.active ? "Activa" : "Inactiva"} /></label>
-        <label>Validación RRAA registrada<input readOnly value={data.rraaValidationStatus === "validated" ? "Validada" : "No validada"} /></label>
-        <label>Última validación RRAA<input readOnly value={dateTime(data.rraaValidatedAt)} /></label>
+        <label>{simulatedControl ? "Validación registrada (control de prueba)" : "Validación RRAA registrada"}<input readOnly value={data.rraaValidationStatus === "validated" ? "Validada" : "No validada"} /></label>
+        <label>{simulatedControl ? "Última validación" : "Última validación RRAA"}<input readOnly value={dateTime(data.rraaValidatedAt)} /></label>
         {data.cypBuildVersion && <label>Versión CyP<input readOnly value={data.cypBuildVersion} /></label>}
         <p>Consultado: {dateTime(data.queriedAt)}</p>
       </div>}

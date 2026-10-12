@@ -75,6 +75,11 @@ const knownConfigFields: Record<string, z.ZodType> = {
   "general.fax": configText(40).refine((value) => generalPhone.safeParse(value).success, "Escribe un teléfono válido o deja el campo vacío."),
   "general.correo": configText(200).refine((value) => optionalEmail.safeParse(value).success, "Escribe un correo válido o deja el campo vacío."),
   "general.licencia": configText(160), "general.moneda": configText(40),
+  // Contact data shown in the "Soporte Técnico" window.
+  "soporte.nombre": configText(160), "soporte.horario": configText(160),
+  "soporte.telefono": configText(40).refine((value) => generalPhone.safeParse(value).success, "Escribe un teléfono válido o deja el campo vacío."),
+  "soporte.whatsapp": configText(40).refine((value) => generalPhone.safeParse(value).success, "Escribe un teléfono válido o deja el campo vacío."),
+  "soporte.correo": configText(200).refine((value) => optionalEmail.safeParse(value).success, "Escribe un correo válido o deja el campo vacío."),
   "cargos.servicioTm": configText(160), "cargos.conceptoTm": configText(160),
   "impresion.url": configText(500), "impresion.listadoUrl": configText(500),
   "impresion.nombre": configText(160), "impresion.listadoNombre": configText(160),

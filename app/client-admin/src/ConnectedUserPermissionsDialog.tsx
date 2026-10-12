@@ -112,7 +112,7 @@ export function ConnectedUserPermissionsDialog({ userId, userName, actorId, canE
           </tbody>
         </table>
       </div>
-      <p className="connected-user-permissions-note">No cambian los permisos efectivos de un rol ni conceden operaciones en el servidor. Estas asignaciones legacy se guardan por usuario en la API; las operaciones siguen sujetas a las restricciones del rol.</p>
+      <p className="connected-user-permissions-note">Esta lista queda guardada como referencia para este usuario. No cambia lo que la cuenta puede hacer: eso lo define su rol (Admin, todo; Supervisor, solo consulta; Cobrador, solo su terminal).</p>
       {!canEdit && <p className="connected-permissions-feedback">Acción restringida para Supervisores.</p>}
       {request.error && <p className="connected-permission-error" role="alert">{request.error}</p>}
       <div className="connected-permissions-footer">

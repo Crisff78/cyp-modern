@@ -84,3 +84,10 @@ export function depositCashTotal(movement: Pick<Movement, "amount" | "depositCom
 export const depositMethodLabel = (method: DepositComponent["method"]) => ({
   cash: "Efectivo", cheque: "Cheque", bank_deposit: "Depósito bancario",
 })[method];
+
+/** Form of a deposit as the operator names it: one method, or "Mixto" when it combines several. */
+export function depositFormLabel(methods: readonly DepositComponent["method"][]) {
+  const kinds = [...new Set(methods)];
+  if (!kinds.length) return "Sin definir";
+  return kinds.length > 1 ? "Mixto" : depositMethodLabel(kinds[0]);
+}

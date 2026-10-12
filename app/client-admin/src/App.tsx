@@ -94,7 +94,7 @@ import RemittancesWorkspace from "../../shared/remittances/RemittancesWorkspace"
 import { remittancesApi } from "./remittancesApi";
 import { hasUnresolvedMovementRequest, pendingMovementDraft, useMovementRequest } from "./useMovementRequest";
 import { businessDate, businessTimestamp, collectionCash, currencyCode, currencyName, financeMatches, nativeMoney, nativeTotals, obligationReceived, decimalProductCents, centsInput } from "./adminFinance";
-import { buildDepositComponents, confirmedDepositMatches, depositCashTotal, depositComponentsMatch, depositMethodLabel, nonCashDepositAmount, type NonCashDepositLine } from "./depositComponents";
+import { buildDepositComponents, confirmedDepositMatches, depositCashTotal, depositComponentsMatch, depositFormLabel, depositMethodLabel, nonCashDepositAmount, type NonCashDepositLine } from "./depositComponents";
 import { useChargeImportRequest } from "./useChargeImportRequest";
 import { decimalCents, formatMoney, printSections, type OutputSection } from "../../shared/remittances/output";
 import { currentOperationalWeek } from "../../shared/operationalWeek";
@@ -433,7 +433,7 @@ const mdiWindowSize = (page: MdiPage): MdiWindowSize => {
   if (page === "controlPanel") return { width: 600, height: 390 };
   if (page === "reports") return { width: 720, height: 430 };
   if (page === "recurringCharges") return { width: 860, height: 520 };
-  if (page === "traces" || page === "pcps" || page === "sessions" || page === "clients") return { width: 860, height: 520 };
+  if (page === "traces" || page === "pcps" || page === "sessions" || page === "clients" || page === "authorizationRequests") return { width: 860, height: 520 };
   if (isMdiOperationPage(page) || isMdiMonitoringPage(page) || isReportPage(page)) return { width: 860, height: 520 };
   return { width: 720, height: 440 };
 };
@@ -508,7 +508,7 @@ function ControlPanelContent({ onLaunch }: Readonly<{ onLaunch: (page: Page, nav
   );
   return (
     <div className="control-panel-body in-mdi">
-      <section className="control-panel-section"><div className="control-panel-section-heading"><span>Codificadores</span><small>Accesos rapidos</small></div><div className="control-panel-grid">{codifierTiles.map(renderTile)}</div></section>
+      <section className="control-panel-section"><div className="control-panel-section-heading"><span>Codificadores</span><small>Accesos rápidos</small></div><div className="control-panel-grid">{codifierTiles.map(renderTile)}</div></section>
       <section className="control-panel-section tools-section"><div className="control-panel-section-heading"><span>Herramientas</span><small>Control interno</small></div><div className="control-panel-grid tools-grid">{toolTiles.map(renderTile)}</div></section>
     </div>
   );
@@ -675,7 +675,7 @@ function ReportView({ page, snapshot, onRefresh }: Readonly<{ page: ReportPageId
         <label>Zona:<select defaultValue=""><option value="">Todas</option>{zones.map((zone) => <option key={zone}>{zone}</option>)}</select></label>
       )}
       {definition?.filters.includes("service") && (
-        <label>Servicio:<select defaultValue=""><option value="">Todos</option>{services.map((service) => <option key={service}>{service}</option>)}</select></label>
+        <label>Servicio:<select defaultValue=""><option value="">Todos</option>{services.map((service) => <option key={service} value={service}>{service}</option>)}</select></label>
       )}
       {definition?.filters.includes("collectorCheck") && (
         <label className="report-inline-check"><span><input type="checkbox" /> Cobrador</span><select defaultValue=""><option value="">Todos</option>{snapshot.collectors.map((collector) => <option key={collector.id}>{collector.name}</option>)}</select></label>
@@ -2222,16 +2222,7 @@ const clientRecordFromSnapshot = (client: Client): ClientLegacyRecord => ({
 
 const defaultClientRecords = (snapshot: Snapshot): ClientLegacyRecord[] => snapshot.clients.map((client) => clientRecordFromSnapshot(client));
 
-const nextClientCode = (clients: readonly ClientLegacyRecord[]) => {
-  const numericCodes = clients
-    .map((client) => client.code.trim().match(/(\d+)\s*$/)?.[1] ?? "")
-    .filter(Boolean);
-  const maxCode = Math.max(0, ...numericCodes.map(Number));
-  const width = Math.max(3, ...numericCodes.map((code) => code.length));
-  return String(maxCode + 1).padStart(width, "0");
-};
-
-export function ClientDataDialog({ client, zones, routes, defaultCode = "", onClose, onSave }: Readonly<{ client?: ClientLegacyRecord; zones: readonly string[]; routes: Snapshot["routes"]; defaultCode?: string; onClose: () => void; onSave: (draft: ClientLegacyDraft) => Promise<void> | void }>) {
+export function ClientDataDialog({ client, zones, routes, defaultCode = "", onClose, onSave }: Readonly<{ client?: ClientLegacyRecord; zones: readonly string[]; routes: Snapshot["routes"]; defaultCode?: string; onClose: () => void; onSave: (draft: ClientLegacyDraft) => Promise<string | void> | string | void }>) {
   const [draft, setDraft] = useState<ClientLegacyDraft>({
     preferredCurrency: client?.preferredCurrency ?? "DOP",
     code: client?.code ?? defaultCode,
@@ -2252,16 +2243,26 @@ export function ClientDataDialog({ client, zones, routes, defaultCode = "", onCl
   const [error, setError] = useState("");
   const zoneOptions = ["No Definida", ...zones.filter((zone) => zone !== "No Definida")];
   const [generating, setGenerating] = useState(false);
-  const reservation = useRef<{ reservationId: string; code: string; internalIdentification: string } | null>(null);
+  const reservation = useRef<{ reservationId: string; code?: string; internalIdentification: string } | null>(null);
   const generationBusy = useRef(false);
   const generate = async (field: "code" | "internalIdentification") => {
     if (client?.internalIdentification || generationBusy.current) return;
     generationBusy.current = true; setGenerating(true); setError("");
     try {
-      const suggestion = reservation.current ?? await remittancesApi<{ reservationId: string; code: string; internalIdentification: string }>("/clientes/sugerencias", { method: "POST", body: "{}" });
-      if (!suggestion.reservationId || !suggestion.code || !suggestion.internalIdentification) throw new Error("El servidor no confirmó los identificadores. Vuelve a solicitar la reserva.");
+      // An existing client that only needs its identification asks for a reservation without
+      // code, so no number of the code series is used up. Asking for a code needs a full one.
+      const identificationOnly = Boolean(client) && field === "internalIdentification";
+      const previous = reservation.current;
+      const suggestion = previous && (field !== "code" || previous.code) ? previous
+        : await remittancesApi<{ reservationId: string; code?: string; internalIdentification: string }>("/clientes/sugerencias", { method: "POST", body: JSON.stringify(identificationOnly ? { identificationOnly: true } : {}) });
+      if (!suggestion.reservationId || !suggestion.internalIdentification || (!identificationOnly && !suggestion.code)) throw new Error("El servidor no confirmó los identificadores. Vuelve a solicitar la reserva.");
       reservation.current = suggestion;
-      setDraft((current) => ({ ...current, reservationId: client?.internalIdentification ? undefined : suggestion.reservationId, [field]: suggestion[field] }));
+      setDraft((current) => ({
+        ...current, reservationId: client?.internalIdentification ? undefined : suggestion.reservationId, [field]: suggestion[field] ?? current[field],
+        // A full reservation that replaces an identification-only one brings its own identification.
+        ...(previous && previous !== suggestion && current.internalIdentification === previous.internalIdentification ? { internalIdentification: suggestion.internalIdentification } : {}),
+        ...(field === "internalIdentification" && !client && !current.identification.trim() ? { identification: suggestion.internalIdentification } : {}),
+      }));
     } catch (failure) { setError(failure instanceof Error ? failure.message : "No se pudo generar el identificador."); }
     finally { generationBusy.current = false; setGenerating(false); }
   };
@@ -2287,7 +2288,8 @@ export function ClientDataDialog({ client, zones, routes, defaultCode = "", onCl
       return;
     }
     try {
-      validateText(draft.code, "Código", INPUT_LIMITS.id, { required: true });
+      // A new client may leave the code empty: the server assigns the next one of the series.
+      validateText(draft.code, "Código", INPUT_LIMITS.id, { required: Boolean(client) });
       validateText(draft.identification, "Cédula / pasaporte", INPUT_LIMITS.id, { required: !client });
       validateText(draft.name, "Cliente", INPUT_LIMITS.name, { required: true });
       validateText(draft.alias, "Conocido por", INPUT_LIMITS.name);
@@ -2301,7 +2303,35 @@ export function ClientDataDialog({ client, zones, routes, defaultCode = "", onCl
       validateEmail(draft.email);
       validateText(draft.note, "Nota", INPUT_LIMITS.note, { multiline: true });
       setError("");
-      await onSave(draft);
+      let submitted = client ? draft : copyPhoneIntoEmptyFields(draft);
+      if (!client && !submitted.code.trim()) {
+        // The code comes from a reservation that can be used only once: a second attempt
+        // after an unconfirmed reply is rejected instead of creating the client twice.
+        const held = reservation.current;
+        const suggestion = held?.code ? held : await remittancesApi<{ reservationId: string; code?: string; internalIdentification: string }>("/clientes/sugerencias", { method: "POST", body: "{}" });
+        const code = suggestion.code;
+        if (!suggestion.reservationId || !code || !suggestion.internalIdentification) throw new Error("El servidor no confirmó el código del cliente. Vuelve a intentarlo.");
+        reservation.current = suggestion;
+        submitted = { ...submitted, code, reservationId: suggestion.reservationId, internalIdentification: suggestion.internalIdentification };
+        setDraft((current) => ({ ...current, code, reservationId: suggestion.reservationId, internalIdentification: suggestion.internalIdentification }));
+      }
+      const rejected = await onSave(submitted);
+      // A reservation is used once. If the server says the one of this form is spent, an earlier attempt most
+      // likely saved the client and its answer was lost: the form lets go of it instead of repeating the error.
+      const held = reservation.current;
+      if (!client && held && submitted.reservationId === held.reservationId &&
+          (rejected === "CLIENT_RESERVATION_UNAVAILABLE" || (rejected === "CLIENT_CODE_EXISTS" && submitted.code.trim() === held.code))) {
+        reservation.current = null;
+        // The document field may hold the identification of the spent reservation: it belongs to the saved client.
+        setDraft((current) => ({ ...current, reservationId: undefined, internalIdentification: undefined, code: current.code.trim() === held.code ? "" : current.code,
+          identification: current.identification.trim() === held.internalIdentification ? "" : current.identification }));
+        setError("Es posible que este cliente ya se haya guardado en el intento anterior. Revisa el listado de clientes antes de crearlo otra vez.");
+      } else if (client && submitted.reservationId && rejected === "CLIENT_IDENTITY_IMMUTABLE") {
+        // Editing: the earlier attempt already gave the client its identification. Without the reservation the next save goes through.
+        reservation.current = null;
+        setDraft((current) => ({ ...current, reservationId: undefined }));
+        setError("Es posible que el cambio anterior ya se haya guardado. Revisa los datos y vuelve a pulsar oK.");
+      }
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "Revisa los datos del cliente.");
     }
@@ -2309,9 +2339,9 @@ export function ClientDataDialog({ client, zones, routes, defaultCode = "", onCl
   return (
     <LegacyDialog title="Datos del Cliente..." onClose={onClose} className="client-form-dialog">
       <form className="client-form" onSubmit={submit}>
-        <div className="client-form-row client-generated-field"><label htmlFor="client-generated-code">Código:</label><input id="client-generated-code" autoFocus maxLength={INPUT_LIMITS.id} value={draft.code} onChange={(event) => update("code", event.target.value)} /><button type="button" disabled={generating || Boolean(client?.internalIdentification)} title={client?.internalIdentification ? "El cliente ya tiene identificación interna. Puedes modificar su código manualmente." : "Reservar un código secuencial para este cliente"} onClick={() => void generate("code")}>Generar código</button></div>
+        <div className="client-form-row client-generated-field"><label htmlFor="client-generated-code">Código:</label><input id="client-generated-code" autoFocus maxLength={INPUT_LIMITS.id} placeholder={client ? undefined : "Se asignará al guardar"} value={draft.code} onChange={(event) => update("code", event.target.value)} /><button type="button" disabled={generating || Boolean(client?.internalIdentification)} title={client?.internalIdentification ? "El cliente ya tiene identificación interna. Puedes modificar su código manualmente." : "Reservar un código secuencial para este cliente"} onClick={() => void generate("code")}>Generar código</button></div>
         <div className="client-form-row client-generated-field"><label htmlFor="client-internal-identification">Identificación interna:</label><input id="client-internal-identification" value={draft.internalIdentification ?? ""} readOnly placeholder="Se asignará al guardar" />{!client?.internalIdentification && <button type="button" disabled={generating} onClick={() => void generate("internalIdentification")}>Generar identificación</button>}</div>
-        <label className="client-form-row"><span>Cédula / pasaporte:</span><input required={!client} maxLength={80} placeholder="Número del documento" value={draft.identification} onChange={(event) => update("identification", event.target.value)} /></label>
+        <label className="client-form-row"><span>Cédula / pasaporte:</span><input required={!client} maxLength={80} placeholder={client ? "Número del documento" : "Documento, o pulsa Generar identificación"} value={draft.identification} onChange={(event) => update("identification", event.target.value)} /></label>
         <label className="client-form-row"><span>Cliente:</span><input maxLength={INPUT_LIMITS.name} value={draft.name} onChange={(event) => update("name", event.target.value)} /></label>
         <label className="client-form-row"><span>Conocido por:</span><input maxLength={INPUT_LIMITS.name} value={draft.alias} onChange={(event) => update("alias", event.target.value)} /></label>
         <label className="client-form-row"><span>Dirección:</span><input maxLength={INPUT_LIMITS.address} value={draft.address} onChange={(event) => update("address", event.target.value)} /></label>
@@ -2325,6 +2355,7 @@ export function ClientDataDialog({ client, zones, routes, defaultCode = "", onCl
           <label>EMail:<input type="email" maxLength={INPUT_LIMITS.email} value={draft.email} onChange={(event) => update("email", event.target.value)} /></label>
         </div>
         <label className="client-form-row"><span>Nota:</span><input maxLength={INPUT_LIMITS.note} value={draft.note} onChange={(event) => update("note", event.target.value)} /></label>
+        {!client && <p className="client-form-hint">Al guardar un cliente nuevo, el teléfono se copia a Celular y Nota si los dejas vacíos.</p>}
         <button type="button" title="Completa celular y nota únicamente si están vacíos." disabled={!draft.phone.trim()} onClick={() => setDraft(copyPhoneIntoEmptyFields)}>Copiar teléfono a campos vacíos</button>
         {!client && <button type="button" disabled={!draft.phone.trim()} onClick={usePhoneAsCode}>Usar teléfono como código</button>}
         <div className="legacy-dialog-actions"><button type="submit" disabled={generating}>oK</button><button type="button" disabled={generating} onClick={onClose}>Cancelar</button></div>
@@ -2610,7 +2641,7 @@ function ClientsLegacyView({ snapshot, actorId, onRefresh }: Readonly<{ snapshot
         method: "POST", body: JSON.stringify(clientPayload(draft, isEdit && selectedClient.lat !== undefined && selectedClient.lng !== undefined ? { lat: selectedClient.lat, lng: selectedClient.lng } : undefined)),
       });
       const { reservationId: _consumedReservation, ...savedDraft } = draft;
-      const record = { ...clientRecordFromSnapshot(saved), ...savedDraft, id: saved.id, internalIdentification: saved.internalIdentification, lat: saved.lat, lng: saved.lng, active: isEdit ? selectedClient.active : true };
+      const record = { ...clientRecordFromSnapshot(saved), ...savedDraft, id: saved.id, code: saved.code, internalIdentification: saved.internalIdentification, lat: saved.lat, lng: saved.lng, active: isEdit ? selectedClient.active : true };
       invalidateSnapshotReads();
       setClientsData((current) => isEdit ? current.map((client) => client.id === record.id ? record : client) : [...current, record]);
       if (version === clientDialogVersion.current) { setSelectedClientId(record.id); closeClientForm(); }
@@ -2618,6 +2649,11 @@ function ClientsLegacyView({ snapshot, actorId, onRefresh }: Readonly<{ snapshot
       toast.success(isEdit ? "Cliente actualizado" : "Cliente creado");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo guardar el cliente.");
+      // The form decides what a rejected code means. The list is read again because an earlier attempt
+      // whose answer was lost may have saved this client.
+      const code = (error as { code?: unknown } | null)?.code;
+      if (code === "CLIENT_CODE_EXISTS" || code === "CLIENT_RESERVATION_UNAVAILABLE" || code === "CLIENT_IDENTITY_IMMUTABLE") void onRefresh().catch(() => undefined);
+      return typeof code === "string" ? code : undefined;
     }
   };
   const saveClientLocation = async (lat: number, lng: number) => {
@@ -2661,7 +2697,7 @@ function ClientsLegacyView({ snapshot, actorId, onRefresh }: Readonly<{ snapshot
         </aside>}
         <div className="clients-grid-panel"><div className="legacy-mdi-table-wrap"><table className="legacy-mdi-table clients-grid"><thead><tr><th>Código</th><th>Identificación</th><th>Cliente</th><th>Zona</th><th>Ruta</th><th>Teléfono</th><th>Celular</th><th>Activo</th></tr></thead><tbody>{visibleClients.map((client) => { const isSelected = selectedClient?.id === client.id; return <tr key={client.id} className={isSelected ? "selected-row" : ""} role="button" tabIndex={0} onClick={() => chooseClient(client.id)} onKeyDown={(event) => handleKeyboardActivation(event, () => chooseClient(client.id))}><td><span className={`mdi-row-select ${isSelected ? "selected" : ""}`}>{client.code}</span></td><td>{client.identification || "No registrada"}</td><td>{client.name}</td><td>{client.zone}</td><td>{snapshot.routes.find((route) => route.id === client.routeId)?.name ?? ""}</td><td>{client.phone}</td><td>{client.cellular}</td><td><LegacyCheck checked={client.active} /></td></tr>; })}</tbody></table></div><div className="legacy-footerbar"><span>Cantidad</span><strong>{visibleClients.length}</strong></div></div>
       </div>
-      {formMode && <ClientDataDialog key={`${clientDialogVersion.current}-${selectedClient?.id ?? ""}`} client={formMode === "edit" ? selectedClient : undefined} zones={zones} routes={snapshot.routes} defaultCode={formMode === "new" ? nextClientCode(clientsData) : ""} onClose={closeClientForm} onSave={saveClient} />}
+      {formMode && <ClientDataDialog key={`${clientDialogVersion.current}-${formMode === "edit" ? selectedClient?.id ?? "" : "nuevo"}`} client={formMode === "edit" ? selectedClient : undefined} zones={zones} routes={snapshot.routes} onClose={closeClientForm} onSave={saveClient} />}
       {confirmDelete && <LegacyConfirmDialog message={selectedClient?.active ? "¿Inactivar cliente? Se conserva su historial." : "¿Activar cliente?"} onYes={() => void inactivateClient()} onNo={() => setConfirmDelete(false)} />}
       {financeOpen && selectedClient && <ClientFinancialDialog key={selectedClient.id} client={selectedClient} snapshot={snapshot} onRefresh={onRefresh} onClose={() => setFinanceOpen(false)} />}
       {mapOpen && selectedClient && <ClientMapDialog key={`${mapDialogVersion.current}-${selectedClient.id}`} client={selectedClient} onClose={closeMap} onSave={saveClientLocation} />}
@@ -3978,13 +4014,18 @@ function StationsLegacyView(): ReactNode {
 
 const SYSTEM_CONFIG_DEFAULTS: Record<string, string | number | boolean> = {
   "general.empresa": "Cobros y Pagos",
-  "general.direccion": "Santiago de los Caballeros, República Dominicana",
-  "general.telefono": "809-555-0100",
+  "general.direccion": "",
+  "general.telefono": "",
   "general.correo": "admin@cyp.local",
-  "general.fax": "809-555-0199",
+  "general.fax": "",
   "general.licencia": "CYP-DEMO-2026-ADM001",
   "general.moneda": "Peso Dominicano",
   "companyLogoDataUrl": "",
+  "soporte.nombre": "Gamera Software",
+  "soporte.telefono": "",
+  "soporte.whatsapp": "",
+  "soporte.correo": "",
+  "soporte.horario": "",
   "clientes.modificarCodigo": true,
   "clientes.requerirIdentificacion": true,
   "clientes.identificacionUnica": true,
@@ -4016,7 +4057,7 @@ const SYSTEM_CONFIG_DEFAULTS: Record<string, string | number | boolean> = {
   "impresion.listadoUrl": "",
   "impresion.listadoPuerto": "",
   "impresion.listadoNombre": "",
-  "receiptFooterNote": "*** REVISE SU RECIBO ***",
+  "receiptFooterNote": "",
   "interfaz.monitorInicio": true,
   "gps.latitud": "19.4499607086182",
   "gps.longitud": "-70.68701171875",
@@ -4025,6 +4066,7 @@ const SYSTEM_CONFIG_DEFAULTS: Record<string, string | number | boolean> = {
 const CONFIG_TEXT_LIMITS: Record<string, number> = {
   "general.empresa": 160, "general.direccion": 500, "general.telefono": 40,
   "general.correo": 200, "general.fax": 40, "general.licencia": 160, "general.moneda": 40,
+  "soporte.nombre": 160, "soporte.telefono": 40, "soporte.whatsapp": 40, "soporte.correo": 200, "soporte.horario": 160,
   "cargos.servicioTm": 160, "cargos.conceptoTm": 160,
   "impresion.url": 500, "impresion.listadoUrl": 500,
   "impresion.nombre": 160, "impresion.listadoNombre": 160,
@@ -4042,6 +4084,9 @@ function validateSystemConfigInputs(config: Record<string, string | number | boo
   validateGeneralPhone(String(config["general.telefono"] ?? ""), "Teléfono");
   validateGeneralPhone(String(config["general.fax"] ?? ""), "Fax");
   validateEmail(String(config["general.correo"] ?? ""));
+  validateGeneralPhone(String(config["soporte.telefono"] ?? ""), "Teléfono de soporte");
+  validateGeneralPhone(String(config["soporte.whatsapp"] ?? ""), "WhatsApp de soporte");
+  validateEmail(String(config["soporte.correo"] ?? ""), "Correo de soporte");
   const logo = String(config.companyLogoDataUrl ?? "");
   if (logo && !/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(logo)) throw new Error("El logo debe ser una imagen PNG, JPEG o WebP cargada desde un archivo.");
   for (const [key, initial] of Object.entries(SYSTEM_CONFIG_DEFAULTS)) {
@@ -4151,7 +4196,7 @@ function LegacyCodifierView({ page, snapshot, onRefresh, onAccount }: Readonly<{
   if (page === "authorizationRequests") return <AuthorizationRequestsLegacyView snapshot={snapshot} />;
   if (page === "generalConfig") {
     const tabs = ["General", "Clientes", "Cargos y Descargos", "Cobros y Pagos", "Interfaz", "GPS"];
-    const tmServiceOptions = ["No definido", "Serv", "Serv. pago de tarifa electrica", "Serv. ventas de recargas", "Serv. de Transporte Terrestre", "Remesas del Exterior", "Donaciones de Dinero", "Venta de medicina natural", "MANEJO DE MAQUINITAS", "PRESTAMOS PERSONALES", "TELEFONOS INTELIGENTES", "prestamos empresariales", "Bicicleta", "Alambre THHN 10 BLANCO"];
+    const tmServiceOptions = ["No definido", "Serv", "Serv. pago de tarifa electrica", "Serv. ventas de recargas", "Serv. de Transporte Terrestre", "Donaciones de Dinero", "Venta de medicina natural", "MANEJO DE MAQUINITAS", "PRESTAMOS PERSONALES", "TELEFONOS INTELIGENTES", "prestamos empresariales", "Bicicleta", "Alambre THHN 10 BLANCO"];
     const cfgLocked = cfgBusy || cfgLoadState !== "ready";
     const CheckLine = ({ label, checked, disabled = false, onChange }: Readonly<{ label: string; checked: boolean; disabled?: boolean; onChange: (value: boolean) => void }>) => <label className={`legacy-check-line ${disabled || cfgLocked ? "disabled" : ""}`}><input type="checkbox" checked={checked} disabled={disabled || cfgLocked} onChange={(event) => onChange(event.target.checked)} /><span>{label}</span></label>;
     const fld = (key: string) => ({
@@ -4204,6 +4249,21 @@ function LegacyCodifierView({ page, snapshot, onRefresh, onAccount }: Readonly<{
                   <option>Euro</option>
                 </select>
               </label>
+            </fieldset>
+          )}
+          {configTab === "General" && (
+            <fieldset className="legacy-config-fieldset support-config-fieldset">
+              <legend>Soporte técnico</legend>
+              <p className="support-config-hint">Estos datos se muestran en la ventana «Soporte Técnico» del panel izquierdo.</p>
+              <label>Soporte a cargo de:<input {...fld("soporte.nombre")} /></label>
+              <div className="legacy-config-row">
+                <label>Teléfono de soporte:<input {...fld("soporte.telefono")} /></label>
+                <label>WhatsApp de soporte:<input {...fld("soporte.whatsapp")} placeholder="Con código de país: 1 809 555 0100" /></label>
+              </div>
+              <div className="legacy-config-row">
+                <label>Correo de soporte:<input {...fld("soporte.correo")} /></label>
+                <label>Horario de atención:<input {...fld("soporte.horario")} placeholder="Lunes a viernes, 8:00 a 17:00" /></label>
+              </div>
             </fieldset>
           )}
           {configTab === "Clientes" && (
@@ -4274,7 +4334,7 @@ function LegacyCodifierView({ page, snapshot, onRefresh, onAccount }: Readonly<{
                       <label>Puerto:<input {...fld("impresion.puerto")} /></label>
                     </div>
                     <label>Nombre:<input {...fld("impresion.nombre")} /></label>
-                    <label>Nota al pie del recibo:<textarea rows={3} {...fld("receiptFooterNote")} /></label>
+                    <label>Nota al pie del recibo:<textarea rows={3} placeholder="Ejemplo: *** REVISE SU RECIBO ***" {...fld("receiptFooterNote")} /></label><p className="support-config-hint">Lo que escribas aquí sale impreso al pie de los recibos después de pulsar oK. Si lo dejas vacío, los recibos salen sin nota.</p>
                   </div>
                 )}
               </fieldset>
@@ -4715,6 +4775,17 @@ export default function App() {
       ];
     });
   }, [nextZIndex]);
+  // "Entregas de Dinero" asks to open the remittances to deliver, filtered by a search.
+  const [remittancePayoutRequest, setRemittancePayoutRequest] = useState<{ id: number; search: string }>();
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const search = String((event as CustomEvent<{ search?: string }>).detail?.search ?? "").slice(0, INPUT_LIMITS.name);
+      setRemittancePayoutRequest((current) => ({ id: (current?.id ?? 0) + 1, search }));
+      openMdiWindow("remittances", "remittances");
+    };
+    window.addEventListener("cyp-open-remittance-payout", handler);
+    return () => window.removeEventListener("cyp-open-remittance-payout", handler);
+  }, [openMdiWindow]);
   const focusMdiWindow = useCallback((id: string) => {
     setMdiWindows((windows) => focusWindowCollection(windows, id, nextZIndex()));
   }, [nextZIndex]);
@@ -5086,7 +5157,7 @@ export default function App() {
                       </p>
                       <ul className="novedades-list">
                         <li>Versión modernizada: API Fastify, portal administrativo y PWA de cobrador.</li>
-                        <li>Moneda única DOP con importes en centavos exactos.</li>
+                        <li>Importes en centavos exactos en pesos (DOP), dólares (USD) y euros (EUR).</li>
                         <li>Aceptar/Cancelar depósitos{SHOW_RECURRING_PAYOUTS ? " y Descargos Recurrentes" : ""}.</li>
                         <li>Importación masiva de Cargos y Descargos desde CSV.</li>
                         <li>Estado de cuenta por cliente (Cobros y Pagos del Cliente).</li>
@@ -5152,7 +5223,7 @@ export default function App() {
               <button type="button" className="btn launcher-collections" onClick={() => openMdiWindow("collections", "collections")}><ReceiptText size={17} />COBROS</button>
               <button type="button" className="btn launcher-payments" onClick={() => openMdiWindow("payouts", "payouts")}><ArrowDownLeft size={17} />DESCARGOS</button>
               <button type="button" className="btn launcher-payments" onClick={() => openMdiWindow("payments", "payments")}><Wallet size={17} />PAGOS</button>
-              <button type="button" className="btn launcher-remittances" onClick={() => openMdiWindow("remittances", "remittances")}>REMESAS</button>
+              <button type="button" className="btn launcher-remittances" onClick={() => openMdiWindow("remittances", "remittances")}><Globe size={17} />REMESAS</button>
               <button type="button" className="btn launcher-settlements" onClick={() => openMdiWindow("dailySettlements", "daily-settlements")}><FileCheck2 size={17} />CUADRES</button>
             </nav>
             <main id="main-content" className="main-content desktop-canvas" tabIndex={-1}>
@@ -5175,7 +5246,7 @@ export default function App() {
               ) : windowState.page === "exchangeRates" ? (
                 <ConnectedExchangeRates actorId={effectiveUser.id} isAdmin={["ADMIN", "SUPERADMIN"].includes(normalizeRole(effectiveUser.role))} />
               ) : windowState.page === "remittances" ? (
-                <RemittancesWorkspace api={remittancesApi} user={effectiveUser} isAdmin={["ADMIN", "SUPERADMIN"].includes(normalizeRole(effectiveUser.role))} reportRequest={windowState.remittanceReportRequest} />
+                <RemittancesWorkspace api={remittancesApi} user={effectiveUser} isAdmin={["ADMIN", "SUPERADMIN"].includes(normalizeRole(effectiveUser.role))} reportRequest={windowState.remittanceReportRequest} payoutRequest={remittancePayoutRequest} />
               ) : isConnectedCatalog(windowState.page) ? (
                 <ConnectedCatalog page={windowState.page} snapshot={snapshot} actorId={effectiveUser.id} canManagePermissions={["ADMIN", "SUPERADMIN"].includes(normalizeRole(effectiveUser.role))} onRefresh={() => void refresh()} />
               ) : isConnectedAdminTool(windowState.page) ? (
@@ -5186,7 +5257,6 @@ export default function App() {
                 <ChargesOperationalView
                   snapshot={snapshot}
                   currentUser={effectiveUser}
-                  onOpenRemittances={() => openMdiWindow("remittances", "remittances")}
                   onRefresh={async () => { await refresh(); }}
                 />
               ) : isMdiOperationPage(windowState.page) ? (
@@ -5452,9 +5522,10 @@ export default function App() {
             open={helpOpen}
             onClose={() => setHelpOpen(false)}
             title="Soporte Técnico"
-            description="Guía rápida de los procesos operativos."
+            description="Contacto de soporte y guía rápida de los procesos."
           >
             <div className="help-content">
+              <SupportContact open={helpOpen} />
               {[
                 {
                   icon: ReceiptText,
@@ -5484,8 +5555,8 @@ export default function App() {
                 Gamera Software · Guía de uso y consulta de los procesos del sistema.
               </p>
               <p className="help-demo">
-                Los datos de esta demostración son ficticios. Cada operación
-                requiere conexión con el servidor.
+                Cada operación se guarda en el servidor: necesitas conexión
+                para trabajar.
               </p>
             </div>
           </Modal>
@@ -5986,8 +6057,24 @@ function MasterDataView({
   );
 }
 
-const DENOMS = [1, 5, 10, 20, 50, 100, 200, 500, 1000, 2000];
-const SETTLEMENT_DENOMS = [2000, 1000, 500, 200, 100, 50, 25, 20, 10, 5, 1];
+// Cash denominations in cents by currency, in ascending order: a row for cents, then the
+// usual coins and notes (RD$ 1 to 2,000; US$ 1 to 100; € 1 to 500).
+const CASH_DENOMINATIONS: Record<string, readonly number[]> = {
+  DOP: [1, 100, 500, 1000, 2000, 2500, 5000, 10000, 20000, 50000, 100000, 200000],
+  USD: [1, 100, 200, 500, 1000, 2000, 5000, 10000],
+  EUR: [1, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000],
+};
+const cashDenominations = (currency?: string) => CASH_DENOMINATIONS[currencyCode(currency)] ?? CASH_DENOMINATIONS.DOP;
+const DENOMS = CASH_DENOMINATIONS.DOP;
+// Denominations that carry a quantity, whatever list they came from.
+const enteredDenominations = (quantities: Record<number, string>) =>
+  Object.keys(quantities).map(Number).filter((value) => Number.isSafeInteger(value) && value > 0 && (quantities[value] ?? "") !== "").sort((a, b) => a - b);
+const denominationName = (denomination: number, currency?: string) =>
+  denomination === 1 ? `Centavos (${nativeMoney(1, currency)})` : nativeMoney(denomination, currency);
+// Rows of a denomination table: the standard list plus any other value saved earlier.
+const denominationRows = (quantities: Record<number, string>, currency?: string) => [...new Set([...cashDenominations(currency),
+  ...Object.keys(quantities).map(Number).filter((value) => Number.isSafeInteger(value) && value > 0 && Number(quantities[value]) > 0)])]
+  .sort((a, b) => a - b);
 
 type LocalCharge = Charge & { currency: string; concept: string; note: string };
 type CargoDialogDraft = {
@@ -6006,7 +6093,6 @@ const CARGO_SERVICES = [
   "Serv. pago de tarifa electrica",
   "Serv. ventas de recargas",
   "Serv. de Transporte Terrestre",
-  "Remesas del Exterior",
   "Donaciones de Dinero",
   "Venta de medicina natural",
   "MANEJO DE MAQUINITAS",
@@ -6016,6 +6102,91 @@ const CARGO_SERVICES = [
   "Bicicleta",
   "Alambre THHN 10 BLANCO",
 ];
+// Money transfers are registered only in the Remesas module, never as a charge service.
+const isRemittanceService = (name: string) => /remesa/i.test(name);
+/**
+ * Services offered by the charge and payout forms: the active rows of
+ * Archivos → Servicios y productos. The fixed list remains only as the fallback
+ * for the demo without API or while the catalog cannot be read.
+ */
+/**
+ * Contact data of technical support, written by an administrator in Configuración General.
+ * It is read every time the window opens, so a change is visible without reloading.
+ */
+function SupportContact({ open }: Readonly<{ open: boolean }>) {
+  const [config, setConfig] = useState<Record<string, unknown> | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [demo, setDemo] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    api<{ config: Record<string, unknown> }>("/configuracion")
+      .then((data) => { if (active) { setFailed(false); setConfig(data.config && typeof data.config === "object" ? data.config : {}); } })
+      .catch(() => { if (active) { setFailed(true); setConfig({}); } });
+    api<{ mode?: string }>("/health").then((data) => { if (active) setDemo(data.mode === "demo"); }).catch(() => undefined);
+    return () => { active = false; };
+  }, [open]);
+  const text = (key: string) => { const value = config?.[key]; return typeof value === "string" ? value.trim() : ""; };
+  const digits = (value: string) => value.replace(/[^0-9]/g, "");
+  // The number without its extension, keeping a leading "+" for international dialing.
+  const dial = (value: string) => { const main = value.split(/ext|x|#/i)[0]; return (main.trim().startsWith("+") ? "+" : "") + digits(main); };
+  // WhatsApp needs the country code: a ten-digit number without "+", or with a Dominican area code, is taken as +1.
+  const whatsappNumber = (value: string) => { const main = value.split(/ext|x|#/i)[0]; const number = digits(main); return number.length === 10 && (!main.trim().startsWith("+") || /^8[024]9/.test(number)) ? "1" + number : number; };
+  const name = text("soporte.nombre") || "Gamera Software";
+  const phone = text("soporte.telefono"), whatsapp = text("soporte.whatsapp"), email = text("soporte.correo"), hours = text("soporte.horario");
+  return (
+    <section className="support-contact" aria-label="Contacto de soporte técnico">
+      <strong className="support-contact-title">¿Necesitas ayuda? Contacta a soporte técnico</strong>
+      <p>Soporte a cargo de <strong>{name}</strong>{hours ? ` · Horario: ${hours}` : ""}</p>
+      {config === null ? <p>Cargando datos de contacto…</p> : failed ? <p className="support-contact-empty">No se pudieron cargar los datos de contacto. Cierra esta ventana y vuelve a abrirla para intentarlo de nuevo.</p> : phone || whatsapp || email ? (
+        <ul>
+          {phone && <li><span>Teléfono:</span> <a href={`tel:${dial(phone)}`}>{phone}</a></li>}
+          {whatsapp && <li><span>WhatsApp:</span> <a href={`https://wa.me/${whatsappNumber(whatsapp)}`} target="_blank" rel="noopener noreferrer">{whatsapp}</a></li>}
+          {email && <li><span>Correo:</span> <a href={`mailto:${email}`}>{email}</a></li>}
+        </ul>
+      ) : (
+        <p className="support-contact-empty">Todavía no se ha escrito el teléfono ni el correo de soporte. Un administrador puede ponerlos en Archivos → Admin. → Configuración General → pestaña General → «Soporte técnico».</p>
+      )}
+      <p>Al llamar o escribir, indica tu usuario, la ventana donde ocurrió el problema y la hora aproximada.</p>
+      {demo && <p className="support-contact-demo">Esta es una demostración: los datos que ves son ficticios.</p>}
+    </section>
+  );
+}
+
+/** Active banks of the catalog (Panel de Control → Bancos), for forms that need a bank. */
+function useBankCatalog() {
+  const [catalog, setCatalog] = useState<{ banks: Bank[]; status: "loading" | "ready" | "error" }>({ banks: [], status: "loading" });
+  useEffect(() => {
+    let active = true;
+    remittancesApi<Bank[]>("/bancos")
+      .then((rows) => { if (!active) return; if (!Array.isArray(rows)) throw new Error("invalid"); setCatalog({ banks: rows.filter((row) => row.active), status: "ready" }); })
+      .catch(() => { if (active) setCatalog({ banks: [], status: "error" }); });
+    return () => { active = false; };
+  }, []);
+  return catalog;
+}
+
+function useServiceOptions(current?: string) {
+  const [state, setState] = useState<{ catalog: string[]; loading: boolean }>({ catalog: [], loading: true });
+  useEffect(() => {
+    let active = true;
+    remittancesApi<Array<{ service: string; active?: boolean }>>("/servicios")
+      .then((rows) => {
+        if (!active) return;
+        const catalog = Array.isArray(rows) ? rows.filter((row) => row.active !== false && row.service && !isRemittanceService(row.service)).map((row) => row.service) : [];
+        setState({ catalog, loading: false });
+      })
+      .catch(() => { if (active) setState({ catalog: [], loading: false }); });
+    return () => { active = false; };
+  }, []);
+  // While the catalog is being read nothing can be chosen, so a choice is never replaced
+  // behind the user's back. The fixed list is only the fallback of an empty or unread catalog.
+  return useMemo(() => {
+    if (state.loading) return { options: current ? [current] : [], loading: true };
+    const base = state.catalog.length ? state.catalog : CARGO_SERVICES;
+    return { options: current && !base.includes(current) ? [current, ...base] : base, loading: false };
+  }, [state, current]);
+}
 const asLocalCharge = (charge: Charge): LocalCharge => ({
   ...charge,
   currency: charge.currency ?? "Peso Dominicano",
@@ -6031,7 +6202,6 @@ function CargoDialog({
   onClose,
   onSave,
   onLoadClients,
-  onOpenRemittances,
 }: Readonly<{
   actorId: string;
   charge?: LocalCharge;
@@ -6040,7 +6210,6 @@ function CargoDialog({
   onClose: () => void;
   onSave: (charge: LocalCharge) => Promise<boolean>;
   onLoadClients: () => Promise<Client[]>;
-  onOpenRemittances?: () => void;
 }>) {
   const request = useMovementRequest(actorId, "manual-charge");
   const close = () => { if (!request.busy) onClose(); };
@@ -6079,8 +6248,8 @@ function CargoDialog({
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (request.busy) return;
-    if (!charge && draft.service === "Remesas del Exterior") {
-      setErrorMessage("Registra este envío desde el formulario completo de Remesas.");
+    if (servicesLoading) {
+      setErrorMessage("Espera un momento: se están cargando los servicios.");
       return;
     }
     if (!draft.clientId || !selectedClient) {
@@ -6118,9 +6287,11 @@ function CargoDialog({
       setSaving(false);
     }
   };
-  const availableServices = charge && !CARGO_SERVICES.includes(charge.service)
-    ? [charge.service, ...CARGO_SERVICES]
-    : CARGO_SERVICES;
+  const { options: availableServices, loading: servicesLoading } = useServiceOptions(charge?.service);
+  useEffect(() => {
+    // A new charge always carries a service that the catalog really offers.
+    if (!charge && !servicesLoading) setDraft((current) => availableServices.includes(current.service) ? current : { ...current, service: availableServices[0] ?? current.service });
+  }, [charge, availableServices, servicesLoading]);
   return (
     <>
       <LegacyDialog title="Datos del Cargo..." onClose={close} className="charge-data-dialog">
@@ -6140,15 +6311,8 @@ function CargoDialog({
           </div>
           <div className="cargo-entry-row">
             <label htmlFor="cargo-service">Servicio:</label>
-            <select id="cargo-service" value={draft.service} onChange={(event) => {
-              if (!charge && event.target.value === "Remesas del Exterior") {
-                if (onOpenRemittances) { onClose(); onOpenRemittances(); }
-                else setErrorMessage("Abre Remesas para registrar el envío completo.");
-                return;
-              }
-              update("service", event.target.value);
-            }}>
-              {availableServices.map((service) => <option key={service}>{service}</option>)}
+            <select id="cargo-service" value={servicesLoading && !charge ? "" : draft.service} disabled={servicesLoading} onChange={(event) => update("service", event.target.value)}>
+              {servicesLoading && !charge ? <option value="">Cargando servicios…</option> : availableServices.map((service) => <option key={service} value={service}>{service}</option>)}
             </select>
           </div>
           <div className="cargo-entry-row">
@@ -6236,7 +6400,7 @@ function ChargeCancelReasonDialog({ onClose, onConfirm, busy }: Readonly<{ onClo
   );
 }
 
-function ChargesOperationalView({ snapshot, currentUser, onRefresh, onOpenRemittances }: Readonly<{ snapshot: Snapshot; currentUser: User; onRefresh: () => Promise<void>; onOpenRemittances?: () => void }>) {
+function ChargesOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{ snapshot: Snapshot; currentUser: User; onRefresh: () => Promise<void> }>) {
   const chargeRequest = useMovementRequest(currentUser.id, "manual-charge");
   const pendingCharge = pendingMovementDraft<{ charge: LocalCharge; editing: boolean }>(currentUser.id, "manual-charge");
   const importRequest = useChargeImportRequest(currentUser.id);
@@ -6402,7 +6566,7 @@ function ChargesOperationalView({ snapshot, currentUser, onRefresh, onOpenRemitt
         disableNew={!permissions.canCreate}
         disableEdit={!selectedCharge || !permissions.canEdit}
         disableDelete={!selectedCharge || !permissions.canDelete}
-        extra={<><button type="button" title="Subir" disabled={!permissions.canCreate} onClick={() => setUploadOpen(true)}><Upload size={15} /></button>{onOpenRemittances && <button type="button" disabled={!permissions.canCreate} onClick={onOpenRemittances}>Nuevo envío de dinero</button>}</>}
+        extra={<button type="button" title="Subir" aria-label="Subir archivo de cargos" disabled={!permissions.canCreate} onClick={() => setUploadOpen(true)}><Upload size={15} /></button>}
       />
       <div className={`charges-layout ${filtersVisible ? "" : "filters-collapsed"}`}>
         {filtersVisible && (
@@ -6449,7 +6613,7 @@ function ChargesOperationalView({ snapshot, currentUser, onRefresh, onOpenRemitt
           <div className="legacy-footerbar"><span>Cantidad: <strong>{visibleCharges.length}</strong></span><span>Total: <strong>{nativeTotals(visibleCharges)}</strong></span><span>Recib.: <strong>{nativeTotals(visibleCharges.flatMap(obligationReceived))}</strong></span><span>Pend.: <strong>{nativeTotals(visibleCharges.filter((item) => !item.currencyConflict).map((item) => ({ currency: item.currency, amount: item.amount - item.collected })))}</strong></span></div>
         </section>
       </div>
-      {dialogMode && <CargoDialog actorId={currentUser.id} charge={pendingCharge?.charge ?? (dialogMode === "edit" ? selectedCharge ?? undefined : undefined)} clients={snapshot.clients} businessDate={snapshot.businessDate} onClose={() => setDialogMode(null)} onSave={saveCharge} onLoadClients={loadClients} onOpenRemittances={onOpenRemittances} />}
+      {dialogMode && <CargoDialog actorId={currentUser.id} charge={pendingCharge?.charge ?? (dialogMode === "edit" ? selectedCharge ?? undefined : undefined)} clients={snapshot.clients} businessDate={snapshot.businessDate} onClose={() => setDialogMode(null)} onSave={saveCharge} onLoadClients={loadClients} />}
       {uploadOpen && <CargoUploadDialog onClose={() => setUploadOpen(false)} onUpload={uploadCharges} request={importRequest} />}
       {clientSearchOpen && <ClientSearchSubmodal clients={clientDirectory} onClose={() => setClientSearchOpen(false)} onSelect={(client) => { setClientQuery(client.code); setClientSearchOpen(false); }} />}
       {confirmCancelOpen && <LegacyConfirmDialog message="¿Está seguro que desea cancelar el Cargo?" onYes={() => { setConfirmCancelOpen(false); setCancelReasonOpen(true); }} onNo={() => setConfirmCancelOpen(false)} />}
@@ -6574,6 +6738,7 @@ function RecurringChargeDialog({
   const [day2, setDay2] = useState(row?.day2 ?? "");
   const [currency, setCurrency] = useState(row?.currency ?? "No definida");
   const [service, setService] = useState(row?.service ?? CARGO_SERVICES[0]);
+  const { options: serviceOptions } = useServiceOptions(row?.service);
   const [concept, setConcept] = useState(row?.concept ?? "");
   const [useConceptAmount, setUseConceptAmount] = useState(row?.useConceptAmount ?? true);
   const [amount, setAmount] = useState(String(row?.amount ?? 0));
@@ -6651,13 +6816,13 @@ function RecurringChargeDialog({
         </label>
         <label className="recurring-charge-row recurring-charge-labeled-row" htmlFor="recurring-charge-service">
           <span>Servicio:</span>
-          <select id="recurring-charge-service" value={service} onChange={(event) => setService(event.target.value)}>{CARGO_SERVICES.map((item) => <option key={item}>{item}</option>)}</select>
+          <select id="recurring-charge-service" value={service} onChange={(event) => setService(event.target.value)}>{serviceOptions.map((item) => <option key={item}>{item}</option>)}</select>
         </label>
         <label className="recurring-charge-row recurring-charge-labeled-row" htmlFor="recurring-charge-concept">
           <span>Concepto:</span>
           <select id="recurring-charge-concept" value={concept} onChange={(event) => setConcept(event.target.value)}>
             <option value="">No definido</option>
-            {[...new Set([...CARGO_SERVICES, ...(concept ? [concept] : [])])].map((item) => <option key={item} value={item}>{item}</option>)}
+            {[...new Set([...serviceOptions, ...(concept ? [concept] : [])])].map((item) => <option key={item} value={item}>{item}</option>)}
           </select>
         </label>
         <label className="recurring-charge-checkbox"><input type="checkbox" checked={useConceptAmount} onChange={(event) => setUseConceptAmount(event.target.checked)} />Usar Importe de Concepto</label>
@@ -7387,7 +7552,7 @@ function LegacyOperationView({
       {recurringToArchive && spec.entity === "recurringPayouts" && <RecurringPayoutArchiveDialog actorId={currentUser.id} row={recurringToArchive} onClose={() => setRecurringToArchive(null)} onSaved={() => { setRecurringToArchive(null); setSelectedRow(null); onRefresh(); }} />}
       {collectionPrintChoiceOpen && spec.entity === "collections" && <CollectionScopeSelectorDialog title="Seleccione..." allLabel="Listado de registros" currentLabel="Registro actual" hasCurrent={Boolean(selectedRow)} onClose={() => setCollectionPrintChoiceOpen(false)} onConfirm={openCollectionPrint} />}
       {collectionPrintTickets && spec.entity === "collections" && <CollectionReceiptPrintDialog receipts={collectionPrintTickets} onClose={() => setCollectionPrintTickets(null)} />}
-      {collectionMapChoiceOpen && spec.entity === "collections" && <CollectionScopeSelectorDialog title="Mostrar mapa de cobro(s)..." allLabel="Todos los Cobroos" currentLabel="Cobro actual" hasCurrent={Boolean(selectedRow)} onClose={() => setCollectionMapChoiceOpen(false)} onConfirm={openCollectionMap} />}
+      {collectionMapChoiceOpen && spec.entity === "collections" && <CollectionScopeSelectorDialog title="Mostrar mapa de cobro(s)..." allLabel="Todos los Cobros" currentLabel="Cobro actual" hasCurrent={Boolean(selectedRow)} onClose={() => setCollectionMapChoiceOpen(false)} onConfirm={openCollectionMap} />}
       {collectionMapPoints && spec.entity === "collections" && <CollectionMapDialog points={collectionMapPoints} onClose={() => setCollectionMapPoints(null)} />}
       {quickRecord && spec.entity &&
         (spec.entity === "charges" && quickRecord === "new" ? (
@@ -7440,11 +7605,11 @@ type DepositDraft = {
 const emptyDepositQuantities = (): Record<number, string> =>
   Object.fromEntries(DENOMS.map((denomination) => [denomination, ""]));
 
-const validDepositQuantities = (quantities: Record<number, string>) => DENOMS.every((denomination) => { const value = quantities[denomination] ?? ""; return value === "" || /^\d+$/.test(value) && Number.isSafeInteger(Number(value)); });
+const validDepositQuantities = (quantities: Record<number, string>) => enteredDenominations(quantities).every((denomination) => { const value = quantities[denomination] ?? ""; return value === "" || /^\d+$/.test(value) && Number.isSafeInteger(Number(value)); });
 
 const depositAmount = (quantities: Record<number, string>) => {
   if (!validDepositQuantities(quantities)) return NaN;
-  const total = DENOMS.reduce((sum, denomination) => sum + BigInt(denomination) * BigInt(quantities[denomination] || "0"), 0n);
+  const total = enteredDenominations(quantities).reduce((sum, denomination) => sum + BigInt(denomination) * BigInt(quantities[denomination] || "0"), 0n);
   return total <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(total) : NaN;
 };
 
@@ -7471,7 +7636,7 @@ function depositDraftFromMovement(movement: Movement, fallbackCurrency = "Peso D
 }
 
 function depositDenominations(quantities: Record<number, string>) {
-  return DENOMS.filter((denomination) => Number(quantities[denomination] ?? 0) > 0).map((denominacion) => ({
+  return enteredDenominations(quantities).filter((denomination) => Number(quantities[denomination] ?? 0) > 0).map((denominacion) => ({
     denominacion,
     cantidad: Number(quantities[denominacion]),
   }));
@@ -7500,10 +7665,10 @@ function depositTicketFromDraft(draft: DepositDraft, id: string, snapshot: Snaps
     date: draft.date,
     currency: draft.currency,
     clientName: "Depósito de cobrador",
+    documentTitle: "COMPROBANTE DE DEPÓSITO",
     clientIdentification: "",
     collectorName: collector?.name ?? "",
-    paymentForm: components && new Set(components.map((line) => line.method)).size > 1 ? "Mixto" :
-      components?.[0] ? depositMethodLabel(components[0].method) : "Depósito",
+    paymentForm: depositFormLabel(components?.length ? components.map((line) => line.method) : ["cash"]),
     bank: "No Definido",
     checkNumber: "",
     note: draft.note,
@@ -7542,6 +7707,7 @@ function DepositsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
   const [cancelReason, setCancelReason] = useState("Digitado por error");
   const [acceptTarget, setAcceptTarget] = useState<TableRow | null>(null);
   const [acceptQuantities, setAcceptQuantities] = useState<Record<number, string>>({});
+  const [acceptRows, setAcceptRows] = useState<number[]>([...DENOMS]);
   const [printTickets, setPrintTickets] = useState<CollectionTicketModel[] | null>(null);
   const [flash, setFlash] = useState(false);
   const [detailRevision, setDetailRevision] = useState(0);
@@ -7595,7 +7761,7 @@ function DepositsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
   });
   const currentSelection = orderedRows.find((row) => row.__id === selectedRow?.__id) ?? null;
   const currentMovement = currentSelection?.__raw as unknown as Movement | undefined;
-  const detailDenominations = currentMovement?.denominations ?? [];
+  const detailDenominations = [...(currentMovement?.denominations ?? [])].sort((a, b) => a.denominacion - b.denominacion);
   const detailNonCash = currentMovement?.depositComponents?.filter((line) => line.method !== "cash") ?? [];
   const detailCashWithoutBreakdown = currentMovement?.depositComponents && !detailDenominations.length ? depositCashTotal(currentMovement) : 0;
   const detailsTotal = currentMovement?.depositComponents ? currentMovement.amount : detailDenominations.reduce((total, item) => total + item.denominacion * item.cantidad, 0);
@@ -7661,6 +7827,8 @@ function DepositsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
     const quantities = emptyDepositQuantities();
     for (const item of raw.denominations ?? []) quantities[item.denominacion] = String(item.cantidad);
     setAcceptQuantities(quantities);
+    // Denominations saved before the list changed keep their own box.
+    setAcceptRows([...new Set([...cashDenominations(raw.currency), ...(raw.denominations ?? []).map((item) => item.denominacion)])].sort((a, b) => a - b));
     setAcceptConfirmOpen(false);
     setAcceptTarget(currentSelection);
   };
@@ -7672,13 +7840,30 @@ function DepositsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
   const confirmCancel = () => {
     if (currentSelection) void runDepositAction(currentSelection, "cancelar");
   };
-  const openPrint = () => {
-    const targetRows = currentSelection ? [currentSelection] : orderedRows;
-    if (!targetRows.length) {
+  const [printChoiceOpen, setPrintChoiceOpen] = useState(false);
+  const openPrint = (scope: CollectionRecordScope) => {
+    setPrintChoiceOpen(false);
+    if (!orderedRows.length) {
       toast.info("No hay depósitos disponibles para imprimir.");
       return;
     }
-    setPrintTickets(targetRows.map((row) => depositTicketFromRow(row, snapshot)));
+    if (scope === "current") {
+      if (!currentSelection) { toast.info("Seleccione un depósito para imprimir el registro actual."); return; }
+      setPrintTickets([depositTicketFromRow(currentSelection, snapshot)]); return;
+    }
+    // One listing of the filtered deposits instead of every voucher.
+    const listed = orderedRows.map((row) => row.__raw as unknown as Movement);
+    const activeDeposits = listed.filter((movement) => !movement.cancelledAt), cancelledDeposits = listed.filter((movement) => movement.cancelledAt);
+    const listing: OutputSection[] = [
+      { title: "Listado de depósitos por cobradores", columns: ["Nro.", "Fecha", "Cobrador", "Moneda", "Importe", "Forma", "Estado"], rows: orderedRows.map((row, index) => {
+        const movement = row.__raw as unknown as Movement;
+        return [index + 1, String(row.date ?? ""), String(row.collector ?? ""), String(row.currency ?? ""), String(row.amount ?? ""),
+          depositFormLabel(movement.depositComponents?.map((line) => line.method) ?? ["cash"]), movement.cancelledAt ? "Cancelado" : movement.acceptedAt ? "Aceptado" : "Pendiente de aceptar"];
+      }) },
+      { title: "Totales", columns: ["Depósitos activos", "Total de activos", "Depósitos cancelados", "Total de cancelados"], rows: [[activeDeposits.length, nativeTotals(activeDeposits), cancelledDeposits.length, cancelledDeposits.length ? nativeTotals(cancelledDeposits) : "—"]] },
+    ];
+    try { printSections("Listado de Depósitos", listing, "CyP · Cobros y pagos"); }
+    catch (failure) { toast.error(failure instanceof Error ? failure.message : "No se pudo abrir la impresión del listado."); }
   };
   const saveDeposit = async (draft: DepositDraft, shouldPrint: boolean) => {
     try {
@@ -7721,7 +7906,7 @@ function DepositsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
           onAccept={openAcceptConfirmation}
           onDelete={() => currentSelection && setCancelConfirmOpen(true)}
           onRefresh={refresh}
-          onPrint={openPrint}
+          onPrint={() => setPrintChoiceOpen(true)}
           disableNew={!permissions.canCreate || lifecycleRequest.locked}
           disableEdit={!currentSelection || !permissions.canEdit}
           disableAccept={!currentSelection || currentSelection.__status !== "Pendiente" || !permissions.canEdit || lifecycleRequest.locked}
@@ -7744,14 +7929,14 @@ function DepositsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
           </aside>}
           <section className="legacy-grid-panel deposits-grid-panel" aria-label="Grilla de depósitos por cobradores">
             <div className="legacy-mdi-table-wrap"><table className="legacy-mdi-table deposits-table">
-              <thead><tr><th>Nro.</th><th>Fecha</th><th>Cobrador</th><th>Moneda</th><th>Importe</th><th>Cheq.</th><th>Imp. Cheques</th><th>Activo</th><th>Acep.</th></tr></thead>
+              <thead><tr><th>Nro.</th><th>Fecha</th><th>Cobrador</th><th>Moneda</th><th>Importe</th><th>Forma</th><th>Cheq.</th><th>Imp. Cheques</th><th>Activo</th><th>Acep.</th></tr></thead>
               <tbody>{orderedRows.length ? orderedRows.map((row, index) => {
                 const movement = row.__raw as unknown as Movement;
                 const active = currentSelection?.__id === row.__id;
                 return <tr key={String(row.__id)} className={active ? "selected-row" : undefined} aria-selected={active} role="button" tabIndex={0} onClick={() => setSelectedRow(row)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedRow(row))}>
-                  <td>{index + 1}</td><td>{String(row.date ?? "")}</td><td>{String(row.collector ?? "")}</td><td>{String(row.currency ?? "")}</td><td className="numeric-cell">{String(row.amount ?? "")}</td><td>{String(row.checks ?? "0")}</td><td className="numeric-cell">{String(row.checkAmount ?? money(0))}</td><td><LegacyCheck checked={!movement.cancelledAt} /></td><td><LegacyCheck checked={Boolean(movement.acceptedAt)} /></td>
+                  <td>{index + 1}</td><td>{String(row.date ?? "")}</td><td>{String(row.collector ?? "")}</td><td>{String(row.currency ?? "")}</td><td className="numeric-cell">{String(row.amount ?? "")}</td><td title="Forma de depósito">{depositFormLabel(movement.depositComponents?.map((line) => line.method) ?? ["cash"])}</td><td>{String(row.checks ?? "0")}</td><td className="numeric-cell">{String(row.checkAmount ?? money(0))}</td><td><LegacyCheck checked={!movement.cancelledAt} /></td><td><LegacyCheck checked={Boolean(movement.acceptedAt)} /></td>
                 </tr>;
-              }) : <tr><td colSpan={9} className="collections-empty-cell">Sin depósitos registrados.</td></tr>}</tbody>
+              }) : <tr><td colSpan={10} className="collections-empty-cell">Sin depósitos registrados.</td></tr>}</tbody>
             </table></div>
             <div className="legacy-footerbar"><span>Cantidad: <strong>{orderedRows.length}</strong></span><span>Total: <strong>{totals}</strong></span></div>
           </section>
@@ -7764,11 +7949,12 @@ function DepositsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
         </div>
       </div>
       {formTarget && <DepositDataDialog actorId={currentUser.id} snapshot={snapshot} movement={formMovement} initialDraft={formInitial} onClose={() => setFormTarget(null)} onSave={saveDeposit} />}
-      {acceptConfirmOpen && <LegacyConfirmDialog message="¿Está seguro que en aceptar el depósito?" onYes={beginAccept} onNo={() => setAcceptConfirmOpen(false)} />}
+      {acceptConfirmOpen && <LegacyConfirmDialog message="¿Está seguro que desea aceptar el depósito?" onYes={beginAccept} onNo={() => setAcceptConfirmOpen(false)} />}
       {cancelConfirmOpen && <LegacyConfirmDialog message="¿Realmente desea cancelar el registro actual?" onYes={beginCancel} onNo={() => setCancelConfirmOpen(false)} />}
       {cancelReasonOpen && <LegacyDialog title="Entre un valor..." onClose={() => { if (!lifecycleRequest.busy) { setCancelReasonOpen(false); setCancelReason("Digitado por error"); } }} className="deposit-cancel-reason-dialog" overlayClassName="collection-receipt-suboverlay"><label className="deposit-dialog-row"><span>Valor:</span><input autoFocus disabled={lifecycleRequest.locked} value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} /></label><div className="legacy-dialog-actions centered"><button type="button" disabled={lifecycleRequest.busy} onClick={confirmCancel}>{lifecycleRequest.uncertain ? "Reintentar" : "oK"}</button><button type="button" disabled={lifecycleRequest.busy} onClick={() => { setCancelReasonOpen(false); setCancelReason("Digitado por error"); }}>Cancelar</button></div></LegacyDialog>}
-      {acceptTarget && <LegacyDialog title="Desglose de denominaciones" onClose={() => { if (!lifecycleRequest.busy) setAcceptTarget(null); }} className="deposits-accept-dialog"><p>Depósito total: {nativeMoney(Number(acceptTarget.__amount ?? 0), acceptCurrency)}. Efectivo: {nativeMoney(acceptAmount, acceptCurrency)}; indique solo sus billetes y monedas:</p><div className="deposit-accept-denoms">{DENOMS.map((denomination) => <label key={denomination}>{nativeMoney(denomination, acceptCurrency)}<input aria-label={`Aceptar cantidad ${denomination / 100}`} disabled={lifecycleRequest.locked || acceptAmount === 0} type="number" min="0" step="1" value={acceptQuantities[denomination] ?? ""} onChange={(event) => setAcceptQuantities((current) => ({ ...current, [denomination]: event.target.value }))} /></label>)}</div><div className="legacy-footerbar"><span>Efectivo desglosado: <strong>{Number.isSafeInteger(acceptTotal) ? nativeMoney(acceptTotal, acceptCurrency) : "Desglose no válido"}</strong> de <strong>{nativeMoney(acceptAmount, acceptCurrency)}</strong></span></div>{!validAcceptTotal && <div className="inline-error" role="alert">El desglose debe cuadrar exactamente con el efectivo del depósito.</div>}<div className="legacy-dialog-actions centered"><button type="button" disabled={lifecycleRequest.busy} onClick={() => setAcceptTarget(null)}>Cancelar</button><button type="button" disabled={!validAcceptTotal || lifecycleRequest.busy} onClick={() => void runDepositAction(acceptTarget, "aceptar", depositDenominations(acceptQuantities))}>{lifecycleRequest.uncertain ? "Reintentar aceptación" : "Aceptar depósito"}</button></div></LegacyDialog>}
-      {printTickets && <CollectionReceiptPrintDialog receipts={printTickets} onClose={() => setPrintTickets(null)} />}
+      {acceptTarget && <LegacyDialog title="Desglose de denominaciones" onClose={() => { if (!lifecycleRequest.busy) setAcceptTarget(null); }} className="deposits-accept-dialog"><p>Depósito total: {nativeMoney(Number(acceptTarget.__amount ?? 0), acceptCurrency)}. Efectivo: {nativeMoney(acceptAmount, acceptCurrency)}; indique solo sus billetes y monedas:</p><div className="deposit-accept-denoms">{acceptRows.map((denomination) => <label key={denomination}>{denominationName(denomination, acceptCurrency)}<input aria-label={`Aceptar cantidad ${denomination / 100}`} disabled={lifecycleRequest.locked || acceptAmount === 0} type="number" min="0" step="1" value={acceptQuantities[denomination] ?? ""} onChange={(event) => setAcceptQuantities((current) => ({ ...current, [denomination]: event.target.value }))} /></label>)}</div><div className="legacy-footerbar"><span>Efectivo desglosado: <strong>{Number.isSafeInteger(acceptTotal) ? nativeMoney(acceptTotal, acceptCurrency) : "Desglose no válido"}</strong> de <strong>{nativeMoney(acceptAmount, acceptCurrency)}</strong></span></div>{!validAcceptTotal && <div className="inline-error" role="alert">El desglose debe cuadrar exactamente con el efectivo del depósito.</div>}<div className="legacy-dialog-actions centered"><button type="button" disabled={lifecycleRequest.busy} onClick={() => setAcceptTarget(null)}>Cancelar</button><button type="button" disabled={!validAcceptTotal || lifecycleRequest.busy} onClick={() => void runDepositAction(acceptTarget, "aceptar", depositDenominations(acceptQuantities))}>{lifecycleRequest.uncertain ? "Reintentar aceptación" : "Aceptar depósito"}</button></div></LegacyDialog>}
+      {printChoiceOpen && <CollectionScopeSelectorDialog title="Seleccione..." allLabel="Listado de registros" currentLabel="Registro actual" hasCurrent={Boolean(currentSelection)} onClose={() => setPrintChoiceOpen(false)} onConfirm={openPrint} />}
+      {printTickets && <CollectionReceiptPrintDialog receipts={printTickets} title="Imprimir Comprobante de Depósito..." onClose={() => setPrintTickets(null)} />}
     </>
   );
 }
@@ -7782,6 +7968,7 @@ function DepositDataDialog({ actorId, snapshot, movement, initialDraft, onClose,
   const [note, setNote] = useState(initialDraft?.note ?? "");
   const [quantities, setQuantities] = useState<Record<number, string>>(initialDraft?.quantities ?? emptyDepositQuantities());
   const [nonCash, setNonCash] = useState<NonCashDepositLine[]>(initialDraft?.nonCash ?? []);
+  const { banks: bankCatalog, status: bankStatus } = useBankCatalog();
   const [errorOpen, setErrorOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const submitting = useRef(false);
@@ -7822,7 +8009,7 @@ function DepositDataDialog({ actorId, snapshot, movement, initialDraft, onClose,
       try { nonCashTotal = nonCashDepositAmount(nonCash); }
       catch (error) { toast.error(error instanceof Error ? error.message : "Completa los componentes del depósito."); return; }
       let remaining = Math.max(0, collectionCash(snapshot.movements, collector.id, currency) - nonCashTotal);
-      for (const denomination of [...DENOMS].reverse()) {
+      for (const denomination of [...cashDenominations(currency)].reverse()) {
         const quantity = Math.floor(remaining / denomination);
         loaded[denomination] = quantity ? String(quantity) : "";
         remaining -= denomination * quantity;
@@ -7843,10 +8030,15 @@ function DepositDataDialog({ actorId, snapshot, movement, initialDraft, onClose,
       <label className="deposit-dialog-row"><span>Cobrad.:</span><select value={collectorId} onChange={(event) => { setCollectorId(event.target.value); setQuantities(emptyDepositQuantities()); setNonCash([]); }}>{snapshot.collectors.map((collector) => <option key={collector.id} value={collector.id}>{collector.name}</option>)}</select></label>
       <label className="deposit-dialog-row"><span>Nota:</span><input maxLength={INPUT_LIMITS.note} value={note} onChange={(event) => setNote(event.target.value)} /></label>
     </div>
-    <section className="deposit-denominations-section"><div className="deposit-denominations-toolbar"><strong>Denominaciones</strong><button type="button" onClick={refreshDenominations}><RefreshCw size={14} /> Refrescar</button></div><div className="deposit-denominations-table-wrap"><table className="deposit-denominations-table"><thead><tr><th>Denom.</th><th>Cantidad</th><th>Importe</th></tr></thead><tbody>{DENOMS.map((denomination) => { const quantity = Number(quantities[denomination] ?? 0) || 0; return <tr key={denomination}><td>{depositMoney(denomination, currency)}</td><td><input aria-label={`Cantidad ${denomination / 100}`} type="number" min="0" max="1000000000" step="1" value={quantities[denomination] ?? ""} onChange={(event) => setQuantities((current) => ({ ...current, [denomination]: event.target.value }))} /></td><td>{Number.isSafeInteger(denomination * quantity) && quantity >= 0 ? depositMoney(denomination * quantity, currency) : "Cantidad no válida"}</td></tr>; })}</tbody></table></div></section>
+    <section className="deposit-denominations-section"><div className="deposit-denominations-toolbar"><strong>Denominaciones</strong><button type="button" onClick={refreshDenominations}><RefreshCw size={14} /> Refrescar</button></div><div className="deposit-denominations-table-wrap"><table className="deposit-denominations-table"><thead><tr><th>Denom.</th><th>Cantidad</th><th>Importe</th></tr></thead><tbody>{denominationRows(quantities, currency).map((denomination) => { const quantity = Number(quantities[denomination] ?? 0) || 0; return <tr key={denomination}><td>{denominationName(denomination, currency)}</td><td><input aria-label={`Cantidad ${denomination / 100}`} type="number" min="0" max="1000000000" step="1" value={quantities[denomination] ?? ""} onChange={(event) => setQuantities((current) => ({ ...current, [denomination]: event.target.value }))} /></td><td>{Number.isSafeInteger(denomination * quantity) && quantity >= 0 ? depositMoney(denomination * quantity, currency) : "Cantidad no válida"}</td></tr>; })}</tbody></table></div></section>
     <section className="deposit-components-section"><div className="deposit-denominations-toolbar"><strong>Cheques y depósitos bancarios</strong><button type="button" disabled={nonCash.length >= (cashAmount > 0 ? 19 : 20)} onClick={() => setNonCash((lines) => [...lines, { id: crypto.randomUUID(), method: "cheque", amount: "", bank: "", reference: "" }])}>Añadir cheque</button><button type="button" disabled={nonCash.length >= (cashAmount > 0 ? 19 : 20)} onClick={() => setNonCash((lines) => [...lines, { id: crypto.randomUUID(), method: "bank_deposit", amount: "", bank: "", reference: "" }])}>Añadir depósito bancario</button></div>
-      {nonCash.length > 0 && <div className="deposit-components-table-wrap"><table className="data-table dense deposit-components-table"><thead><tr><th>Método</th><th>Importe ({currencyCode(currency)})</th><th>Banco</th><th>Referencia</th><th /></tr></thead><tbody>{nonCash.map((line, index) => <tr key={line.id}><td><select aria-label={`Método componente ${index + 1}`} value={line.method} onChange={(event) => setNonCash((lines) => lines.map((item) => item.id === line.id ? { ...item, method: event.target.value as NonCashDepositLine["method"] } : item))}><option value="cheque">Cheque</option><option value="bank_deposit">Depósito bancario</option></select></td><td><input aria-label={`Importe componente ${index + 1}`} inputMode="decimal" maxLength={30} value={line.amount} onChange={(event) => setNonCash((lines) => lines.map((item) => item.id === line.id ? { ...item, amount: event.target.value } : item))} /></td><td><input aria-label={`Banco componente ${index + 1}`} maxLength={160} value={line.bank} onChange={(event) => setNonCash((lines) => lines.map((item) => item.id === line.id ? { ...item, bank: event.target.value } : item))} /></td><td><input aria-label={`Referencia componente ${index + 1}`} maxLength={160} value={line.reference} onChange={(event) => setNonCash((lines) => lines.map((item) => item.id === line.id ? { ...item, reference: event.target.value } : item))} /></td><td><button type="button" aria-label={`Eliminar componente ${index + 1}`} onClick={() => setNonCash((lines) => lines.filter((item) => item.id !== line.id))}>Eliminar</button></td></tr>)}</tbody></table></div>}
-      <p>Efectivo: {Number.isSafeInteger(cashAmount) ? depositMoney(cashAmount, currency) : "Desglose no válido"}. Los componentes forman un solo depósito en esta moneda.</p>
+      {nonCash.length > 0 && <div className="deposit-components-table-wrap"><table className="data-table dense deposit-components-table"><thead><tr><th>Método</th><th>Importe ({currencyCode(currency)})</th><th>Banco</th><th>Referencia</th><th /></tr></thead><tbody>{nonCash.map((line, index) => <tr key={line.id}><td><select aria-label={`Método componente ${index + 1}`} value={line.method} onChange={(event) => setNonCash((lines) => lines.map((item) => item.id === line.id ? { ...item, method: event.target.value as NonCashDepositLine["method"] } : item))}><option value="cheque">Cheque</option><option value="bank_deposit">Depósito bancario</option></select></td><td><input aria-label={`Importe componente ${index + 1}`} inputMode="decimal" maxLength={30} value={line.amount} onChange={(event) => setNonCash((lines) => lines.map((item) => item.id === line.id ? { ...item, amount: event.target.value } : item))} /></td><td>{bankStatus === "loading"
+        ? <select aria-label={`Banco componente ${index + 1}`} value="" disabled><option value="">{line.bank || "Cargando bancos…"}</option></select>
+        : bankCatalog.length
+        ? <select aria-label={`Banco componente ${index + 1}`} value={line.bank} onChange={(event) => setNonCash((lines) => lines.map((item) => item.id === line.id ? { ...item, bank: event.target.value } : item))}><option value="">Seleccione el banco…</option>{line.bank && !bankCatalog.some((bank) => bank.name === line.bank) ? <option value={line.bank}>{line.bank}</option> : null}{bankCatalog.map((bank) => <option key={bank.id} value={bank.name}>{bank.name}</option>)}</select>
+        : <input aria-label={`Banco componente ${index + 1}`} maxLength={160} placeholder="Nombre del banco" value={line.bank} onChange={(event) => setNonCash((lines) => lines.map((item) => item.id === line.id ? { ...item, bank: event.target.value } : item))} />}</td><td><input aria-label={`Referencia componente ${index + 1}`} maxLength={160} value={line.reference} onChange={(event) => setNonCash((lines) => lines.map((item) => item.id === line.id ? { ...item, reference: event.target.value } : item))} /></td><td><button type="button" aria-label={`Eliminar componente ${index + 1}`} onClick={() => setNonCash((lines) => lines.filter((item) => item.id !== line.id))}>Eliminar</button></td></tr>)}</tbody></table></div>}
+      {nonCash.length > 0 && <p className="deposit-bank-hint">{bankStatus === "loading" ? "Cargando el catálogo de bancos…" : bankStatus === "error" ? "No se pudo leer el catálogo de bancos. Puedes escribir el nombre del banco; revísalo luego en Archivos → Admin. → Bancos." : bankCatalog.length ? "Los bancos salen del catálogo: Archivos → Admin. → Bancos." : "Aún no hay bancos en el catálogo. Créalos en Archivos → Admin. → Bancos para elegirlos de una lista; mientras tanto puedes escribir el nombre."}</p>}
+      <p className="deposit-form-kind">Forma de depósito: <strong>{depositFormLabel([...(cashAmount > 0 ? ["cash" as const] : []), ...(movement?.depositComponents ? movement.depositComponents.filter((line) => line.method !== "cash").map((line) => line.method) : nonCash.map((line) => line.method))])}</strong> · Efectivo: {Number.isSafeInteger(cashAmount) ? depositMoney(cashAmount, currency) : "Desglose no válido"}. Los componentes forman un solo depósito en esta moneda.</p>
       {movement?.depositComponents && cashAmount > 0 && !movement.denominations?.length && <p>Las denominaciones del efectivo no fueron registradas.</p>}
     </section>
     </fieldset>{!movement && resolved.error && <p className="inline-error" role="alert">{resolved.error}</p>}{request.error && <p role="alert">{request.error}</p>}{request.uncertain && <p role="status">Reintenta este mismo depósito antes de cambiar los datos.</p>}<div className="deposit-data-footer"><label>Total:<input value={validTotal ? depositMoney(total, currency) : "Importe no válido"} readOnly disabled /></label><div className="legacy-dialog-actions"><button type="button" disabled={Boolean(movement) || busy || request.busy} onClick={() => void submit(false)}>{request.uncertain ? "Reintentar" : "Guardar"}</button><button type="button" disabled={Boolean(movement) || busy || request.busy || request.uncertain} onClick={() => void submit(true)}>Guardar e Imp.</button><button type="button" disabled={busy || request.busy} onClick={close}>Cancelar</button></div></div>
@@ -7879,6 +8071,7 @@ function cashDeliveryTicketFromDraft(draft: DepositDraft, id: string, snapshot: 
 
 function CashDeliveriesOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{ snapshot: Snapshot; currentUser: User; onRefresh: () => void }>) {
   const deliveryRequest = useMovementRequest(currentUser.id, "manual-delivery");
+  const [remittanceSearch, setRemittanceSearch] = useState("");
   const pendingDelivery = pendingMovementDraft<{ draft: DepositDraft; print: boolean }>(currentUser.id, "manual-delivery");
   const permissions = permissionsFor(currentUser);
   const [mode, setMode] = useState("Todos");
@@ -8028,6 +8221,12 @@ function CashDeliveriesOperationalView({ snapshot, currentUser, onRefresh }: Rea
         deleteIcon="x"
         deleteTitle="Cancelar entrega"
       />
+      <form className="cash-delivery-remittance-search" role="search" aria-label="Buscar remesa para entregar" onSubmit={(event) => { event.preventDefault(); window.dispatchEvent(new CustomEvent("cyp-open-remittance-payout", { detail: { search: remittanceSearch.trim() } })); }}>
+        <strong>Entregar una remesa a su beneficiario</strong>
+        <label>Beneficiario o remitente:<input type="search" aria-label="Buscar beneficiario o remitente" maxLength={INPUT_LIMITS.name} value={remittanceSearch} onChange={(event) => setRemittanceSearch(event.target.value)} placeholder="Serie, teléfono, nombres, identificación o nota" /></label>
+        <button type="submit">Buscar remesa</button>
+        <small>Abre Envíos de Dinero → Recibos con las remesas pendientes que coinciden; allí se registra la entrega. La lista de abajo son las entregas de la oficina a los cobradores.</small>
+      </form>
       <div className={`cash-deliveries-layout ${filtersVisible ? "" : "filters-collapsed"}`}>
         {filtersVisible && <aside className="legacy-filter-panel cash-deliveries-filter-panel" aria-label="Panel de filtro de entregas">
           <h2>Panel de Filtro</h2>
@@ -8083,16 +8282,18 @@ function CashDeliveryDataDialog({ actorId, snapshot, onClose, onSave }: Readonly
       const paid = movements.filter((item) => item.type === "payout").reduce((sum, item) => sum + item.amount, 0);
       const capacity = Math.max(0, collector.payoutLimit - (delivered - paid));
       let remaining = Math.min(capacity, 50000);
-      for (const denomination of [...DENOMS].reverse()) {
+      for (const denomination of [...cashDenominations(currency)].reverse()) {
         const quantity = Math.floor(remaining / denomination);
         loaded[denomination] = quantity ? String(quantity) : "";
         remaining -= denomination * quantity;
       }
     }
+    if (collector && !currencyCode(currency)) { toast.error("Elige una moneda para sugerir un desglose."); return; }
     setQuantities(loaded);
     toast.success(collector && currencyCode(currency) && depositAmount(loaded) > 0
-      ? `Desglose simulado para ${collector.name} · ${currency}.`
-      : `No hay efectivo disponible para simular una entrega en ${currency}.`);
+      ? `Sugerencia cargada para ${collector.name} · ${currency}. Puedes cambiar las cantidades.`
+      : collector ? `${collector.name} ya llegó a su límite de pago en ${currency}. Para entregarle más hay que subir su límite o registrar sus pagos.`
+      : "Selecciona un cobrador para sugerir un desglose.");
   };
   const submit = async (shouldPrint: boolean) => {
     if (request.busy || busy) return;
@@ -8122,10 +8323,10 @@ function CashDeliveryDataDialog({ actorId, snapshot, onClose, onSave }: Readonly
       <label className="deposit-dialog-row"><span>Cobrad.:</span><select value={collectorId} onChange={(event) => { setCollectorId(event.target.value); setQuantities(emptyDepositQuantities()); }}><option value="">Seleccione</option>{snapshot.collectors.map((collector) => <option key={collector.id} value={collector.id}>{collector.name}</option>)}</select></label>
       <label className="deposit-dialog-row"><span>Nota:</span><input maxLength={INPUT_LIMITS.note} value={note} onChange={(event) => setNote(event.target.value)} /></label>
     </div>
-    <section className="deposit-denominations-section"><div className="deposit-denominations-toolbar"><strong>Denominaciones</strong><button type="button" onClick={refreshDenominations}><RefreshCw size={14} /> Refrescar</button></div><div className="deposit-denominations-table-wrap"><table className="deposit-denominations-table"><thead><tr><th>Denom.</th><th>Cantidad</th><th>Importe</th></tr></thead><tbody>{DENOMS.map((denomination) => { const quantity = Number(quantities[denomination] ?? 0) || 0; return <tr key={denomination}><td>{depositMoney(denomination, currency)}</td><td><span className="deposit-denomination-quantity">{quantity}</span></td><td>{depositMoney(denomination * quantity, currency)}</td></tr>; })}</tbody></table></div></section>
+    <section className="deposit-denominations-section"><div className="deposit-denominations-toolbar"><strong>Denominaciones · escribe cuántos billetes o monedas entregas</strong><button type="button" title="Propone un desglose de hasta 500.00 en la moneda elegida, dentro del límite de pago del cobrador" onClick={refreshDenominations}><RefreshCw size={14} /> Sugerir</button></div><div className="deposit-denominations-table-wrap"><table className="deposit-denominations-table"><thead><tr><th>Denom.</th><th>Cantidad</th><th>Importe</th></tr></thead><tbody>{denominationRows(quantities, currency).map((denomination) => { const quantity = Number(quantities[denomination] ?? 0) || 0; return <tr key={denomination}><td>{denominationName(denomination, currency)}</td><td><input aria-label={`Cantidad a entregar ${denomination / 100}`} type="number" min="0" max="1000000000" step="1" value={quantities[denomination] ?? ""} onChange={(event) => setQuantities((current) => ({ ...current, [denomination]: event.target.value }))} /></td><td>{Number.isInteger(quantity) && quantity >= 0 && Number.isSafeInteger(denomination * quantity) ? depositMoney(denomination * quantity, currency) : "Cantidad no válida"}</td></tr>; })}</tbody></table></div></section>
     </fieldset>
     {request.error && <p role="alert">{request.error}</p>}{request.uncertain && <p role="status">Reintenta esta misma entrega antes de cambiar los datos.</p>}
-    <div className="deposit-data-footer"><label>Total:<input value={depositMoney(total, currency)} readOnly disabled /></label><div className="legacy-dialog-actions"><button type="button" disabled={busy || request.busy} onClick={() => void submit(false)}>{request.uncertain ? "Reintentar" : "Guardar"}</button><button type="button" disabled={busy || request.busy || request.uncertain} onClick={() => void submit(true)}>Guardar e Imp.</button><button type="button" disabled={busy || request.busy} onClick={close}>Cancelar</button></div></div>
+    <div className="deposit-data-footer"><label>Total:<input value={Number.isSafeInteger(total) ? depositMoney(total, currency) : "Cantidad no válida"} readOnly disabled /></label><div className="legacy-dialog-actions"><button type="button" disabled={busy || request.busy} onClick={() => void submit(false)}>{request.uncertain ? "Reintentar" : "Guardar"}</button><button type="button" disabled={busy || request.busy || request.uncertain} onClick={() => void submit(true)}>Guardar e Imp.</button><button type="button" disabled={busy || request.busy} onClick={close}>Cancelar</button></div></div>
   </div>{errorOpen && <LegacyAlertDialog title="Error" message={'El campo "Total" no contiene un valor real válido'} onClose={() => setErrorOpen(false)} overlayClassName="collection-receipt-suboverlay" />}</LegacyDialog>;
 }
 
@@ -8321,7 +8522,7 @@ function PayoutsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{
     "No definido",
     ...snapshot.charges.map((charge) => charge.concept?.trim() || charge.service),
     ...snapshot.payouts.map((payout) => payout.concept),
-  ].filter(Boolean)));
+  ].filter((item) => Boolean(item) && !isRemittanceService(item))));
 
   return (
     <>
@@ -8582,7 +8783,6 @@ function PaymentDataDialog({ actorId, snapshot, onClose, onSaved }: Readonly<{ a
   const client = snapshot.clients.find((item) => item.id === draft.clientId);
   const selectedLine = draft.lines.find((line) => line.id === selectedLineId) ?? null;
   const total = draft.lines.reduce((sum, line) => sum + line.amount, 0);
-  const banks = ["No Definido", "BANCO DE RESERVAS", "BANCO POPULAR", "BANCO HIPOTECARIO DOMINICANO", "BANCO LEON", "GERENCIAL FIDUCIARIO", "BANCO NACIONAL", "BANCO METROPOLITANO", "SCOTIA BANK", "CITY BANK", "BANCO DE OSAKE", "BANCO ADEMI", "BANCO", "BANCO DE COMERCIO", "BANCO GLOBAL"];
   const clearSelection = () => { setSelectedLineId(""); setPayoutPickerOpen(false); setEditingLine(null); setConfirmDeleteOpen(false); setSaveError(""); };
   const close = () => { if (!request.locked) { request.clear(); onClose(); } };
   const update = <K extends keyof PaymentFormDraft>(field: K, value: PaymentFormDraft[K]) => {
@@ -8667,7 +8867,7 @@ function PaymentDataDialog({ actorId, snapshot, onClose, onSaved }: Readonly<{ a
           </div>
           <div className="collection-receipt-row collection-receipt-labeled-row"><label htmlFor="payment-collector">Cobrad.:</label><select id="payment-collector" value={draft.collectorId} onChange={(event) => update("collectorId", event.target.value)}><option value="">No definido</option>{snapshot.collectors.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div>
           <div className="collection-receipt-row collection-receipt-labeled-row"><label htmlFor="payment-form">Forma:</label><select id="payment-form" value="Efectivo" disabled>{["Efectivo", "Cheque", "Depósito", "Mixto", "Tarjeta"].map((item) => <option key={item}>{item}</option>)}</select></div>
-          <div className="collection-receipt-row collection-receipt-labeled-row"><label htmlFor="payment-bank">Banco:</label><select id="payment-bank" value="No Definido" disabled>{banks.map((item) => <option key={item}>{item}</option>)}</select></div>
+          <div className="collection-receipt-row collection-receipt-labeled-row"><label htmlFor="payment-bank">Banco:</label><select id="payment-bank" value="No Definido" disabled title="Los pagos se entregan en efectivo: no llevan banco."><option>No Definido</option></select></div>
           <div className="collection-receipt-row collection-receipt-labeled-row"><label htmlFor="payment-number">Número:</label><input id="payment-number" value="" disabled /></div>
           <div className="collection-receipt-row collection-receipt-labeled-row"><label htmlFor="payment-note">Nota:</label><input id="payment-note" value="" disabled /></div>
         </div>
@@ -8766,7 +8966,10 @@ function PayoutDataDialog({ actorId, snapshot, payout, concepts, onClose, onSave
       setSaving(false);
     }
   };
-  const services = payout && !CARGO_SERVICES.includes(payout.service) ? [payout.service, ...CARGO_SERVICES] : CARGO_SERVICES;
+  const { options: services, loading: servicesLoading } = useServiceOptions(payout?.service);
+  useEffect(() => {
+    if (!payout && !servicesLoading) setDraft((current) => services.includes(current.service) ? current : { ...current, service: services[0] ?? current.service });
+  }, [payout, services, servicesLoading]);
   const payoutConcepts = draft.concept && !concepts.includes(draft.concept) ? [draft.concept, ...concepts] : concepts;
   return (
     <>
@@ -8775,7 +8978,7 @@ function PayoutDataDialog({ actorId, snapshot, payout, concepts, onClose, onSave
           <fieldset disabled={request.locked} style={{ border: 0, padding: 0, margin: 0, display: "contents" }}>
           <div className="cargo-entry-row cargo-client-row"><label htmlFor="payout-client-code">Cliente:</label><input id="payout-client-code" maxLength={INPUT_LIMITS.id} autoFocus value={draft.clientCode} onChange={(event) => updateClient(event.target.value)} /><button type="button" aria-label="Buscar cliente" onClick={() => setClientSearchOpen(true)} title="Buscar cliente">[...]</button><input aria-label="Nombre del cliente" value={client?.name ?? ""} disabled readOnly /></div>
           <div className="cargo-entry-row"><label htmlFor="payout-currency">Moneda:</label><select id="payout-currency" value={draft.currency} onChange={(event) => update("currency", event.target.value)}><option>No definida</option><option>Peso Dominicano</option><option>Dólar Americano</option><option>Euro</option></select></div>
-          <div className="cargo-entry-row"><label htmlFor="payout-service">Servicio:</label><select id="payout-service" value={draft.service} onChange={(event) => update("service", event.target.value)}>{services.map((service) => <option key={service}>{service}</option>)}</select></div>
+          <div className="cargo-entry-row"><label htmlFor="payout-service">Servicio:</label><select id="payout-service" value={servicesLoading && !payout ? "" : draft.service} disabled={servicesLoading} onChange={(event) => update("service", event.target.value)}>{servicesLoading && !payout ? <option value="">Cargando servicios…</option> : services.map((service) => <option key={service} value={service}>{service}</option>)}</select></div>
           <div className="cargo-entry-row"><label htmlFor="payout-concept">Concepto:</label><select id="payout-concept" value={draft.concept} onChange={(event) => update("concept", event.target.value)}>{payoutConcepts.map((concept) => <option key={concept}>{concept}</option>)}</select></div>
           <div className="cargo-entry-row cargo-amount-row"><label htmlFor="payout-price">Importe:</label><label>Precio<input id="payout-price" type="number" min="0" step="0.01" value={draft.price} onChange={(event) => update("price", event.target.value)} /></label><label>Cantidad<input type="number" min="0" step="0.01" value={draft.quantity} onChange={(event) => update("quantity", event.target.value)} /></label><label>Total<input type="number" value={centsInput(totalCents)} disabled readOnly /></label></div>
           <div className="cargo-entry-row"><label htmlFor="payout-note">Nota:</label><input id="payout-note" maxLength={INPUT_LIMITS.note} value={draft.note} onChange={(event) => update("note", event.target.value)} /></div>
@@ -9194,6 +9397,8 @@ type CollectionTicketModel = {
   note: string;
   amount: number;
   lines: { service: string; concept: string; amount: number }[];
+  // Heading of a voucher that is not a client receipt (for example a deposit).
+  documentTitle?: string;
 };
 
 type CollectionMapPoint = {
@@ -9337,9 +9542,7 @@ function CollectionReceiptPrintDialog({ receipts, onClose, title = "Imprimir Rec
               ...(printConfig?.address ? [`Dirección: ${printConfig.address}`] : []),
               ...(printConfig?.phone ? [`Teléfono: ${printConfig.phone}`] : []),
               "================================",
-              `Recibo: ${receipt.receiptNumber}`,
-              `Ident: ${receipt.clientIdentification}`,
-              `Cliente: ${receipt.clientName}`,
+              ...(receipt.documentTitle ? [receipt.documentTitle, `Comprobante: ${receipt.receiptNumber}`] : [`Recibo: ${receipt.receiptNumber}`, `Ident: ${receipt.clientIdentification}`, `Cliente: ${receipt.clientName}`]),
               `Fecha: ${safeDateLabel(movementBusinessDate(receipt.date))}`,
               `Moneda: ${receipt.currency}`,
               `Cobrador: ${receipt.collectorName || "Administración"}`,
@@ -11167,7 +11370,7 @@ function DailySettlementsView({ snapshot, onRefresh }: Readonly<{ snapshot: Snap
   const [editingRow, setEditingRow] = useState<DailySettlementGridRow | null>(null);
   const [balanceDraft, setBalanceDraft] = useState<SettlementBalanceDraft | null>(null);
   const [denominationTarget, setDenominationTarget] = useState<SettlementDenominationTarget | null>(null);
-  const [denominationCounts, setDenominationCounts] = useState<Record<number, string>>(() => Object.fromEntries(SETTLEMENT_DENOMS.map((denomination) => [denomination, ""])));
+  const [denominationCounts, setDenominationCounts] = useState<Record<number, string>>({});
   const [confirmCloseOpen, setConfirmCloseOpen] = useState(false);
   const [alertMessage, setAlertMessage] = useState("");
 
@@ -11254,11 +11457,11 @@ function DailySettlementsView({ snapshot, onRefresh }: Readonly<{ snapshot: Snap
   };
 
   const openDenominationDialog = (target: SettlementDenominationTarget) => {
-    setDenominationCounts(Object.fromEntries(SETTLEMENT_DENOMS.map((denomination) => [denomination, ""])));
+    setDenominationCounts({});
     setDenominationTarget(target);
   };
 
-  const denominationTotal = SETTLEMENT_DENOMS.reduce((total, denomination) => total + denomination * (Number(denominationCounts[denomination]) || 0), 0);
+  const denominationTotal = Object.keys(denominationCounts).map(Number).reduce((total, denomination) => total + denomination * (Number(denominationCounts[denomination]) || 0), 0);
   const saveDenominations = () => {
     if (!denominationTarget) return;
     const field = `${denominationTarget.section}${denominationTarget.field}` as SettlementDraftField;
@@ -11361,7 +11564,7 @@ function DailySettlementsView({ snapshot, onRefresh }: Readonly<{ snapshot: Snap
     </LegacyDialog>}
 
     {denominationTarget && balanceDraft && <LegacyDialog title="Desglose del Dinero..." onClose={() => setDenominationTarget(null)} className="settlement-denomination-dialog">
-      <div className="settlement-denomination-content"><div className="settlement-denomination-scroll"><table><thead><tr><th>Denom.</th><th>Cantidad</th><th>Importe</th></tr></thead><tbody>{SETTLEMENT_DENOMS.map((denomination) => <tr key={denomination}><td>{settlementMoney(denomination, balanceDraft.currency)}</td><td><input type="number" min="0" step="1" value={denominationCounts[denomination] ?? ""} onChange={(event) => setDenominationCounts((current) => ({ ...current, [denomination]: event.target.value }))} /></td><td>{settlementMoney(denomination * (Number(denominationCounts[denomination]) || 0), balanceDraft.currency)}</td></tr>)}</tbody></table></div><label className="settlement-denomination-total">Total:<input value={settlementMoney(denominationTotal, balanceDraft.currency)} readOnly /></label><div className="legacy-dialog-actions centered"><button type="button" onClick={saveDenominations}>oK</button><button type="button" onClick={() => setDenominationTarget(null)}>Cancelar</button></div></div>
+      <div className="settlement-denomination-content"><div className="settlement-denomination-scroll"><table><thead><tr><th>Denom.</th><th>Cantidad</th><th>Importe</th></tr></thead><tbody>{[...cashDenominations(balanceDraft.currency)].reverse().map((denomination) => <tr key={denomination}><td>{settlementMoney(denomination, balanceDraft.currency)}</td><td><input type="number" min="0" step="1" value={denominationCounts[denomination] ?? ""} onChange={(event) => setDenominationCounts((current) => ({ ...current, [denomination]: event.target.value }))} /></td><td>{settlementMoney(denomination * (Number(denominationCounts[denomination]) || 0), balanceDraft.currency)}</td></tr>)}</tbody></table></div><label className="settlement-denomination-total">Total:<input value={settlementMoney(denominationTotal, balanceDraft.currency)} readOnly /></label><div className="legacy-dialog-actions centered"><button type="button" onClick={saveDenominations}>oK</button><button type="button" onClick={() => setDenominationTarget(null)}>Cancelar</button></div></div>
     </LegacyDialog>}
 
     {confirmCloseOpen && selectedRow && <LegacyDialog title="Confirm" onClose={() => setConfirmCloseOpen(false)} className="settlement-confirm-dialog"><div className="settlement-confirm-content"><CircleHelp size={28} /><p>¿Está seguro que desea cerrar/reversar el día?</p><div className="legacy-dialog-actions centered"><button type="button" onClick={confirmCloseOrReverse}>Sí</button><button type="button" onClick={() => setConfirmCloseOpen(false)}>No</button></div></div></LegacyDialog>}

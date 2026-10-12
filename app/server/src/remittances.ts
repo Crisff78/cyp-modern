@@ -57,6 +57,8 @@ export type QuoteInput = {
 };
 export type CreateRemittanceInput = QuoteInput & {
   senderClientId: string; recipientClientId: string; sendingUserId?: string; quote: Quote; note?: string;
+  // Phone typed in the form for the recipient: the number used to locate who receives the money.
+  recipientPhone?: string;
   managerCommission?: ManagerCommission;
   requestedReceiveAmount?: number;
 };
@@ -195,11 +197,13 @@ export function remittanceOperators(state: State, user: User, systemOperators: U
   const account = state.accounts.find((a) => a.id === user.id);
   if (account && (account.status !== "active" || account.role !== user.role || account.collectorId !== user.collectorId))
     fail("SESSION_EXPIRED", "La cuenta cambió. Inicia sesión de nuevo.", 401);
-  if (user.role !== "admin") return user.role === "collector" ? [user] : [];
+  // Only the business identity: the token payload also carries session fields.
+  const self: User = { id: user.id, name: user.name, role: user.role, ...(user.collectorId ? { collectorId: user.collectorId } : {}) };
+  if (user.role !== "admin") return user.role === "collector" ? [self] : [];
   const accounts: User[] = state.accounts.filter((a) => a.status === "active" && (a.role === "admin" || a.role === "collector")).map((a) => ({
     id: a.id, name: a.name, role: a.role, ...(a.collectorId ? { collectorId: a.collectorId } : {}),
   }));
-  return [...new Map([...systemOperators, ...accounts, user].map((operator) => [operator.id, operator])).values()];
+  return [...new Map([...systemOperators, ...accounts, self].map((operator) => [operator.id, operator])).values()];
 }
 function operator(state: State, user: User, id: string, systemOperators: User[]) {
   const result = remittanceOperators(state, user, systemOperators).find((o) => o.id === id);
@@ -303,12 +307,29 @@ export function createRemittance(state: State, user: User, input: CreateRemittan
     amount: input.requestedReceiveAmount ?? input.amount, amountMode: input.requestedReceiveAmount === undefined ? "source" : "destination", commissionBps: input.commissionBps,
     sourceCurrency: input.sourceCurrency, destinationCurrency: input.destinationCurrency,
   }, now);
-  if (calculated.amount !== input.amount) fail("QUOTE_CHANGED", "El principal no coincide con el cálculo del importe de destino. Vuelve a cotizar.", 409);
   if (input.quote.date !== calculated.quote.date || input.quote.sourceRate !== calculated.quote.sourceRate || input.quote.destinationRate !== calculated.quote.destinationRate ||
       input.quote.sourceRateChangeId !== calculated.quote.sourceRateChangeId || input.quote.destinationRateChangeId !== calculated.quote.destinationRateChangeId)
     fail("QUOTE_CHANGED", "La fecha o la tasa cambió. Vuelve a cotizar antes de guardar.", 409);
+  if (calculated.amount !== input.amount) fail("QUOTE_CHANGED", "El principal no coincide con el cálculo del importe de destino. Vuelve a cotizar.", 409);
   const cash = currentCash(state, sendingUser.id, input.sourceCurrency, now);
   assertCashMovement(state, cash, "sent", calculated.totalAmount);
+  const recipientContact = contactSnapshot(state, input.recipientClientId);
+  const recipientPhone = (input.recipientPhone ?? "").trim();
+  // Numbers are compared by their digits: the same phone written with other separators is not a new one.
+  const phoneDigits = (value: string) => value.replace(/\D/g, "");
+  if (recipientPhone && phoneDigits(recipientPhone) !== phoneDigits(recipientContact.phone)) {
+    if (phoneDigits(recipientPhone) === phoneDigits(recipientContact.cellular)) {
+      // It is the cellular of the record: it goes first in the copy and the other number stays second.
+      recipientContact.cellular = recipientContact.phone;
+    } else {
+      // A new number: the previous phone moves to the cellular slot of the copy when that one is free.
+      if (recipientContact.phone && !recipientContact.cellular) recipientContact.cellular = recipientContact.phone;
+      // Only administration maintains client records: it completes an empty phone, never replaces one.
+      const recipient = state.clients.find((row) => row.id === input.recipientClientId);
+      if (user.role === "admin" && recipient && !recipient.phone) recipient.phone = recipientPhone;
+    }
+    recipientContact.phone = recipientPhone;
+  }
   const sequence = state.remittances.transfers.reduce((max, t) => Math.max(max, t.sequence), 0) + 1;
   if (sequence > 99999999) fail("SEQUENCE_EXHAUSTED", "Se agotó la numeración de envíos.", 409);
   const transfer: Remittance = {
@@ -318,7 +339,7 @@ export function createRemittance(state: State, user: User, input: CreateRemittan
     sendingUserId: sendingUser.id, registeredBy: user.id, ...calculated,
     commissionAllocation: { ...calculated.commissionAllocation, managerId: sendingUser.id, managerName: sendingUser.name },
     note: (input.note ?? "").trim(), status: "pending", createdAt: now.toISOString(),
-    senderContact: contactSnapshot(state, input.senderClientId), recipientContact: contactSnapshot(state, input.recipientClientId),
+    senderContact: contactSnapshot(state, input.senderClientId), recipientContact,
     ...(managerCommission === undefined ? {} : { managerCommission }),
   };
   state.remittances.transfers.push(transfer);
