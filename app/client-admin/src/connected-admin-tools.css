@@ -50,6 +50,7 @@
 .connected-admin-tools .cyp-installation-actions,.cyp-installation-dialog .cyp-installation-actions{display:flex;gap:6px;flex-wrap:wrap;margin:7px 0}
 .connected-admin-tools .cyp-installation-panel button,.cyp-installation-dialog button{min-height:27px;padding:3px 10px;border:1px solid var(--cyp-border-strong,#94a3b8);border-radius:3px;background:linear-gradient(var(--cyp-surface,#fff),var(--cyp-surface-raised,#e2e8f0));color:var(--cyp-text,#1f2937);font-size:12px}
 .connected-admin-tools .cyp-installation-panel button:focus-visible,.cyp-installation-dialog button:focus-visible{outline:2px solid var(--cyp-focus,#2563eb);outline-offset:2px}
+.connected-admin-tools .cyp-installation-panel .cyp-installation-toggle:focus-visible{outline-offset:-2px}
 .connected-admin-tools .cyp-installation-data{margin:8px 0;padding:8px;border:1px solid var(--cyp-border,#cbd5e1);border-radius:3px}
 .connected-admin-tools .cyp-installation-data>strong,.connected-admin-tools .cyp-installation-data>p{grid-column:1/-1}
 .connected-admin-tools .cyp-installation-table-wrap{max-height:170px;overflow:auto;margin-top:6px;border:1px solid var(--cyp-border,#cbd5e1)}

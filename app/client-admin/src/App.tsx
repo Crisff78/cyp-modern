@@ -6214,7 +6214,7 @@ function SupportContact({ open }: Readonly<{ open: boolean }>) {
         <p className="support-contact-empty">Todavía no se ha escrito el teléfono ni el correo de soporte. Un administrador puede ponerlos en Archivos → Admin. → Configuración General → pestaña General → «Soporte técnico».</p>
       )}
       <p>Al llamar o escribir, indica tu usuario, la ventana donde ocurrió el problema y la hora aproximada.</p>
-      {demo && <p className="support-contact-demo">Esta es una demostración: los datos que ves son ficticios.</p>}
+      {demo && <p className="support-contact-demo">Esta es una demostración: los datos que ves son ficticios, salvo las estaciones validadas con RRAA (su código, su ID de dispositivo y su licencia).</p>}
     </section>
   );
 }

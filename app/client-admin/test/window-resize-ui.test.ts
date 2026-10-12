@@ -111,6 +111,15 @@ createRoot(document.getElementById("root")).render(<App />);
       await page.mouse.move(east.x + east.width / 2, east.y + east.height / 2); await page.mouse.down(); await page.mouse.up();
       near((await box(frame)).width, start.width, "a click changes nothing");
       assert.equal(await page.evaluate(() => localStorage.getItem("cyp-admin-window-sizes-v1")), null);
+      // The button released out of the page: the next movement arrives without a button and the resize ends.
+      const grip = { x: east.x + east.width / 2, y: east.y + east.height / 2 };
+      await page.mouse.move(grip.x, grip.y); await page.mouse.down();
+      assert.equal(await frame.evaluate((node: HTMLElement) => node.classList.contains("resizing")), true);
+      await frame.locator(".mdi-resize-e").evaluate((node: HTMLElement, at: { x: number; y: number }) => { node.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerId: 1, clientX: at.x + 70, clientY: at.y, buttons: 0 })); }, grip);
+      near((await box(frame)).width, start.width, "a movement without a button resizes nothing");
+      assert.equal(await frame.evaluate((node: HTMLElement) => node.classList.contains("resizing")), false);
+      await page.mouse.up();
+      assert.equal(await page.evaluate(() => localStorage.getItem("cyp-admin-window-sizes-v1")), null);
 
       await dragHandle(frame, "e", 90, 0);
       let now = await box(frame);

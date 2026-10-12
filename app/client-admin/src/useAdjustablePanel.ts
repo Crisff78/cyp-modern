@@ -95,13 +95,15 @@ export function useAdjustablePanel({ storageKey, axis, grow, panel, min, max, la
   };
   const onPointerMove = (event: PointerEvent<HTMLElement>) => {
     if (!drag.current) return;
+    // The button was released where the page could not see it (another program took the pointer).
+    if (event.buttons === 0) { finish(event); return; }
     const delta = (axis === "y" ? event.clientY : event.clientX) - drag.current.pointer;
     update({ size: nextPanelSize(drag.current.size, delta, grow, min, maxRef.current()) }, false);
   };
   const finish = (event: PointerEvent<HTMLElement>) => {
     if (!drag.current) return;
     drag.current = null; setDragging(false);
-    event.currentTarget.releasePointerCapture?.(event.pointerId);
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture?.(event.pointerId);
     setPrefs((current) => { writePanelPrefs(storageKey, current); return current; });
   };
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
@@ -134,7 +136,7 @@ export function useAdjustablePanel({ storageKey, axis, grow, panel, min, max, la
       "aria-valuenow": Math.min(Math.max(limits.now, min), limits.max),
       "aria-disabled": prefs.collapsed === true || undefined,
       title: "Arrastra para ajustar el tamaño. Doble clic: tamaño inicial.",
-      onPointerDown, onPointerMove, onPointerUp: finish, onPointerCancel: finish,
+      onPointerDown, onPointerMove, onPointerUp: finish, onPointerCancel: finish, onLostPointerCapture: finish,
       onKeyDown,
       onDoubleClick: reset,
       onFocus: refreshLimits,

@@ -100,6 +100,10 @@ remittancesApi("/snapshot").then(snapshot => createRoot(document.getElementById(
       assert.equal(await toggle.getAttribute("aria-expanded"), "true");
       const barBox = await bar.boundingBox(), toggleBox = await toggle.boundingBox(); assert(barBox && toggleBox);
       assert.ok(barBox.y + barBox.height <= toggleBox.y + 0.5, "the bar does not lie over the button that folds the panel");
+      // With the keyboard, the focus ring of that button is drawn inside it: the bar above cannot cut it.
+      await bar.focus(); await page.keyboard.press("Tab");
+      assert.equal(await toggle.evaluate((node: HTMLElement) => node === document.activeElement && node.matches(":focus-visible")), true);
+      assert.equal(await toggle.evaluate((node: HTMLElement) => getComputedStyle(node).outlineOffset), "-2px");
       near(Number(await bar.getAttribute("aria-valuenow")), await height(panel), "the bar announces the height of the panel", 1);
       assert.equal(Number(await bar.getAttribute("aria-valuemin")), 96);
       assert.deepEqual(await stored(), {});
@@ -146,6 +150,20 @@ remittancesApi("/snapshot").then(snapshot => createRoot(document.getElementById(
       await open();
       near(await height(panel), chosen, "same height after the reload");
       near((await stored())["stations.installation"].size, chosen, "stored height");
+    });
+
+    await t.test("the bar lets go when the button was released out of the page", async () => {
+      const before = await height(panel);
+      const rect = await bar.boundingBox(); assert(rect);
+      const grip = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+      await page.mouse.move(grip.x, grip.y); await page.mouse.down();
+      assert.equal(await panel.evaluate((node: HTMLElement) => node.classList.contains("dragging")), true);
+      // The page never sees the button go up: the next movement arrives with no button pressed.
+      await bar.evaluate((node: HTMLElement, at: { x: number; y: number }) => { node.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerId: 1, clientX: at.x, clientY: at.y + 60, buttons: 0 })); }, grip);
+      near(await height(panel), before, "a movement without a button changes nothing");
+      assert.equal(await panel.evaluate((node: HTMLElement) => node.classList.contains("dragging")), false);
+      await page.mouse.up();
+      near(await height(panel), before, "nor does the late release");
     });
 
     await t.test("a stored height never leaves the list without rows when the window gets smaller", async () => {
