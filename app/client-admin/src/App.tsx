@@ -3,6 +3,7 @@ import {
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
   useCallback,
   useEffect,
@@ -39,7 +40,9 @@ import {
   LoaderCircle,
   LogOut,
   MapPinned,
+  Maximize2,
   Menu,
+  Minimize2,
   Plus,
   Pencil,
   ReceiptText,
@@ -106,6 +109,7 @@ import { ConnectedCatalog, isConnectedCatalog } from "./ConnectedCatalog";
 import { ConnectedSettlements } from "./ConnectedSettlements";
 import { ConnectedLegacyReports } from "./ConnectedLegacyReports";
 import { ConnectedAdminTools, isConnectedAdminTool } from "./ConnectedAdminTools";
+import { DESKTOP_MARGIN, RESIZE_EDGES, fitWindowSize, readWindowSizes, rememberWindowSize, resizeWindowRect, type ResizeEdge, type WindowRect } from "./windowGeometry";
 import { ConnectedExchangeRates } from "./ConnectedExchangeRates";
 import { ConnectedBanks, type Bank } from "./ConnectedBanks";
 import { ThemeToggle } from "./ThemeToggle";
@@ -418,6 +422,8 @@ type MdiWindowState = {
   height: number;
   zIndex: number;
   isFocused: boolean;
+  // Fills the desktop; its own position and size are kept to restore them.
+  maximized?: boolean;
 };
 
 type MdiWindowSize = Pick<MdiWindowState, "width" | "height">;
@@ -435,6 +441,8 @@ const mdiWindowSize = (page: MdiPage): MdiWindowSize => {
   if (page === "recurringCharges") return { width: 860, height: 520 };
   if (page === "traces" || page === "pcps" || page === "sessions" || page === "clients" || page === "authorizationRequests") return { width: 860, height: 520 };
   if (isMdiOperationPage(page) || isMdiMonitoringPage(page) || isReportPage(page)) return { width: 860, height: 520 };
+  // Stations shows a list and the installation panel one over the other: it needs the height.
+  if (page === "stations") return { width: 860, height: 580 };
   return { width: 720, height: 440 };
 };
 
@@ -685,8 +693,19 @@ function ReportView({ page, snapshot, onRefresh }: Readonly<{ page: ReportPageId
   return <ConnectedLegacyReports page={page} title={title} snapshot={snapshot} onRefresh={onRefresh} />;
 }
 
-function MdiWindow({ windowState, onClose, onFocus, onMove, children }: Readonly<{ windowState: MdiWindowState; onClose: (id: string) => void; onFocus: (id: string) => void; onMove: (id: string, x: number, y: number) => void; children: ReactNode }>) {
+// Size of the area where the windows live (the desktop), when it is on screen.
+const desktopSize = (): { width: number; height: number } | undefined => {
+  const canvas = typeof document === "undefined" ? null : document.getElementById("main-content");
+  return canvas && canvas.clientWidth > 0 && canvas.clientHeight > 0 ? { width: canvas.clientWidth, height: canvas.clientHeight } : undefined;
+};
+
+function MdiWindow({ windowState, onClose, onFocus, onMove, onResize, onToggleMaximize, children }: Readonly<{ windowState: MdiWindowState; onClose: (id: string) => void; onFocus: (id: string) => void; onMove: (id: string, x: number, y: number) => void; onResize: (id: string, rect: WindowRect) => void; onToggleMaximize: (id: string) => void; children: ReactNode }>) {
   const [drag, setDrag] = useState<null | { startX: number; startY: number; x: number; y: number }>(null);
+  const frame = useRef<HTMLElement>(null);
+  // A border or corner being dragged: where the pointer and the window were when it started.
+  const resize = useRef<null | { edge: ResizeEdge; pointerX: number; pointerY: number; rect: WindowRect; desktop?: { width: number; height: number }; last: WindowRect }>(null);
+  const [resizing, setResizing] = useState(false);
+  const maximized = windowState.maximized === true;
   useEffect(() => {
     if (!drag) return;
     const onMouseMove = (event: MouseEvent) => onMove(windowState.id, Math.max(8, drag.x + event.clientX - drag.startX), Math.max(8, drag.y + event.clientY - drag.startY));
@@ -704,12 +723,47 @@ function MdiWindow({ windowState, onClose, onFocus, onMove, children }: Readonly
     event.preventDefault();
     event.stopPropagation();
     onFocus(windowState.id);
+    // A maximized window fills the desktop: there is nowhere to move it.
+    if (maximized) return;
     setDrag({ startX: event.clientX, startY: event.clientY, x: windowState.x, y: windowState.y });
   };
+  const startResize = (event: ReactPointerEvent<HTMLSpanElement>, edge: ResizeEdge) => {
+    const node = frame.current;
+    if (event.button !== 0 || maximized || !node) return;
+    event.preventDefault();
+    event.stopPropagation();
+    onFocus(windowState.id);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    // Start from what is on screen (the style sheet may have limited it), not from what the state asked for.
+    const rect = { x: node.offsetLeft, y: node.offsetTop, width: node.offsetWidth, height: node.offsetHeight };
+    const parent = node.offsetParent;
+    resize.current = { edge, pointerX: event.clientX, pointerY: event.clientY, rect, desktop: parent ? { width: parent.clientWidth, height: parent.clientHeight } : undefined, last: rect };
+    setResizing(true);
+  };
+  const moveResize = (event: ReactPointerEvent<HTMLSpanElement>) => {
+    const active = resize.current;
+    if (!active) return;
+    // The button was released where the page could not see it (another program took the pointer).
+    if (event.buttons === 0) { endResize(event); return; }
+    active.last = resizeWindowRect(active.rect, active.edge, event.clientX - active.pointerX, event.clientY - active.pointerY, active.desktop);
+    onResize(windowState.id, active.last);
+  };
+  const endResize = (event: ReactPointerEvent<HTMLSpanElement>) => {
+    const active = resize.current;
+    if (!active) return;
+    resize.current = null;
+    setResizing(false);
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture?.(event.pointerId);
+    // The size the user left is the one this screen opens with next time (a click without dragging chooses nothing).
+    if (active.last.width !== active.rect.width || active.last.height !== active.rect.height)
+      rememberWindowSize(windowState.page, { width: active.last.width, height: active.last.height });
+  };
+  const sizeAction = maximized ? "Restaurar tamaño de" : "Maximizar";
   return (
-    <section className={`mdi-window ${windowState.isFocused ? "focused" : ""} ${windowState.page === "remittances" ? "remittances-mdi-window" : ""}`} style={{ left: windowState.x, top: windowState.y, width: windowState.width, height: windowState.height, zIndex: windowState.zIndex }} onPointerDownCapture={focusIfNeeded} role="dialog" aria-label={windowState.title}>
-      <div className="mdi-window-titlebar" onMouseDown={startDrag}><span>{windowState.title}</span><button type="button" aria-label={`Cerrar ${windowState.title}`} onMouseDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onClose(windowState.id); }} title={`Cerrar ${windowState.title}`}><X size={15} /></button></div>
+    <section ref={frame} className={`mdi-window ${windowState.isFocused ? "focused" : ""} ${windowState.page === "remittances" ? "remittances-mdi-window" : ""}${maximized ? " maximized" : ""}${resizing ? " resizing" : ""}`} style={{ left: windowState.x, top: windowState.y, width: windowState.width, height: windowState.height, zIndex: windowState.zIndex }} onPointerDownCapture={focusIfNeeded} role="dialog" aria-label={windowState.title}>
+      <div className="mdi-window-titlebar" onMouseDown={startDrag} onDoubleClick={(event) => { if (!(event.target as HTMLElement).closest("button")) onToggleMaximize(windowState.id); }}><span>{windowState.title}</span><div className="mdi-window-controls"><button type="button" className="mdi-window-maximize" aria-label={`${sizeAction} ${windowState.title}`} onMouseDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onToggleMaximize(windowState.id); }} title={`${sizeAction} ${windowState.title}`}>{maximized ? <Minimize2 size={13} /> : <Maximize2 size={13} />}</button><button type="button" aria-label={`Cerrar ${windowState.title}`} onMouseDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onClose(windowState.id); }} title={`Cerrar ${windowState.title}`}><X size={15} /></button></div></div>
       <div className="mdi-window-content">{children}</div><span className="mdi-resize-cue" aria-hidden="true" />
+      {!maximized && RESIZE_EDGES.map((edge) => <span key={edge} className={`mdi-resize-handle mdi-resize-${edge}`} data-edge={edge} aria-hidden="true" onPointerDown={(event) => startResize(event, edge)} onPointerMove={moveResize} onPointerUp={endResize} onPointerCancel={endResize} onLostPointerCapture={endResize} />)}
     </section>
   );
 }
@@ -4757,7 +4811,11 @@ export default function App() {
 
       const offset = windows.length * 26;
       const compact = next === "controlPanel";
-      const { width, height } = mdiWindowSize(next);
+      // The size the user left this screen at, if any, and never bigger than the desktop of today.
+      const desktop = desktopSize();
+      const { width, height } = fitWindowSize(readWindowSizes()[next] ?? mdiWindowSize(next), desktop);
+      // Keep the whole window on the desktop when the cascade or a small screen would cut it.
+      const place = (wanted: number, size: number, room?: number) => room === undefined ? wanted : Math.max(DESKTOP_MARGIN, Math.min(wanted, room - DESKTOP_MARGIN - size));
       return [
         ...windows.map((item) => ({ ...item, isFocused: false })),
         {
@@ -4765,8 +4823,8 @@ export default function App() {
           page: next,
           remittanceReportRequest: requestRemittanceReport ? 1 : undefined,
           title: mdiTitle(next),
-          x: compact ? 180 : 118 + offset,
-          y: compact ? 78 : 78 + offset,
+          x: place(compact ? 180 : 118 + offset, width, desktop?.width),
+          y: place(compact ? 78 : 78 + offset, height, desktop?.height),
           width,
           height,
           zIndex,
@@ -4791,6 +4849,12 @@ export default function App() {
   }, [nextZIndex]);
   const moveMdiWindow = useCallback((id: string, x: number, y: number) => {
     setMdiWindows((windows) => windows.map((item) => item.id === id ? { ...item, x, y } : item));
+  }, []);
+  const resizeMdiWindow = useCallback((id: string, rect: WindowRect) => {
+    setMdiWindows((windows) => windows.map((item) => item.id === id ? { ...item, ...rect } : item));
+  }, []);
+  const toggleMaximizeMdiWindow = useCallback((id: string) => {
+    setMdiWindows((windows) => windows.map((item) => item.id === id ? { ...item, maximized: !item.maximized } : item));
   }, []);
   const closeMdiWindow = useCallback((id: string) => {
     if (user && hasUnresolvedMovementRequest(user.id)) {
@@ -5234,6 +5298,8 @@ export default function App() {
               onClose={closeMdiWindow}
               onFocus={focusMdiWindow}
               onMove={moveMdiWindow}
+              onResize={resizeMdiWindow}
+              onToggleMaximize={toggleMaximizeMdiWindow}
             >
               {windowState.page === "controlPanel" ? (
                 <ControlPanelContent onLaunch={openMdiWindow} />
@@ -6148,7 +6214,7 @@ function SupportContact({ open }: Readonly<{ open: boolean }>) {
         <p className="support-contact-empty">Todavía no se ha escrito el teléfono ni el correo de soporte. Un administrador puede ponerlos en Archivos → Admin. → Configuración General → pestaña General → «Soporte técnico».</p>
       )}
       <p>Al llamar o escribir, indica tu usuario, la ventana donde ocurrió el problema y la hora aproximada.</p>
-      {demo && <p className="support-contact-demo">Esta es una demostración: los datos que ves son ficticios.</p>}
+      {demo && <p className="support-contact-demo">Esta es una demostración: los datos que ves son ficticios, salvo las estaciones validadas con RRAA (su código, su ID de dispositivo y su licencia).</p>}
     </section>
   );
 }

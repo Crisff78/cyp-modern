@@ -11,7 +11,13 @@ export function parseRraaResponse(text: string): string {
   const parts = text.trim().split("|");
   if (parts.length !== 2 || !parts[1]?.trim() || /[\u0000-\u001f\u007f]/.test(parts[1]))
     throw new DomainError("RRAA_INVALID_RESPONSE", "RRAA devolvió una respuesta inválida. La estación no fue autorizada.", 502);
-  if (parts[0] === "ER") throw new DomainError("RRAA_STATION_NOT_FOUND", `RRAA: ${parts[1].trim()}`, 422);
+  if (parts[0] === "ER") {
+    // The service answers with short codes instead of the sentence of the contract.
+    const reason = parts[1].trim();
+    // CNE is about the company id configured in the server, not about what the administrator typed.
+    if (reason === "CNE") throw new DomainError("RRAA_CLIENT_NOT_FOUND", "RRAA: Cliente no encontrado (CNE). Revisa el identificador de empresa configurado en el servidor.", 422);
+    throw new DomainError("RRAA_STATION_NOT_FOUND", reason === "ENE" ? "RRAA: Estación no encontrada (ENE)." : `RRAA: ${reason}`, 422);
+  }
   if (parts[0] !== "OK" || parts[1].trim().length > 1024)
     throw new DomainError("RRAA_INVALID_RESPONSE", "RRAA devolvió una respuesta inválida. La estación no fue autorizada.", 502);
   return parts[1].trim();
@@ -49,6 +55,34 @@ export function createRraaValidator(config: RraaConfig): RraaValidator {
       if (error instanceof DomainError) throw error;
       throw new DomainError("RRAA_UNAVAILABLE", controller.signal.aborted ? "RRAA no respondió a tiempo. La estación no fue autorizada; reintenta." : "No pudimos consultar RRAA. La estación no fue autorizada; reintenta.", 502);
     } finally { clearTimeout(timer); }
+  } };
+}
+// A shared installation (the public demo) lets anyone invited ask the provider through CyP, so the
+// questions per minute are capped for the whole server. Refused questions never reach the provider.
+// A question is awaited while the store is locked for writing, so after the provider fails to
+// answer it is not asked again for a while: a provider that is down holds that lock once, not
+// question after question.
+export function limitRraaCalls(validator: RraaValidator, perMinute: number, now: () => number = Date.now, pauseMs = 30_000): RraaValidator {
+  if (!Number.isInteger(perMinute) || perMinute < 1) throw new Error("El límite de consultas a RRAA debe ser un entero positivo.");
+  if (!Number.isInteger(pauseMs) || pauseMs < 0) throw new Error("La pausa tras un fallo de RRAA debe ser un entero no negativo.");
+  const calls: number[] = [];
+  let pausedUntil = 0;
+  return { ...validator, async validate(stationCode, deviceId) {
+    if (now() < pausedUntil)
+      throw new DomainError("RRAA_PAUSED", "RRAA no respondió hace un momento. Espera medio minuto y vuelve a intentar.", 429);
+    const cutoff = now() - 60_000;
+    while (calls.length && calls[0] <= cutoff) calls.shift();
+    if (calls.length >= perMinute)
+      throw new DomainError("RRAA_RATE_LIMITED", "Se hicieron demasiadas consultas a RRAA en un minuto. Espera un momento y vuelve a intentar.", 429);
+    const stamp = now();
+    calls.push(stamp);
+    try { return await validator.validate(stationCode, deviceId); }
+    catch (error) {
+      // Input that the validator refuses by itself never reached the provider: it does not count.
+      if (error instanceof DomainError && error.code === "RRAA_INPUT_INVALID") { const index = calls.lastIndexOf(stamp); if (index >= 0) calls.splice(index, 1); }
+      if (error instanceof DomainError && error.code === "RRAA_UNAVAILABLE") pausedUntil = now() + pauseMs;
+      throw error;
+    }
   } };
 }
 // Demo only: a practice "company control" so the station flow can be tried before the provider is

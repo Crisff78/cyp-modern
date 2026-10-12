@@ -7,8 +7,9 @@ import { INSTALLATION_PROTOCOL_VERSION, signingPayload, type InstallationPurpose
   type StationInstallationSummary } from "./station-installation-protocol.js";
 
 export type InstallationActor = User & { sid?: string };
-// validationClientId: company used only to report whether the station is validated (it may be the practice
-// control of the demo); rraaClientId stays part of the scope under which installations are stored.
+// validationClientId: company used only to report whether the station is validated (the provider, or the
+// practice control of the demo); rraaClientId stays part of the scope under which installations are stored
+// and is left out in the public demo, with or without a provider.
 export type StationInstallationOptions = { rraaClientId?: string; validationClientId?: string; publicOrigin?: string; origins?: string[]; buildVersion?: string };
 type InstallationState = { installationScopeId?: string; installations: StationInstallation[]; installationChallenges: StationInstallationChallenge[] };
 export type InstallationChallengeInput = { purpose: InstallationPurpose; installationId: string; publicKeySpki?: string };

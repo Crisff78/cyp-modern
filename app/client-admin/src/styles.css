@@ -5465,7 +5465,7 @@ table {
   border-radius: 10px;
   background: var(--cyp-surface-muted, #f8fafc);
   box-shadow: 0 24px 80px rgba(15, 23, 42, 0.3);
-  resize: both;
+  resize: none;
   overflow: hidden;
   pointer-events: auto;
 }
@@ -5516,11 +5516,14 @@ table {
   border-color: var(--cyp-danger-text, #fecaca);
 }
 
+/* The right and bottom borders of the window are the strips to resize it: the content (and its
+   scrollbar) stops 4 px before them. Margin plus padding keep the 8 px that the content had. */
 .mdi-window-content {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 8px;
+  margin: 0 4px 4px 0;
+  padding: 8px 4px 4px 8px;
 }
 
 .mdi-resize-cue {
@@ -5532,6 +5535,87 @@ table {
   border-right: 2px solid var(--cyp-border-strong, #94a3b8);
   border-bottom: 2px solid var(--cyp-border-strong, #94a3b8);
   pointer-events: none;
+}
+
+/* Every border and corner of a window can be dragged to change its size. The top corners stay
+   clear of the buttons of the title bar. */
+.mdi-resize-handle {
+  position: absolute;
+  z-index: 3;
+  touch-action: none;
+}
+
+.mdi-resize-n,
+.mdi-resize-s {
+  left: 12px;
+  right: 16px;
+  height: 4px;
+  cursor: ns-resize;
+}
+
+.mdi-resize-e,
+.mdi-resize-w {
+  top: 12px;
+  bottom: 16px;
+  width: 4px;
+  cursor: ew-resize;
+}
+
+.mdi-resize-n { top: 0; }
+.mdi-resize-s { bottom: 0; }
+.mdi-resize-e { right: 0; }
+.mdi-resize-w { left: 0; }
+
+.mdi-resize-ne,
+.mdi-resize-nw {
+  top: 0;
+  width: 8px;
+  height: 8px;
+}
+
+.mdi-resize-ne { right: 0; cursor: nesw-resize; }
+.mdi-resize-nw { left: 0; cursor: nwse-resize; }
+
+.mdi-resize-se,
+.mdi-resize-sw {
+  bottom: 0;
+  width: 16px;
+  height: 16px;
+}
+
+.mdi-resize-se { right: 0; cursor: nwse-resize; }
+.mdi-resize-sw { left: 0; width: 10px; height: 10px; cursor: nesw-resize; }
+
+.mdi-window.resizing {
+  user-select: none;
+}
+
+.mdi-window-controls {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mdi-window-titlebar button.mdi-window-maximize:hover {
+  background: rgba(255, 255, 255, 0.28);
+  border-color: rgba(255, 255, 255, 0.65);
+}
+
+/* Maximized: the window fills the desktop and follows it when the browser changes size. */
+.desktop-canvas .mdi-window.maximized {
+  left: 8px !important;
+  top: 8px !important;
+  width: calc(100% - 16px) !important;
+  height: calc(100% - 16px) !important;
+}
+
+.mdi-window.maximized .mdi-window-titlebar {
+  cursor: default;
+}
+
+.mdi-window.maximized .mdi-resize-cue {
+  display: none;
 }
 
 .legacy-mdi-view,
@@ -6758,10 +6842,11 @@ table {
   background-size: 24px 24px;
 }
 
+/* Same 8 px margin per side that moving and resizing a window keep (windowGeometry.ts). */
 .desktop-canvas .mdi-window {
   position: absolute;
-  max-width: calc(100% - 20px);
-  max-height: calc(100% - 20px);
+  max-width: calc(100% - 16px);
+  max-height: calc(100% - 16px);
 }
 
 .legacy-telemetry {
@@ -11012,6 +11097,8 @@ table {
 }
 @media (max-width: 1100px) {
   .remittances-mdi-window { left: 12px !important; top: 12px !important; width: calc(100% - 24px) !important; max-width: none; height: min(760px, calc(100dvh - 110px)) !important; }
+  /* Its place and size are fixed here, so there is nothing to drag; it can still be maximized. */
+  .remittances-mdi-window:not(.maximized) .mdi-resize-handle, .remittances-mdi-window:not(.maximized) .mdi-resize-cue { display: none; }
 }
 
 /* Requested operational controls keep the existing compact MDI layout. */

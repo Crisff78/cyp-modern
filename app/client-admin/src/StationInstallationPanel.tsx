@@ -11,6 +11,7 @@ import {
   type StationInstallationKey,
 } from "./stationInstallationKey";
 import { normalizeRole, type User } from "./types";
+import { useAdjustablePanel } from "./useAdjustablePanel";
 
 type Actor = Pick<User, "id" | "role">;
 export type InstallationStation = { id: string; name: string; deviceId: string; active: boolean; rraaValidated: boolean };
@@ -77,6 +78,9 @@ async function sendPending(request: PendingRequest): Promise<unknown> {
   finally { if (request.inFlight === response) request.inFlight = undefined; }
 }
 
+// The panel never gets smaller than its first row of fields, nor leaves the list above it without rows.
+const MIN_PANEL_HEIGHT = 96, MIN_LIST_HEIGHT = 84;
+
 export function StationInstallationPanel({ station, user, disabled = false, onLockChange, simulatedControl = false }: {
   // True when the practice control of the demo answers instead of the provider: the texts do not say RRAA.
   simulatedControl?: boolean;
@@ -98,6 +102,17 @@ export function StationInstallationPanel({ station, user, disabled = false, onLo
   const [review, setReview] = useState<Review | null>(null), [reason, setReason] = useState(""), [revocationReview, setRevocationReview] = useState(false);
   const pending = useRef<PendingRequest | null>(null), working = useRef(false), epoch = useRef(0);
   const locked = busy || uncertain || Boolean(review);
+  // The bar over this panel shares the window between the list above and the panel; the panel can also be folded away.
+  const panelRef = useRef<HTMLElement>(null);
+  const maxPanelHeight = useCallback(() => {
+    const panel = panelRef.current, list = panel?.previousElementSibling as HTMLElement | null;
+    return panel ? panel.offsetHeight + Math.max(0, (list?.offsetHeight ?? 0) - MIN_LIST_HEIGHT) : MIN_PANEL_HEIGHT;
+  }, []);
+  const adjust = useAdjustablePanel({ storageKey: "stations.installation", axis: "y", grow: -1, panel: panelRef, min: MIN_PANEL_HEIGHT, max: maxPanelHeight, label: "Ajustar el alto de Instalación de CyP" });
+  // While one of its requests is pending the panel stays in view: the way to retry is inside it.
+  const folded = adjust.collapsed && !locked;
+  const { collapsed: storedFolded, setCollapsed: storeFolded } = adjust;
+  useEffect(() => { if (locked && storedFolded) storeFolded(false); }, [locked, storedFolded, storeFolded]);
   const current = installations.find((row) => row.installationId === identity?.installationId);
   useEffect(() => { onLockChange?.(locked); return () => { onLockChange?.(false); }; }, [locked, onLockChange]);
 
@@ -230,9 +245,10 @@ export function StationInstallationPanel({ station, user, disabled = false, onLo
   const closeReview = () => { if (!busy && !uncertain) { setReview(null); setReason(""); setRevocationReview(false); setError(""); } };
   const actionDisabled = disabled || locked || loading || !canRead || !station;
 
-  return <section className="cyp-installation-panel" aria-label="Instalaciones propias de CyP" aria-busy={loading || busy}>
-    <div className="cyp-installation-heading"><strong>Instalación de CyP</strong><span>Perfil de este navegador · identidad lógica</span></div>
-    {!station ? <p>Selecciona una estación del listado.</p> : <>
+  return <section ref={panelRef} className={"cyp-installation-panel" + (folded ? " folded" : adjust.size !== null ? " sized" : "") + (adjust.dragging ? " dragging" : "")} style={!folded && adjust.size !== null ? { height: adjust.size } : undefined} aria-label="Instalaciones propias de CyP" aria-busy={loading || busy}>
+    {!folded && <div className="cyp-installation-resizer" {...adjust.separatorProps} />}
+    <div className="cyp-installation-heading"><strong>Instalación de CyP</strong><span>Perfil de este navegador · identidad lógica</span><button type="button" className="cyp-installation-toggle" aria-expanded={!folded} disabled={locked} title={folded ? "Mostrar la instalación de CyP" : "Ocultar la instalación de CyP y dejar más espacio a la lista"} onClick={() => adjust.setCollapsed(!folded)}>{folded ? "Mostrar" : "Ocultar"}</button></div>
+    {!folded && <>{!station ? <p>Selecciona una estación del listado.</p> : <>
       <div className="cyp-installation-fields">
         <label>Estación CyP<input readOnly value={station.name} /></label>
         <label>ID de instalación CyP<input readOnly value={identity?.installationId ?? "Sin identidad guardada"} /></label>
@@ -274,6 +290,7 @@ export function StationInstallationPanel({ station, user, disabled = false, onLo
       <p>El resultado de la solicitud está sin confirmar. Se conserva el cuerpo y la clave de reintento. Revisar la lista no cancela una solicitud enviada.</p>
       <button type="button" disabled={busy || !pending.current} onClick={() => { if (pending.current) void run(pending.current); }}>Reintentar la misma solicitud</button>
     </div>}
+    </>}
     {review && station && <LegacyDialog title={review.kind === "register" ? "Registrar este navegador en CyP" : revocationReview ? "Confirmar revocación de instalación" : "Revocar instalación de CyP"} onClose={closeReview} className="cyp-installation-dialog legacy-admin-dialog">
       <div className="cyp-installation-review">
         <label>Estación<input readOnly value={station.name} /></label>

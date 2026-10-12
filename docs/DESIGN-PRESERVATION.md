@@ -34,6 +34,10 @@ de Envíos de Dinero y del cobrador conservan sus mejoras actuales.
 - Una ubicación sin coordenadas muestra "No definida". El mapa de selección se
   abre por una acción explícita; una vista general del mapa no se guarda como
   ubicación del cliente. Se conservan las coordenadas que ya estaban registradas.
+- Las ventanas del escritorio se ajustan desde cualquier borde o esquina, se maximizan y
+  restauran con su botón o con doble clic en el título, y cada pantalla recuerda en el
+  navegador el tamaño que el usuario le dejó. En Estaciones, una barra reparte el alto
+  entre la lista y «Instalación de CyP», que además se puede plegar; también se recuerda.
 
 ## Límites del modelo actual
 

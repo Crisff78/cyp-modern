@@ -944,7 +944,7 @@ test("B5 with the practice control a station is created, edited and activated on
   for (const id of ["unknown-station", "no-device-station"]) assert.equal(getAdminTools(await env.store.read()).stations.find((row) => row.id === id)!.active, false);
 });
 
-test("B5 the practice control exists only in demo mode; the public demo never calls a real validator", async (t) => {
+test("B5 the practice control exists only in demo mode and only answers when no provider is configured", async (t) => {
   await assert.rejects(buildApp({ store: new MemoryStore(seed()), demo: false, secret: "synthetic-station-control-secret-at-least-32-characters", origins: [],
     collectorUrl: "http://127.0.0.1:5174", adminEmail: "admin@example.invalid", adminPassword: "Clave-Sintetica-Larga-2026", demoStationControl: createDemoStationControl() }),
     /solo existe en modo demo/);
@@ -957,22 +957,30 @@ test("B5 the practice control exists only in demo mode; the public demo never ca
   const real: RraaValidator = { clientId: "QA-COMPANY", async validate(stationCode, deviceId) {
     realCalls += 1; return { clientId: "QA-COMPANY", stationCode, deviceId, license: "QA-LICENSE", validatedAt: new Date().toISOString() };
   } };
-  // Public demo: the practice control answers even if a real validator was supplied.
-  const publicDemo = await stationApp(t, { publicWeb: true, rraa: real });
-  assert.equal((await publicDemo.get("/api/estaciones/rraa")).json().clientId, "EMPRESA-DEMO");
+  // Public demo without a provider: the practice control answers and nothing is asked outside.
+  const publicDemo = await stationApp(t, { publicWeb: true });
+  const practice = (await publicDemo.get("/api/estaciones/rraa")).json();
+  assert.equal(practice.clientId, "EMPRESA-DEMO"); assert.equal(practice.simulated, true);
   assert.equal((await publicDemo.post("/api/estaciones", stationInput("Estación inventada", "X-1"))).statusCode, 422);
   assert.equal((await publicDemo.post("/api/estaciones", stationInput("EST-PRUEBA-02", "DISP-PRUEBA-02"))).statusCode, 200);
   assert.equal(realCalls, 0);
+  // Public demo with a provider (decision of 2026-10-12): the provider answers, the practice control does not.
+  const publicProvider = await stationApp(t, { publicWeb: true, rraa: real });
+  assert.deepEqual((await publicProvider.get("/api/estaciones/rraa")).json(), { configured: true, clientId: "QA-COMPANY" });
+  const accepted = await publicProvider.post("/api/estaciones", stationInput("EST-PRUEBA-02", "DISP-PRUEBA-02"));
+  assert.equal(accepted.statusCode, 200, accepted.body);
+  assert.equal(accepted.json().license, "QA-LICENSE"); assert.equal(accepted.json().rraaClientId, "QA-COMPANY");
+  assert.equal(realCalls, 1);
   // Local demo with the provider configured: the provider comes first.
   const withProvider = await stationApp(t, { rraa: real });
   assert.deepEqual((await withProvider.get("/api/estaciones/rraa")).json(), { configured: true, clientId: "QA-COMPANY" });
   assert.equal((await withProvider.post("/api/estaciones", stationInput("Estación del proveedor", "X-1"))).json().license, "QA-LICENSE");
-  assert.equal(realCalls, 1);
+  assert.equal(realCalls, 2);
   // With a provider the activation is not judged by CyP first: even a station without device goes to the provider, as before.
   await withProvider.store.transaction((state) => { getAdminTools(state).stations.push(
     { id: "provider-no-device", number: "LEG-3", name: "Estación histórica", deviceId: "", description: "", group: "", type: "", license: "", version: "", active: false }); });
   assert.equal((await withProvider.post("/api/estaciones/provider-no-device/actividad", { active: true })).statusCode, 200);
-  assert.equal(realCalls, 2);
+  assert.equal(realCalls, 3);
   // Without any control everything stays closed, as before.
   const closed = await stationApp(t, { control: false });
   assert.deepEqual((await closed.get("/api/estaciones/rraa")).json(), { configured: false });
@@ -1053,7 +1061,8 @@ test("B5 through the app, the data of an installation match the list and the pra
   const real: RraaValidator = { clientId: "QA-COMPANY", async validate(stationCode, deviceId) {
     return { clientId: "QA-COMPANY", stationCode, deviceId, license: "QA-LICENSE", validatedAt: new Date().toISOString() };
   } };
-  // Public demo and local demo without provider: the practice control validates and installations keep their scope without a company.
+  // Public demo (with the practice control or with a provider) and local demo without provider: whoever
+  // validates, the data match the list and the installations keep their scope without a company.
   for (const extra of [{ publicWeb: true }, { publicWeb: true, rraa: real }, {}]) {
     const seen = await run(extra, "EST-PRUEBA-01", "DISP-PRUEBA-01");
     assert.equal(seen.listed.rraaValidated, true);

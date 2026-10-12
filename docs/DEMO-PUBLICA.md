@@ -163,6 +163,8 @@ no necesita otro servicio ni otro dominio.
    pooler y el certificado descritos arriba. Render genera `JWT_SECRET`. Configura
    `DEMO_ACCESS_CODE` con 9 a 256 caracteres; una invitación más corta es más
    fácil de adivinar y debe compartirse solo para esta demo de datos ficticios.
+   Para validar las estaciones contra RRAA añade `RRAA_ENDPOINT` y `RRAA_CLIENT_ID`
+   (ver [RRAA-ESTACIONES.md](RRAA-ESTACIONES.md)); sin ellas responde el control de prueba.
    No introduzcas contraseñas de la instalación local ni publiques estas variables.
 4. Espera el deploy y comprueba `GET /api/health`, `/`, `/collector/`, el login
    de ambos roles y un flujo de Envío/Recibo. `/` debe pedir primero la invitación.
@@ -186,9 +188,13 @@ El esquema incluye las migraciones 014 (anulaciones con historial inmutable) y
 de cobros guarda todas sus líneas o ninguna. Las anulaciones se limitan a la
 jornada actual abierta y respetan los fondos disponibles. Las solicitudes de
 autorización registran una decisión administrativa; no crean pagos ni alteran
-límites de caja. En la demo las licencias de estaciones son ficticias y las entrega el
-control de prueba al validar (ver [RRAA-ESTACIONES.md](RRAA-ESTACIONES.md)); no se
-escriben a mano.
+límites de caja. Las estaciones se validan contra el RRAA real cuando el servicio tiene
+`RRAA_ENDPOINT` y `RRAA_CLIENT_ID`; sin ellas responde el control de prueba, con licencias
+ficticias (ver [RRAA-ESTACIONES.md](RRAA-ESTACIONES.md)). Las licencias no se escriben a
+mano. Los códigos de estación, los ID de dispositivo y las licencias que se validan contra
+RRAA son los reales del proveedor. Junto con la ubicación que un cobrador comparta
+voluntariamente (ver «Límites de esta demo gratuita»), son los únicos datos reales que
+admite la demo.
 
 ## Límites de esta demo gratuita
 

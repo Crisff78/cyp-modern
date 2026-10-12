@@ -5,6 +5,7 @@
 .connected-admin-tools .pcp-stations-button{display:inline-flex;align-items:center;gap:4px;min-width:96px;white-space:nowrap}
 .connected-admin-tools .legacy-admin-grid-panel{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;overflow:hidden}
 .connected-admin-tools .legacy-admin-grid-panel>.legacy-mdi-table-wrap{flex:1;min-height:0}
+.connected-admin-tools .stations-grid-panel{min-height:84px}
 .connected-admin-tools .legacy-admin-search{display:inline-flex;align-items:center;gap:5px;margin-left:6px;font-size:12px}
 .connected-admin-tools .legacy-admin-search input{width:160px;height:24px;min-width:0;padding:0 6px;border:1px solid var(--cyp-border-strong, #9ca3af);border-radius:3px;background:var(--cyp-surface, #fff);color:var(--cyp-text, #111827);font-size:12px}
 .connected-admin-tools .legacy-admin-filters{overflow:auto}
@@ -29,6 +30,16 @@
 .legacy-admin-dialog .legacy-relation-footer{flex:0 0 auto}
 .connected-admin-tools .cyp-installation-panel{flex:0 1 auto;min-height:0;max-height:52%;overflow:auto;border-top:1px solid var(--cyp-border-strong,#94a3b8);padding:8px;background:var(--cyp-surface,#fff);color:var(--cyp-text,#111827);font-size:12px}
 .connected-admin-tools .cyp-installation-heading{display:flex;align-items:baseline;flex-wrap:wrap;gap:8px;margin-bottom:6px}
+.connected-admin-tools .cyp-installation-panel.sized{flex:0 1 auto;max-height:none}
+.connected-admin-tools .cyp-installation-panel.folded{flex:0 0 auto;max-height:none;overflow:hidden;padding-top:6px;padding-bottom:6px}
+.connected-admin-tools .cyp-installation-panel.folded .cyp-installation-heading{margin-bottom:0}
+.connected-admin-tools .cyp-installation-panel.dragging{user-select:none}
+.connected-admin-tools .cyp-installation-panel:not(.folded){padding-top:0}
+.connected-admin-tools .cyp-installation-resizer{position:sticky;top:0;z-index:2;height:8px;margin:0 -8px;cursor:row-resize;touch-action:none;background:var(--cyp-surface,#fff)}
+.connected-admin-tools .cyp-installation-resizer::after{content:"";position:absolute;left:50%;top:2px;width:44px;height:4px;margin-left:-22px;border-radius:2px;background:var(--cyp-border-strong,#94a3b8)}
+.connected-admin-tools .cyp-installation-resizer:hover::after,.connected-admin-tools .cyp-installation-panel.dragging .cyp-installation-resizer::after{background:var(--cyp-success-text,#059669)}
+.connected-admin-tools .cyp-installation-resizer:focus-visible{outline:2px solid var(--cyp-focus,#2563eb);outline-offset:-2px}
+.connected-admin-tools .cyp-installation-panel .cyp-installation-toggle{margin-left:auto}
 .connected-admin-tools .cyp-installation-heading span,.cyp-installation-dialog .cyp-installation-review p,.connected-admin-tools .cyp-installation-note{color:var(--cyp-text-muted,#64748b)}
 .connected-admin-tools .cyp-installation-fields,.connected-admin-tools .cyp-installation-data{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:6px 10px}
 .connected-admin-tools .cyp-installation-fields label,.connected-admin-tools .cyp-installation-data label,.cyp-installation-dialog .cyp-installation-review label{display:grid;gap:3px;min-width:0}
@@ -39,6 +50,7 @@
 .connected-admin-tools .cyp-installation-actions,.cyp-installation-dialog .cyp-installation-actions{display:flex;gap:6px;flex-wrap:wrap;margin:7px 0}
 .connected-admin-tools .cyp-installation-panel button,.cyp-installation-dialog button{min-height:27px;padding:3px 10px;border:1px solid var(--cyp-border-strong,#94a3b8);border-radius:3px;background:linear-gradient(var(--cyp-surface,#fff),var(--cyp-surface-raised,#e2e8f0));color:var(--cyp-text,#1f2937);font-size:12px}
 .connected-admin-tools .cyp-installation-panel button:focus-visible,.cyp-installation-dialog button:focus-visible{outline:2px solid var(--cyp-focus,#2563eb);outline-offset:2px}
+.connected-admin-tools .cyp-installation-panel .cyp-installation-toggle:focus-visible{outline-offset:-2px}
 .connected-admin-tools .cyp-installation-data{margin:8px 0;padding:8px;border:1px solid var(--cyp-border,#cbd5e1);border-radius:3px}
 .connected-admin-tools .cyp-installation-data>strong,.connected-admin-tools .cyp-installation-data>p{grid-column:1/-1}
 .connected-admin-tools .cyp-installation-table-wrap{max-height:170px;overflow:auto;margin-top:6px;border:1px solid var(--cyp-border,#cbd5e1)}

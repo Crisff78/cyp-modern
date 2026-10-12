@@ -1,7 +1,10 @@
 # RRAA — validación de estaciones
 
 Contrato recibido el 9 de octubre de 2026: `GET /VALSTAT?p=idcliente|estacion|idestacion`.
-Respuesta de texto: `OK|licencia` o `ER|Estación no encontrada.`.
+Respuesta de texto: `OK|licencia` o `ER|motivo`. El contrato da como ejemplo
+`ER|Estación no encontrada`; el servicio responde hoy con códigos cortos: `ER|ENE`
+(estación no encontrada para ese idcliente y dispositivo) y `ER|CNE` (el idcliente no
+existe). CyP los muestra con su texto y conserva el código entre paréntesis.
 No existe en este contrato una operación para crear estaciones en RRAA, consultar
 grupos/versiones ni emitir licencias independientemente de la validación.
 
@@ -17,8 +20,8 @@ servidor. No se aceptan URL ni idcliente enviados por el navegador. En esta
 instalación se utiliza `idcliente=0`, tal como en la petición proporcionada.
 Ese valor procede del contrato recibido, no de un identificador inventado por CyP.
 Para otra empresa se debe configurar el identificador que entregue el proveedor.
-No se configura el servicio real en la demo pública ni en los tests automáticos.
-Los identificadores y licencias reales no se escriben en fixtures o Git.
+No se configura el servicio real en los tests automáticos. La dirección del servicio,
+los identificadores y las licencias reales no se escriben en fixtures o Git.
 
 El campo Estación es el código RRAA; ID dispositivo es idestacion. Nro. conserva
 su función de identificador local de catálogo. Se rechazan `|`, controles y
@@ -27,12 +30,36 @@ limita la espera y el tamaño de respuesta. Solo admite `OK` con licencia no vac
 o `ER` del contrato. Un error HTTP, timeout o respuesta malformada nunca autoriza.
 El transporte es HTTP según el proveedor, sin cifrado TLS ni firma de respuesta.
 
+## RRAA real en la demo pública
+
+Decisión de Rardiel del 12 de octubre de 2026: la demo pública valida las estaciones contra
+el RRAA real. Basta con que el servicio de Render tenga `RRAA_ENDPOINT` (la URL de VALSTAT,
+sin parámetros) y `RRAA_CLIENT_ID`; se escriben en la configuración del servicio, no en Git.
+Si falta alguna o tienen un valor inválido, la demo arranca igual, lo dice en su registro y
+responde el control de prueba descrito abajo.
+
+- Solo se crea, se edita o se activa la estación que RRAA reconoce. Las siete estaciones de
+  ejemplo del catálogo aparecen como «No validado»: se pueden inactivar (la confirmación
+  avisa de que no tiene vuelta atrás) y no se pueden editar ni reactivar.
+- Los códigos de estación, los ID de dispositivo y las licencias que se guardan son los
+  reales del proveedor; los ven los lectores administrativos. Junto con la ubicación que
+  un cobrador comparta voluntariamente (ver [DEMO-PUBLICA.md](DEMO-PUBLICA.md)), son los
+  únicos datos reales que admite la demo. Nombre, número y dispositivo son únicos, así que
+  cada estación real se registra una sola vez en la base compartida.
+- La demo es compartida: el servidor admite 20 consultas a RRAA por minuto en total y
+  responde 429 `RRAA_RATE_LIMITED` a las demás sin llamar al proveedor. Si RRAA no
+  responde, el servidor espera medio minuto antes de volver a consultarlo y entretanto
+  contesta 429 `RRAA_PAUSED`: cada consulta se espera con la base bloqueada para escribir.
+- El transporte sigue siendo HTTP sin TLS, ahora entre Render y el proveedor.
+- La identidad de instalación de CyP no cambia de ámbito: en la demo pública sigue sin
+  idcliente, para conservar las instalaciones ya registradas.
+
 ## Control de prueba de la demo
 
 Decisión de Rardiel del 12 de octubre de 2026, a raíz de la observación «aunque sea como
 prueba, los datos para poder crear la estación deberían estar referenciados al control de la
 empresa». En modo demo (datos ficticios), cuando el arranque normal del servidor (`index.ts`)
-no tiene un RRAA real configurado —y siempre en la demo pública— la API usa un control de
+no tiene un RRAA real configurado —también en la demo pública— la API usa un control de
 prueba propio de CyP (`createDemoStationControl`, en `rraa.ts`). Responde como VALSTAT para la
 empresa ficticia `EMPRESA-DEMO` sin contactar ningún servicio y solo encuentra:
 
@@ -51,9 +78,8 @@ nombran el control de prueba en lugar de RRAA (el aviso aclara «no es RRAA real
 La «Estación de demostración» (Nro. DEMO-001) no tiene ID dispositivo y no está en el
 control: se puede inactivar, con un aviso previo, y para volver a activarla hay que editarla
 con un par registrado; el intento de activarla lo dice. La identidad de instalación de CyP
-no usa el control para su ámbito (en la demo
-pública sigue sin empresa RRAA), pero «Obtener Datos de CyP» informa el mismo estado de
-validación que la lista.
+no usa el control para su ámbito (en la demo pública sigue sin empresa RRAA), pero
+«Obtener Datos de CyP» informa el mismo estado de validación que la lista.
 
 Fuera del modo demo no se puede activar: `buildApp` lo rechaza, también si se pasa como
 proveedor. No cambia el contrato recibido del proveedor ni la validación real de las
@@ -63,8 +89,8 @@ instalaciones. Los servidores auxiliares que construyen la app por su cuenta (po
 ## Flujo de CyP
 
 - GET `/api/estaciones/rraa`: configuración disponible e idcliente, para lectores
-  administrativos. No expone credenciales ni usa el servicio real en la demo pública,
-  donde responde el control de prueba descrito arriba.
+  administrativos. No expone credenciales ni la dirección del servicio, y no llama al
+  proveedor. Con el control de prueba añade `simulated: true` y sus ejemplos.
 - POST `/api/estaciones/validar`: Admin, `{stationCode,deviceId}`; consulta de solo
   lectura a RRAA para mostrar la licencia y su fecha. No crea/activa una estación.
   Devuelve `{clientId,stationCode,deviceId,license,validatedAt}`. La interfaz exige

@@ -85,6 +85,8 @@ sessionId, origin y expiresAt. La clave pública usa DER SPKI P-256 canónico de
 base64url. El ID contiene el SHA-256 hexadecimal de 64 caracteres de ese DER.
 El ámbito combina un UUID persistido del servidor con el idcliente configurado
 de RRAA, o `null` si no está configurado. No se deriva del Host del navegador.
+En la demo pública el ámbito queda siempre sin idcliente, también con RRAA
+configurado, para conservar las instalaciones ya registradas.
 
 Los POST exigen un Origin permitido por la configuración del servidor. Todas
 las rutas tienen límite de cuerpo de 4096 bytes y controles de frecuencia por
@@ -148,12 +150,12 @@ el listado antes de iniciar otra operación. La clave de instalación sí persis
 
 Se mantienen la validación real VALSTAT antes de guardar/activar y la comprobación
 de nuevas asociaciones de PCP. En una instalación real no hay modo de aprobación
-por ID generado, respuesta simulada, documentación o ausencia del proveedor. La
-demo pública no se conecta al proveedor real ni adquiere una licencia por publicar
-esta propuesta. Excepción decidida por Rardiel el 12 de octubre de 2026, solo para
-el modo demo con datos ficticios: un control de prueba propio de CyP responde en
-lugar del proveedor (ver «Control de prueba de la demo» en
-[RRAA-ESTACIONES.md](RRAA-ESTACIONES.md)); sus licencias son ficticias.
+por ID generado, respuesta simulada, documentación o ausencia del proveedor.
+Publicar esta propuesta no adquiere licencias. Decisiones de Rardiel del 12 de
+octubre de 2026 para la demo pública: valida las estaciones contra el RRAA real
+cuando su servicio tiene `RRAA_ENDPOINT` y `RRAA_CLIENT_ID`; si faltan, y solo en
+modo demo, un control de prueba propio de CyP responde en lugar del proveedor, con
+licencias ficticias (ver [RRAA-ESTACIONES.md](RRAA-ESTACIONES.md)).
 
 Antes de habilitar la adaptación externa debe acordarse cómo RRAA emite/registra
 `idestacion`, cómo se vincula al equipo y qué operación aporta sus datos. El

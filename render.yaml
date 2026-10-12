@@ -28,3 +28,8 @@ services:
         generateValue: true
       - key: DATABASE_URL
         sync: false
+      # Station validation against the provider (docs/RRAA-ESTACIONES.md). Set both or neither.
+      - key: RRAA_ENDPOINT
+        sync: false
+      - key: RRAA_CLIENT_ID
+        sync: false
