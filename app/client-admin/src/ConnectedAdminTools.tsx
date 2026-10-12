@@ -230,10 +230,11 @@ export function ConnectedAdminTools({ page, snapshot, user, onRefresh }: { page:
   const practiceNote = `Control de prueba de esta demo; no es RRAA real. Solo se guarda o activa una estación del control de «${rraa.clientId ?? ""}».`
     + (practiceExample ? ` Prueba «${practiceExample.stationCode}» con ID dispositivo «${practiceExample.deviceId}»`
       + (rraa.exampleRange ? ` (del ${practiceNumber(rraa.exampleRange[0])} al ${practiceNumber(rraa.exampleRange[1])}, mismo número en ambos)` : "") + "." : "");
-  // With the practice control a station without device cannot be validated again: inactivating it is a
-  // one-way step until it is edited, so say it before confirming. Nothing changes with the real provider.
+  // Inactivating a station that the control cannot find again is a one-way step until it is edited with
+  // data the control knows, so say it before confirming.
   const deactivateWarning = (row: Row) => !rraa.configured ? " Importante: sin la conexión RRAA no se podrá volver a activar."
-    : rraa.simulated && !value(row, "deviceId") ? " Importante: esta estación no tiene ID dispositivo; para volver a activarla habrá que editarla antes con una Estación y un ID dispositivo del control de prueba."
+    : rraa.simulated ? (!value(row, "deviceId") ? " Importante: esta estación no tiene ID dispositivo; para volver a activarla habrá que editarla antes con una Estación y un ID dispositivo del control de prueba." : "")
+    : row.rraaValidated !== true ? " Importante: RRAA no ha validado esta estación; para volver a activarla, RRAA tendrá que reconocer su Estación y su ID dispositivo."
     : "";
   const deleteSelected = () => {
     if (!selected) return;

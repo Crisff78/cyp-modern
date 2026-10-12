@@ -10,12 +10,17 @@ import { getAdminTools } from "../src/admin-tools.js";
 import { DomainError } from "../src/domain.js";
 import { seed } from "../src/seed.js";
 import { FileStore, MemoryStore, PostgresStore, type Store } from "../src/store.js";
-import { createRraaValidator, parseRraaResponse, stationRraaValidated, type RraaValidator } from "../src/rraa.js";
+import { createRraaValidator, limitRraaCalls, parseRraaResponse, stationRraaValidated, type RraaValidator } from "../src/rraa.js";
 
 const code = (expected: string) => (error: unknown) => error instanceof DomainError && error.code === expected;
 test("RRAA strictly parses OK/license and ER; never authorizes malformed replies", () => {
   assert.equal(parseRraaResponse("OK|QA-LICENSE\r\n"), "QA-LICENSE");
   assert.throws(() => parseRraaResponse("ER|Estación no encontrada."), code("RRAA_STATION_NOT_FOUND"));
+  // The service answers with short codes; the administrator reads their meaning and the code.
+  assert.throws(() => parseRraaResponse("ER|ENE"), (error: unknown) => code("RRAA_STATION_NOT_FOUND")(error) && (error as DomainError).message === "RRAA: Estación no encontrada (ENE)." && (error as DomainError).status === 422);
+  assert.throws(() => parseRraaResponse("ER|CNE\r\n"), (error: unknown) => code("RRAA_CLIENT_NOT_FOUND")(error) && /Cliente no encontrado \(CNE\)/.test((error as DomainError).message) && (error as DomainError).status === 422);
+  // An unknown reason is shown as it came.
+  assert.throws(() => parseRraaResponse("ER|XYZ"), (error: unknown) => code("RRAA_STATION_NOT_FOUND")(error) && (error as DomainError).message === "RRAA: XYZ");
   for (const reply of ["", "OK", "OK|", "OK|x|y", "ok|x", "OK|a\nb", "ERROR|x", `OK|${"x".repeat(1025)}`])
     assert.throws(() => parseRraaResponse(reply), code("RRAA_INVALID_RESPONSE"), reply);
 });
@@ -182,13 +187,69 @@ test("RRAA proof and license persist through FileStore reopening", async () => {
     finally { await reopened.close(); }
   } finally { await env.app.close(); await rm(directory, { recursive: true, force: true }); }
 });
-test("public demo never enables real RRAA even if a validator is supplied", async () => {
+test("public demo validates stations with the configured RRAA provider", async () => {
   const env = await fixture(undefined, true);
   try {
-    assert.equal((await env.get("/estaciones/rraa")).json().configured, false);
-    assert.equal((await env.post("/estaciones", input)).statusCode, 409);
-    assert.equal(env.calls(), 0);
+    assert.deepEqual((await env.get("/estaciones/rraa")).json(), { configured: true, clientId: "QA-COMPANY" });
+    const saved = await env.post("/estaciones", input);
+    assert.equal(saved.statusCode, 200, saved.body);
+    assert.equal(saved.json().license, "QA-LICENSE");
+    assert.equal(saved.json().rraaValidated, true);
+    assert.equal(env.calls(), 1);
+    // What the provider does not recognise is not saved.
+    env.fail(true);
+    const refused = await env.post("/estaciones", { ...input, name: "QA-OTHER", number: "QA-2", deviceId: "QA-DEVICE-2" });
+    assert.equal(refused.statusCode, 422, refused.body);
+    assert.equal(getAdminTools(await env.store.read()).stations.filter((row) => row.name === "QA-OTHER").length, 0);
   } finally { await env.app.close(); }
+});
+test("a shared installation caps its questions to RRAA per minute", async () => {
+  let calls = 0, clock = 1_000_000;
+  const inner: RraaValidator = { clientId: "QA-COMPANY", async validate(stationCode, deviceId) {
+    calls++; return { clientId: "QA-COMPANY", stationCode, deviceId, license: "QA-LICENSE", validatedAt: new Date().toISOString() };
+  } };
+  const limited = limitRraaCalls(inner, 3, () => clock);
+  assert.equal(limited.clientId, "QA-COMPANY"); assert.equal(limited.simulated, undefined);
+  for (let attempt = 0; attempt < 3; attempt++) assert.equal((await limited.validate("QA-STATION", "QA-DEVICE")).license, "QA-LICENSE");
+  // The fourth question of the minute is refused before it reaches the provider.
+  await assert.rejects(limited.validate("QA-STATION", "QA-DEVICE"), (error: unknown) => code("RRAA_RATE_LIMITED")(error) && (error as DomainError).status === 429);
+  assert.equal(calls, 3);
+  // The window slides: one minute after the first question there is room again.
+  clock += 59_999; await assert.rejects(limited.validate("QA-STATION", "QA-DEVICE"), code("RRAA_RATE_LIMITED"));
+  clock += 1; assert.equal((await limited.validate("QA-STATION", "QA-DEVICE")).license, "QA-LICENSE");
+  assert.equal(calls, 4);
+  for (const bad of [0, -1, 1.5, Number.NaN]) assert.throws(() => limitRraaCalls(inner, bad));
+  // Input the validator refuses by itself never reaches the provider and does not use up the quota.
+  let reached = 0;
+  const strict = limitRraaCalls({ clientId: "QA-COMPANY", async validate(stationCode, deviceId) {
+    if (!deviceId) throw new DomainError("RRAA_INPUT_INVALID", "Falta el dispositivo.", 422);
+    reached++; return { clientId: "QA-COMPANY", stationCode, deviceId, license: "QA-LICENSE", validatedAt: new Date().toISOString() };
+  } }, 2, () => clock);
+  for (let attempt = 0; attempt < 5; attempt++) await assert.rejects(strict.validate("QA-STATION", ""), code("RRAA_INPUT_INVALID"));
+  await strict.validate("QA-STATION", "QA-DEVICE"); await strict.validate("QA-STATION", "QA-DEVICE");
+  await assert.rejects(strict.validate("QA-STATION", "QA-DEVICE"), code("RRAA_RATE_LIMITED"));
+  assert.equal(reached, 2);
+  // A provider that does not answer is left alone for half a minute: it is asked once, not question after question.
+  let asked = 0, down = true;
+  const flaky = limitRraaCalls({ clientId: "QA-COMPANY", async validate(stationCode, deviceId) {
+    asked++;
+    if (down) throw new DomainError("RRAA_UNAVAILABLE", "RRAA no respondió a tiempo.", 502);
+    return { clientId: "QA-COMPANY", stationCode, deviceId, license: "QA-LICENSE", validatedAt: new Date().toISOString() };
+  } }, 20, () => clock);
+  await assert.rejects(flaky.validate("QA-STATION", "QA-DEVICE"), (error: unknown) => code("RRAA_UNAVAILABLE")(error) && (error as DomainError).status === 502);
+  for (let attempt = 0; attempt < 4; attempt++)
+    await assert.rejects(flaky.validate("QA-STATION", "QA-DEVICE"), (error: unknown) => code("RRAA_PAUSED")(error) && (error as DomainError).status === 429);
+  assert.equal(asked, 1);
+  clock += 29_999; await assert.rejects(flaky.validate("QA-STATION", "QA-DEVICE"), code("RRAA_PAUSED"));
+  down = false; clock += 1;
+  assert.equal((await flaky.validate("QA-STATION", "QA-DEVICE")).license, "QA-LICENSE");
+  assert.equal(asked, 2);
+  // A station that RRAA does not know is an answer, not a failure: it starts no pause.
+  const answers = limitRraaCalls({ clientId: "QA-COMPANY", async validate() { asked++; throw new DomainError("RRAA_STATION_NOT_FOUND", "RRAA: Estación no encontrada (ENE).", 422); } }, 20, () => clock);
+  asked = 0;
+  for (let attempt = 0; attempt < 3; attempt++) await assert.rejects(answers.validate("QA-STATION", "QA-DEVICE"), code("RRAA_STATION_NOT_FOUND"));
+  assert.equal(asked, 3);
+  for (const bad of [-1, 1.5, Number.NaN]) assert.throws(() => limitRraaCalls(inner, 3, () => clock, bad));
 });
 
 const qaUrl = process.env.CYP_PHASE234_TEST_DATABASE_URL;

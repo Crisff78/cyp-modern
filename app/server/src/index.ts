@@ -5,7 +5,7 @@ import { enrichPublicDemo } from "./demo-scenarios.js";
 import { enrichCollectorDemo } from "./demo-collector-scenarios.js";
 import { FileStore, PostgresStore, type Store } from "./store.js";
 import { registerPublicWeb } from "./public-web.js";
-import { createDemoStationControl, createRraaValidator } from "./rraa.js";
+import { createDemoStationControl, createRraaValidator, limitRraaCalls, type RraaValidator } from "./rraa.js";
 import { validateDemoAccessCode } from "./demo-access.js";
 
 const requestedDemo = process.env.DEMO_MODE === "true";
@@ -77,11 +77,27 @@ async function openStore(): Promise<{
   };
 }
 
-if (!publicWeb && Boolean(process.env.RRAA_ENDPOINT) !== Boolean(process.env.RRAA_CLIENT_ID))
-  throw new Error("Configura RRAA_ENDPOINT y RRAA_CLIENT_ID juntos.");
-const rraa = !publicWeb && process.env.RRAA_ENDPOINT && process.env.RRAA_CLIENT_ID
-  ? createRraaValidator({ endpoint: process.env.RRAA_ENDPOINT, clientId: process.env.RRAA_CLIENT_ID,
-    timeoutMs: process.env.RRAA_TIMEOUT_MS ? Number(process.env.RRAA_TIMEOUT_MS) : undefined }) : undefined;
+// Decision of 2026-10-12: the public demo validates stations against the real provider when its
+// service has both variables. It is shared, so its questions to the provider are capped; and a
+// missing or wrong value must not take the demo down: the practice control answers instead.
+// A slow provider holds every other write of the shared demo while it is asked, so it waits less there.
+const PUBLIC_DEMO_RRAA_CALLS_PER_MINUTE = 20, PUBLIC_DEMO_RRAA_TIMEOUT_MS = 5000;
+const buildRraa = (): RraaValidator | undefined => {
+  if (Boolean(process.env.RRAA_ENDPOINT) !== Boolean(process.env.RRAA_CLIENT_ID))
+    throw new Error("Configura RRAA_ENDPOINT y RRAA_CLIENT_ID juntos.");
+  if (!process.env.RRAA_ENDPOINT || !process.env.RRAA_CLIENT_ID) return undefined;
+  const validator = createRraaValidator({ endpoint: process.env.RRAA_ENDPOINT, clientId: process.env.RRAA_CLIENT_ID,
+    timeoutMs: process.env.RRAA_TIMEOUT_MS ? Number(process.env.RRAA_TIMEOUT_MS) : publicWeb ? PUBLIC_DEMO_RRAA_TIMEOUT_MS : undefined });
+  return publicWeb ? limitRraaCalls(validator, PUBLIC_DEMO_RRAA_CALLS_PER_MINUTE) : validator;
+};
+let rraa: RraaValidator | undefined;
+try { rraa = buildRraa(); }
+catch (error) {
+  if (!publicWeb) throw error;
+  // Only the reason is logged; it never contains the values of the variables.
+  console.warn(`RRAA no quedó configurado (${error instanceof Error ? error.message : "configuración inválida"}). La demo usa el control de prueba de estaciones.`);
+}
+if (publicWeb) console.log(rraa ? `Estaciones: validación con RRAA (máximo ${PUBLIC_DEMO_RRAA_CALLS_PER_MINUTE} consultas por minuto).` : "Estaciones: control de prueba de la demo (RRAA sin configurar).");
 const { store, demo, source } = await openStore();
 const app = await buildApp({
   store,

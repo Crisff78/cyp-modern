@@ -12,9 +12,9 @@ La licencia procede de la respuesta del servidor. Las asociaciones históricas
 pueden conservarse o retirarse sin validarlas retroactivamente.
 
 Si una instalación real no tiene RRAA configurado, el alta, la edición y la
-activación permanecen bloqueadas con `STATION_RRAA_REQUIRED`. En modo demo responde
-el control de prueba descrito en [RRAA-ESTACIONES.md](RRAA-ESTACIONES.md), con
-estaciones y licencias ficticias.
+activación permanecen bloqueadas con `STATION_RRAA_REQUIRED`. En modo demo, si no hay
+RRAA configurado, responde el control de prueba descrito en
+[RRAA-ESTACIONES.md](RRAA-ESTACIONES.md), con estaciones y licencias ficticias.
 El catálogo y la inactivación administrativa siguen disponibles. El ID de dispositivo
 se introduce según el contrato recibido; VALSTAT no ofrece identificación física
 automática del equipo. Esa vinculación requiere un contrato adicional del proveedor

@@ -1484,13 +1484,14 @@ export async function buildApp(config: Config) {
     );
   }
   registerCatalogRoutes(app, config.store, user, mutate, describe);
-  // The public demo never talks to the provider. In demo mode the practice control stands in, so the
-  // station flow can be tried; outside the public demo a configured provider always comes first.
-  const stationControl = config.publicWeb ? config.demoStationControl : config.rraa ?? config.demoStationControl;
+  // A configured provider always comes first, also in the public demo (decision of 2026-10-12).
+  // Without one, demo mode falls back to the practice control so the station flow can be tried.
+  const stationControl = config.rraa ?? config.demoStationControl;
   registerAdminToolsRoutes(app, config.store, user, mutate, describe, stationControl);
   registerStationInstallationRoutes(app, config.store, user, describe, {
     rraaClientId: config.publicWeb ? undefined : config.rraa?.clientId,
-    // Only to report the same validation state as the list; the scope of the installations does not change.
+    // Only to report the same validation state as the list. The scope of the installations does not
+    // change: the public demo keeps it without a company, so the installations already registered stay.
     validationClientId: stationControl?.clientId,
     origins: config.origins,
     publicOrigin: config.demoAccess?.origin,
