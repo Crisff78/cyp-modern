@@ -4249,7 +4249,7 @@ function LegacyCodifierView({ page, snapshot, onRefresh, onAccount }: Readonly<{
   if (page === "zones") return <ZonesLegacyView snapshot={snapshot} />;
   if (page === "authorizationRequests") return <AuthorizationRequestsLegacyView snapshot={snapshot} />;
   if (page === "generalConfig") {
-    const tabs = ["General", "Clientes", "Cargos y Descargos", "Cobros y Pagos", "Interfaz", "GPS"];
+    const tabs = ["General", "Clientes", "Cargos y Descargos", "Cobros y Pagos", "Interfaz", "GPS", "Soporte técnico"];
     const tmServiceOptions = ["No definido", "Serv", "Serv. pago de tarifa electrica", "Serv. ventas de recargas", "Serv. de Transporte Terrestre", "Donaciones de Dinero", "Venta de medicina natural", "MANEJO DE MAQUINITAS", "PRESTAMOS PERSONALES", "TELEFONOS INTELIGENTES", "prestamos empresariales", "Bicicleta", "Alambre THHN 10 BLANCO"];
     const cfgLocked = cfgBusy || cfgLoadState !== "ready";
     const CheckLine = ({ label, checked, disabled = false, onChange }: Readonly<{ label: string; checked: boolean; disabled?: boolean; onChange: (value: boolean) => void }>) => <label className={`legacy-check-line ${disabled || cfgLocked ? "disabled" : ""}`}><input type="checkbox" checked={checked} disabled={disabled || cfgLocked} onChange={(event) => onChange(event.target.checked)} /><span>{label}</span></label>;
@@ -4305,7 +4305,7 @@ function LegacyCodifierView({ page, snapshot, onRefresh, onAccount }: Readonly<{
               </label>
             </fieldset>
           )}
-          {configTab === "General" && (
+          {configTab === "Soporte técnico" && (
             <fieldset className="legacy-config-fieldset support-config-fieldset">
               <legend>Soporte técnico</legend>
               <p className="support-config-hint">Estos datos se muestran en la ventana «Soporte Técnico» del panel izquierdo.</p>
