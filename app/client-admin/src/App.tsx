@@ -94,6 +94,8 @@ import { isMockToken } from "./mock";
 import OperationModal, { type Operation } from "./Operations";
 import AccountModal, { type AccountOperation } from "./Users";
 import RemittancesWorkspace from "../../shared/remittances/RemittancesWorkspace";
+import { isRemittanceReportPage, remittanceReportDefinitions, remittanceReportForPage, type RemittanceReportPage } from "../../shared/remittances/reporting";
+import { RemittanceReportView } from "./RemittanceReportView";
 import { remittancesApi } from "./remittancesApi";
 import { hasUnresolvedMovementRequest, pendingMovementDraft, useMovementRequest } from "./useMovementRequest";
 import { businessDate, businessTimestamp, collectionCash, currencyCode, currencyName, financeMatches, nativeMoney, nativeTotals, obligationReceived, decimalProductCents, centsInput } from "./adminFinance";
@@ -353,7 +355,7 @@ type ReportDefinition = {
   category: "-- Cargos --" | "-- Cobros --" | "-- Pagos --" | "-- Servicios --";
   filters: ("route" | "zone" | "service" | "collectorCheck")[];
 };
-type MdiPage = Page | "controlPanel" | ReportPageId;
+type MdiPage = Page | "controlPanel" | ReportPageId | RemittanceReportPage;
 const reportDefinitions: ReportDefinition[] = [
   { id: "reportClientPendingCharges", label: "Cargos pendientes de cobros de los clientes", category: "-- Cargos --", filters: [] },
   { id: "reportClientPendingChargesByRoutes", label: "Cargos pendientes de clientes por rutas.", category: "-- Cargos --", filters: ["route"] },
@@ -402,12 +404,13 @@ const mdiMonitoringPages: Page[] = [
   "dailySettlements",
 ];
 const isMdiOperationPage = (page: MdiPage): page is Page =>
-  page !== "controlPanel" && !isReportPage(page) && mdiOperationPages.includes(page);
+  page !== "controlPanel" && !isReportPage(page) && !isRemittanceReportPage(page) && mdiOperationPages.includes(page);
 const isMdiMonitoringPage = (page: MdiPage): page is Page =>
-  page !== "controlPanel" && !isReportPage(page) && mdiMonitoringPages.includes(page);
+  page !== "controlPanel" && !isReportPage(page) && !isRemittanceReportPage(page) && mdiMonitoringPages.includes(page);
 const mdiTitle = (page: MdiPage) => {
   if (page === "controlPanel") return "Panel de Control";
   if (isReportPage(page)) return reportTitle(page);
+  if (isRemittanceReportPage(page)) return remittanceReportForPage(page).label;
   return pageTitles[page];
 };
 
@@ -435,6 +438,7 @@ const focusWindowCollection = (windows: MdiWindowState[], focusedId: string, zIn
   });
 
 const mdiWindowSize = (page: MdiPage): MdiWindowSize => {
+  if (isRemittanceReportPage(page)) return { width: 980, height: 640 };
   if (page === "remittances") return { width: 980, height: 640 };
   if (page === "controlPanel") return { width: 600, height: 390 };
   if (page === "reports") return { width: 720, height: 430 };
@@ -522,7 +526,7 @@ function ControlPanelContent({ onLaunch }: Readonly<{ onLaunch: (page: Page, nav
   );
 }
 
-function ReportesLauncher({ onLaunch }: Readonly<{ onLaunch: (page: ReportPageId | "remittances", navKey: string) => void }>) {
+function ReportesLauncher({ onLaunch }: Readonly<{ onLaunch: (page: ReportPageId | RemittanceReportPage, navKey: string) => void }>) {
   const renderGroup = (category: ReportDefinition["category"]) => (
     <section className="reports-launcher-section" key={category}>
       <div className="control-panel-section-heading"><span>{category}</span><small>Seleccione un reporte</small></div>
@@ -549,10 +553,10 @@ function ReportesLauncher({ onLaunch }: Readonly<{ onLaunch: (page: ReportPageId
       <section className="reports-launcher-section" aria-label="Reportes de Envíos de Dinero">
         <div className="control-panel-section-heading"><span>-- Envíos de Dinero --</span><small>Seleccione un reporte</small></div>
         <div className="reports-launcher-grid">
-          <button type="button" className="report-launcher-tile" onClick={() => onLaunch("remittances", "reports-remittances")}>
+          {remittanceReportDefinitions.map((report) => <button type="button" key={report.page} className="report-launcher-tile" title={report.scope} onClick={() => onLaunch(report.page, `reports-${report.page}`)}>
             <ChartNoAxesCombined size={18} aria-hidden="true" />
-            <span>Envíos de Dinero</span>
-          </button>
+            <span>{report.label}{report.type === "managerCommissions" ? " (histórico)" : ""}</span>
+          </button>)}
         </div>
       </section>
       {renderGroup("-- Servicios --")}
@@ -5307,6 +5311,8 @@ export default function App() {
                 <ReportesLauncher onLaunch={openMdiWindow} />
               ) : isReportPage(windowState.page) ? (
                 <ReportView page={windowState.page} snapshot={snapshot} onRefresh={() => void refresh()} />
+              ) : isRemittanceReportPage(windowState.page) ? (
+                <RemittanceReportView page={windowState.page} api={remittancesApi} actorId={effectiveUser.id} />
               ) : windowState.page === "banks" ? (
                 <ConnectedBanks actorId={effectiveUser.id} canManage={["ADMIN", "SUPERADMIN"].includes(normalizeRole(effectiveUser.role))} />
               ) : windowState.page === "exchangeRates" ? (

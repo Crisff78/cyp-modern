@@ -2,17 +2,18 @@ import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type R
 import { operationKey, StrictApiError, type StrictApi } from "./strictApi";
 import type { Cash, CommissionReportGroupBy, CommissionReportStatus, ConsolidatedCommissionReport, Currency, Quotation, Rate, RemittanceContact, RemittanceSnapshot, Report, Transfer } from "./types";
 import { decimalCents, exportSections, formatDate, formatMoney, printSections, type OutputSection } from "./output";
-import { clientCurrency, clientLabel, commissionSections, contactRows, eligibleClients, LatestRequestGate, managerCommissionRows, managerCommissionSections, matchingClients, quoteHistoryRows, rateMoment, selectRemittanceClient, type ClientSide, type RemittanceClient } from "./suggestions";
+import { clientCurrency, clientLabel, contactRows, eligibleClients, LatestRequestGate, managerCommissionRows, matchingClients, quoteHistoryRows, rateMoment, selectRemittanceClient, type ClientSide, type RemittanceClient } from "./suggestions";
 import "./remittances.css";
 import { formatCrossRate } from "./crossRate";
 import { INPUT_LIMITS, isDecimalDraft, validatePhone, validateText } from "../inputRules";
 import { confirmedRateResponse } from "./rateResponse";
 import { useClientContact } from "./useClientContact";
 import { confirmedCreatedTransfer } from "./createdTransferResponse";
-import { allocationRows, commissionReportStatusLabels, consolidatedCommissionSections } from "./commissionOutput";
+import { allocationRows, commissionReportStatusLabels } from "./commissionOutput";
 import { confirmedCommissionPolicy } from "./commissionPolicyResponse";
 import type { CommissionPolicy } from "./types";
 import { currentOperationalWeek } from "../operationalWeek";
+import { remittanceReportDefinitions, remittanceReportDefinition, remittanceReportPath, remittanceReportSections, remittanceReportTitle, type RemittanceReportFilters, type RemittanceReportType } from "./reporting";
 
 type Tab = "envios" | "recibos" | "tasas" | "comisiones" | "caja" | "reportes";
 const adminTabs: readonly Tab[] = ["tasas", "comisiones"];
@@ -159,7 +160,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   const [opening, setOpening] = useState({ operatorId: user.id, currency: "DOP" as Currency, amount: "0" });
   const [closing, setClosing] = useState<Cash | null>(null);
   const [counted, setCounted] = useState("");
-  const [reportFilters, setReportFilters] = useState({ ...currentOperationalWeek(), grouping: "range" as "range" | "day", type: "amounts",
+  const [reportFilters, setReportFilters] = useState<RemittanceReportFilters>({ ...currentOperationalWeek(), grouping: "range", type: "amounts",
     groupBy: "managerCurrency" as CommissionReportGroupBy, operationStatus: "all" as CommissionReportStatus, managerId: "", currency: "" as Currency | "" });
   const [report, setReport] = useState<Report | null>(null);
   const [allocationReport, setAllocationReport] = useState<ConsolidatedCommissionReport | null>(null);
@@ -370,17 +371,13 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
     event.preventDefault(); if (reportBusy) return;
     const request = reportRequests.current.begin(); setReportBusy(true); clearErrors();
     try {
-      if (!reportFilters.from || !reportFilters.to || reportFilters.from > reportFilters.to) throw new Error("Revisa las fechas del reporte.");
-      const query = new URLSearchParams({ from: reportFilters.from, to: reportFilters.to, grouping: reportFilters.grouping });
+      const path = remittanceReportPath(reportFilters);
       if (reportFilters.type === "allocations") {
-        query.set("groupBy", reportFilters.groupBy); query.set("status", reportFilters.operationStatus);
-        if (reportFilters.managerId) query.set("managerId", reportFilters.managerId);
-        if (reportFilters.currency) query.set("currency", reportFilters.currency);
-        const result = await api<ConsolidatedCommissionReport>(`/envios/reportes/comisiones?${query}`);
+        const result = await api<ConsolidatedCommissionReport>(path);
         if (reportRequests.current.accepts(request)) { setAllocationReport(result); setReport(null); }
         return;
       }
-      const result = await api<Report>(`/envios/reportes?${query}`);
+      const result = await api<Report>(path);
       if (reportRequests.current.accepts(request)) { setReport(result); setAllocationReport(null); }
     } catch (failure) { if (reportRequests.current.accepts(request)) setError(failureMessage(failure)); }
     finally { if (reportRequests.current.accepts(request)) setReportBusy(false); }
@@ -398,14 +395,9 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
     ["Importe para destinatario", money(transfer.receiveAmount, transfer.destinationCurrency)], ["Tasa origen DOP/unidad", transfer.quote.sourceRate], ["Tasa destino DOP/unidad", transfer.quote.destinationRate], ...quoteHistoryRows(transfer.quote, transfer.sourceCurrency, transfer.destinationCurrency),
     ["Pagado", formatDate(transfer.paidAt)], ["Pagado por", operatorName(transfer.paidBy)], ["Cancelado", formatDate(transfer.cancelledAt)], ["Motivo cancelación", transfer.cancelReason || "—"], ["Nota", transfer.note || "—"],
   ] }];
-  const reportSections: OutputSection[] = allocationReport ? consolidatedCommissionSections(allocationReport) : !report ? [] : reportFilters.type === "amounts" ? [{ title: "Montos de envíos por moneda de origen y destino", columns: ["Fecha", "Origen", "Destino", "Envíos", "Pendientes", "Pagados", "Cancelados", "Principal origen", "Comisión origen", "Total origen", "A entregar destino"], rows: report.amounts.map((row) => [row.date, row.sourceCurrency, row.destinationCurrency, row.count, row.pendingCount, row.paidCount, row.cancelledCount, money(row.amount, row.sourceCurrency), money(row.commissionAmount, row.sourceCurrency), money(row.totalAmount, row.sourceCurrency), money(row.receiveAmount, row.destinationCurrency)]) }]
-    : reportFilters.type === "times" ? [{ title: "Tiempo desde el envío hasta el pago", columns: ["Fecha", "Pagados", "Mínimo (min)", "Máximo (min)", "Promedio (min)"], rows: (report.deliveryTimeSummary ?? []).map((row) => [row.date, row.count, (row.minSeconds / 60).toFixed(1), (row.maxSeconds / 60).toFixed(1), (row.averageSeconds / 60).toFixed(1)]) }, { title: "Detalle de emisión y pago", columns: ["Envío", "Emitido", "Pagado", "Tiempo (min)"], rows: report.deliveryTimes.map((row) => [row.envioReference, formatDate(row.createdAt), formatDate(row.paidAt), (row.elapsedSeconds / 60).toFixed(1)]) }]
-    : reportFilters.type === "delivered" ? [{ title: "Entregados por fecha de pago y moneda", columns: ["Fecha", "Moneda", "Pagados", "Importe entregado"], rows: report.delivered.map((row) => [row.date, row.currency, row.count, money(row.amount, row.currency)]) }]
-    : reportFilters.type === "commissions" ? commissionSections(report.commissions ?? { details: [], totals: [] }, (id) => operatorName(id))
-    : reportFilters.type === "managerCommissions" ? managerCommissionSections(report.managerCommissions ?? { details: [], totals: [] })
-    : [{ title: "Caja de envíos por operador y moneda", columns: ["Fecha", "Operador", "Moneda", "Cajas", "Primera apertura", "Ingresos envíos", "Devoluciones", "Pagos", "Último esperado"], rows: (report.cashSummary ?? []).map((row) => [row.date, operatorName(row.operatorId), row.currency, row.sessionCount, money(row.firstOpening, row.currency), money(row.sentTotal, row.currency), money(row.cancelRefund, row.currency), money(row.paid, row.currency), money(row.lastExpected, row.currency)]) }];
+  const reportSections = remittanceReportSections(reportFilters.type, report, allocationReport, operatorName);
   const displayedReport = allocationReport ?? report;
-  const reportTitle = displayedReport ? `${allocationReport ? "Reporte consolidado de comisiones" : "Envíos"} · ${displayedReport.from} a ${displayedReport.to} · ${displayedReport.grouping === "day" ? "Diario" : "Resumido"}` : "Envíos";
+  const reportTitle = displayedReport ? remittanceReportTitle(reportFilters.type, displayedReport) : "Envíos";
   const reportManagers = [...new Map((snapshot?.transfers ?? []).flatMap((transfer) => transfer.commissionAllocation?.managerId ? [[transfer.commissionAllocation.managerId, { id: transfer.commissionAllocation.managerId, name: transfer.commissionAllocation.managerName ?? transfer.commissionAllocation.managerId }] as const] : [])).values()].sort((a, b) => a.name.localeCompare(b.name));
   // Text matches anywhere, without accents. A search made only of digits (four or more)
   // is also compared with the digits of phone, mobile, code and identification, in both
@@ -473,7 +465,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
         <div className="remittance-cash-grid">{snapshot.cashSessions.map((cash) => <article className="remittance-panel" key={cash.id}><h2>{cash.currency} · {operatorName(cash.operatorId)}</h2><p>{cash.date} · {cash.status === "open" ? "Abierta" : "Cerrada"}</p><dl className="remittance-summary"><div><dt>Apertura</dt><dd>{money(cash.openingAmount, cash.currency)}</dd></div><div><dt>Ingresos por envíos</dt><dd>{money(cash.sentTotal, cash.currency)}</dd></div><div><dt>Devoluciones</dt><dd>{money(cash.cancelRefund, cash.currency)}</dd></div><div><dt>Pagos</dt><dd>{money(cash.paid, cash.currency)}</dd></div><div className="remittance-total"><dt>Efectivo esperado</dt><dd>{money(cash.expected, cash.currency)}</dd></div>{cash.countedAmount !== undefined && <div><dt>Contado al cierre</dt><dd>{money(cash.countedAmount, cash.currency)}</dd></div>}</dl>{cash.canClose && <button type="button" onClick={() => { setClosing(cash); setCounted(""); clearErrors(); }}>Contar y cerrar</button>}</article>)}{!snapshot.cashSessions.length && <div className="remittance-empty">No hay cajas de envíos. Un administrador debe abrir la caja antes de operar.</div>}</div>
       </>}
       {tab === "reportes" && <>
-        <form className="remittance-panel" onSubmit={(event) => void loadReport(event)}><h2>Reportes de envíos</h2><fieldset disabled={working} className="remittance-form-grid"><label>Desde<input type="date" required value={reportFilters.from} onChange={(event) => updateReportFilter({ from: event.target.value })} /></label><label>Hasta<input type="date" required value={reportFilters.to} onChange={(event) => updateReportFilter({ to: event.target.value })} /></label><label>Presentación<select value={reportFilters.grouping} onChange={(event) => updateReportFilter({ grouping: event.target.value as "range" | "day" })}><option value="range">Resumido del rango</option><option value="day">Diario</option></select></label><label>Reporte<select value={reportFilters.type} onChange={(event) => updateReportFilter({ type: event.target.value })}><option value="amounts">Montos y cantidad de envíos</option><option value="allocations">Reporte consolidado de comisiones</option><option value="commissions">Comisión total cobrada en origen</option><option value="managerCommissions">Información de comisiones de gestores</option><option value="times">Tiempos de entrega</option><option value="delivered">Envíos pagados</option><option value="cash">Caja</option></select></label>
+        <form className="remittance-panel" onSubmit={(event) => void loadReport(event)}><h2>Reportes de envíos</h2><fieldset disabled={working} className="remittance-form-grid"><label>Desde<input type="date" required value={reportFilters.from} onChange={(event) => updateReportFilter({ from: event.target.value })} /></label><label>Hasta<input type="date" required value={reportFilters.to} onChange={(event) => updateReportFilter({ to: event.target.value })} /></label><label>Presentación<select value={reportFilters.grouping} onChange={(event) => updateReportFilter({ grouping: event.target.value as "range" | "day" })}><option value="range">Resumido del rango</option><option value="day">Diario</option></select></label><label>Reporte<select value={reportFilters.type} onChange={(event) => updateReportFilter({ type: event.target.value as RemittanceReportType })}>{remittanceReportDefinitions.map((definition) => <option key={definition.type} value={definition.type}>{definition.label}</option>)}</select></label>
           {reportFilters.type === "allocations" && <>
             <label>Agrupar por<select aria-label="Agrupar por" value={reportFilters.groupBy} onChange={(event) => updateReportFilter({ groupBy: event.target.value as CommissionReportGroupBy })}><option value="managerCurrency">Gestor y Moneda</option><option value="currency">Moneda</option></select></label>
             <label>Estado de la operación<select aria-label="Estado de la operación" value={reportFilters.operationStatus} onChange={(event) => updateReportFilter({ operationStatus: event.target.value as CommissionReportStatus })}>{Object.entries(commissionReportStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
@@ -481,7 +473,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
             <label>Moneda de destino<select aria-label="Moneda de destino" value={reportFilters.currency} onChange={(event) => updateReportFilter({ currency: event.target.value as Currency | "" })}><option value="">Todas</option>{snapshot.currencies.map((currency) => <option key={currency}>{currency}</option>)}</select></label>
           </>}
         </fieldset><button className="remittance-primary" disabled={working}>{reportBusy ? "Consultando…" : "Consultar"}</button></form>
-        {displayedReport && <><div className="remittance-toolbar"><strong>{reportTitle}</strong><button type="button" onClick={() => runOutput(() => printSections(reportTitle, reportSections))}>Imprimir</button><button type="button" onClick={() => runOutput(() => exportSections(`envios-${reportFilters.type}-${displayedReport.from}-${displayedReport.to}`, reportSections))}>Exportar CSV</button></div><p className="remittance-help">{reportFilters.type === "allocations" ? "Las tres comisiones corresponden a importes vigentes en moneda de destino. Las canceladas aportan cero al saldo y sus importes anulados se muestran aparte. Los totales del periodo se separan por moneda. La fecha corresponde a emisión; el estado es el actual. Las anotaciones históricas sin reparto no se recalculan." : reportFilters.type === "managerCommissions" ? "Información declarada manualmente, por fecha de emisión y estado actual. Cada gestor y moneda se presenta por separado. Las canceladas se excluyen del vigente; este reporte no calcula ni registra pagos al gestor." : reportFilters.type === "commissions" ? "Por fecha de emisión y estado actual de cada envío. Comisiones del negocio separadas por moneda; las canceladas se muestran aparte y no se suman al total vigente. La información manual del gestor se consulta por separado." : reportFilters.type === "amounts" ? "Por fecha de envío. Los cancelados cuentan, pero sus importes se excluyen de las sumas." : reportFilters.type === "cash" ? "Por fecha de caja. Aperturas y saldos finales no se suman entre días." : "Por fecha de pago. Cada moneda conserva sus propios importes."}</p>{reportSections.map((section) => <DataTable key={section.title} section={section} wide={Boolean(allocationReport) && section.columns.length > 2} />)}</>}
+        {displayedReport && <><div className="remittance-toolbar"><strong>{reportTitle}</strong><button type="button" onClick={() => runOutput(() => printSections(reportTitle, reportSections))}>Imprimir</button><button type="button" onClick={() => runOutput(() => exportSections(`envios-${reportFilters.type}-${displayedReport.from}-${displayedReport.to}`, reportSections))}>Exportar CSV</button></div><p className="remittance-help">{remittanceReportDefinition(reportFilters.type).scope}</p>{reportSections.map((section) => <DataTable key={section.title} section={section} wide={Boolean(allocationReport) && section.columns.length > 2} />)}</>}
       </>}
     </>}
     {detail && <Dialog title={`${detail.envioReference} · ${detail.reciboReference}`} onClose={() => setDetailId(null)}>
