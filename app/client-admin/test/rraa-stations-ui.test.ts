@@ -24,7 +24,10 @@ test("RRAA station UI validates, preserves modal locking, saves proof and permit
   const output = fs.mkdtempSync(path.join(os.tmpdir(), "cyp-rraa-ui-")), store = new MemoryStore(seed());
   let rejectStation = false, calls = 0, previewPatch: Record<string, unknown> | null = null;
   const app = await buildApp({ store, demo: true, secret: "rraa-ui-synthetic-secret-at-least-32-characters", origins: [], collectorUrl: "http://localhost:5174",
-    rraa: { clientId: "QA-COMPANY", async validate(stationCode, deviceId) {
+    rraa: { clientId: "QA-COMPANY", async lookup(stationCode) {
+      if (rejectStation) throw new DomainError("RRAA_STATION_NOT_FOUND", "RRAA: Estación no encontrada.", 422);
+      return { clientId: "QA-COMPANY", stationCode, deviceId: "QA-DEVICE", license: "QA-LICENSE", operatingSystem: "7", retrievedAt: new Date().toISOString() };
+    }, async validate(stationCode, deviceId) {
       calls++; if (rejectStation) throw new DomainError("RRAA_STATION_NOT_FOUND", "RRAA: Estación no encontrada.", 422);
       return { clientId: "QA-COMPANY", stationCode, deviceId, license: "QA-LICENSE", validatedAt: new Date().toISOString() };
     } } });
@@ -51,7 +54,7 @@ remittancesApi("/snapshot").then(snapshot => createRoot(document.getElementById(
           const chunks: Buffer[] = []; for await (const chunk of request) chunks.push(Buffer.from(chunk));
           const result = await app.inject({ method: request.method as "GET" | "POST", url: request.url!, headers: request.headers,
             ...(chunks.length ? { payload: JSON.parse(Buffer.concat(chunks).toString("utf8")) } : {}) });
-          const responseBody = pathname === "/api/estaciones/validar" && result.statusCode === 200 && previewPatch
+          const responseBody = ["/api/estaciones/validar", "/api/estaciones/obtener-datos"].includes(pathname) && result.statusCode === 200 && previewPatch
             ? JSON.stringify({ ...result.json(), ...previewPatch }) : result.body;
           response.writeHead(result.statusCode, { "Content-Type": "application/json" }); response.end(responseBody); return;
         }
@@ -74,24 +77,29 @@ remittancesApi("/snapshot").then(snapshot => createRoot(document.getElementById(
       const dialog = page.getByRole("dialog", { name: "Datos de la Estación de PCP", exact: true }); await dialog.waitFor();
       await dialog.getByRole("button", { name: "Obtener Licencia", exact: true }).click();
       await dialog.getByRole("alert").filter({ hasText: "El campo Nombre no puede estar vacío" }).waitFor(); assert.equal(calls, 0);
-      await dialog.getByLabel("Estación", { exact: true }).fill("QA-STATION"); await dialog.getByLabel("Número", { exact: true }).fill("QA-1");
-      await dialog.getByLabel("ID dispositivo", { exact: true }).fill("QA-DEVICE");
+      await dialog.getByLabel("Estación", { exact: true }).fill("QA-STATION");
+      assert.equal(await dialog.getByLabel("Número", { exact: true }).inputValue(), "");
+      assert.equal(await dialog.getByLabel("ID dispositivo", { exact: true }).inputValue(), "");
       assert.equal(await dialog.getByLabel("Activa", { exact: true }).isDisabled(), true);
-      await dialog.getByRole("button", { name: "Obtener Licencia", exact: true }).click();
+      await dialog.getByRole("button", { name: "Obtener Datos", exact: true }).click();
       await dialog.getByText(/Validación recibida:/).waitFor();
       assert.equal(await dialog.getByLabel("Lic.:", { exact: true }).inputValue(), "QA-LICENSE");
-      for (const label of ["Lic.:", "Versión registrada:", "Cliente RRAA:"]) assert.equal(await dialog.getByLabel(label, { exact: true }).getAttribute("readonly"), "");
+      assert.equal(await dialog.getByLabel("ID dispositivo", { exact: true }).inputValue(), "QA-DEVICE");
+      assert.equal(await dialog.getByLabel("SO RRAA:", { exact: true }).inputValue(), "7");
+      for (const label of ["Número", "ID dispositivo", "Lic.:", "SO RRAA:", "Versión registrada:", "Cliente RRAA:", "Grupo de estación", "Tipo", "Descrip.:"]) assert.equal(await dialog.getByLabel(label, { exact: true }).getAttribute("readonly"), "");
       assert.equal((await store.read()).adminTools.stations.length, 0);
-      await dialog.getByLabel("ID dispositivo", { exact: true }).fill("QA-DEVICE-CHANGED");
+      await dialog.getByLabel("Estación", { exact: true }).fill("QA-STATION-CHANGED");
+      assert.equal(await dialog.getByLabel("ID dispositivo", { exact: true }).inputValue(), "");
+      assert.equal(await dialog.getByLabel("Lic.:", { exact: true }).inputValue(), "");
+      assert.equal(await dialog.getByLabel("SO RRAA:", { exact: true }).inputValue(), "");
       assert.equal(await dialog.getByLabel("Activa", { exact: true }).isDisabled(), true);
       await dialog.getByRole("button", { name: "Cancelar", exact: true }).click(); assert.equal(await page.getByRole("dialog").count(), 0);
     });
     await t.test("foreign or malformed previews cannot display an authorized license or enable activation", async () => {
       await page.getByTitle("Nuevo", { exact: true }).click();
       const dialog = page.getByRole("dialog", { name: "Datos de la Estación de PCP", exact: true });
-      await dialog.getByLabel("Estación", { exact: true }).fill("QA-STATION"); await dialog.getByLabel("Número", { exact: true }).fill("QA-1");
-      await dialog.getByLabel("ID dispositivo", { exact: true }).fill("QA-DEVICE");
-      for (const patch of [{ clientId: "OTHER-COMPANY" }, { deviceId: "OTHER-DEVICE" }, { stationCode: "OTHER-STATION" }, { license: "" }, { validatedAt: "invalid" }]) {
+      await dialog.getByLabel("Estación", { exact: true }).fill("QA-STATION");
+      for (const patch of [{ clientId: "OTHER-COMPANY" }, { deviceId: "" }, { stationCode: "OTHER-STATION" }, { license: "" }, { validatedAt: "invalid" }]) {
         previewPatch = patch;
         await dialog.getByRole("button", { name: "Obtener Licencia", exact: true }).click();
         await dialog.getByRole("alert").filter({ hasText: "No pudimos confirmar la respuesta de RRAA" }).waitFor();
@@ -108,13 +116,13 @@ remittancesApi("/snapshot").then(snapshot => createRoot(document.getElementById(
     await t.test("new station saves fresh RRAA evidence and explicit activation; edits reject ER without closing form", async () => {
       await page.getByTitle("Nuevo", { exact: true }).click();
       const dialog = page.getByRole("dialog", { name: "Datos de la Estación de PCP", exact: true });
-      await dialog.getByLabel("Estación", { exact: true }).fill("QA-STATION"); await dialog.getByLabel("Número", { exact: true }).fill("QA-1");
-      await dialog.getByLabel("ID dispositivo", { exact: true }).fill("QA-DEVICE");
+      await dialog.getByLabel("Estación", { exact: true }).fill("QA-STATION");
       await dialog.getByRole("button", { name: "Obtener Licencia", exact: true }).click(); await dialog.getByText(/Validación recibida:/).waitFor();
       await dialog.getByLabel("Activa", { exact: true }).check();
       const previewCalls = calls; await dialog.getByRole("button", { name: "oK", exact: true }).click();
       await page.getByText("Datos guardados correctamente.", { exact: true }).waitFor(); assert.equal(calls, previewCalls + 1);
       const station = (await store.read()).adminTools.stations[0]; assert.equal(station.active, true); assert.equal(station.license, "QA-LICENSE");
+      assert.equal(station.number, "1"); assert.equal(station.operatingSystem, "7");
       await page.getByRole("row").filter({ hasText: "QA-STATION" }).click(); await page.getByTitle("Editar", { exact: true }).click();
       assert.equal(await dialog.getByLabel("ID dispositivo", { exact: true }).inputValue(), "QA-DEVICE");
       rejectStation = true; await dialog.getByLabel("Estación", { exact: true }).fill("QA-NOT-FOUND");
@@ -136,8 +144,8 @@ remittancesApi("/snapshot").then(snapshot => createRoot(document.getElementById(
       await dialog.getByRole("button", { name: "Obtener Licencia", exact: true }).click();
       await dialog.getByRole("alert").filter({ hasText: "Estación no encontrada." }).waitFor();
       assert.equal(await dialog.getByLabel("Activa", { exact: true }).isDisabled(), true);
-      await dialog.getByLabel("ID dispositivo", { exact: true }).fill("QA-CHANGED");
-      await dialog.getByLabel("ID dispositivo", { exact: true }).fill("QA-DEVICE");
+      await dialog.getByLabel("Estación", { exact: true }).fill("QA-CHANGED");
+      await dialog.getByLabel("Estación", { exact: true }).fill("QA-STATION");
       assert.equal(await dialog.getByLabel("Activa", { exact: true }).isDisabled(), true, "restoring old IDs cannot reuse rejected proof");
       assert.equal((await store.read()).adminTools.stations[0].active, true, "preview rejection does not mutate the saved record");
       rejectStation = false;

@@ -67,16 +67,13 @@ remittancesApi("/snapshot").then(snapshot => createRoot(document.getElementById(
     await context.route("**/*", (route: any) => new URL(route.request().url()).origin === origin ? route.continue() : route.abort("blockedbyclient"));
     const page = await context.newPage(); page.setDefaultTimeout(8000); page.on("pageerror", (error: Error) => errors.push(error.message));
     const dialog = page.getByRole("dialog", { name: "Datos de la Estación de PCP", exact: true });
-    const fill = async (station: string, device: string) => {
-      await dialog.getByLabel("Estación", { exact: true }).fill(station); await dialog.getByLabel("Número", { exact: true }).fill("PRUEBA-1");
-      await dialog.getByLabel("ID dispositivo", { exact: true }).fill(device);
-    };
+    const fill = async (station: string) => { await dialog.getByLabel("Estación", { exact: true }).fill(station); };
     await t.test("the window says it is a practice control and names the data it accepts", async () => {
       await page.goto(origin);
       const note = page.getByRole("status").filter({ hasText: "Control de prueba de esta demo; no es RRAA real." });
       await note.waitFor();
       const text = await note.innerText();
-      for (const expected of ["«EMPRESA-DEMO»", "Prueba «EST-PRUEBA-01» con ID dispositivo «DISP-PRUEBA-01»", "(del 01 al 99, mismo número en ambos)"]) assert.ok(text.includes(expected), expected);
+      for (const expected of ["«EMPRESA-DEMO»", "Escribe «EST-PRUEBA-01» y pulsa Obtener Datos", "(del 01 al 99)"]) assert.ok(text.includes(expected), expected);
       assert.equal(await note.getAttribute("title"), "Con datos que no estén en el control responde «Estación no encontrada». Las estaciones «DEMO V2 · Estación 1» a «6» del catálogo también están en él.");
       // Two lines at most, so the list keeps the room it had with the notes this one replaces.
       // Measured a little narrower than the 684 px its text has in the default Stations window (720 px wide).
@@ -94,8 +91,8 @@ remittancesApi("/snapshot").then(snapshot => createRoot(document.getElementById(
     await t.test("arbitrary data is not found, neither on the preview nor when saving", async () => {
       await page.getByTitle("Nuevo", { exact: true }).click(); await dialog.waitFor();
       assert.equal(await dialog.getByLabel("Empresa del control de prueba:", { exact: true }).inputValue(), "EMPRESA-DEMO");
-      await dialog.getByText(/Escribe una Estación y un ID dispositivo registrados en el control de prueba, por ejemplo «EST-PRUEBA-01» y «DISP-PRUEBA-01»/).waitFor();
-      await fill("Estación inventada", "DISPOSITIVO-CUALQUIERA");
+      await dialog.getByText(/Escribe únicamente la Estación del control de prueba, por ejemplo «EST-PRUEBA-01»/).waitFor();
+      await fill("Estación inventada");
       await dialog.getByRole("button", { name: "Obtener Licencia", exact: true }).click();
       await dialog.getByRole("alert").filter({ hasText: "Estación no encontrada." }).waitFor();
       assert.equal(await dialog.getByLabel("Activa", { exact: true }).isDisabled(), true);
@@ -109,10 +106,12 @@ remittancesApi("/snapshot").then(snapshot => createRoot(document.getElementById(
     });
     await t.test("a station registered in the practice control receives its licence and is saved active", async () => {
       await page.getByTitle("Nuevo", { exact: true }).click(); await dialog.waitFor();
-      await fill("EST-PRUEBA-01", "DISP-PRUEBA-01");
-      await dialog.getByRole("button", { name: "Obtener Licencia", exact: true }).click();
+      await fill("EST-PRUEBA-01");
+      await dialog.getByRole("button", { name: "Obtener Datos", exact: true }).click();
       await dialog.getByText(/Validación recibida:/).waitFor();
       assert.equal(await dialog.getByLabel("Lic.:", { exact: true }).inputValue(), "LIC-DEMO-01");
+      assert.equal(await dialog.getByLabel("ID dispositivo", { exact: true }).inputValue(), "DISP-PRUEBA-01");
+      assert.equal(await dialog.getByLabel("SO RRAA:", { exact: true }).inputValue(), "SO-DEMO");
       await dialog.getByLabel("Activa", { exact: true }).check();
       await dialog.getByRole("button", { name: "oK", exact: true }).click();
       await page.getByText("Datos guardados correctamente.", { exact: true }).waitFor();
@@ -120,7 +119,7 @@ remittancesApi("/snapshot").then(snapshot => createRoot(document.getElementById(
       assert.equal(station.name, "EST-PRUEBA-01"); assert.equal(station.deviceId, "DISP-PRUEBA-01");
       assert.equal(station.license, "LIC-DEMO-01"); assert.equal(station.rraaClientId, "EMPRESA-DEMO"); assert.equal(station.active, true);
       // The saved pair is taken: the window now names the next free one.
-      await page.getByRole("status").filter({ hasText: "Prueba «EST-PRUEBA-02» con ID dispositivo «DISP-PRUEBA-02»" }).waitFor();
+      await page.getByRole("status").filter({ hasText: "Escribe «EST-PRUEBA-02» y pulsa Obtener Datos" }).waitFor();
       // Its installation panel names the practice control, not RRAA.
       await page.getByRole("row").filter({ hasText: "EST-PRUEBA-01" }).click();
       await page.getByText("Estación activa y validada por el control de prueba", { exact: true }).waitFor();

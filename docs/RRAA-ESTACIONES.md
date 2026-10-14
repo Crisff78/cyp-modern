@@ -5,13 +5,24 @@ Respuesta de texto: `OK|licencia` o `ER|motivo`. El contrato da como ejemplo
 `ER|Estación no encontrada`; el servicio responde hoy con códigos cortos: `ER|ENE`
 (estación no encontrada para ese idcliente y dispositivo) y `ER|CNE` (el idcliente no
 existe). CyP los muestra con su texto y conserva el código entre paréntesis.
-No existe en este contrato una operación para crear estaciones en RRAA, consultar
-grupos/versiones ni emitir licencias independientemente de la validación.
+El 14 de octubre de 2026 el proveedor añadió el contrato de consulta:
+`GET /STATDAT?P=idcliente|estacion`, con respuesta
+`OK|IDDISPOSITIVO|LICENCIA|SO` o `ER|motivo`. La `P` de STATDAT es mayúscula;
+VALSTAT conserva `p` y el orden `idcliente|estacion|idestacion`. La consulta real
+de solo lectura confirmó este flujo y la coincidencia de licencia entre ambas
+operaciones, sin crear, guardar ni activar estaciones durante esa comprobación.
+
+STATDAT permite obtener la identidad ya registrada para una empresa y estación.
+No crea estaciones en RRAA ni identifica automáticamente el hardware de la
+computadora que abre el formulario. SO se conserva como código del proveedor:
+no se interpreta como versión del software ni se inventa su nombre. El contrato
+no devuelve número local, descripción, grupo, tipo ni versión.
 
 El 10 de octubre de 2026 Rardiel pidió redactar una especificación propia para
 avanzar el diseño. Está en [Propuesta de identidad y datos de CyP](RRAA-PROPUESTA-CYP.md),
 implementada como identidad lógica y consulta propias de CyP. No es documentación
-del proveedor ni añade operaciones a VALSTAT; el contrato recibido sigue intacto.
+del proveedor ni añade operaciones a VALSTAT. La consulta STATDAT es independiente
+de esa propuesta y proviene del contrato nuevo recibido del proveedor.
 
 ## Configuración y confianza
 
@@ -23,11 +34,17 @@ Para otra empresa se debe configurar el identificador que entregue el proveedor.
 No se configura el servicio real en los tests automáticos. La dirección del servicio,
 los identificadores y las licencias reales no se escriben en fixtures o Git.
 
-El campo Estación es el código RRAA; ID dispositivo es idestacion. Nro. conserva
-su función de identificador local de catálogo. Se rechazan `|`, controles y
+El operador escribe únicamente Estación, el código RRAA. Obtener Datos y Obtener
+Licencia consultan STATDAT para la empresa configurada en el servidor y comprueban
+VALSTAT usando el ID devuelto. ID dispositivo, licencia, SO y empresa son de solo
+lectura. Nro. se asigna consecutivamente dentro de la transacción al crear;
+al editar se conserva. Los demás metadatos existentes se muestran sin inventar
+valores del proveedor. Se rechazan `|`, controles y
 campos vacíos en los parámetros; el servidor codifica la URL, bloquea redirecciones,
 limita la espera y el tamaño de respuesta. Solo admite `OK` con licencia no vacía
-o `ER` del contrato. Un error HTTP, timeout o respuesta malformada nunca autoriza.
+o `ER` del contrato; STATDAT exige exactamente sus cuatro campos completos. Un
+error HTTP, timeout, discrepancia de identidad/licencia o respuesta malformada
+nunca autoriza.
 El transporte es HTTP según el proveedor, sin cifrado TLS ni firma de respuesta.
 
 ## RRAA real en la demo pública
@@ -46,7 +63,8 @@ responde el control de prueba descrito abajo.
   un cobrador comparta voluntariamente (ver [DEMO-PUBLICA.md](DEMO-PUBLICA.md)), son los
   únicos datos reales que admite la demo. Nombre, número y dispositivo son únicos, así que
   cada estación real se registra una sola vez en la base compartida.
-- La demo es compartida: el servidor admite 20 consultas a RRAA por minuto en total y
+- La demo es compartida: el servidor admite 20 consultas a RRAA por minuto en total,
+  contando conjuntamente STATDAT y VALSTAT, y
   responde 429 `RRAA_RATE_LIMITED` a las demás sin llamar al proveedor. Si RRAA no
   responde, el servidor espera medio minuto antes de volver a consultarlo y entretanto
   contesta 429 `RRAA_PAUSED`: cada consulta se espera con la base bloqueada para escribir.
@@ -72,12 +90,15 @@ la activación y la asociación a PCP con datos referenciados al control de la e
 no existe la conexión con el proveedor. Sus licencias `LIC-DEMO-…` son ficticias y no
 acreditan nada. `GET /api/estaciones/rraa` lo anuncia con `simulated: true`, tres parejas que
 siguen libres en el catálogo (`examples`) y el rango completo (`exampleRange`); la pantalla
-de Estaciones lo dice en dos líneas, con un par libre de ejemplo, y sus etiquetas y ayudas
+de Estaciones lo dice en dos líneas, con una estación libre de ejemplo, y sus etiquetas y ayudas
 nombran el control de prueba en lugar de RRAA (el aviso aclara «no es RRAA real»).
 
 La «Estación de demostración» (Nro. DEMO-001) no tiene ID dispositivo y no está en el
 control: se puede inactivar, con un aviso previo, y para volver a activarla hay que editarla
-con un par registrado; el intento de activarla lo dice. La identidad de instalación de CyP
+con una estación registrada y obtener sus datos; el intento de activar una estación
+desconocida se rechaza. El control de prueba devuelve ID/licencia ficticios y `SO-DEMO`
+por estación, sin contactar RRAA ni usar identificadores aleatorios de navegador.
+La identidad de instalación de CyP
 no usa el control para su ámbito (en la demo pública sigue sin empresa RRAA), pero
 «Obtener Datos de CyP» informa el mismo estado de validación que la lista.
 
@@ -90,10 +111,18 @@ instalaciones. Los servidores auxiliares que construyen la app por su cuenta (po
 
 - GET `/api/estaciones/rraa`: configuración disponible e idcliente, para lectores
   administrativos. No expone credenciales ni la dirección del servicio, y no llama al
-  proveedor. Con el control de prueba añade `simulated: true` y sus ejemplos.
+  proveedor. `canObtainData: true` anuncia la consulta por estación. Con el control
+  de prueba añade `simulated: true` y sus ejemplos.
+- POST `/api/estaciones/obtener-datos`: Admin, cuerpo estricto `{stationCode}`.
+  Obtiene el dispositivo/licencia/SO de STATDAT y comprueba la misma combinación
+  con VALSTAT. Devuelve `{clientId,stationCode,deviceId,license,operatingSystem,validatedAt}`.
+  No guarda ni activa nada y no necesita `Idempotency-Key`. No admite empresa,
+  endpoint, ID, licencia ni SO enviados por el navegador.
 - POST `/api/estaciones/validar`: Admin, `{stationCode,deviceId}`; consulta de solo
-  lectura a RRAA para mostrar la licencia y su fecha. No crea/activa una estación.
-  Devuelve `{clientId,stationCode,deviceId,license,validatedAt}`. La interfaz exige
+  lectura compatible con consumidores anteriores. Si STATDAT está disponible,
+  exige que el ID enviado corresponda al que devuelve para esa empresa y estación
+  antes de comprobar VALSTAT. No crea/activa una estación.
+  Devuelve `{clientId,stationCode,deviceId,license,validatedAt}` y SO cuando está disponible. La interfaz exige
   una respuesta completa que corresponda a la empresa, estación y dispositivo
   consultados. Una consulta fallida o un cambio de identificadores invalida el
   uso de la validación anterior en ese formulario hasta obtener una respuesta
@@ -102,7 +131,10 @@ instalaciones. Los servidores auxiliares que construyen la app por su cuenta (po
   anterior; cada llamada consulta al proveedor. Las operaciones que guardan,
   activan o asocian estaciones sí conservan sus claves de idempotencia.
 - POST `/api/estaciones` y `/api/estaciones/:id`: Admin, datos locales sin licencia
-  ni versión digitadas. La API vuelve a consultar RRAA antes de guardar; la vista
+  ni SO ni versión digitados. `number` es opcional: al crear se asigna `máximo + 1`
+  bajo el bloqueo transaccional; al editar se mantiene el anterior. `deviceId` puede
+  omitirse; si se envía, tiene que coincidir con STATDAT. El ID y la licencia siempre
+  proceden del proveedor. La API vuelve a consultar RRAA antes de guardar; la vista
   previa del cliente no es prueba de autorización. Solo OK crea/actualiza el registro.
 - POST `/api/estaciones/:id/actividad`: `{active}`. Activar requiere validación nueva
   de los identificadores persistidos. Inactivar siempre es posible para Admin,
@@ -119,6 +151,14 @@ dispositivo, fecha y actor de la comprobación (migración aditiva 025). Un camb
 de empresa configurada invalida la autorización guardada para nuevas activaciones
 y asignaciones. La marca «Validada» acredita la última comprobación, no una garantía
 perpetua de que el proveedor no haya revocado posteriormente la estación.
+
+La migración aditiva **031_station_rraa_operating_system.sql** guarda SO en
+`operating_system`, separado de `version`, con límites de longitud y sin controles
+ni separadores. Los registros históricos conservan sus campos y SO queda `NULL`;
+no se recalculan ni activan. Debe aplicarse antes de arrancar esta versión con
+PostgreSQL: `pnpm db:migrate --from=031 --to=031 --apply`, después del respaldo
+local y con las migraciones anteriores ya instaladas. La comprobación de
+persistencia y constraints usa exclusivamente una base aislada con datos ficticios.
 
 Las mutaciones conservan idempotencia, revisión de sesión y auditoría. Un reintento
 de una operación ya guardada devuelve el resultado original sin repetir la consulta

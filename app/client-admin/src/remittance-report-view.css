@@ -1,0 +1,15 @@
+.remittance-report-view .remittance-report-filters { padding: 0; gap: 0; }
+.remittance-report-filters .pending-charges-filter-heading { flex: 0 0 auto; border-width: 0 0 1px; border-radius: 6px 6px 0 0; }
+.remittance-report-filters .report-filter-fields { display: grid; min-width: 0; margin: 0; padding: 10px; border: 0; }
+.remittance-report-filters .report-filter-actions { margin-top: auto; padding: 0 10px 10px; }
+.remittance-report-filters label { min-width: 0; }
+.remittance-report-filters input, .remittance-report-filters select { width: 100%; box-sizing: border-box; }
+.remittance-report-view .report-results-header span { overflow-wrap: anywhere; }
+.remittance-report-section { margin-bottom: 10px; }
+.remittance-report-section .legacy-mdi-table { min-width: 600px; }
+.remittance-report-section caption { text-align: left; }
+.remittance-report-section tbody tr { cursor: pointer; }
+.remittance-report-section .numeric-cell { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.remittance-report-section .selected-row td { background: var(--cyp-info-surface, #bfdbfe); color: var(--cyp-info-text, #1e3a8a); }
+.remittance-report-section tbody tr:focus-visible { outline: 2px solid var(--cyp-info-text, #2563eb); outline-offset: -2px; }
+.remittance-report-filters button:disabled { cursor: not-allowed; opacity: .45; }
