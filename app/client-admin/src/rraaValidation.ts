@@ -3,6 +3,7 @@ import { StrictApiError } from "../../shared/remittances/strictApi";
 export type RraaPreview = Readonly<{
   clientId: string; stationCode: string; deviceId: string; license: string; validatedAt: string;
 }>;
+export type RraaStationPreview = RraaPreview & Readonly<{ operatingSystem: string }>;
 
 export function confirmedRraaPreview(value: unknown,
   expected: Readonly<Pick<RraaPreview, "clientId" | "stationCode" | "deviceId">>): RraaPreview {
@@ -16,4 +17,14 @@ export function confirmedRraaPreview(value: unknown,
       !Number.isFinite(Date.parse(row.validatedAt)) || new Date(row.validatedAt).toISOString() !== row.validatedAt)
     throw new StrictApiError("No pudimos confirmar la respuesta de RRAA para esta empresa, estación y dispositivo. Vuelve a obtener la licencia.", 200, false, "RRAA_PREVIEW_INVALID");
   return row;
+}
+
+export function confirmedRraaStationPreview(value: unknown,
+  expected: Readonly<Pick<RraaPreview, "clientId" | "stationCode">>): RraaStationPreview {
+  const row = value as RraaStationPreview | null;
+  const result = confirmedRraaPreview(value, { ...expected, deviceId: typeof row?.deviceId === "string" ? row.deviceId : "" });
+  if (typeof row?.operatingSystem !== "string" || !row.operatingSystem || row.operatingSystem.length > 160 ||
+      row.operatingSystem !== row.operatingSystem.trim() || /[|\u0000-\u001f\u007f]/.test(row.operatingSystem))
+    throw new StrictApiError("RRAA no devolvió los datos completos de esta estación. Vuelve a Obtener Datos.", 200, false, "RRAA_PREVIEW_INVALID");
+  return { ...result, operatingSystem: row.operatingSystem };
 }

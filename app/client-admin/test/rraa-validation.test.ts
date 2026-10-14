@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { confirmedRraaPreview } from "../src/rraaValidation";
+import { confirmedRraaPreview, confirmedRraaStationPreview } from "../src/rraaValidation";
 import { StrictApiError } from "../../shared/remittances/strictApi";
 
 const expected = { clientId: "QA-COMPANY", stationCode: "QA-STATION", deviceId: "QA-DEVICE" };
@@ -19,4 +19,13 @@ test("RRAA preview never accepts incomplete, foreign or malformed validation as 
     { ...result, license: "" }, { ...result, license: " padded " }, { ...result, license: "x|y" }, { ...result, license: "x\ny" },
     { ...result, license: "x".repeat(1025) }, { ...result, validatedAt: "invalid" }, { ...result, validatedAt: "2026-02-30T16:00:00.000Z" }])
     assert.throws(() => confirmedRraaPreview(row, expected), denied);
+});
+
+test("station-only lookup preview requires provider device, license and raw SO for the requested company/station", () => {
+  const row = { ...result, operatingSystem: "7" };
+  assert.deepEqual(confirmedRraaStationPreview(row, expected), row);
+  for (const patch of [{ clientId: "OTHER-COMPANY" }, { stationCode: "OTHER-STATION" }, { deviceId: "" }, { deviceId: "x|y" },
+    { license: "" }, { operatingSystem: undefined }, { operatingSystem: "" }, { operatingSystem: " padded " },
+    { operatingSystem: "x\ny" }, { operatingSystem: "x".repeat(161) }, { validatedAt: "invalid" }])
+    assert.throws(() => confirmedRraaStationPreview({ ...row, ...patch }, expected), denied);
 });

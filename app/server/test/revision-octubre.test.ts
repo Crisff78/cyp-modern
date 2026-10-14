@@ -908,10 +908,11 @@ test("B5 with the practice control a station is created, edited and activated on
   const before = await env.store.read();
   for (const [name, deviceId] of [["Estación inventada", "DISPOSITIVO-CUALQUIERA"], ["EST-PRUEBA-01", "OTRO-DISPOSITIVO"]]) {
     const rejected = await env.post("/api/estaciones", stationInput(name, deviceId));
-    assert.equal(rejected.statusCode, 422, rejected.body);
-    assert.equal(rejected.json().error.code, "RRAA_STATION_NOT_FOUND");
+    const mismatch = name === "EST-PRUEBA-01";
+    assert.equal(rejected.statusCode, mismatch ? 409 : 422, rejected.body);
+    assert.equal(rejected.json().error.code, mismatch ? "RRAA_STATION_MISMATCH" : "RRAA_STATION_NOT_FOUND");
     const preview = await env.post("/api/estaciones/validar", { stationCode: name, deviceId });
-    assert.equal(preview.statusCode, 422, preview.body);
+    assert.equal(preview.statusCode, mismatch ? 409 : 422, preview.body);
   }
   assert.deepEqual(await env.store.read(), before);
 
@@ -922,7 +923,8 @@ test("B5 with the practice control a station is created, edited and activated on
     { license: "LIC-DEMO-01", validated: true, active: true, client: "EMPRESA-DEMO" });
   // Its identifier cannot be changed to data the control does not know; the saved record stays as it was.
   const edited = await env.post(`/api/estaciones/${station.id}`, stationInput("EST-PRUEBA-01", "DISPOSITIVO-CAMBIADO"));
-  assert.equal(edited.statusCode, 422, edited.body);
+  assert.equal(edited.statusCode, 409, edited.body);
+  assert.equal(edited.json().error.code, "RRAA_STATION_MISMATCH");
   assert.equal(getAdminTools(await env.store.read()).stations.find((row) => row.id === station.id)!.deviceId, "DISP-PRUEBA-01");
   // The window now offers the next pairs that are still free (names and devices are unique).
   assert.deepEqual((await env.get("/api/estaciones/rraa")).json().examples.map((item: { stationCode: string }) => item.stationCode), ["EST-PRUEBA-02", "EST-PRUEBA-03", "EST-PRUEBA-04"]);
@@ -940,7 +942,7 @@ test("B5 with the practice control a station is created, edited and activated on
   assert.equal(unknown.json().error.code, "RRAA_STATION_NOT_FOUND");
   const noDevice = await env.post("/api/estaciones/no-device-station/actividad", { active: true });
   assert.equal(noDevice.statusCode, 422, noDevice.body);
-  assert.match(noDevice.json().error.message, /no tiene ID dispositivo/);
+  assert.equal(noDevice.json().error.code, "RRAA_STATION_NOT_FOUND", "unknown stations cannot obtain an identity from STATDAT");
   for (const id of ["unknown-station", "no-device-station"]) assert.equal(getAdminTools(await env.store.read()).stations.find((row) => row.id === id)!.active, false);
 });
 

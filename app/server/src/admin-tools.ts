@@ -5,6 +5,7 @@ import type { StationInstallation, StationInstallationChallenge } from "./statio
 export type PcpStation = {
   id: string; number: string; name: string; deviceId: string; description: string;
   group: string; type: string; license: string; version: string; active: boolean;
+  operatingSystem?: string;
   rraaClientId?: string; rraaStationCode?: string; rraaDeviceId?: string;
   rraaValidatedAt?: string; rraaValidatedBy?: string;
 };

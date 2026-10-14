@@ -26,7 +26,7 @@ async function browserIdentity() {
     } };
 }
 
-test("isolated PostgreSQL 001–030 persist installation proofs, serialize consumption and preserve revoked history", {
+test("isolated PostgreSQL 001–031 persist installation proofs, serialize consumption and preserve revoked history", {
   skip: !process.env.CYP_STATION_INSTALLATION_TEST_DATABASE_URL,
 }, async () => {
   // Refuse every destination except the explicitly provisioned disposable lab.
@@ -55,8 +55,8 @@ test("isolated PostgreSQL 001–030 persist installation proofs, serialize consu
     const server = (await sql.query("SELECT current_database() AS database,current_user AS role,host(inet_server_addr()) AS host,current_setting('port') AS port")).rows[0];
     assert.deepEqual(server, { database: "cyp_station_installations_test", role: "october_nine_qa", host: "127.0.0.1", port: "55435" });
     const directory = new URL("../database/", import.meta.url);
-    const files = (await readdir(directory)).filter((file) => /^\d{3}_.+\.sql$/.test(file) && Number(file.slice(0, 3)) <= 30).sort();
-    assert.equal(files.length, 30);
+    const files = (await readdir(directory)).filter((file) => /^\d{3}_.+\.sql$/.test(file) && Number(file.slice(0, 3)) <= 31).sort();
+    assert.equal(files.length, 31);
     const ledger = (await sql.query("SELECT name,sha256 FROM cyp_schema_migrations ORDER BY name")).rows;
     assert.deepEqual(ledger.map((row) => row.name), files);
     for (const file of files) assert.equal(ledger.find((row) => row.name === file)?.sha256,

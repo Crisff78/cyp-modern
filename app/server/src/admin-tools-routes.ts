@@ -8,7 +8,7 @@ import {
   createAuthorizationRequest, endOwnAuthSession, getAdminTools, requireAdminRow, resolveAuthorizationRequest,
   revokeAuthSession, sessionStatus, uniqueAdminValue,
 } from "./admin-tools.js";
-import { applyRraaValidation, stationRraaValidated, type RraaValidator } from "./rraa.js";
+import { applyRraaValidation, resolveRraaStation, stationRraaValidated, type RraaValidator } from "./rraa.js";
 import { freeText, phone, singleLine } from "./input-validation.js";
 
 type Mutate = <T, P = Record<string, string>>(path: string, summary: string, schema: z.ZodType<T>, fn: (state: State, actor: User, body: T, params: P) => unknown) => void;
@@ -17,9 +17,10 @@ type Describe = (method: string, path: string, summary: string, schema?: z.ZodTy
 const id = singleLine(80, 1);
 const name = singleLine(160, 1);
 const short = singleLine(160).default("");
-const stationBody = z.object({ name, number: singleLine(80, 1), deviceId: short, description: freeText(1000).default(""),
+const stationBody = z.object({ name, number: singleLine(80, 1).optional(), deviceId: short, description: freeText(1000).default(""),
   group: short, type: short, active: z.boolean().default(false) }).strict();
 const stationValidationBody = z.object({ stationCode: name, deviceId: name }).strict();
+const stationLookupBody = z.object({ stationCode: name }).strict();
 const pcpBody = z.object({ name, number: singleLine(80, 1), groupId: id, address: singleLine(500).default(""), phone: phone.pipe(phoneOrEmpty).default(""), active: z.boolean().default(true) }).strict();
 const groupBody = z.object({ name }).strict();
 const requestBody = z.object({ clientId: id, collectorId: id, delayReasonId: id.optional(), forCollection: z.boolean(), note: freeText(2000, 1) }).strict();
@@ -45,28 +46,37 @@ export function registerAdminToolsRoutes(app: FastifyInstance, store: Store, use
   app.get("/api/estaciones", async (req) => { assertAdminRead(user(req)); return getAdminTools(await store.read()).stations.map(stationView); });
   app.get("/api/estaciones/rraa", async (req) => {
     assertAdminRead(user(req));
-    if (!rraa?.simulated) return { configured: Boolean(rraa), clientId: rraa?.clientId };
+    const capabilities = rraa?.lookup ? { canObtainData: true } : {};
+    if (!rraa?.simulated) return { configured: Boolean(rraa), clientId: rraa?.clientId, ...capabilities };
     // Practice control: names and devices are unique in the catalogue and the demo is shared, so offer pairs that are still free.
     const rows = getAdminTools(await store.read()).stations, lower = (text: unknown) => String(text ?? "").toLocaleLowerCase();
     const names = new Set(rows.map((row) => lower(row.name))), devices = new Set(rows.map((row) => lower(row.deviceId)));
     const all = rraa.examples ?? [];
     const examples = all.filter((item) => !names.has(lower(item.stationCode)) && !devices.has(lower(item.deviceId))).slice(0, 3);
-    return { configured: true, clientId: rraa.clientId, simulated: true, examples,
+    return { configured: true, clientId: rraa.clientId, ...capabilities, simulated: true, examples,
       ...(all.length ? { exampleRange: [all[0].stationCode, all[all.length - 1].stationCode] } : {}) };
   });
   app.post("/api/estaciones/validar", async (req) => {
     assertAdmin(user(req)); const body = stationValidationBody.parse(req.body);
-    return validator().validate(body.stationCode, body.deviceId);
+    return resolveRraaStation(validator(), body.stationCode, body.deviceId);
+  });
+  app.post("/api/estaciones/obtener-datos", async (req) => {
+    assertAdmin(user(req)); const body = stationLookupBody.parse(req.body), service = validator();
+    if (!service.lookup) throw new DomainError("RRAA_LOOKUP_UNAVAILABLE", "La consulta de datos de estaciones no está configurada en RRAA.", 409);
+    return resolveRraaStation(service, body.stationCode);
   });
   describe("get", "/api/estaciones/rraa", "Disponibilidad de validación RRAA para esta instalación");
   describe("post", "/api/estaciones/validar", "Consultar VALSTAT sin guardar ni activar la estación", stationValidationBody, false, false);
+  describe("post", "/api/estaciones/obtener-datos", "Obtener ID, licencia y SO por empresa y estación desde STATDAT y comprobar VALSTAT, sin guardar ni activar", stationLookupBody, false, false);
   mutate("/api/estaciones/:id/actividad", "Activar con RRAA o desactivar estación", z.object({ active: z.boolean() }).strict(), async (state, actor, body, params) => {
     assertAdmin(actor); const station = requireAdminRow(getAdminTools(state).stations, params.id, "Estación");
     if (body.active) {
       const service = validator();
       // Practice control only: a station without device can never be found, so say what is missing. The provider keeps its own answer.
-      if (service.simulated && !String(station.deviceId ?? "").trim()) throw new DomainError("RRAA_INPUT_INVALID", "Esta estación no tiene ID dispositivo. Edítala con una Estación y un ID dispositivo registrados en el control de prueba antes de activarla.", 422);
-      applyRraaValidation(station, await service.validate(station.name, station.deviceId), actor.id);
+      if (service.simulated && !service.lookup && !String(station.deviceId ?? "").trim()) throw new DomainError("RRAA_INPUT_INVALID", "Esta estación no tiene ID dispositivo. Obtén los datos de una Estación registrada en el control de prueba antes de activarla.", 422);
+      const validation = await resolveRraaStation(service, station.name, station.deviceId);
+      uniqueAdminValue(getAdminTools(state).stations, "deviceId", validation.deviceId, station.id);
+      applyRraaValidation(station, validation, actor.id);
     }
     station.active = body.active; return stationView(station);
   });
@@ -84,11 +94,17 @@ export function registerAdminToolsRoutes(app: FastifyInstance, store: Store, use
       assertAdmin(actor); const service = validator(), data = getAdminTools(state);
       const current = editing ? requireAdminRow(data.stations, params.id, "Estación") : undefined;
       uniqueAdminValue(data.stations, "name", body.name, current?.id);
-      uniqueAdminValue(data.stations, "number", body.number, current?.id);
+      // The operator only needs the provider's station code. Allocate the local
+      // sequence inside the transaction so simultaneous creates cannot collide.
+      const maximum = data.stations.reduce((max, row) => /^\d+$/.test(row.number) && BigInt(row.number) > max ? BigInt(row.number) : max, 0n);
+      const number = body.number ?? current?.number ?? String(maximum + 1n);
+      if (number.length > 80) throw new DomainError("STATION_NUMBER_INVALID", "No se pudo asignar el próximo número de estación.", 422);
+      uniqueAdminValue(data.stations, "number", number, current?.id);
       if (body.deviceId) uniqueAdminValue(data.stations, "deviceId", body.deviceId, current?.id);
-      const validation = await service.validate(body.name, body.deviceId);
-      const station = current ?? { id: randomUUID(), ...body, license: "", version: "" };
-      Object.assign(station, body); applyRraaValidation(station, validation, actor.id);
+      const validation = await resolveRraaStation(service, body.name, body.deviceId);
+      uniqueAdminValue(data.stations, "deviceId", validation.deviceId, current?.id);
+      const station = current ?? { id: randomUUID(), ...body, number, license: "", version: "" };
+      Object.assign(station, body, { number }); applyRraaValidation(station, validation, actor.id);
       if (!current) data.stations.push(station);
       return stationView(station);
     });
@@ -123,7 +139,11 @@ export function registerAdminToolsRoutes(app: FastifyInstance, store: Store, use
       if (!existing && !stationRraaValidated(station, rraa?.clientId))
         throw new DomainError("STATION_RRAA_REQUIRED", rraa?.simulated ? "Solo puedes agregar estaciones validadas por el control de prueba de la demo." : "Solo puedes agregar estaciones validadas por RRAA para esta instalación.", 409);
       if (!existing && !station.active) throw new DomainError("STATION_INACTIVE", "Solo puedes agregar estaciones activas.", 409);
-      if (!existing) applyRraaValidation(station, await validator().validate(station.name, station.deviceId), actor.id);
+      if (!existing) {
+        const validation = await resolveRraaStation(validator(), station.name, station.deviceId);
+        uniqueAdminValue(data.stations, "deviceId", validation.deviceId, station.id);
+        applyRraaValidation(station, validation, actor.id);
+      }
     }
     data.pcpStations = [...data.pcpStations.filter((link) => link.pcpId !== pcp.id), ...body.stationIds.map((stationId) => ({ pcpId: pcp.id, stationId }))];
     return { id: pcp.id, stationIds: body.stationIds };
