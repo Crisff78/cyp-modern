@@ -4921,7 +4921,7 @@ export default function App() {
   const effectiveUser = user ?? enrichUserRole({ id: "UUID-AAA", name: "Administración", role: "ADMIN" });
   return (
     <>
-      <Toaster position="top-right" richColors closeButton />
+      {createPortal(<Toaster position="top-right" richColors closeButton style={{ zIndex: 2147483647 }} />, document.body)}
       {!authenticated ? (
         <Login
           onLogin={(user, nextStation) => {
