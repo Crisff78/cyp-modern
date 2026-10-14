@@ -34,12 +34,14 @@ Para otra empresa se debe configurar el identificador que entregue el proveedor.
 No se configura el servicio real en los tests automáticos. La dirección del servicio,
 los identificadores y las licencias reales no se escriben en fixtures o Git.
 
-El operador escribe únicamente Estación, el código RRAA. Obtener Datos y Obtener
-Licencia consultan STATDAT para la empresa configurada en el servidor y comprueban
+Para consultar RRAA, el operador escribe Estación, el código registrado. Obtener
+Datos y Obtener Licencia consultan STATDAT para la empresa configurada y comprueban
 VALSTAT usando el ID devuelto. ID dispositivo, licencia, SO y empresa son de solo
 lectura. Nro. se asigna consecutivamente dentro de la transacción al crear;
-al editar se conserva. Los demás metadatos existentes se muestran sin inventar
-valores del proveedor. Se rechazan `|`, controles y
+al editar se conserva. Descripción es texto local editable (hasta 1000 caracteres):
+CyP lo guarda al confirmar el alta o la edición, lo conserva al consultar RRAA y
+descarta los cambios sin guardar al cancelar. No procede de STATDAT. Los demás
+metadatos existentes se muestran sin inventar valores del proveedor. Se rechazan `|`, controles y
 campos vacíos en los parámetros; el servidor codifica la URL, bloquea redirecciones,
 limita la espera y el tamaño de respuesta. Solo admite `OK` con licencia no vacía
 o `ER` del contrato; STATDAT exige exactamente sus cuatro campos completos. Un

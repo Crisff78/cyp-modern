@@ -91,7 +91,7 @@ remittancesApi("/snapshot").then(snapshot => createRoot(document.getElementById(
     await t.test("arbitrary data is not found, neither on the preview nor when saving", async () => {
       await page.getByTitle("Nuevo", { exact: true }).click(); await dialog.waitFor();
       assert.equal(await dialog.getByLabel("Empresa del control de prueba:", { exact: true }).inputValue(), "EMPRESA-DEMO");
-      await dialog.getByText(/Escribe únicamente la Estación del control de prueba, por ejemplo «EST-PRUEBA-01»/).waitFor();
+      await dialog.getByText(/Escribe la Estación del control de prueba, por ejemplo «EST-PRUEBA-01»/).waitFor();
       await fill("Estación inventada");
       await dialog.getByRole("button", { name: "Obtener Licencia", exact: true }).click();
       await dialog.getByRole("alert").filter({ hasText: "Estación no encontrada." }).waitFor();
