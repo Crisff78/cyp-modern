@@ -300,6 +300,37 @@ createRoot(document.getElementById("root")).render(<App />);
       await themeButton().click(); assert.equal(await page.locator("html").getAttribute("data-theme"), "light");
       assert.equal(await page.evaluate(() => localStorage.getItem("cyp-admin-token")), token);
     });
+    await t.test("error notifications remain visible and dismissible above MDI forms and nested alerts", async () => {
+      await page.getByRole("button", { name: "Entregas de Dinero", exact: true }).click();
+      const deliveries = page.getByRole("dialog", { name: "Entregas de Dinero", exact: true });
+      await deliveries.getByTitle("Nuevo", { exact: true }).click();
+      const form = page.getByRole("dialog", { name: "Datos de la Entrega de Dinero...", exact: true });
+      await form.getByLabel("Cobrad.:").selectOption("");
+      await form.getByLabel("Cantidad a entregar 10", { exact: true }).fill("500");
+      await form.getByRole("button", { name: "Guardar", exact: true }).click();
+      const notification = page.locator('[data-sonner-toast]').filter({ hasText: "Seleccione un cobrador." });
+      await notification.waitFor();
+      const assertNotificationIsAbove = async () => {
+        await page.waitForFunction(() => {
+          const notification = [...document.querySelectorAll<HTMLElement>('[data-sonner-toast]')].find((node) => node.textContent?.includes("Seleccione un cobrador."));
+          if (!notification) return false;
+          const rect = notification.getBoundingClientRect();
+          return notification.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
+        });
+      };
+      await assertNotificationIsAbove();
+      await form.getByLabel("Cantidad a entregar 10", { exact: true }).fill("0");
+      await form.getByRole("button", { name: "Guardar", exact: true }).click();
+      const alert = page.getByRole("dialog", { name: "Error", exact: true });
+      await alert.waitFor(); await assertNotificationIsAbove();
+      await page.screenshot({ path: path.join(output, "notifications-above-mdi.png") });
+      await notification.locator('[data-close-button]').click();
+      await notification.waitFor({ state: "detached" });
+      assert.equal(await alert.isVisible(), true, "dismissing the notification preserves the nested modal");
+      await alert.getByRole("button", { name: "Cerrar Error", exact: true }).click();
+      assert.equal(await form.isVisible(), true);
+      await form.getByRole("button", { name: "Cancelar", exact: true }).click();
+    });
     assert.deepEqual(pageErrors, []); assert.deepEqual(networkAttempts, []);
     t.diagnostic(`Synthetic UI screenshots: ${output}; blocked antivirus attempts: ${blockedAntivirusScriptAttempts}`);
   } finally {
