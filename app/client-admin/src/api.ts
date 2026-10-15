@@ -28,6 +28,7 @@ const strictMutationPaths = new Set([
   "/cargos",
   "/descargos",
   "/entregas",
+  "/cuadres/regularizar",
 ]);
 export async function api<T>(
   path: string,

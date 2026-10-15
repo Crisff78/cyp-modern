@@ -40,9 +40,10 @@ export const financeMatches = (date: string, currency: string | undefined, from:
   (!from || Boolean(date) && date >= from) && (!to || Boolean(date) && date <= to)
   && (selected === "No definido" || currencyCode(currency) === currencyCode(selected));
 
-export const collectionCash = (movements: readonly { collectorId: string; type: string; amount: number; currency?: string; cancelledAt?: string }[], collectorId: string, currency: string) =>
+export const collectionCash = (movements: readonly { collectorId: string; type: string; amount: number; currency?: string; cancelledAt?: string }[], collectorId: string, currency: string, reconciliations: readonly { collectorId: string; currency: string; returnedCollection: number }[] = []) =>
   movements.filter((movement) => movement.collectorId === collectorId && !movement.cancelledAt && currencyCode(movement.currency) === currencyCode(currency))
-    .reduce((cash, movement) => cash + (movement.type === "collection" ? movement.amount : movement.type === "deposit" ? -movement.amount : 0), 0);
+    .reduce((cash, movement) => cash + (movement.type === "collection" ? movement.amount : movement.type === "deposit" ? -movement.amount : 0), 0)
+    - reconciliations.filter((row) => row.collectorId === collectorId && row.currency === currencyCode(currency)).reduce((sum, row) => sum + row.returnedCollection, 0);
 
 export const nativeTotals = (rows: readonly { currency?: string; amount: number | bigint }[], emptyCurrency = "DOP") => {
   const totals = new Map<string, bigint>();

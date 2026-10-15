@@ -1,7 +1,7 @@
 import type { Movement } from "./types";
 // Collection funds are independent of advances/payments. Pending deposits
 // do not confirm administrative receipt of funds.
-export function unconfirmedCollectionBalances(movements: readonly Movement[]) {
+export function unconfirmedCollectionBalances(movements: readonly Movement[], reconciliations: readonly { collectorId: string; currency: "DOP" | "USD" | "EUR"; returnedCollection: number }[] = []) {
   const balances = new Map<string, { collectorId: string; currency: "DOP" | "USD" | "EUR"; amount: bigint }>();
   for (const row of movements) {
     if (row.cancelledAt || (row.type !== "collection" && row.type !== "deposit")) continue;
@@ -12,6 +12,12 @@ export function unconfirmedCollectionBalances(movements: readonly Movement[]) {
     const balance = balances.get(key) ?? { collectorId: row.collectorId, currency, amount: 0n };
     balance.amount += BigInt(row.amount) * (row.type === "collection" ? 1n : -1n);
     balances.set(key, balance);
+  }
+  for (const row of reconciliations) {
+    if (!Number.isSafeInteger(row.returnedCollection) || row.returnedCollection < 0) throw new Error("Importe de devolución inválido.");
+    const key = JSON.stringify([row.collectorId, row.currency]);
+    const balance = balances.get(key);
+    if (balance) balance.amount -= BigInt(row.returnedCollection);
   }
   return [...balances.values()].filter((row) => row.amount > 0n);
 }

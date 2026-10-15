@@ -61,6 +61,9 @@ test("CYP-QA-026/039: deposit refresh uses collection funds only, with native cu
   assert.equal(collectionCash(entries, "a", "DOP"), 1345);
   assert.equal(collectionCash(entries, "a", "USD"), 90000);
   assert.equal(collectionCash(entries, "a", "EUR"), 0);
+  const returned = [{ collectorId: "a", currency: "DOP", returnedCollection: 1345 }, { collectorId: "b", currency: "DOP", returnedCollection: 70000 }];
+  assert.equal(collectionCash(entries, "a", "DOP", returned), 0);
+  assert.equal(collectionCash(entries, "a", "USD", returned), 90000);
 });
 
 test("CYP-QA-039: combined views retain separate totals without conversion", () => {

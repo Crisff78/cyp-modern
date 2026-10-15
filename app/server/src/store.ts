@@ -12,6 +12,13 @@ export interface Store {
   transaction<T>(fn: (s: State) => T | Promise<T>): Promise<T>;
   close(): Promise<void>;
 }
+function protectCashJournal(before: State, after: State) {
+  for (const record of before.cashReconciliations ?? []) {
+    const saved = after.cashReconciliations?.find((row) => row.id === record.id);
+    if (!saved || JSON.stringify(record) !== JSON.stringify(saved))
+      throw new DomainError("CASH_RECONCILIATION_IMMUTABLE", "La conciliación guardada no se puede modificar ni borrar.", 409);
+  }
+}
 export class MemoryStore implements Store {
   protected state: State;
   private tail: Promise<unknown> = Promise.resolve();
@@ -27,6 +34,7 @@ export class MemoryStore implements Store {
     const work = this.tail.then(async () => {
       const draft = structuredClone(this.state);
       const result = await fn(draft);
+      protectCashJournal(this.state, draft);
       await this.persist(draft);
       this.state = draft;
       return result;
@@ -186,6 +194,13 @@ async function readState(client: pg.PoolClient): Promise<State> {
        FROM daily_settlements ORDER BY date,id`,
     )
   ).rows.map(clean);
+  state.cashReconciliations = (await client.query(
+    `SELECT id,collector_id AS "collectorId",date::text,currency,collected,deposited,
+     office_delivered AS "officeDelivered",paid_to_clients AS "paidToClients",
+     returned_collection AS "returnedCollection",returned_payout AS "returnedPayout",
+     note,actor_id AS "actorId",created_at AS "createdAt"
+     FROM collector_cash_reconciliations ORDER BY date,currency,id`,
+  )).rows.map(clean);
   state.payoutRecurring = (
     await client.query(
       `SELECT id,client_id AS "clientId",concept,amount,currency,frequency,
@@ -242,12 +257,14 @@ async function readState(client: pg.PoolClient): Promise<State> {
   return state;
 }
 async function saveState(client: pg.PoolClient, state: State, before: State) {
+  protectCashJournal(before, state);
   for (const userId of new Set([
     ...state.movements.map((m) => m.actorId),
     ...state.clientIdentityReservations.map((reservation) => reservation.actorId),
     ...state.depositEvents.map((event) => event.actorId),
     ...state.movementCancellations.map((event) => event.actorId),
     ...state.settlements.map((s) => s.actorId),
+    ...(state.cashReconciliations ?? []).map((row) => row.actorId),
     ...state.remittances.transfers.flatMap((t) => [t.sendingUserId, t.registeredBy]),
     ...state.remittances.cashSessions.flatMap((c) => [c.operatorId, c.openedBy]),
     ...state.remittances.events.map((event) => event.actorId),
@@ -527,6 +544,20 @@ async function saveState(client: pg.PoolClient, state: State, before: State) {
           movement.depositComponents ? JSON.stringify(movement.depositComponents) : null,
         ],
       );
+  }
+  for (const record of state.cashReconciliations ?? []) {
+    const previous = before.cashReconciliations?.find((row) => row.id === record.id);
+    if (previous) {
+      if (JSON.stringify(previous) !== JSON.stringify(record)) throw new DomainError("CASH_RECONCILIATION_IMMUTABLE", "La conciliación guardada no se puede modificar.", 409);
+      continue;
+    }
+    await client.query(
+      `INSERT INTO collector_cash_reconciliations(id,collector_id,date,currency,collected,deposited,office_delivered,
+       paid_to_clients,returned_collection,returned_payout,note,actor_id,created_at)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+      [record.id,record.collectorId,record.date,record.currency,record.collected,record.deposited,record.officeDelivered,
+        record.paidToClients,record.returnedCollection,record.returnedPayout,record.note,record.actorId,record.createdAt],
+    );
   }
   for (const settlement of state.settlements) {
     if (unchanged(before.settlements, settlement)) continue;

@@ -253,7 +253,7 @@ export default function Settlement({
                   <div className="formula-subtotal">
                     <span>Cobros por depositar</span>
                     <strong>
-                      {money(preview.collected - preview.deposited)}
+                      {money(preview.collected - preview.deposited - (preview.returnedCollection ?? 0))}
                     </strong>
                   </div>
                 </div>
@@ -274,7 +274,7 @@ export default function Settlement({
                   <div className="formula-subtotal">
                     <span>Entregas por pagar</span>
                     <strong>
-                      {money(preview.officeDelivered - preview.paidToClients)}
+                      {money(preview.officeDelivered - preview.paidToClients - (preview.returnedPayout ?? 0))}
                     </strong>
                   </div>
                 </div>

@@ -65,6 +65,7 @@ import { boundedId, fourDecimalNumber, freeText, machineCounter, optionalEmail, 
 import { claimClientIdentity, reserveClientIdentity, SYSTEM_CLIENT_CODE } from "./client-identities.js";
 import { ACCOUNT_ROLES, isOperationalRole } from "./account-roles.js";
 import { permissionCatalog, permissionsForAccount, updateAccountPermissions, userPermissionsBody } from "./user-permissions.js";
+import { previousCashPreview, reconcilePreviousCash } from "./cash-reconciliation.js";
 
 type Config = {
   store: Store;
@@ -1277,6 +1278,18 @@ export async function buildApp(config: Config) {
       .strict(),
     (s, u, b, params) => updateRecurringPayout(s, u, params.id, b),
   );
+  app.get("/api/cuadres/pendientes", async (req) => {
+    const actor = user(req); assertAdminRead(actor);
+    const query = z.object({ collectorId: id }).strict().parse(req.query);
+    return previousCashPreview(await config.store.read(), query.collectorId, new Date(), config.demo);
+  });
+  describe("get", "/api/cuadres/pendientes", "Revisar efectivo pendiente de jornadas anteriores por moneda, sin modificar el libro");
+  (paths["/api/cuadres/pendientes"].get as { parameters: Record<string, unknown>[] }).parameters.push({ in: "query", name: "collectorId", required: true, schema: { type: "string" } });
+  mutate("/api/cuadres/regularizar", "Registrar recepción y conciliación del efectivo de jornadas anteriores", z.object({
+    collectorId: id, revision: z.string().regex(/^[a-f0-9]{64}$/),
+    amounts: z.object({ DOP: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER), USD: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER), EUR: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER) }).strict(),
+    note: freeText(2000, 1), confirmReceived: z.literal(true),
+  }).strict(), (state, actor, input) => reconcilePreviousCash(state, actor, input));
   app.get("/api/cuadres/preview", async (req) => {
     const q = z.object({ collectorId: id, date, currency: currency.default("DOP") }).parse(req.query);
     assertCollectorReadAccess(user(req), q.collectorId);

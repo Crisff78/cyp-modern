@@ -146,4 +146,10 @@ test("Mi bolsillo excludes cancelled collections, deposits, payouts and office c
     movements.push({ id: `m${++index}`, collectorId: "other", type, amount: 100000, createdAt: "2026-10-02T12:00:00Z" });
   }
   assert.deepEqual(pocketBalances(movements, "col-1"), { collectionCash: 10000, payoutCash: 12500 });
+  const received = [
+    { collectorId: "col-1", currency: "DOP", returnedCollection: 10000, returnedPayout: 12500 },
+    { collectorId: "other", currency: "DOP", returnedCollection: 50000, returnedPayout: 50000 },
+    { collectorId: "col-1", currency: "USD", returnedCollection: 50000, returnedPayout: 50000 },
+  ];
+  assert.deepEqual(pocketBalances(movements, "col-1", received), { collectionCash: 0, payoutCash: 0 });
 });
