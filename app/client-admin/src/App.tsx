@@ -98,7 +98,6 @@ import { isRemittanceReportPage, remittanceReportDefinitions, remittanceReportFo
 import { RemittanceReportView } from "./RemittanceReportView";
 import { remittancesApi } from "./remittancesApi";
 import { hasUnresolvedMovementRequest, pendingMovementDraft, useMovementRequest } from "./useMovementRequest";
-import { PreviousCashDialog } from "./PreviousCashDialog";
 import { businessDate, businessTimestamp, collectionCash, currencyCode, currencyName, financeMatches, nativeMoney, nativeTotals, obligationReceived, decimalProductCents, centsInput } from "./adminFinance";
 import { buildDepositComponents, confirmedDepositMatches, depositCashTotal, depositComponentsMatch, depositFormLabel, depositMethodLabel, nonCashDepositAmount, type NonCashDepositLine } from "./depositComponents";
 import { useChargeImportRequest } from "./useChargeImportRequest";
@@ -5347,7 +5346,7 @@ export default function App() {
                 })()
               ) : isMdiMonitoringPage(windowState.page) ? (
                 windowState.page === "dailySettlements" ? (
-                  <ConnectedSettlements snapshot={snapshot} onRefresh={() => void refresh()} />
+                  <ConnectedSettlements snapshot={snapshot} actorId={effectiveUser.id} canManage={["ADMIN", "SUPERADMIN"].includes(normalizeRole(effectiveUser.role))} onRefresh={refresh} />
                 ) : (
                   <MonitorView
                     page={windowState.page}
@@ -8328,15 +8327,16 @@ function CashDeliveriesOperationalView({ snapshot, currentUser, onRefresh }: Rea
         </section>
       </div>
     </div>
-    {formOpen && <CashDeliveryDataDialog actorId={currentUser.id} snapshot={snapshot} onClose={() => setFormOpen(false)} onSave={saveDelivery} onRefresh={onRefresh} />}
+    {formOpen && <CashDeliveryDataDialog actorId={currentUser.id} snapshot={snapshot} onClose={() => setFormOpen(false)} onSave={saveDelivery} />}
     {detail && <LegacyDialog title="Detalle de la Entrega de Dinero..." className="cash-delivery-detail-dialog" onClose={() => setDetailId("")}><div className="legacy-dialog-form"><dl className="cash-delivery-detail"><dt>Referencia</dt><dd>{detail.reference || detail.receiptToken || detail.id}</dd><dt>Fecha</dt><dd>{businessTimestamp(detail.createdAt)}</dd><dt>Registrado por</dt><dd>{deliveryActor(detail) || "No registrado"}</dd><dt>Cobrador</dt><dd>{detailCollector?.name ?? "No disponible"}</dd><dt>Identificación del cobrador</dt><dd>{detailCollector?.ident || "No registrada"}</dd><dt>Celular</dt><dd>{detailCollector?.cellular || "No registrado"}</dd><dt>Moneda</dt><dd>{currencyCode(detail.currency)}</dd><dt>Importe</dt><dd>{nativeMoney(detail.amount, detail.currency)}</dd><dt>Estado</dt><dd>{detail.cancelledAt ? "Cancelada" : "Activa"}</dd><dt>Nota</dt><dd>{detail.note || "Sin nota"}</dd>{detail.cancelledAt && <><dt>Cancelación</dt><dd>{detail.cancellationNote || "Sin motivo registrado"}</dd></>}</dl><table className="legacy-mdi-table"><thead><tr><th>Denominación</th><th>Cantidad</th><th>Importe</th></tr></thead><tbody>{[...(detail.denominations ?? [])].sort((a, b) => a.denominacion - b.denominacion).map((line) => <tr key={line.denominacion}><td>{nativeMoney(line.denominacion, detail.currency)}</td><td>{line.cantidad}</td><td>{nativeMoney(line.denominacion * line.cantidad, detail.currency)}</td></tr>)}{!detail.denominations?.length && <tr><td colSpan={3}>Sin desglose registrado.</td></tr>}</tbody></table><div className="legacy-dialog-actions centered"><button type="button" onClick={() => setDetailId("")}>oK</button></div></div></LegacyDialog>}
     {deliveryToCancel && <MovementCancellationDialog actorId={currentUser.id} movement={deliveryToCancel} kind="entregas" onClose={() => setDeliveryToCancel(null)} onSaved={() => { setDeliveryToCancel(null); setSelectedId(""); onRefresh(); }} />}
     {printTicket && <CollectionReceiptPrintDialog receipts={[printTicket]} title="Imprimir Recibo de Entrega..." onClose={() => setPrintTicket(null)} />}
   </>;
 }
 
-function CashDeliveryDataDialog({ actorId, snapshot, onClose, onSave, onRefresh }: Readonly<{ actorId: string; snapshot: Snapshot; onClose: () => void; onSave: (draft: DepositDraft, shouldPrint: boolean) => Promise<void>; onRefresh: () => void | boolean | Promise<void | boolean> }>) {
+function CashDeliveryDataDialog({ actorId, snapshot, onClose, onSave }: Readonly<{ actorId: string; snapshot: Snapshot; onClose: () => void; onSave: (draft: DepositDraft, shouldPrint: boolean) => Promise<void> }>) {
   const request = useMovementRequest(actorId, "manual-delivery");
+  useEffect(() => { request.clear(); }, [actorId]);
   const pending = pendingMovementDraft<{ draft: DepositDraft; print: boolean }>(actorId, "manual-delivery");
   const [date] = useState(pending?.draft.date ?? snapshot.businessDate);
   const [currency, setCurrency] = useState(pending?.draft.currency ?? "Peso Dominicano");
@@ -8345,7 +8345,6 @@ function CashDeliveryDataDialog({ actorId, snapshot, onClose, onSave, onRefresh 
   const [quantities, setQuantities] = useState<Record<number, string>>(pending?.draft.quantities ?? emptyDepositQuantities());
   const [errorOpen, setErrorOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [previousCashOpen, setPreviousCashOpen] = useState(false);
   const total = depositAmount(quantities);
   const refreshDenominations = () => {
     const collector = snapshot.collectors.find((item) => item.id === collectorId);
@@ -8396,14 +8395,13 @@ function CashDeliveryDataDialog({ actorId, snapshot, onClose, onSave, onRefresh 
       <div className="deposit-data-meta-row"><label>Doc:<input value="-1" readOnly disabled /></label><label>Fecha:<input type="date" value={date} readOnly /></label></div>
       <label className="deposit-dialog-row"><span>Moneda:</span><select value={currency} onChange={(event) => { setCurrency(event.target.value); setQuantities(emptyDepositQuantities()); }}>{CURRENCIES.map((item) => <option key={item}>{item}</option>)}</select></label>
       <label className="deposit-dialog-row"><span>Cobrad.:</span><select value={collectorId} onChange={(event) => { setCollectorId(event.target.value); setQuantities(emptyDepositQuantities()); }}><option value="">Seleccione</option>{snapshot.collectors.map((collector) => <option key={collector.id} value={collector.id}>{collector.name}</option>)}</select></label>
-      <div className="cash-delivery-previous"><button type="button" disabled={!collectorId || busy} onClick={() => setPreviousCashOpen(true)}>Resolver saldo anterior</button><span>Revisa y registra la devolución del efectivo de días anteriores antes de una nueva entrega.</span></div>
       <label className="deposit-dialog-row"><span>Nota:</span><input maxLength={INPUT_LIMITS.note} value={note} onChange={(event) => setNote(event.target.value)} /></label>
     </div>
     <section className="deposit-denominations-section"><div className="deposit-denominations-toolbar"><strong>Denominaciones · escribe cuántos billetes o monedas entregas</strong><button type="button" title="Propone un desglose de hasta 500.00 en la moneda elegida, dentro del límite de pago del cobrador" onClick={refreshDenominations}><RefreshCw size={14} /> Sugerir</button></div><div className="deposit-denominations-table-wrap"><table className="deposit-denominations-table"><thead><tr><th>Denom.</th><th>Cantidad</th><th>Importe</th></tr></thead><tbody>{denominationRows(quantities, currency).map((denomination) => { const quantity = Number(quantities[denomination] ?? 0) || 0; return <tr key={denomination}><td>{denominationName(denomination, currency)}</td><td><input aria-label={`Cantidad a entregar ${denomination / 100}`} type="number" min="0" max="1000000000" step="1" value={quantities[denomination] ?? ""} onChange={(event) => setQuantities((current) => ({ ...current, [denomination]: event.target.value }))} /></td><td>{Number.isInteger(quantity) && quantity >= 0 && Number.isSafeInteger(denomination * quantity) ? depositMoney(denomination * quantity, currency) : "Cantidad no válida"}</td></tr>; })}</tbody></table></div></section>
     </fieldset>
     {request.error && <p role="alert">{request.error}</p>}{request.uncertain && <p role="status">Reintenta esta misma entrega antes de cambiar los datos.</p>}
     <div className="deposit-data-footer"><label>Total:<input value={Number.isSafeInteger(total) ? depositMoney(total, currency) : "Cantidad no válida"} readOnly disabled /></label><div className="legacy-dialog-actions"><button type="button" disabled={busy || request.busy} onClick={() => void submit(false)}>{request.uncertain ? "Reintentar" : "Guardar"}</button><button type="button" disabled={busy || request.busy || request.uncertain} onClick={() => void submit(true)}>Guardar e Imp.</button><button type="button" disabled={busy || request.busy} onClick={close}>Cancelar</button></div></div>
-  </div>{previousCashOpen && <PreviousCashDialog key={collectorId} actorId={actorId} collectorId={collectorId} onClose={() => setPreviousCashOpen(false)} onRefresh={async () => { request.clear(); return onRefresh(); }} />}{errorOpen && <LegacyAlertDialog title="Error" message={'El campo "Total" no contiene un valor real válido'} onClose={() => setErrorOpen(false)} overlayClassName="collection-receipt-suboverlay" />}</LegacyDialog>;
+  </div>{errorOpen && <LegacyAlertDialog title="Error" message={'El campo "Total" no contiene un valor real válido'} onClose={() => setErrorOpen(false)} overlayClassName="collection-receipt-suboverlay" />}</LegacyDialog>;
 }
 
 type PayoutLocalDetails = Pick<Payout, "clientId" | "collectorId" | "concept" | "amount"> & {

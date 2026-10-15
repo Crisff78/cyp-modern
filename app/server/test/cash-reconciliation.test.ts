@@ -130,3 +130,76 @@ test("reconciliation survives FileStore reopening; serialized competing confirma
     assert.equal((await reopened.read()).cashReconciliations?.length, 2);
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
+
+test("daily settlement receives today's remaining cash by date and closes the operation without changing movements", () => {
+  const state = fixture(); state.movements = []; state.settlements = [];
+  const today = businessDate(now);
+  state.movements.push(
+    { id: "today-collected", collectorId: "col-1", type: "collection", amount: 10000, currency: "DOP", createdAt: now.toISOString(), actorId: admin.id },
+    { id: "today-deposit", collectorId: "col-1", type: "deposit", amount: 6000, currency: "DOP", createdAt: now.toISOString(), actorId: admin.id },
+    { id: "today-delivered", collectorId: "col-1", type: "office_delivery", amount: 10000, currency: "DOP", createdAt: now.toISOString(), actorId: admin.id },
+    { id: "today-paid", collectorId: "col-1", type: "payout", amount: 7000, currency: "DOP", createdAt: now.toISOString(), actorId: admin.id },
+    { id: "today-usd", collectorId: "col-1", type: "office_delivery", amount: 5000, currency: "USD", createdAt: now.toISOString(), actorId: admin.id },
+  );
+  const original = structuredClone(state.movements);
+  assert.equal(previousCashPreview(state, "col-1", now).rows.length, 0, "The compatible unscoped query still selects earlier days only.");
+  const pending = previousCashPreview(state, "col-1", now, true, today);
+  assert.equal(pending.date, today); assert.equal(pending.canReconcile, true);
+  assert.deepEqual(pending.amounts, { DOP: 7000, USD: 5000, EUR: 0 });
+  assert.throws(() => closeDay(state, admin, "col-1", today, now), { code: "UNBALANCED" });
+  reconcilePreviousCash(state, admin, { collectorId: "col-1", date: today, revision: pending.revision, amounts: pending.amounts, note: "Cierre de caja de prueba", confirmReceived: true }, now);
+  assert.deepEqual(state.movements, original);
+  assert.equal(snapshot(state, admin).settlements.find((row) => row.collectorId === "col-1" && row.date === today)?.cashReconciled, true);
+  assert.equal(preview(state, "col-1", today).difference, 0); assert.equal(preview(state, "col-1", today, "USD").difference, 0);
+  assert.throws(() => postMovement(state, admin, "office_delivery", { collectorId: "col-1", amount: 1000 }, now), { code: "DAY_CLOSED" });
+  assert.throws(() => closeDay(state, admin, "col-1", today, now), { code: "DAY_CLOSED" });
+  postMovement(state, admin, "office_delivery", { collectorId: "col-1", amount: 1000 }, new Date(now.getTime() + 86400000));
+});
+
+test("date-scoped cash closing enforces chronology and prevents offsets between pockets or operating days", () => {
+  const state = fixture(), today = businessDate(now);
+  const current = previousCashPreview(state, "col-1", now, false, today);
+  assert.equal(current.canReconcile, false); assert.match(current.issues.join(" "), /Completa primero el cuadre pendiente/);
+  assert.throws(() => closeDay(state, admin, "col-1", today, now), { code: "PREVIOUS_DAY_OPEN" });
+  const selected = previousCashPreview(state, "col-1", now, false, date);
+  assert.equal(selected.canReconcile, true); assert.equal(selected.date, date);
+  assert.ok(selected.rows.every((row) => row.date === date));
+  const before = structuredClone(state);
+  assert.throws(() => reconcilePreviousCash(state, admin, { ...inputFor(state), date }, now), { code: "CASH_RECONCILIATION_CHANGED" });
+  assert.deepEqual(state, before, "A preview for one scope cannot authorize a different scope.");
+  assert.throws(() => previousCashPreview(state, "col-1", now, false, "2026-02-30"), { code: "INVALID_DATE" });
+  assert.throws(() => previousCashPreview(state, "col-1", now, false, businessDate(new Date(now.getTime() + 86400000))), { code: "FUTURE_DATE" });
+  const offset = fixture(); offset.movements = [
+    { id: "negative-cobros", collectorId: "col-1", type: "deposit", amount: 10000, createdAt: now.toISOString(), actorId: admin.id },
+    { id: "positive-pagos", collectorId: "col-1", type: "office_delivery", amount: 10000, createdAt: now.toISOString(), actorId: admin.id },
+  ]; offset.settlements = [];
+  assert.equal(preview(offset, "col-1", today).difference, 0);
+  assert.throws(() => closeDay(offset, admin, "col-1", today, now), { code: "UNBALANCED" });
+});
+
+test("cash closing API isolates the chosen date, validates it and recovers both kinds of closing idempotently", async () => {
+  const state = fixture(), today = businessDate(now);
+  state.settlements = [];
+  const store = new MemoryStore(state);
+  const app = await buildApp({ store, demo: true, secret: "fictional-daily-settlement-secret-at-least-32", origins: [], collectorUrl: "http://localhost:5174" });
+  try {
+    const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { email: "admin", password: "Demo-CyP-2026!" } });
+    const headers = { authorization: `Bearer ${login.json().token}`, "idempotency-key": randomUUID() };
+    assert.equal((await app.inject({ method: "GET", url: "/api/cuadres/pendientes?collectorId=col-1&date=2026-02-30", headers })).statusCode, 400);
+    const pendingResponse = await app.inject({ method: "GET", url: `/api/cuadres/pendientes?collectorId=col-1&date=${date}`, headers });
+    assert.equal(pendingResponse.statusCode, 200); const pending = pendingResponse.json();
+    assert.equal(pending.date, date);
+    const payload = { collectorId: "col-1", date, revision: pending.revision, amounts: pending.amounts, note: "Cierre por fecha de prueba", confirmReceived: true };
+    const first = await app.inject({ method: "POST", url: "/api/cuadres/regularizar", headers, payload });
+    assert.equal(first.statusCode, 200, first.body);
+    const replay = await app.inject({ method: "POST", url: "/api/cuadres/regularizar", headers, payload });
+    assert.equal(replay.statusCode, 200); assert.deepEqual(replay.json(), first.json());
+    assert.equal((await store.read()).cashReconciliations?.length, 2);
+    const closingHeaders = { ...headers, "idempotency-key": randomUUID() };
+    const closed = await app.inject({ method: "POST", url: "/api/cuadres", headers: closingHeaders, payload: { collectorId: "col-1", date: today } });
+    assert.equal(closed.statusCode, 200, closed.body);
+    const closedReplay = await app.inject({ method: "POST", url: "/api/cuadres", headers: closingHeaders, payload: { collectorId: "col-1", date: today } });
+    assert.equal(closedReplay.statusCode, 200); assert.deepEqual(closedReplay.json(), closed.json());
+    assert.equal((await store.read()).settlements.length, 1);
+  } finally { await app.close(); }
+});

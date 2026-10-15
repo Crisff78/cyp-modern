@@ -8,7 +8,7 @@ import { previousCashPreview, reconcilePreviousCash } from "../src/cash-reconcil
 import { seed } from "../src/seed.js";
 import { PostgresStore } from "../src/store.js";
 
-test("isolated PostgreSQL 001–032 preserves movements and serializes immutable previous cash receipts", {
+test("isolated PostgreSQL 001–033 preserves movements and serializes immutable cash closing receipts", {
   skip: !process.env.CYP_CASH_RECONCILIATION_TEST_DATABASE_URL,
 }, async () => {
   const target = new URL(process.env.CYP_CASH_RECONCILIATION_TEST_DATABASE_URL!);
@@ -24,10 +24,10 @@ test("isolated PostgreSQL 001–032 preserves movements and serializes immutable
     const server = (await sql.query("SELECT current_database() AS database,current_user AS role,host(inet_server_addr()) AS host,current_setting('port') AS port")).rows[0];
     assert.deepEqual(server, { database: "cyp_cash_reconciliation_qa", role: "cash_reconciliation_qa", host: "127.0.0.1", port: "55438" });
     const directory = new URL("../database/", import.meta.url);
-    const files = (await readdir(directory)).filter((file) => /^\d{3}_.+\.sql$/.test(file) && Number(file.slice(0, 3)) <= 32).sort();
-    assert.equal(files.length, 32);
+    const files = (await readdir(directory)).filter((file) => /^\d{3}_.+\.sql$/.test(file) && Number(file.slice(0, 3)) <= 33).sort();
+    assert.equal(files.length, 33);
     const ledger = (await sql.query("SELECT name,sha256 FROM cyp_schema_migrations ORDER BY name")).rows;
-    assert.equal(ledger.length, 32);
+    assert.equal(ledger.length, 33);
     for (const file of files) assert.equal(ledger.find((row) => row.name === file)?.sha256,
       createHash("sha256").update(await readFile(new URL(file, directory), "utf8")).digest("hex"), file);
     assert.equal((await store.read()).collectors.length, 0, "Use only a fresh disposable database.");
@@ -60,6 +60,15 @@ test("isolated PostgreSQL 001–032 preserves movements and serializes immutable
     await parallel.transaction((state) => postMovement(state, actor, "office_delivery", { collectorId: "col-1", amount: 50000 }, now));
     const after = await store.read();
     assert.equal(preview(after, "col-1").difference, 100000); assert.equal(previousCashPreview(after, "col-1", now).rows.length, 0);
+    const today = businessDate(now), closing = previousCashPreview(after, "col-1", now, false, today);
+    await store.transaction((state) => reconcilePreviousCash(state, actor, { collectorId: "col-1", date: today, revision: closing.revision, amounts: closing.amounts,
+      note: "Devolución de cierre del día actual", confirmReceived: true }, now));
+    const sameDayReopened = await parallel.read();
+    assert.equal(sameDayReopened.cashReconciliations?.filter((row) => row.date === today).length, 1);
+    assert.equal(preview(sameDayReopened, "col-1").difference, 0);
+    await assert.rejects(store.transaction((state) => postMovement(state, actor, "office_delivery", { collectorId: "col-1", amount: 1000 }, now)), { code: "DAY_CLOSED" });
+    await assert.rejects(sql.query("INSERT INTO collector_cash_reconciliations SELECT 'future-fixture',collector_id,date+10,currency,collected,deposited,office_delivered,paid_to_clients,returned_collection,returned_payout,note,actor_id,created_at FROM collector_cash_reconciliations WHERE id=$1", [record.id]), { code: "23514" });
+    await assert.rejects(sql.query("INSERT INTO collector_cash_reconciliations SELECT 'invalid-payout-fixture','col-2',date,currency,collected,deposited,office_delivered,paid_to_clients,returned_collection,returned_payout+1,note,actor_id,created_at FROM collector_cash_reconciliations WHERE id=$1", [record.id]), { code: "23514" });
     assert.deepEqual((await sql.query("SELECT * FROM cash_handovers WHERE id=ANY($1) ORDER BY id", [movementsBefore.map((row) => row.id)])).rows, movementsBefore);
     // The original gross balance CHECK was not relaxed to accept artificial closures.
     await assert.rejects(sql.query("INSERT INTO daily_settlements(id,collector_id,date,collected,deposited,office_delivered,paid_to_clients,closed_at,actor_id,status) VALUES('invalid-gross-close','col-1',$1,0,0,100,0,$2,'demo-admin','closed')", [businessDate(now), now.toISOString()]), { code: "23514" });

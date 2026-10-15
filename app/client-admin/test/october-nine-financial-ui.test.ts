@@ -103,6 +103,8 @@ remittancesApi('/snapshot').then(snapshot=>createRoot(document.getElementById('r
     });
     await t.test("daily settlement filter and output preserve DOP/USD/EUR independently", async () => {
       await page.getByRole("button", { name: "settlements", exact: true }).click();
+      // The workspace now includes open operating days; this report verifies saved closures.
+      await page.locator(".daily-settlements-filter").getByLabel("Estado:", { exact: true }).selectOption("Cerrado");
       const filter = page.locator(".daily-settlements-filter select").first(); await filter.waitFor(); assert.equal(await filter.isDisabled(), false);
       await filter.selectOption("USD");
       const row = page.locator("tbody tr").filter({ hasText: "USD" }); await row.waitFor(); assert.ok((await row.innerText()).includes("USD 10.00")); assert.ok(!(await row.innerText()).includes("DOP 100.00"));
