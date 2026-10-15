@@ -123,7 +123,7 @@ test("October nine shell changes work in actual App with isolated synthetic APIs
     });
     await run("dashboard modules, visible SVGs, support and clickable daily settlement", async () => {
       await reset(); const launchers = page.locator(".desktop-launchers");
-      assert.deepEqual(await launchers.getByRole("button").allTextContents(), ["CARGOS", "COBROS", "DESCARGOS", "PAGOS", "REMESAS", "CUADRES"]);
+      assert.deepEqual(await launchers.getByRole("button").allTextContents(), ["CARGOS", "COBROS", "DESCARGOS", "PAGOS", "ENVÍO DE DINERO", "CUADRES"]);
       assert.equal(await page.getByRole("button", { name: "Soporte Técnico", exact: true }).isVisible(), true);
       await page.getByTitle("Abrir Cuadres Diarios", { exact: true }).click(); await page.getByRole("dialog", { name: "Cuadres Diarios", exact: true }).waitFor();
       await page.screenshot({ path: path.join(output, "dashboard.png") });
