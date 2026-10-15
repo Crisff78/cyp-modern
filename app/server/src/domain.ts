@@ -894,7 +894,7 @@ export function postMovement(
   if (
     state.settlements.some(
       (s) => s.collectorId === collector.id && s.date >= date,
-    )
+    ) || (state.cashReconciliations ?? []).some((row) => row.collectorId === collector.id && row.date >= date)
   )
     throw new DomainError("DAY_CLOSED", "La jornada ya está cerrada.", 409);
   // A new operating day cannot absorb an unresolved previous cash balance.
@@ -1072,7 +1072,8 @@ export function cancelMovement(
     throw new DomainError("CANCELLATION_REASON_REQUIRED", "Escribe un motivo de anulación de hasta 500 caracteres.", 422);
   if (movement.cancelledAt) return movement;
   const date = businessDate(new Date(movement.createdAt));
-  if (state.settlements.some((item) => item.collectorId === movement.collectorId && item.date >= date))
+  if (state.settlements.some((item) => item.collectorId === movement.collectorId && item.date >= date)
+      || (state.cashReconciliations ?? []).some((row) => row.collectorId === movement.collectorId && row.date >= date))
     throw new DomainError("DAY_CLOSED", "La jornada de este movimiento ya está cerrada; no se puede anular.", 409);
   if (date !== businessDate(now))
     throw new DomainError("CANCELLATION_DAY_MISMATCH", "Solo puedes anular movimientos de la jornada actual. Los movimientos de otra fecha requieren revisión administrativa.", 409);

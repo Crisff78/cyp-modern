@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildApp } from "../src/app.js";
 import { previousCashPreview, reconcilePreviousCash } from "../src/cash-reconciliation.js";
-import { acceptDeposit, businessDate, cancelDeposit, closeDay, postMovement, preview, snapshot, type User } from "../src/domain.js";
+import { acceptDeposit, businessDate, cancelDeposit, cancelMovement, closeDay, postMovement, preview, snapshot, type User } from "../src/domain.js";
 import { seed } from "../src/seed.js";
 import { FileStore, MemoryStore } from "../src/store.js";
 
@@ -44,6 +44,8 @@ test("previous cash blocks new deliveries; receipt preserves original ledger and
   assert.equal(historical.cashReconciled, true); assert.equal(historical.officeDelivered, 100000);
   assert.equal(historical.totalsByCurrency?.USD.officeDelivered, 2500); assert.equal(historical.difference, 0);
   assert.throws(() => closeDay(state, admin, "col-1", date, now), { code: "DAY_CLOSED" });
+  assert.throws(() => postMovement(state, admin, "office_delivery", { collectorId: "col-1", amount: 50000 }, new Date(oldInstant)), { code: "DAY_CLOSED" });
+  assert.throws(() => cancelMovement(state, admin, "old-delivered", "office_delivery", "Prueba de período conciliado", new Date(oldInstant)), { code: "DAY_CLOSED" });
   postMovement(state, admin, "office_delivery", { collectorId: "col-1", amount: 50000 }, now);
   postMovement(state, admin, "office_delivery", { collectorId: "col-1", amount: 50000 }, now);
   assert.equal(preview(state, "col-1").officeDelivered, 200000); assert.equal(preview(state, "col-1").difference, 100000);
