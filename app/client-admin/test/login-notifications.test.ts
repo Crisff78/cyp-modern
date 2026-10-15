@@ -226,7 +226,7 @@ createRoot(document.getElementById("root")).render(<App />);
       assert.equal(await themeButton().getAttribute("aria-pressed"), "false");
       const token = await page.evaluate(() => localStorage.getItem("cyp-admin-token"));
       const launchers = page.getByRole("navigation", { name: "Operaciones principales" }).getByRole("button");
-      assert.deepEqual(await launchers.allTextContents(), ["CARGOS", "COBROS", "DESCARGOS", "PAGOS", "REMESAS", "CUADRES"]);
+      assert.deepEqual(await launchers.allTextContents(), ["CARGOS", "COBROS", "DESCARGOS", "PAGOS", "ENVÍO DE DINERO", "CUADRES"]);
       const lightLauncherColors = await launchers.evaluateAll((nodes: HTMLElement[]) => nodes.map((node) => ({ color: getComputedStyle(node).color, background: getComputedStyle(node).backgroundColor, height: node.getBoundingClientRect().height })));
       assert.equal(lightLauncherColors[0].background, lightLauncherColors[1].background);
       assert.equal(lightLauncherColors[2].background, lightLauncherColors[3].background);

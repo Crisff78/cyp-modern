@@ -146,6 +146,7 @@ const groupOrder = [
   "ARCHIVOS",
   "COBROS",
   "PAGOS",
+  "REMESAS",
   "REPORTES & MONITOREO",
 ] as const;
 type NavGroup = (typeof groupOrder)[number];
@@ -164,7 +165,6 @@ const navigation: {
 }[] = [
   { key: "admin-panel", action: "controlPanel", label: "Admin.", icon: ServerCog, group: "ARCHIVOS" },
   { key: "clients", page: "clients", label: "Clientes", icon: FolderOpen, group: "ARCHIVOS" },
-  { key: "remittances", page: "remittances", label: "Envíos de Dinero", icon: ArrowRight, group: "PAGOS" },
   {
     key: "direct-charges",
     page: "charges",
@@ -216,11 +216,18 @@ const navigation: {
     group: "PAGOS",
   },
   {
+    key: "remittances",
+    page: "remittances",
+    label: "Envíos de Dinero",
+    icon: ArrowRight,
+    group: "REMESAS",
+  },
+  {
     key: "cash-delivery",
     page: "cashDeliveries",
     label: "Entregas de Dinero",
     icon: Wallet,
-    group: "PAGOS",
+    group: "REMESAS",
   },
   {
     key: "monitor-collectors",
@@ -4663,6 +4670,7 @@ export default function App() {
       "ARCHIVOS",
       "COBROS",
       "PAGOS",
+      "REMESAS",
       "REPORTES & MONITOREO",
     ]),
     [mobileMenu, setMobileMenu] = useState(false),
@@ -4987,7 +4995,7 @@ export default function App() {
                       className={`nav-group-trigger ${groupActive ? "active" : ""}`}
                       aria-label={group}
                       title={group}
-                      data-short-label={group === "ARCHIVOS" ? "AR" : group === "COBROS" ? "CO" : group === "PAGOS" ? "PA" : "RE"}
+                      data-short-label={group === "ARCHIVOS" ? "AR" : group === "COBROS" ? "CO" : group === "PAGOS" ? "PA" : group === "REMESAS" ? "RM" : "RE"}
                       onClick={() => {
                         if (collapsed) {
                           setCollapsed(false);
@@ -5291,7 +5299,7 @@ export default function App() {
               <button type="button" className="btn launcher-collections" onClick={() => openMdiWindow("collections", "collections")}><ReceiptText size={17} />COBROS</button>
               <button type="button" className="btn launcher-payments" onClick={() => openMdiWindow("payouts", "payouts")}><ArrowDownLeft size={17} />DESCARGOS</button>
               <button type="button" className="btn launcher-payments" onClick={() => openMdiWindow("payments", "payments")}><Wallet size={17} />PAGOS</button>
-              <button type="button" className="btn launcher-remittances" onClick={() => openMdiWindow("remittances", "remittances")}><Globe size={17} />REMESAS</button>
+              <button type="button" className="btn launcher-remittances" onClick={() => openMdiWindow("remittances", "remittances")}><Globe size={17} />ENVÍO DE DINERO</button>
               <button type="button" className="btn launcher-settlements" onClick={() => openMdiWindow("dailySettlements", "daily-settlements")}><FileCheck2 size={17} />CUADRES</button>
             </nav>
             <main id="main-content" className="main-content desktop-canvas" tabIndex={-1}>
