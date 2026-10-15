@@ -135,6 +135,7 @@ test("actual delivery UI resolves synthetic previous cash, preserves history and
       await receipt().getByRole("button", { name: "Actualizar vista", exact: true }).click();
       await receipt().waitFor({ state: "hidden" });
       assert.equal(writes.filter((row) => row.url === "/api/cuadres/regularizar").length, posts);
+      assert.equal(await delivery().getByRole("alert").count(), 0, "A confirmed return clears the obsolete previous-day error in the parent delivery form.");
       assert.deepEqual((await store.read()).movements.slice(0, 3), oldMovements);
       await delivery().getByRole("button", { name: "Guardar", exact: true }).click(); await delivery().waitFor({ state: "hidden" });
       assert.equal(writes.at(-1)?.status, 200);
