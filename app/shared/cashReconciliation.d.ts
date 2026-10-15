@@ -20,6 +20,8 @@ export type PreviousCashPreview = {
   collectorId: string;
   collectorName: string;
   businessDate: string;
+  /** When provided, the receipt closes this specific operating day, including today. */
+  date?: string;
   revision: string;
   rows: PreviousCashRow[];
   amounts: CashReconciliationAmounts;
@@ -30,6 +32,7 @@ export type PreviousCashPreview = {
 };
 export type PreviousCashInput = {
   collectorId: string;
+  date?: string;
   revision: string;
   amounts: CashReconciliationAmounts;
   note: string;

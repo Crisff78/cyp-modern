@@ -11348,10 +11348,7 @@ table {
   color: var(--cyp-text, #475569);
 }
 
-.cash-delivery-previous { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; }
-.cash-delivery-previous button,
 .previous-cash-content button { border: 1px solid var(--cyp-border-strong, #b8c4d3); border-radius: 4px; padding: 6px 10px; background: var(--cyp-surface-raised, #f2f5f9); color: var(--cyp-text, #223046); }
-.cash-delivery-previous span { flex: 1; min-width: 200px; }
 .previous-cash-dialog { width: min(820px, calc(100vw - 24px)); max-height: calc(100vh - 24px); }
 .previous-cash-dialog .legacy-dialog-body { overflow: auto; background: var(--cyp-surface, #f8fafc); color: var(--cyp-text, #223046); }
 .previous-cash-content { display: flex; flex-direction: column; gap: 10px; padding: 12px; min-width: 0; }

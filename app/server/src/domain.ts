@@ -409,6 +409,15 @@ export function preview(state: State, collectorId: string, date?: string, curren
     difference: collected - deposited - returnedCollection + (officeDelivered - paidToClients - returnedPayout),
   };
 }
+export function unresolvedCashDates(state: State, collectorId: string, beforeDate: string) {
+  const dates = [...new Set(state.movements.filter((row) => row.collectorId === collectorId &&
+    businessDate(new Date(row.createdAt)) < beforeDate).map((row) => businessDate(new Date(row.createdAt))))].sort();
+  return dates.filter((date) => ledgerCurrencies.some((currency) => {
+    const balance = preview(state, collectorId, date, currency);
+    return balance.collected - balance.deposited - (balance.returnedCollection ?? 0) !== 0 ||
+      balance.officeDelivered - balance.paidToClients - (balance.returnedPayout ?? 0) !== 0;
+  }));
+}
 // Components describe one deposit; they do not introduce separate bank balances.
 // Missing components preserve historical cash deposits and their fingerprints.
 function depositCashAmount(amount: number, components?: DepositComponent[]) {
@@ -898,20 +907,12 @@ export function postMovement(
   )
     throw new DomainError("DAY_CLOSED", "La jornada ya está cerrada.", 409);
   // A new operating day cannot absorb an unresolved previous cash balance.
-  const old = state.movements.filter(
-    (m) =>
-      m.collectorId === collector.id &&
-      businessDate(new Date(m.createdAt)) < date,
-  );
-  if (old.length) {
-    const oldState = { ...state, movements: old, cashReconciliations: (state.cashReconciliations ?? []).filter((row) => row.date < date) };
-    if (ledgerCurrencies.some((unit) => preview(oldState, collector.id, undefined, unit).difference !== 0))
-      throw new DomainError(
-        "PREVIOUS_DAY_OPEN",
-        "Debes resolver el efectivo pendiente de la jornada anterior.",
-        409,
-      );
-  }
+  if (unresolvedCashDates(state, collector.id, date).length)
+    throw new DomainError(
+      "PREVIOUS_DAY_OPEN",
+      "Debes resolver el efectivo pendiente de la jornada anterior. Completa el cierre del cobrador en Cuadres Diarios.",
+      409,
+    );
   const balance = preview(state, collector.id, undefined, currency);
   const collectionCash = balance.collected - balance.deposited - (balance.returnedCollection ?? 0),
     payoutCash = balance.officeDelivered - balance.paidToClients - (balance.returnedPayout ?? 0);
@@ -1129,9 +1130,14 @@ export function closeDay(
     throw new DomainError("DAY_CLOSED", "La jornada ya está cerrada.", 409);
   if ((state.cashReconciliations ?? []).some((row) => row.collectorId === collectorId && row.date === date))
     throw new DomainError("DAY_CLOSED", "La jornada ya fue conciliada administrativamente.", 409);
+  const earlier = unresolvedCashDates(state, collectorId, date);
+  if (earlier.length)
+    throw new DomainError("PREVIOUS_DAY_OPEN", `Completa primero el cuadre pendiente del ${earlier[0]} en Cuadres Diarios.`, 409);
   const totals = preview(state, collectorId, date);
   const totalsByCurrency = Object.fromEntries(ledgerCurrencies.map((currency) => [currency, preview(state, collectorId, date, currency)])) as Record<LedgerCurrency, ReturnType<typeof preview>>;
-  if (Object.values(totalsByCurrency).some((balance) => balance.difference !== 0))
+  if (Object.values(totalsByCurrency).some((balance) =>
+    balance.collected - balance.deposited - (balance.returnedCollection ?? 0) !== 0 ||
+    balance.officeDelivered - balance.paidToClients - (balance.returnedPayout ?? 0) !== 0))
     throw new DomainError(
       "UNBALANCED",
       "El cuadre debe tener una diferencia exacta de 0.00 en cada moneda (DOP, USD y EUR).",

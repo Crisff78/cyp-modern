@@ -1280,13 +1280,14 @@ export async function buildApp(config: Config) {
   );
   app.get("/api/cuadres/pendientes", async (req) => {
     const actor = user(req); assertAdminRead(actor);
-    const query = z.object({ collectorId: id }).strict().parse(req.query);
-    return previousCashPreview(await config.store.read(), query.collectorId, new Date(), config.demo);
+    const query = z.object({ collectorId: id, date: date.optional() }).strict().parse(req.query);
+    return previousCashPreview(await config.store.read(), query.collectorId, new Date(), config.demo, query.date);
   });
-  describe("get", "/api/cuadres/pendientes", "Revisar efectivo pendiente de jornadas anteriores por moneda, sin modificar el libro");
+  describe("get", "/api/cuadres/pendientes", "Revisar efectivo pendiente por moneda para el cierre de una jornada, o de jornadas anteriores si no se indica fecha");
   (paths["/api/cuadres/pendientes"].get as { parameters: Record<string, unknown>[] }).parameters.push({ in: "query", name: "collectorId", required: true, schema: { type: "string" } });
-  mutate("/api/cuadres/regularizar", "Registrar recepción y conciliación del efectivo de jornadas anteriores", z.object({
-    collectorId: id, revision: z.string().regex(/^[a-f0-9]{64}$/),
+  (paths["/api/cuadres/pendientes"].get as { parameters: Record<string, unknown>[] }).parameters.push({ in: "query", name: "date", required: false, schema: { type: "string", format: "date" } });
+  mutate("/api/cuadres/regularizar", "Registrar devolución de efectivo y cierre del cuadre por jornada", z.object({
+    collectorId: id, date: date.optional(), revision: z.string().regex(/^[a-f0-9]{64}$/),
     amounts: z.object({ DOP: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER), USD: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER), EUR: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER) }).strict(),
     note: freeText(2000, 1), confirmReceived: z.literal(true),
   }).strict(), (state, actor, input) => reconcilePreviousCash(state, actor, input));
