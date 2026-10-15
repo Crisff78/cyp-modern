@@ -1569,7 +1569,7 @@ function PocketView({
   onInstall: () => void;
   onLogout: () => void;
 }) {
-  const { collectionCash, payoutCash } = pocketBalances(snapshot.movements, collector?.id);
+  const { collectionCash, payoutCash } = pocketBalances(snapshot.movements, collector?.id, snapshot.cashReconciliations);
   return (
     <>
       <PageTitle

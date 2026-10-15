@@ -11348,6 +11348,27 @@ table {
   color: var(--cyp-text, #475569);
 }
 
+.cash-delivery-previous { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; }
+.cash-delivery-previous button,
+.previous-cash-content button { border: 1px solid var(--cyp-border-strong, #b8c4d3); border-radius: 4px; padding: 6px 10px; background: var(--cyp-surface-raised, #f2f5f9); color: var(--cyp-text, #223046); }
+.cash-delivery-previous span { flex: 1; min-width: 200px; }
+.previous-cash-dialog { width: min(820px, calc(100vw - 24px)); max-height: calc(100vh - 24px); }
+.previous-cash-dialog .legacy-dialog-body { overflow: auto; background: var(--cyp-surface, #f8fafc); color: var(--cyp-text, #223046); }
+.previous-cash-content { display: flex; flex-direction: column; gap: 10px; padding: 12px; min-width: 0; }
+.previous-cash-content p { margin: 0; }
+.previous-cash-content [role="alert"] { color: var(--cyp-danger-text, #b42318); }
+.previous-cash-demo { padding: 8px; background: var(--cyp-surface-raised, #f2f5f9); border-left: 3px solid var(--cyp-accent, #0d806b); font-size: 12px; }
+.previous-cash-table { flex: 0 0 auto; max-height: 210px; }
+.previous-cash-fields { display: flex; gap: 10px; flex-wrap: wrap; margin: 0; border: 0; padding: 0; }
+.previous-cash-fields label { display: flex; flex: 1; min-width: 180px; flex-direction: column; gap: 4px; }
+.previous-cash-fields input:not([type="checkbox"]),
+.previous-cash-fields textarea { width: 100%; border: 1px solid var(--cyp-border-strong, #b8c4d3); border-radius: 4px; background: var(--cyp-surface, #fff); color: var(--cyp-text, #223046); padding: 6px 8px; }
+.previous-cash-fields input:read-only { background: var(--cyp-surface-raised, #edf2f7); }
+.previous-cash-fields .previous-cash-note { flex-basis: 100%; }
+.previous-cash-fields .previous-cash-confirm { flex-basis: 100%; flex-direction: row; align-items: center; }
+.previous-cash-confirm input { flex: 0 0 auto; width: auto; }
+.previous-cash-content button:disabled { opacity: .5; cursor: not-allowed; }
+
 /* The bell stays red while there is collected money not yet deposited (it must not
    take the common green of the other icons). */
 .app-shell .topbar-actions .notification-trigger.collections-pending {

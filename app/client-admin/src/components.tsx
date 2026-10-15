@@ -392,7 +392,7 @@ export function CollectorDrawer({
   if (!collector) return null;
   const route = snapshot.routes.find((route) => route.id === collector.routeId);
   const movements = snapshot.movements.filter(
-    (movement) => movement.collectorId === collector.id,
+    (movement) => movement.collectorId === collector.id && !movement.cancelledAt && (movement.currency ?? "DOP") === "DOP",
   );
   const collected = movements
     .filter((m) => m.type === "collection")
@@ -406,6 +406,7 @@ export function CollectorDrawer({
   const paid = movements
     .filter((m) => m.type === "payout")
     .reduce((s, m) => s + m.amount, 0);
+  const returned = (snapshot.cashReconciliations ?? []).filter((row) => row.collectorId === collector.id && row.currency === "DOP");
   return (
     <Modal
       open={!!collector}
@@ -437,12 +438,12 @@ export function CollectorDrawer({
         {[
           {
             label: "Cobros por depositar",
-            amount: collected - deposited,
+            amount: collected - deposited - returned.reduce((sum, row) => sum + row.returnedCollection, 0),
             max: collector.collectionLimit,
           },
           {
             label: "Entregas por pagar",
-            amount: delivered - paid,
+            amount: delivered - paid - returned.reduce((sum, row) => sum + row.returnedPayout, 0),
             max: collector.payoutLimit,
           },
         ].map((item) => (

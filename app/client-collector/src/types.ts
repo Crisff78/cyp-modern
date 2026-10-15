@@ -119,6 +119,7 @@ export type Movement = {
   currency?: "DOP" | "USD" | "EUR";
 };
 export type Snapshot = {
+  cashReconciliations?: import("../../shared/cashReconciliation").CashReconciliationRecord[];
   businessDate: string;
   clients: Client[];
   routes: { id: string; name: string; sector: string; collectorId: string }[];

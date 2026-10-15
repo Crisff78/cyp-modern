@@ -205,6 +205,8 @@ export type Balance = {
   officeDelivered: number;
   paidToClients: number;
   difference: number;
+  returnedCollection?: number;
+  returnedPayout?: number;
 };
 export type PublicAccount = {
   nickname?: string;
@@ -264,7 +266,9 @@ export type Snapshot = {
     status: "closed";
     closedAt: string;
     totalsByCurrency?: Partial<Record<"DOP" | "USD" | "EUR", Balance>>;
+    cashReconciled?: boolean;
   })[];
+  cashReconciliations?: import("../../shared/cashReconciliation").CashReconciliationRecord[];
   totals: {
     collected: number;
     paid: number;

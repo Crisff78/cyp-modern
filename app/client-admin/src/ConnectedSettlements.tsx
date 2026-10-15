@@ -16,6 +16,7 @@ const balanceFields = [
 function SettlementTotals({ balance, currency }: { balance: Balance; currency: SettlementCurrency }) {
   return <div className="settlement-breakdown-cell">
     {balanceFields.map(([label, key]) => <div key={key}><span>{label}:</span><strong>{formatMoney(balance[key], currency)}</strong></div>)}
+    {(balance.returnedCollection ?? 0) + (balance.returnedPayout ?? 0) > 0 && <div><span>Devuelto / conciliado:</span><strong>{formatMoney((balance.returnedCollection ?? 0) + (balance.returnedPayout ?? 0), currency)}</strong></div>}
   </div>;
 }
 
@@ -44,7 +45,8 @@ export function ConnectedSettlements({ snapshot, onRefresh }: { snapshot: Snapsh
   const selected = rows.find((row) => row.id === selectedId);
   const detail = allRows.find((row) => row.id === detailId);
   const totals = settlementCurrencyCodes.filter((code) => rows.some((row) => row.currency === code)).map((code) => ({ currency: code, ...rows.filter((row) => row.currency === code).reduce((sum, row) => ({ collected: sum.collected + row.collected, officeDelivered: sum.officeDelivered + row.officeDelivered, difference: sum.difference + row.difference }), { collected: 0, officeDelivered: 0, difference: 0 }) }));
-  const canClose = Boolean(preview && settlementBalances(preview.balance).every(({ balance }) => balance.difference === 0));
+  const alreadyReconciled = Boolean(preview && snapshot.cashReconciliations?.some((row) => row.collectorId === preview.collectorId && row.date === preview.date));
+  const canClose = Boolean(preview && !alreadyReconciled && settlementBalances(preview.balance).every(({ balance }) => balance.difference === 0));
   const calculate = async () => {
     if (!collectorId || !date || busy) return;
     const selection = { collectorId, date };
@@ -68,7 +70,7 @@ export function ConnectedSettlements({ snapshot, onRefresh }: { snapshot: Snapsh
   };
   const output: OutputSection[] = [
     { title: "Criterios", columns: ["Dato", "Valor"], rows: [["Desde", from || "Inicio"], ["Hasta", to || "Fin"], ["Cobrador", filterCollectorId ? collectorName(filterCollectorId) : "Todos"], ["Moneda", currency || "Todas, con totales separados"], ["Alcance", "Jornadas cerradas del libro de cobros y pagos. La caja de Envíos de Dinero es independiente."]] },
-    { title: "Cuadres diarios", columns: ["Fecha", "Cobrador", "Moneda", "Cobrado", "Depositado", "Entregado", "Pagado", "Diferencia", "Estado"], rows: rows.map((row) => [row.date, collectorName(row.collectorId), row.currency, ...balanceFields.map(([, key]) => formatMoney(row[key], row.currency)), formatMoney(row.difference, row.currency), "Cerrado"]) },
+    { title: "Cuadres diarios", columns: ["Fecha", "Cobrador", "Moneda", "Cobrado", "Depositado", "Entregado", "Pagado", "Devuelto / conciliado", "Diferencia", "Estado"], rows: rows.map((row) => [row.date, collectorName(row.collectorId), row.currency, ...balanceFields.map(([, key]) => formatMoney(row[key], row.currency)), formatMoney((row.returnedCollection ?? 0) + (row.returnedPayout ?? 0), row.currency), formatMoney(row.difference, row.currency), row.cashReconciled ? "Conciliado" : "Cerrado"]) },
     { title: "Totales por moneda", columns: ["Moneda", "Cobrado", "Entregado", "Diferencia"], rows: totals.map((total) => [total.currency, formatMoney(total.collected, total.currency), formatMoney(total.officeDelivered, total.currency), formatMoney(total.difference, total.currency)]) },
   ];
   const outputAction = (kind: "csv" | "print") => {
@@ -114,7 +116,7 @@ export function ConnectedSettlements({ snapshot, onRefresh }: { snapshot: Snapsh
             <colgroup><col className="settlement-date-column" /><col className="connected-settlement-collector-column" /><col className="settlement-total-column" /><col className="settlement-balance-column" /><col className="connected-settlement-state-column" /></colgroup>
             <thead><tr><th scope="col">Fecha</th><th scope="col">Cobrador / moneda</th><th scope="col">Total</th><th scope="col">Balance</th><th scope="col">Estado</th></tr></thead>
             <tbody>{rows.map((row) => <tr key={row.id} className={selectedId === row.id ? "selected-row" : undefined} aria-selected={selectedId === row.id} tabIndex={0} onClick={() => setSelectedId(row.id)} onDoubleClick={() => { setSelectedId(row.id); setDetailId(row.id); }} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedId(row.id))}>
-              <td className="settlement-date-cell">{row.date}</td><td>{collectorName(row.collectorId)} · {row.currency}</td><td><SettlementTotals balance={row} currency={row.currency} /></td><td className="settlement-balance-value">{formatMoney(row.difference, row.currency)}</td><td>Cerrado</td>
+              <td className="settlement-date-cell">{row.date}</td><td>{collectorName(row.collectorId)} · {row.currency}</td><td><SettlementTotals balance={row} currency={row.currency} /></td><td className="settlement-balance-value">{formatMoney(row.difference, row.currency)}</td><td>{row.cashReconciled ? "Conciliado" : "Cerrado"}</td>
             </tr>)}</tbody>
           </table>
           {!rows.length && <div className="daily-settlements-empty">{invalidRange ? "Corrige el rango de fechas para consultar los cuadres." : "No hay jornadas cerradas en este rango."}</div>}
@@ -133,6 +135,7 @@ export function ConnectedSettlements({ snapshot, onRefresh }: { snapshot: Snapsh
         <p className="connected-report-dialog-note">{collectorName(preview.collectorId)}</p>
         {settlementBalances(preview.balance).map(({ currency: code, balance }) => <section key={code} aria-label={`Cuadre ${code}`}><h3>{code}</h3>{[...balanceFields, ["Diferencia", "difference"] as const].map(([label, key]) => <label className="settlement-balance-row connected-settlement-balance-row" key={key}><span>{label}:</span><input value={formatMoney(balance[key], code)} readOnly /></label>)}</section>)}
         <p className="connected-report-dialog-note">Solo se puede cerrar con diferencia cero en cada moneda. Los movimientos de toda la jornada quedarán cerrados.</p>
+        {alreadyReconciled && <p role="status">Esta jornada ya fue conciliada mediante una devolución administrativa.</p>}
         {error && <p role="alert">{error}</p>}
         <div className="legacy-dialog-actions centered"><button type="button" disabled={busy || !canClose} onClick={() => void close()}>{busy ? "Cerrando…" : "Cerrar jornada"}</button><button type="button" disabled={busy} onClick={() => { setPreview(null); setError(""); }}>Volver</button><button type="button" disabled={busy} onClick={dismissGeneration}>Cancelar</button></div>
       </div>}
@@ -140,7 +143,8 @@ export function ConnectedSettlements({ snapshot, onRefresh }: { snapshot: Snapsh
     {detail && <LegacyDialog title="Balance del Día..." onClose={() => setDetailId("")} className="settlement-balance-editor-dialog connected-settlement-dialog">
       <div className="settlement-balance-editor">
         <div className="settlement-balance-header"><label>Fecha:<input value={detail.date} readOnly /></label><label>Moneda:<input value={detail.currency} readOnly /></label></div>
-        <p className="connected-report-dialog-note">{collectorName(detail.collectorId)} · Cerrado</p>
+        <p className="connected-report-dialog-note">{collectorName(detail.collectorId)} · {detail.cashReconciled ? "Conciliado mediante devolución administrativa" : "Cerrado"}</p>
+        {detail.cashReconciled && <label className="settlement-balance-row connected-settlement-balance-row"><span>Devuelto / conciliado:</span><input value={formatMoney((detail.returnedCollection ?? 0) + (detail.returnedPayout ?? 0), detail.currency)} readOnly /></label>}
         {[...balanceFields, ["Diferencia", "difference"] as const].map(([label, key]) => <label className="settlement-balance-row connected-settlement-balance-row" key={key}><span>{label}:</span><input value={formatMoney(detail[key], detail.currency)} readOnly /></label>)}
         <div className="legacy-dialog-actions centered"><button type="button" onClick={() => setDetailId("")}>Cerrar</button></div>
       </div>
