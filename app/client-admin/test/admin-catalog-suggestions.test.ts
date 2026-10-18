@@ -80,6 +80,7 @@ test("administration suggestions run in real components with a synthetic isolate
     fs.writeFileSync(fixture, `import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ConnectedCatalog } from ${module("ConnectedCatalog.tsx")};
+import { PageAccessContext } from ${module("PageAccess.tsx")};
 import { ConnectedAdminTools } from ${module("ConnectedAdminTools.tsx")};
 import { ConnectedExchangeRates } from ${module("ConnectedExchangeRates.tsx")};
 import AccountModal from ${module("Users.tsx")};
@@ -87,7 +88,7 @@ import { remittancesApi } from ${module("remittancesApi.ts")};
 function Fixture({ snapshot }) {
   const [view, setView] = useState(new URLSearchParams(location.search).get("view") || "collectors");
   window.__qaView = setView;
-  return <main><h1>QA sintética de Administración</h1>{view === "empty" ? <p>Ventana cerrada</p> : ["account", "account-mock"].includes(view) ? <AccountModal operation={{type:"create"}} snapshot={snapshot} actorId=${JSON.stringify(user.id)} onClose={() => setView("empty")} onComplete={async () => {}} /> : view === "rates" ? <ConnectedExchangeRates actorId=${JSON.stringify(user.id)} isAdmin={true} /> : ["stations", "authorizationRequests"].includes(view) ? <ConnectedAdminTools key={view} page={view} snapshot={snapshot} onRefresh={() => {}} /> : <ConnectedCatalog key={view} page={view} actorId=${JSON.stringify(user.id)} snapshot={snapshot} onRefresh={() => {}} />}</main>;
+  return <main><h1>QA sintética de Administración</h1><PageAccessContext.Provider value={{actor:{role:"admin"},page:view === "rates" ? "exchangeRates" : view}}>{view === "empty" ? <p>Ventana cerrada</p> : ["account", "account-mock"].includes(view) ? <AccountModal operation={{type:"create"}} snapshot={snapshot} actorId=${JSON.stringify(user.id)} onClose={() => setView("empty")} onComplete={async () => {}} /> : view === "rates" ? <ConnectedExchangeRates actorId=${JSON.stringify(user.id)} isAdmin={true} /> : ["stations", "authorizationRequests"].includes(view) ? <ConnectedAdminTools key={view} page={view} snapshot={snapshot} onRefresh={() => {}} /> : <ConnectedCatalog key={view} page={view} actorId=${JSON.stringify(user.id)} snapshot={snapshot} onRefresh={() => {}} />}</PageAccessContext.Provider></main>;
 }
 remittancesApi("/snapshot").then(snapshot => { if (new URLSearchParams(location.search).get("view") === "account-mock") localStorage.setItem("cyp-admin-token", "mock-token:qa-account"); createRoot(document.getElementById("root")).render(<Fixture snapshot={snapshot} />); });
 `, "utf8");
@@ -429,7 +430,7 @@ remittancesApi("/snapshot").then(snapshot => { if (new URLSearchParams(location.
       await open("authorizationRequests"); await page.getByText(/Solicitudes de revisión administrativa de un cliente/).waitFor();
       assert.match(await page.locator("main").innerText(), /no registra cobros o pagos ni amplía límites o permisos/);
       await open("users"); await page.getByRole("button", { name: "Permisos", exact: true }).click();
-      assert.match(await page.getByRole("dialog").innerText(), /Esta lista queda guardada como referencia para este usuario\. No cambia lo que la cuenta puede hacer/);
+      assert.match(await page.getByRole("dialog").innerText(), /Se aplica el perfil inicial del rol\. Al marcar o desmarcar una acción pasarás a permisos personalizados/);
       assert.equal(writes.length, count);
       await page.getByRole("button", { name: "Cerrar Permisos del Usuario...", exact: true }).click();
     });

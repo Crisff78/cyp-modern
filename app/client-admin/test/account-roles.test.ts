@@ -58,6 +58,7 @@ test("actual user forms and collector picker persist real API references in an i
     fs.writeFileSync(fixture, `import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ConnectedCatalog } from ${module("ConnectedCatalog.tsx")};
+import { PageAccessContext } from ${module("PageAccess.tsx")};
 import AccountModal from ${module("Users.tsx")};
 import { remittancesApi } from ${module("remittancesApi.ts")};
 import ${module("styles.css")};
@@ -65,7 +66,7 @@ function Fixture({ initial }) {
  const [view,setView]=useState(new URLSearchParams(location.search).get("view") || "users");
  const [snapshot,setSnapshot]=useState(initial);
  const refresh=()=>{void remittancesApi("/snapshot").then(setSnapshot)};
- return <main>{view === "closed" ? <p>Ventana cerrada</p> : view === "auxiliary" ? <AccountModal operation={{type:"create"}} snapshot={snapshot} actorId=${JSON.stringify(user.id)} onClose={()=>setView("closed")} onComplete={async()=>{}} /> : <ConnectedCatalog key={view} page={view} snapshot={snapshot} actorId=${JSON.stringify(user.id)} onRefresh={refresh} />}</main>;
+ return <main><PageAccessContext.Provider value={{actor:{role:"admin"},page:view}}>{view === "closed" ? <p>Ventana cerrada</p> : view === "auxiliary" ? <AccountModal operation={{type:"create"}} snapshot={snapshot} actorId=${JSON.stringify(user.id)} onClose={()=>setView("closed")} onComplete={async()=>{}} /> : <ConnectedCatalog key={view} page={view} snapshot={snapshot} actorId=${JSON.stringify(user.id)} onRefresh={refresh} />}</PageAccessContext.Provider></main>;
 }
 remittancesApi("/snapshot").then(initial=>createRoot(document.getElementById("root")).render(<Fixture initial={initial} />));`, "utf8");
     const [{ build }, { default: react }, { default: tailwind }, { chromium }] = await Promise.all([

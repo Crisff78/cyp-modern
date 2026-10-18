@@ -1,5 +1,5 @@
 import { businessDate, DomainError, type State, type User } from "./domain.js";
-import { canSeeOutgoing, canSeeReceipt, safeMoney, type CommissionAllocation, type Currency, type Remittance } from "./remittances.js";
+import { canReportTransfer, safeMoney, type CommissionAllocation, type Currency, type Remittance } from "./remittances.js";
 
 export type CommissionReportInput = {
   from: string; to: string; grouping: "range" | "day"; groupBy: "managerCurrency" | "currency";
@@ -28,7 +28,7 @@ export function consolidatedCommissionReport(state: State, user: User, input: Co
   const details: Array<CommissionAllocation & Pick<Remittance, "id" | "envioReference" | "createdAt" | "status">> = [];
   let excludedLegacyCount = 0;
   for (const transfer of state.remittances.transfers) {
-    if (!canSeeOutgoing(state, user, transfer) && !canSeeReceipt(state, user, transfer)) continue;
+    if (!canReportTransfer(state, user, transfer)) continue;
     const date = businessDate(new Date(transfer.createdAt));
     if (date < input.from || date > input.to) continue;
     if (input.status === "active" && transfer.status === "cancelled") continue;

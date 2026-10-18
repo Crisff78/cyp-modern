@@ -5,6 +5,7 @@ import {
   timingSafeEqual,
 } from "node:crypto";
 import type { RemittanceState } from "./remittances.js";
+import type { EffectiveAccess, PermissionMode, RemittancePermission } from "../../shared/access.mjs";
 import { emptyAdminToolsState, type AdminToolsState } from "./admin-tools.js";
 import type { AccountRole } from "./account-roles.js";
 import type { CashReconciliationRecord } from "../../shared/cashReconciliation.js";
@@ -59,6 +60,7 @@ export type User = {
   name: string;
   role: Role;
   collectorId?: string;
+  access?: EffectiveAccess;
 };
 export type Account = {
   id: string;
@@ -67,6 +69,8 @@ export type Account = {
   note?: string;
   permissionIds?: number[];
   permissionRevision?: number;
+  permissionMode?: PermissionMode;
+  remittancePermissions?: RemittancePermission[];
   email: string;
   role: Role;
   collectorId?: string;

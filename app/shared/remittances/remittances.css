@@ -39,11 +39,13 @@
 .remittance-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .remittance-party-fields { display: grid; align-content: start; gap: 14px; min-width: 0; }
 .remittance-client-picker { position: relative; min-width: 0; }
+.remittance-client-create { margin-bottom: 6px; }
+.remittance-client-anchor { position: relative; }
 .remittance-client-picker input, .remittance-phone-field input { min-height: 48px; font-size: 17px; }
 .remittance-client-phone { color: var(--cyp-text-muted, #5b6876); font-size: 12px; white-space: nowrap; }
 .remittances .remittance-client-warning { margin: -8px 0 0; color: var(--cyp-warning-text, #9a3412); font-size: 12px; font-weight: 600; }
 .remittance-client-selection { display: block; margin-top: 5px; color: var(--cyp-text, #43566f); font-size: 12px; overflow-wrap: anywhere; }
-.remittance-client-options { position: absolute; top: 75px; left: 0; right: 0; z-index: 3; max-height: 280px; overflow: auto; border: 1px solid var(--cyp-border-strong, #879db8); border-radius: 4px; background: var(--cyp-surface, #fff); box-shadow: 0 5px 16px #152c4b26; }
+.remittance-client-options { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 3; max-height: 280px; overflow: auto; border: 1px solid var(--cyp-border-strong, #879db8); border-radius: 4px; background: var(--cyp-surface, #fff); box-shadow: 0 5px 16px #152c4b26; }
 .remittance-client-options button { width: 100%; display: block; text-align: left; border: 0; border-bottom: 1px solid var(--cyp-border, #e1e8f0); border-radius: 0; font-weight: 500; }
 .remittance-client-options button.highlighted { background: var(--cyp-info-surface, #dde7f3); }
 .remittance-client-options button[aria-selected="true"] { font-weight: 700; }
@@ -112,7 +114,7 @@
   .remittances button, .remittances-dialog button, .remittances input, .remittances select, .remittances textarea, .remittances-dialog input, .remittances-dialog textarea { min-height: 44px; font-size: 16px; }
   .remittance-tabs button { font-size: 13px; }
   .remittances .remittance-client-picker input, .remittances .remittance-phone-field input { min-height: 54px; font-size: 19px; }
-  .remittances .remittance-client-options { top: 85px; }
+  .remittances .remittance-client-options { top: calc(100% + 4px); }
   .remittances-dialog-body { padding: 14px; }
   .remittance-summary > div { flex-wrap: wrap; gap: 3px; }
   .remittance-summary dd { flex: 1 1 auto; }

@@ -1,3 +1,4 @@
+import type { EffectiveAccess } from "../../shared/access.mjs";
 export const ROLE_DEFINITIONS = {
   SUPERADMIN: {
     code: "ROLE_SUPERADMIN",
@@ -20,6 +21,7 @@ export type User = {
   collectorId?: string;
   isActive?: boolean;
   hasWorkPermission?: boolean;
+  access?: EffectiveAccess;
 };
 export const normalizeRole = (role: User["role"]): RoleName => {
   const normalized = String(role).trim().toUpperCase();

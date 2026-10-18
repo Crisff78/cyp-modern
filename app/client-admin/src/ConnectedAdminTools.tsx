@@ -9,6 +9,7 @@ import { confirmedRraaPreview, confirmedRraaStationPreview, type RraaPreview } f
 import { StationInstallationPanel, pendingStationInstallationStationId } from "./StationInstallationPanel";
 import type { Snapshot, User } from "./types";
 import { currentOperationalWeek } from "../../shared/operationalWeek";
+import { usePageAccess } from "./PageAccess";
 import "./connected-admin-tools.css";
 
 export type AdminToolPage = "stations" | "groups" | "pcps" | "sessions" | "traces" | "authorizationRequests";
@@ -33,6 +34,7 @@ const states: Record<string, string> = { active: "Activa", closed: "Cerrada", ex
 const emptyFilter = (): Filter => ({ q: "", ...currentOperationalWeek(), status: "" });
 
 export function ConnectedAdminTools({ page, snapshot, user, onRefresh }: { page: AdminToolPage; snapshot: Snapshot; user?: Pick<User, "id" | "role">; onRefresh: () => void }) {
+  const access = usePageAccess();
   const definition = definitions[page], paged = ["sessions", "traces", "authorizationRequests"].includes(page);
   const [records, setRecords] = useState<Row[]>([]), [groups, setGroups] = useState<Row[]>([]), [stations, setStations] = useState<Row[]>([]), [reasons, setReasons] = useState<Row[]>([]);
   const [filter, setFilter] = useState<Filter>(emptyFilter), [applied, setApplied] = useState<Filter>(emptyFilter), [offset, setOffset] = useState(0), [total, setTotal] = useState(0);
@@ -75,6 +77,8 @@ export function ConnectedAdminTools({ page, snapshot, user, onRefresh }: { page:
   useEffect(() => { void refresh(); return () => { requestVersion.current += 1; }; }, [refresh]);
   const close = () => { if (!locked) { if (stationStatusReview) { setStationStatusReview(false); setFormError(""); return; } stationLookupVersion.current += 1; setDialog(null); setDraft({}); setRraaPreview(null); setRraaNeedsValidation(false); setFormError(""); setAddingStation(false); } };
   const open = (next: Dialog) => {
+    if (next.type === "edit" && (next.row ? !access.canEdit : !access.canCreate)) return;
+    if (next.type === "confirm" && !access.canDelete) return;
     if (locked || loading || installationLocked) return;
     if (page === "stations" && !rraa.configured && next.type === "edit") return;
     pendingRequest.current = null; stationLookupVersion.current += 1; setUncertain(false); setStationStatusReview(false);

@@ -45,11 +45,12 @@ test("user permission checkboxes, categories, cancel and backend saves work in t
     const login = (email: string, password: string) => app.inject({ method: "POST", url: "/api/auth/login", payload: { email, password } });
     const adminToken = (await login("admin@cyp.local", "Demo-CyP-2026!")).json().token as string;
     const post = (url: string, payload: unknown) => app.inject({ method: "POST", url, payload: payload as object, headers: { authorization: `Bearer ${adminToken}`, "idempotency-key": randomUUID() } });
-    const create = async (name: string, role = "user") => {
+    const create = async (name: string, role = "admin") => {
       const result = await post("/api/usuarios", { name, email: `qa-${randomUUID()}@example.invalid`, role, password: "Synthetic-Permissions-2026!" });
       assert.equal(result.statusCode, 200, result.body); return result.json();
     };
-    const first = await create("Usuario de prueba uno"), second = await create("Usuario de prueba dos"), supervisor = await create("Supervisor de prueba", "supervisor");
+    const first = await create("Usuario de prueba uno"), second = await create("Usuario de prueba dos"), supervisor = await create("Supervisor de prueba", "supervisor"), cashier = await create("Cajero de prueba", "user");
+    await store.transaction((state) => { for (const account of state.accounts.filter(({ id }) => [first.id, second.id].includes(id))) { account.permissionMode = "custom"; account.permissionIds = []; account.remittancePermissions = []; } });
     const supervisorToken = (await login(supervisor.email, "Synthetic-Permissions-2026!")).json().token;
     const getProfile = async (id = first.id) => {
       const result = await app.inject({ url: `/api/usuarios/${id}/permisos`, headers: { authorization: `Bearer ${adminToken}` } });
@@ -59,6 +60,7 @@ test("user permission checkboxes, categories, cancel and backend saves work in t
     fs.writeFileSync(fixture, `import { createRoot } from "react-dom/client";
 import { useState } from "react";
 import { ConnectedCatalog } from ${source("ConnectedCatalog.tsx")};
+import { PageAccessContext } from ${source("PageAccess.tsx")};
 import { setToken, api } from ${source("api.ts")};
 import ${source("styles.css")};
 setToken(${JSON.stringify(adminToken)});
@@ -66,7 +68,7 @@ const snapshot = await api("/snapshot");
 function Fixture(){
  const [actor,setActor] = useState({id:"demo-admin",canEdit:true});
  window.__qaSupervisor = () => { setToken(${JSON.stringify(supervisorToken)}); setActor({id:${JSON.stringify(supervisor.id)},canEdit:false}); };
- return <main><ConnectedCatalog key={actor.id} page="users" snapshot={snapshot} actorId={actor.id} canManagePermissions={actor.canEdit} onRefresh={()=>{}} /></main>;
+ return <main><PageAccessContext.Provider value={{actor:{role:actor.canEdit?'admin':'supervisor'},page:'users'}}><ConnectedCatalog key={actor.id} page="users" snapshot={snapshot} actorId={actor.id} canManagePermissions={actor.canEdit} onRefresh={()=>{}} /></PageAccessContext.Provider></main>;
 }
 createRoot(document.getElementById("root")).render(<Fixture />);`, "utf8");
     const [{ build }, { default: react }, { default: tailwind }, { chromium }] = await Promise.all([
@@ -123,10 +125,11 @@ createRoot(document.getElementById("root")).render(<Fixture />);`, "utf8");
 
     await t.test("complete catalog, draggable title, blocked background and category-only bulk toggles", async () => {
       await open();
-      assert.equal(await dialog().getByRole("checkbox").count(), 119);
-      const names = await dialog().locator("tbody tr").evaluateAll((rows: HTMLTableRowElement[]) => rows.map((row) => ({ id: Number(row.cells[1].textContent), name: row.cells[2].textContent, category: row.cells[3].textContent })));
+      assert.equal(await dialog().getByRole("checkbox", { name: /^Permiso / }).count(), 119);
+      assert.equal(await dialog().getByRole("checkbox", { name: /^Remesas: / }).count(), 14);
+      const names = await dialog().locator("tbody tr").filter({ has: page.locator('input[aria-label^="Permiso "]') }).evaluateAll((rows: HTMLTableRowElement[]) => rows.map((row) => ({ id: Number(row.cells[1].textContent), name: row.cells[2].textContent, category: row.cells[3].textContent })));
       assert.deepEqual(names, catalog.permissions);
-      assert.deepEqual(await category().locator("option").allTextContents(), catalog.categories);
+      assert.deepEqual(await category().locator("option").allTextContents(), [...catalog.categories, "Remesas"]);
       const title = dialog().locator(".legacy-dialog-titlebar"), before = await dialog().boundingBox(), bar = await title.boundingBox(); assert(bar && before);
       await page.mouse.move(bar.x + 110, bar.y + 12); await page.mouse.down(); await page.mouse.move(bar.x + 195, bar.y + 42); await page.mouse.up();
       const after = await dialog().boundingBox(); assert(after); assert.ok(after.x > before.x + 70); assert.ok(after.y > before.y + 20);
@@ -149,7 +152,7 @@ createRoot(document.getElementById("root")).render(<Fixture />);`, "utf8");
       await open(); await category().selectOption("Monitoreo"); await dialog().getByRole("button", { name: "Seleccionar Todos", exact: true }).click();
       await dialog().getByRole("button", { name: "Guardar", exact: true }).click(); await dialog().waitFor({ state: "detached" });
       assert.equal(writes.length, 1); assert.equal(writes[0].path, `/api/usuarios/${first.id}/permisos`);
-      assert.deepEqual(writes[0].body, { permissionIds: [500, 501], revision: 0 }); assert.ok(writes[0].key.length >= 8);
+      assert.deepEqual(writes[0].body, { permissionIds: [500, 501], revision: 0, mode: "custom", remittancePermissions: [] }); assert.ok(writes[0].key.length >= 8);
       assert.deepEqual((await getProfile()).permissionIds, [500, 501]); assert.deepEqual((await getProfile(second.id)).permissionIds, []);
       assert.deepEqual((await store.read()).adminTools.sessions, sessions);
       assert.equal(await page.evaluate(() => localStorage.getItem("cyp-admin-token")), adminToken);
@@ -179,6 +182,19 @@ createRoot(document.getElementById("root")).render(<Fixture />);`, "utf8");
       await dialog().getByRole("button", { name: "Reintentar guardado", exact: true }).click(); await dialog().waitFor({ state: "detached" });
       const attempts = writes.slice(count); assert.equal(attempts.length, 2); assert.equal(attempts[0].key, attempts[1].key); assert.deepEqual(attempts[0].body, attempts[1].body);
       assert.deepEqual(await store.read(), committed); assert.deepEqual((await getProfile()).permissionIds, [1, 2]);
+    });
+    await t.test("office cashier grants add their read dependency without granting catalog administration", async () => {
+      await open(cashier.name);
+      assert.equal(await checkbox(101).isDisabled(), true); assert.equal(await checkbox(141).isDisabled(), true);
+      await category().selectOption("Remesas");
+      await dialog().getByRole("checkbox", { name: "Remesas: Registrar envíos", exact: true }).check();
+      assert.equal(await dialog().getByRole("checkbox", { name: "Remesas: Consultar envíos", exact: true }).isChecked(), true);
+      assert.equal(await dialog().getByRole("checkbox", { name: "Remesas: Administrar tasas de remesas", exact: true }).isDisabled(), true);
+      await dialog().getByRole("button", { name: "Guardar", exact: true }).click(); await dialog().waitFor({ state: "detached" });
+      const profile = await getProfile(cashier.id);
+      assert.deepEqual(profile.permissionIds, [1]); assert.equal(profile.mode, "custom");
+      assert.deepEqual(profile.remittancePermissions, ["remittances.create", "remittances.view"]);
+      assert.equal((await store.read()).accounts.find(({ id }) => id === cashier.id)?.role, "user");
     });
     await t.test("Supervisor can inspect but cannot toggle, bulk-select or submit permissions", async () => {
       await page.evaluate(() => (window as any).__qaSupervisor()); await open(); const count = writes.length;

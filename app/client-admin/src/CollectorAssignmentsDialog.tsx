@@ -94,11 +94,12 @@ function LimitPicker({ rows, onSelect, onClose }: Readonly<{
   </LegacyDialog>;
 }
 
-export function CollectorAssignmentsDialog({ collectorId, collectorName, kind, initial, loadOptions, onSave, onClose, onModifyOperationalLimits }: Readonly<{
+export function CollectorAssignmentsDialog({ collectorId, collectorName, kind, initial, loadOptions, onSave, onClose, onModifyOperationalLimits, canManage = false }: Readonly<{
   collectorId: string; collectorName: string; kind: AssignmentKind;
   initial: readonly CollectorAssignment[]; loadOptions: () => Promise<readonly CollectorAssignment[]>;
   onSave: (rows: readonly CollectorAssignment[]) => void; onClose: () => void;
   onModifyOperationalLimits?: () => void;
+  canManage?: boolean;
 }>) {
   const [rows, setRows] = useState(() => loadCollectorAssignments(collectorId, kind, initial));
   const [options, setOptions] = useState<readonly CollectorAssignment[]>([]);
@@ -136,6 +137,7 @@ export function CollectorAssignmentsDialog({ collectorId, collectorName, kind, i
     setPickerOpen(false);
   };
   const save = () => {
+    if (!canManage) { onClose(); return; }
     try { saveCollectorAssignments(collectorId, kind, rows); onSave(rows); onClose(); }
     catch (failure) { setError(failure instanceof Error ? failure.message : "No se pudieron guardar las asignaciones."); }
   };
@@ -146,7 +148,7 @@ export function CollectorAssignmentsDialog({ collectorId, collectorName, kind, i
   const goToPage = (value: number) => { setPage(Math.min(pageCount, Math.max(1, value))); setSelectedId(""); };
   return <LegacyDialog title={titles[kind]} className="collector-assignments-dialog" onClose={onClose}>
     <div className="collector-assignment-content">
-      <div className="legacy-relation-toolbar collector-assignment-toolbar"><button type="button" disabled={loading || (kind !== "limits" && Boolean(error))} onClick={() => setPickerOpen(true)}>Agregar</button><button type="button" disabled={!selectedId} onClick={() => setConfirmOpen(true)}>Eliminar</button>{kind === "limits" && onModifyOperationalLimits && <button type="button" onClick={onModifyOperationalLimits} title="Abrir los límites persistidos. Los cambios de sesión pendientes no se guardan.">Modificar límites operativos DOP</button>}</div>
+      <div className="legacy-relation-toolbar collector-assignment-toolbar"><button type="button" disabled={!canManage || loading || (kind !== "limits" && Boolean(error))} onClick={() => setPickerOpen(true)}>Agregar</button><button type="button" disabled={!canManage || !selectedId} onClick={() => setConfirmOpen(true)}>Eliminar</button>{kind === "limits" && onModifyOperationalLimits && <button type="button" onClick={onModifyOperationalLimits} title="Abrir los límites persistidos. Los cambios de sesión pendientes no se guardan.">Modificar límites operativos DOP</button>}</div>
       <div className="legacy-mdi-table-wrap"><AssignmentGrid kind={kind} rows={visibleRows} selectedId={selectedId} onSelect={setSelectedId} /></div>
       <div className="legacy-mdi-pager collector-assignment-pager">
         <button type="button" aria-label="Primera página" disabled={currentPage === 1} onClick={() => goToPage(1)}>|&lt;</button><button type="button" aria-label="Página anterior" disabled={currentPage === 1} onClick={() => goToPage(currentPage - 1)}>&lt;</button>

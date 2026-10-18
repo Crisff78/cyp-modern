@@ -10,6 +10,8 @@ import {
   remittanceSnapshot, setDailyRate, setCommissionPolicy, transferView,
 } from "./remittances.js";
 import { boundedId, freeText, phone, singleLine } from "./input-validation.js";
+import { remittanceClientDraft } from "./client-schema.js";
+import { registerRemittanceClient } from "./remittance-client-registration.js";
 
 type Mutate = <T, P = Record<string, string>>(
   path: string, summary: string, schema: z.ZodType<T>,
@@ -63,7 +65,9 @@ export function registerRemittanceRoutes(
     purchaseRate: z.string().max(19).optional(), saleRate: z.string().max(19).optional(),
   }).strict(), (state, actor, input) => setDailyRate(state, actor, input));
   mutate("/api/envios", "Registrar envío y recibir principal más comisión", z.object({
-    ...quoteFields, senderClientId: id, recipientClientId: id, sendingUserId: id.optional(), recipientPhone: phone.optional(),
+    ...quoteFields, senderClientId: id.optional(), recipientClientId: id.optional(),
+    newSenderClient: remittanceClientDraft.optional(), newRecipientClient: remittanceClientDraft.optional(),
+    sendingUserId: id.optional(), recipientPhone: phone.optional(),
     requestedReceiveAmount: amount.positive().optional(),
     quote: z.object({ date: z.iso.date(), sourceRate: z.string().max(19), destinationRate: z.string().max(19),
       quotedAt: z.iso.datetime().optional(), sourceRateChangeId: id.optional(), destinationRateChangeId: id.optional(),
@@ -76,7 +80,15 @@ export function registerRemittanceRoutes(
       amount, currency,
     }).strict().optional(),
     note: freeText(2000).default(""),
-  }).strict(), (state, actor, input) => createRemittance(state, actor, input, systemOperators));
+  }).strict().refine((input) => Boolean(input.senderClientId) !== Boolean(input.newSenderClient), { path: ["senderClientId"], message: "Selecciona un remitente o completa su ficha nueva." })
+    .refine((input) => Boolean(input.recipientClientId) !== Boolean(input.newRecipientClient), { path: ["recipientClientId"], message: "Selecciona un destinatario o completa su ficha nueva." }), (state, actor, input) => {
+    // Both client identities and the remittance commit in the same transaction.
+    // A rejected quote, cancelled form or retry cannot leave orphan client records.
+    const senderClientId = input.senderClientId ?? registerRemittanceClient(state, actor, input.newSenderClient!);
+    const recipientClientId = input.recipientClientId ?? registerRemittanceClient(state, actor, input.newRecipientClient!);
+    const { newSenderClient: _sender, newRecipientClient: _recipient, ...values } = input;
+    return createRemittance(state, actor, { ...values, senderClientId, recipientClientId }, systemOperators);
+  });
   mutate("/api/envios/:id/pagar", "Pagar recibo completo", z.object({}).strict(),
     (state, actor, _input, params) => payRemittance(state, actor, params.id));
   mutate("/api/envios/:id/cancelar", "Cancelar envío pendiente y devolver principal más comisión",
