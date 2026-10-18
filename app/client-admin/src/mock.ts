@@ -7,6 +7,7 @@ import {
   type User,
 } from "./types";
 import { PERMISSION_CATALOG, PERMISSION_CATEGORIES, defaultPermissionIds, isUserPermissions, type UserPermissions } from "../../shared/permissionCatalog";
+import { effectiveAccess, roleRemittancePermissions } from "../../shared/access.mjs";
 
 const MOCK_USER_KEY = "cyp-admin-mock-user";
 const today = () => new Date().toISOString().slice(0, 10);
@@ -749,7 +750,10 @@ export async function mockApi<T>(
       user: enriched,
     } as T;
   }
-  if (path === "/auth/me") return currentUser() as T;
+  if (path === "/auth/me") {
+    const actor = currentUser(), account = state.accounts.find(({ id }) => id === actor.id);
+    return { ...actor, access: effectiveAccess(actor.role, account) } as T;
+  }
   if (path === "/snapshot") return structuredClone(derive(state)) as T;
   if (path === "/usuarios" && method === "GET") return structuredClone(state.accounts) as T;
   if (path === "/permisos" || /^\/usuarios\/[^/]+\/permisos$/.test(path)) {
@@ -761,11 +765,11 @@ export async function mockApi<T>(
     const match = path.match(/^\/usuarios\/([^/]+)\/permisos$/);
     const account = state.accounts.find(({ id }) => id === (match ? decodeURIComponent(match[1]) : ""));
     if (!account) throw new MockApiError("La cuenta no existe.", 404);
-    const response = (): UserPermissions => ({ userId: account.id, permissionIds: account.permissionIds ?? defaultPermissionIds(account.role), revision: account.permissionRevision ?? 0 });
+    const response = (): UserPermissions => ({ userId: account.id, permissionIds: account.permissionIds ?? defaultPermissionIds(account.role), revision: account.permissionRevision ?? 0, mode: account.permissionMode ?? "role", remittancePermissions: (account.permissionMode ?? "role") === "role" ? roleRemittancePermissions(account.role) : account.remittancePermissions ?? [] });
     if (method === "GET") return structuredClone(response()) as T;
     if (method === "POST") {
       const body = jsonBody(options);
-      if (Object.keys(body).some((key) => !["permissionIds", "revision"].includes(key)) ||
+      if (Object.keys(body).some((key) => !["permissionIds", "revision", "mode", "remittancePermissions"].includes(key)) ||
           !isUserPermissions({ ...body, userId: account.id }, account.id) || Number(body.revision) > 2_147_483_647)
         throw new MockApiError("Los permisos no son válidos.", 400);
       const key = new Headers(options.headers).get("Idempotency-Key");
@@ -777,8 +781,14 @@ export async function mockApi<T>(
       }
       if (body.revision !== (account.permissionRevision ?? 0)) throw new MockApiError("Otro operador modificó los permisos. Refresca el catálogo antes de guardar.", 409);
       const next = [...body.permissionIds as number[]].sort((a, b) => a - b);
-      if (account.permissionIds === undefined || JSON.stringify(next) !== JSON.stringify(account.permissionIds)) {
+      const mode = body.mode === "role" ? "role" : "custom";
+      const remittancePermissions = [...(body.remittancePermissions as NonNullable<UserPermissions["remittancePermissions"]> ?? response().remittancePermissions ?? [])].sort();
+      const effective = effectiveAccess(account.role, { permissionMode: mode, permissionIds: next, remittancePermissions });
+      if (actor.id === account.id && account.role === "admin" && ![1, 10, 101, 106].every((id) => effective.legacy.includes(id))) throw new MockApiError("No puedes retirar tu propio acceso a permisos.", 409);
+      if (account.permissionIds === undefined || JSON.stringify(next) !== JSON.stringify(account.permissionIds) || mode !== account.permissionMode || JSON.stringify(remittancePermissions) !== JSON.stringify(account.remittancePermissions)) {
         account.permissionIds = next;
+        account.permissionMode = mode;
+        account.remittancePermissions = remittancePermissions;
         account.permissionRevision = Number(body.revision) + 1;
         account.updatedAt = now();
       }

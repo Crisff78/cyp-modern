@@ -11,16 +11,16 @@ export function isCollectorAccountRole(role: unknown) {
 }
 /** What each role can actually do today; shown wherever a role is chosen. */
 const access: Record<string, string> = {
-  admin: "Puede hacer todo: registrar, modificar, cerrar cuadres y configurar.",
+  admin: "Perfil administrativo. Sus permisos pueden limitarse por usuario.",
   supervisor: "Solo consulta en Administración; no puede registrar ni modificar.",
   collector: "Trabaja únicamente en la terminal del cobrador, con su ruta.",
-  user: "Todavía no tiene acceso a ningún módulo.",
+  user: "Puede trabajar en Envíos de Dinero cuando Administración le asigne sus permisos. No administra catálogos.",
   undefined: "Todavía no tiene acceso a ningún módulo. Elige un rol para que la cuenta pueda trabajar.",
 };
 export function accountRoleAccess(role: string) {
   return access[role] ?? "";
 }
-export const ACCOUNT_ROLE_SUMMARY = "Lo que una cuenta puede hacer lo define su rol. Admin: todo. Supervisor: solo consulta. Cobrador: solo la terminal del cobrador. Usuario y No definido: sin acceso todavía.";
+export const ACCOUNT_ROLE_SUMMARY = "El rol define el perfil inicial y los permisos personalizados limitan sus acciones. Supervisor conserva solo consulta; Cobrador trabaja con su ruta. Usuario puede habilitarse como operador de remesas, sin administración general.";
 export function isOperationalRole(role: string) {
   return role === "admin" || role === "collector";
 }

@@ -47,12 +47,13 @@ test("October financial screens use central rates, currency-separated settlement
     const fixture = path.join(output, "fixture.tsx"), module = (name: string) => JSON.stringify(path.join(root, "src", name).replaceAll("\\", "/"));
     const shared = JSON.stringify(path.resolve(root, "../shared/remittances/RemittancesWorkspace.tsx").replaceAll("\\", "/"));
     fs.writeFileSync(fixture, `import {useState} from 'react'; import {createRoot} from 'react-dom/client';
+import {PageAccessContext} from ${module("PageAccess.tsx")};
 import {ConnectedExchangeRates} from ${module("ConnectedExchangeRates.tsx")};
 import {ConnectedSettlements} from ${module("ConnectedSettlements.tsx")};
 import {remittancesApi} from ${module("remittancesApi.ts")};
 import RemittancesWorkspace from ${shared};
 import ${module("styles.css")};
-function Fixture({snapshot}){const [view,setView]=useState('rates');return <main><nav>{['rates','settlements','remittances'].map(v=><button key={v} onClick={()=>setView(v)}>{v}</button>)}</nav>{view==='rates'?<ConnectedExchangeRates actorId='demo-admin' isAdmin={true}/>:view==='settlements'?<ConnectedSettlements snapshot={snapshot} onRefresh={()=>{}}/>:<RemittancesWorkspace api={remittancesApi} user={{id:'demo-admin',name:'Administración'}} isAdmin={true}/>}</main>}
+function Fixture({snapshot}){const [view,setView]=useState('rates');return <main><nav>{['rates','settlements','remittances'].map(v=><button key={v} onClick={()=>setView(v)}>{v}</button>)}</nav><PageAccessContext.Provider value={{actor:{role:'admin'},page:view==='rates'?'exchangeRates':'dailySettlements'}}>{view==='rates'?<ConnectedExchangeRates actorId='demo-admin' isAdmin={true}/>:view==='settlements'?<ConnectedSettlements snapshot={snapshot} onRefresh={()=>{}}/>:<RemittancesWorkspace api={remittancesApi} user={{id:'demo-admin',name:'Administración'}} isAdmin={true}/>}</PageAccessContext.Provider></main>}
 remittancesApi('/snapshot').then(snapshot=>createRoot(document.getElementById('root')).render(<Fixture snapshot={snapshot}/>));`, "utf8");
     const [{ build }, { default: react }, { default: tailwind }, { chromium }] = await Promise.all([import(pathToFileURL(localRequire.resolve("vite")).href), import(pathToFileURL(localRequire.resolve("@vitejs/plugin-react")).href), import(pathToFileURL(localRequire.resolve("@tailwindcss/vite")).href), import(pathToFileURL(playwrightEntry!).href)]);
     await build({ root, configFile: false, envFile: false, publicDir: false, cacheDir: path.join(output, "cache"), resolve: { dedupe: ["react", "react-dom"] }, plugins: [react(), tailwind()], define: { "process.env.NODE_ENV": JSON.stringify("production") }, logLevel: "error", build: { outDir: path.join(output, "dist"), emptyOutDir: false, cssCodeSplit: false, lib: { entry: fixture, formats: ["es"], fileName: () => "fixture.js", cssFileName: "fixture" } } });
@@ -91,7 +92,7 @@ remittancesApi('/snapshot').then(snapshot=>createRoot(document.getElementById('r
       await dialog.waitFor({ state: "hidden" });
       assert.equal((await store.read()).remittances.rateHistory?.length, before + 1);
       const requests = writes.filter((entry) => entry.path === "/api/envios/tasas"); assert.equal(requests.length, 2); assert.ok(requests[0].key); assert.equal(requests[0].key, requests[1].key);
-      const row = page.locator("tbody tr").filter({ hasText: "59.250000" }); await row.waitFor(); assert.ok((await row.innerText()).includes("61.750000"));
+      const row = page.locator(".exchange-rates-grid tbody tr").filter({ hasText: "59.250000" }); await row.waitFor(); assert.ok((await row.innerText()).includes("61.750000"));
       await page.screenshot({ path: path.join(output, "rates.png"), fullPage: true });
     });
     await t.test("editing the DOP reference shows three readonly values of one", async () => {
@@ -115,8 +116,8 @@ remittancesApi('/snapshot').then(snapshot=>createRoot(document.getElementById('r
       await page.screenshot({ path: path.join(output, "settlements.png"), fullPage: true });
     });
     await t.test("remittance rates are readonly central references and receipt print hides commission splits", async () => {
-      await page.getByRole("button", { name: "remittances", exact: true }).click(); await page.getByRole("button", { name: "Tasas", exact: true }).click();
-      assert.equal(await page.getByRole("button", { name: "Revisar tasa", exact: true }).count(), 0); assert.ok((await page.locator(".remittances").innerText()).includes("Consulta de tasas de Administración"));
+      await page.getByRole("button", { name: "remittances", exact: true }).click();
+      assert.equal(await page.getByRole("button", { name: "Revisar tasa", exact: true }).count(), 0); assert.equal(await page.getByRole("button", { name: "Tasas", exact: true }).count(), 0); assert.equal(await page.getByRole("button", { name: "Comisiones", exact: true }).count(), 0);
       await page.getByRole("button", { name: "Recibos", exact: true }).click(); await page.getByLabel("Buscar", { exact: true }).fill("QA-DOC-ORIGIN");
       const row = page.locator(".remittance-transfer-table tbody tr").filter({ hasText: "REC" }); await row.waitFor(); await row.dblclick();
       const detail = page.getByRole("dialog"); const popupReady = context.waitForEvent("page"); await detail.getByRole("button", { name: "Imprimir comprobante", exact: true }).click(); const popup = await popupReady; await popup.waitForLoadState();

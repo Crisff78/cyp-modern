@@ -4,6 +4,7 @@ import { z } from "zod";
 import { phoneOrEmpty } from "./contact-schemas.js";
 import { assertAdmin, assertAdminRead, businessDate, DomainError, type State, type User } from "./domain.js";
 import type { Store } from "./store.js";
+import { requirePermission } from "./access.js";
 import {
   createAuthorizationRequest, endOwnAuthSession, getAdminTools, requireAdminRow, resolveAuthorizationRequest,
   revokeAuthSession, sessionStatus, uniqueAdminValue,
@@ -132,6 +133,9 @@ export function registerAdminToolsRoutes(app: FastifyInstance, store: Store, use
   mutate("/api/pcps/:id/estaciones", "Guardar estaciones asociadas al PCP con validación RRAA vigente", z.object({ stationIds: z.array(id).max(500) }).strict(), async (state, actor, body, params) => {
     assertAdmin(actor); const data = getAdminTools(state); const pcp = requireAdminRow(data.pcps, params.id, "PCP");
     if (!pcp.active) throw new DomainError("PCP_INACTIVE", "Activa el PCP antes de modificar sus estaciones.", 409);
+    const previousIds = data.pcpStations.filter((link) => link.pcpId === pcp.id).map((link) => link.stationId);
+    if (body.stationIds.some((id) => !previousIds.includes(id))) requirePermission(actor, 175);
+    if (previousIds.some((id) => !body.stationIds.includes(id))) requirePermission(actor, 176);
     if (new Set(body.stationIds).size !== body.stationIds.length) throw new DomainError("DUPLICATE_STATION", "La lista contiene estaciones repetidas.");
     for (const stationId of body.stationIds) {
       const station = requireAdminRow(data.stations, stationId, "Estación");

@@ -1,0 +1,18 @@
+export type RemittancePermission = "remittances.view" | "remittances.create" | "remittances.receipts" | "remittances.pay" | "remittances.cancel" | "remittances.clients.create" | "remittances.cash.view" | "remittances.cash.open" | "remittances.cash.close" | "remittances.reports" | "remittances.rates.view" | "remittances.rates.manage" | "remittances.commissions.view" | "remittances.commissions.manage";
+export type PermissionMode = "role" | "custom";
+export type EffectiveAccess = Readonly<{ mode: PermissionMode; revision: number; legacy: readonly number[]; remittances: readonly RemittancePermission[] }>;
+export type AccessActor = { role: string; access?: EffectiveAccess };
+export type AccessSelection = { permissionMode?: PermissionMode; permissionIds?: readonly number[]; remittancePermissions?: readonly RemittancePermission[]; permissionRevision?: number };
+export const REMITTANCE_PERMISSIONS: readonly Readonly<{ key: RemittancePermission; name: string }>[];
+export const REMITTANCE_PERMISSION_KEYS: RemittancePermission[];
+export const REMITTANCE_PERMISSION_DEPENDENCIES: Readonly<Partial<Record<RemittancePermission, readonly RemittancePermission[]>>>;
+export function accessRole(value: string): string;
+export function rolePermissionIds(role: string): number[];
+export function roleRemittancePermissions(role: string): RemittancePermission[];
+export function effectiveAccess(role: string, selection?: AccessSelection): EffectiveAccess;
+export function actorAccess(actor: AccessActor): EffectiveAccess;
+export function hasPermission(actor: AccessActor, id: number): boolean;
+export function hasRemittancePermission(actor: AccessActor, key: RemittancePermission): boolean;
+export function hasRemittanceAccess(actor: AccessActor): boolean;
+export const PAGE_PERMISSIONS: Readonly<Record<string, number>>;
+export function canOpenPage(actor: AccessActor, page: string): boolean;

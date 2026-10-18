@@ -52,6 +52,7 @@ import {
 import { CollectionSheet } from "./CollectionSheet";
 import { ReceiptView } from "./ReceiptView";
 import RemittancesWorkspace from "../../shared/remittances/RemittancesWorkspace";
+import { hasPermission, hasRemittanceAccess } from "../../shared/access.mjs";
 import { remittancesApi } from "./remittancesApi";
 import { isMockToken } from "./mock";
 import { GeoMap } from "../../client-admin/src/GeoMap";
@@ -196,6 +197,9 @@ export function App() {
       if (!user || !navigator.onLine) return;
       if (!quiet) setLoading(true);
       try {
+        const current = await api<User>("/auth/me");
+        if (currentUser.current?.id !== user.id) return;
+        setUser((previous) => previous?.access?.revision === current.access?.revision && previous?.access?.mode === current.access?.mode ? previous : current);
         const data = await api<Snapshot>("/snapshot");
         if (currentUser.current?.id !== user.id) return;
         setSnapshot(data);
@@ -498,27 +502,28 @@ export function App() {
           )
         ) : (
           <>
-            {view === "route" && (
+            {view === "route" && user && hasPermission(user, 300) && (
               <RouteView
                 snapshot={snapshot}
                 user={user}
                 routeName={assignedRoute?.name ?? "Mi ruta"}
                 sector={assignedRoute?.sector ?? ""}
                 online={online}
-                onCollect={setOperation}
+                onCollect={hasPermission(user, 321) ? setOperation : () => toast.error("Tu cuenta no tiene permiso para registrar cobros.")}
               />
             )}
-            {view === "payouts" && (
+            {view === "payouts" && user && hasPermission(user, 370) && (
               <PayoutsView
                 snapshot={snapshot}
                 online={online}
-                onPay={setOperation}
+                canPay={hasPermission(user, 371)}
+                onPay={hasPermission(user, 371) ? setOperation : () => toast.error("Tu cuenta no tiene permiso para registrar pagos.")}
               />
             )}
-            {view === "receipts" && (
+            {view === "receipts" && user && hasPermission(user, 320) && (
               <ReceiptsView snapshot={snapshot} onOpen={openReceipt} />
             )}
-            {view === "remittances" && user && <RemittancesWorkspace api={remittancesApi} user={user} isAdmin={String(user.role).toUpperCase().replace("ROLE_", "") === "SUPERADMIN"} />}
+            {view === "remittances" && user && hasRemittanceAccess(user) && <RemittancesWorkspace api={remittancesApi} user={user} isAdmin={String(user.role).toUpperCase().replace("ROLE_", "") === "SUPERADMIN"} />}
             {view === "pocket" && (
               <PocketView
                 snapshot={snapshot}
@@ -541,7 +546,7 @@ export function App() {
         </div>
       </main>
       <nav className="bottom-nav" aria-label="Navegación principal">
-        {tabs.map(({ id, name, icon: Icon }) => (
+        {tabs.filter(({ id }) => user && (id === "pocket" || (id === "remittances" ? hasRemittanceAccess(user) : hasPermission(user, id === "route" ? 300 : id === "payouts" ? 370 : 320)))).map(({ id, name, icon: Icon }) => (
           <button
             key={id}
             className={view === id ? "active" : ""}
@@ -810,6 +815,7 @@ function RouteView({
   online: boolean;
   onCollect: (operation: Operation) => void;
 }) {
+  const canCollect = hasPermission(user, 321);
   const [filter, setFilter] = useState<Filter>("Todos");
   const [query, setQuery] = useState("");
   const [nextClientId, setNextClientId] = useState<string | null>(null);
@@ -1075,7 +1081,7 @@ function RouteView({
           <div className="current-stop-actions">
             <button
               className="primary"
-              disabled={!online}
+              disabled={!online || !canCollect}
               onClick={() =>
                 onCollect({
                   id: currentCharge.id,
@@ -1198,6 +1204,7 @@ function RouteView({
               index={index}
               businessDate={snapshot.businessDate}
               online={online}
+              canCollect={canCollect}
               onCollect={onCollect}
             />
           ))
@@ -1238,6 +1245,7 @@ function StopCard({
   index,
   businessDate,
   online,
+  canCollect,
   onCollect,
 }: {
   client: Client;
@@ -1245,6 +1253,7 @@ function StopCard({
   index: number;
   businessDate: string;
   online: boolean;
+  canCollect: boolean;
   onCollect: (operation: Operation) => void;
 }) {
   const allPaid = charges.every((charge) => charge.status === "paid");
@@ -1323,7 +1332,7 @@ function StopCard({
             {charge.status !== "paid" && (
               <button
                 className="collect-button"
-                disabled={!online}
+                disabled={!online || !canCollect}
                 onClick={() =>
                   onCollect({
                     id: charge.id,
@@ -1363,10 +1372,12 @@ function StopCard({
 function PayoutsView({
   snapshot,
   online,
+  canPay,
   onPay,
 }: {
   snapshot: Snapshot;
   online: boolean;
+  canPay: boolean;
   onPay: (operation: Operation) => void;
 }) {
   const pending = snapshot.payouts.filter(
@@ -1420,7 +1431,7 @@ function PayoutsView({
                 </div>
                 <button
                   className="primary compact"
-                  disabled={!online}
+                  disabled={!online || !canPay}
                   onClick={() =>
                     onPay({
                       id: item.id,

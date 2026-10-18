@@ -94,6 +94,9 @@ import { isMockToken } from "./mock";
 import OperationModal, { type Operation } from "./Operations";
 import AccountModal, { type AccountOperation } from "./Users";
 import RemittancesWorkspace from "../../shared/remittances/RemittancesWorkspace";
+import { hasPermission, hasRemittancePermission, canOpenPage } from "../../shared/access.mjs";
+import { PageAccessContext, usePageAccess } from "./PageAccess";
+import { ConnectedRemittanceCommissions } from "./ConnectedRemittanceCommissions";
 import { isRemittanceReportPage, remittanceReportDefinitions, remittanceReportForPage, type RemittanceReportPage } from "../../shared/remittances/reporting";
 import { RemittanceReportView } from "./RemittanceReportView";
 import { remittancesApi } from "./remittancesApi";
@@ -128,6 +131,7 @@ import {
   enrichUserRole,
   isSuspendedUser,
   normalizeRole,
+  ROLE_DEFINITIONS,
   type Charge,
   type Client,
   type ClientMachine,
@@ -262,6 +266,7 @@ const pageTitles: Record<Page, string> = {
   exchangeRates: "Tasas de Cambio",
   banks: "Bancos",
   remittances: "Envíos de Dinero",
+  remittanceCommissions: "Comisiones de Remesas",
   sessions: "Listado de Sesiones",
   traces: "Trazas del Sistema",
   users: "Usuarios",
@@ -303,6 +308,10 @@ type AdminPermissions = {
   readOnlyReason?: string;
 };
 
+function useOperationalPermissions(user: User): AdminPermissions {
+  const access = usePageAccess();
+  return { ...permissionsFor(user), canCreate: access.canCreate, canEdit: access.canEdit, canDelete: access.canDelete };
+}
 function permissionsFor(user: User): AdminPermissions {
   const role = normalizeRole(user.role);
   if (role === "SUPERVISOR")
@@ -507,6 +516,7 @@ const codifierTiles: ControlPanelTile[] = [
   { label: "Servicios y Prods.", page: "servicesProducts", navKey: "control-services", icon: ListFilter },
   { label: "Sesiones", page: "sessions", navKey: "control-sessions", icon: Activity },
   { label: "Tasas de cambio", page: "exchangeRates", navKey: "control-exchange", icon: RefreshCw },
+  { label: "Comisiones de remesas", page: "remittanceCommissions", navKey: "control-remittance-commissions", icon: ReceiptText },
   { label: "Bancos", page: "banks", navKey: "control-banks", icon: Building2 },
   { label: "Trazas", page: "traces", navKey: "control-traces", icon: ClipboardCheck },
   { label: "Usuarios", page: "users", navKey: "control-users", icon: ShieldCheck },
@@ -519,6 +529,7 @@ const toolTiles: ControlPanelTile[] = [
 ];
 
 function ControlPanelContent({ onLaunch }: Readonly<{ onLaunch: (page: Page, navKey: string) => void }>) {
+  const { actor } = usePageAccess();
   const renderTile = (tile: ControlPanelTile) => (
     <button type="button" className="control-panel-tile" key={tile.navKey} onClick={() => onLaunch(tile.page, tile.navKey)}>
       <span className="control-panel-icon"><tile.icon size={22} /></span>
@@ -527,18 +538,19 @@ function ControlPanelContent({ onLaunch }: Readonly<{ onLaunch: (page: Page, nav
   );
   return (
     <div className="control-panel-body in-mdi">
-      <section className="control-panel-section"><div className="control-panel-section-heading"><span>Codificadores</span><small>Accesos rápidos</small></div><div className="control-panel-grid">{codifierTiles.map(renderTile)}</div></section>
-      <section className="control-panel-section tools-section"><div className="control-panel-section-heading"><span>Herramientas</span><small>Control interno</small></div><div className="control-panel-grid tools-grid">{toolTiles.map(renderTile)}</div></section>
+      <section className="control-panel-section"><div className="control-panel-section-heading"><span>Codificadores</span><small>Accesos rápidos</small></div><div className="control-panel-grid">{codifierTiles.filter((tile) => canOpenPage(actor, tile.page)).map(renderTile)}</div></section>
+      <section className="control-panel-section tools-section"><div className="control-panel-section-heading"><span>Herramientas</span><small>Control interno</small></div><div className="control-panel-grid tools-grid">{toolTiles.filter((tile) => canOpenPage(actor, tile.page)).map(renderTile)}</div></section>
     </div>
   );
 }
 
 function ReportesLauncher({ onLaunch }: Readonly<{ onLaunch: (page: ReportPageId | RemittanceReportPage, navKey: string) => void }>) {
+  const { actor } = usePageAccess();
   const renderGroup = (category: ReportDefinition["category"]) => (
     <section className="reports-launcher-section" key={category}>
       <div className="control-panel-section-heading"><span>{category}</span><small>Seleccione un reporte</small></div>
       <div className="reports-launcher-grid">
-        {reportDefinitions.filter((report) => report.category === category).map((report) => (
+        {reportDefinitions.filter((report) => report.category === category && canOpenPage(actor, report.id)).map((report) => (
           <button
             type="button"
             className="report-launcher-tile"
@@ -560,7 +572,7 @@ function ReportesLauncher({ onLaunch }: Readonly<{ onLaunch: (page: ReportPageId
       <section className="reports-launcher-section" aria-label="Reportes de Envíos de Dinero">
         <div className="control-panel-section-heading"><span>-- Envíos de Dinero --</span><small>Seleccione un reporte</small></div>
         <div className="reports-launcher-grid">
-          {remittanceReportDefinitions.map((report) => <button type="button" key={report.page} className="report-launcher-tile" title={report.scope} onClick={() => onLaunch(report.page, `reports-${report.page}`)}>
+          {remittanceReportDefinitions.filter((report) => canOpenPage(actor, report.page)).map((report) => <button type="button" key={report.page} className="report-launcher-tile" title={report.scope} onClick={() => onLaunch(report.page, `reports-${report.page}`)}>
             <ChartNoAxesCombined size={18} aria-hidden="true" />
             <span>{report.label}{report.type === "managerCommissions" ? " (histórico)" : ""}</span>
           </button>)}
@@ -791,6 +803,11 @@ const runToolbarAction = (action?: LegacyToolbarAction) => (event: ReactMouseEve
 };
 
 function LegacyToolbar({ onToggleFilters, filtersVisible = true, onFirst, onPrevious, onNext, onLast, onNew, onEdit, onAccept, onDelete, onRefresh, onPrint, disableNew = false, disableEdit = false, disableAccept = false, disableDelete = false, showEdit = true, deleteIcon = "trash", deleteTitle = "Eliminar", newTitle = "Nuevo", newIcon, extra }: Readonly<{ onToggleFilters?: () => void; filtersVisible?: boolean; onFirst?: () => void; onPrevious?: () => void; onNext?: () => void; onLast?: () => void; onNew?: () => void; onEdit?: () => void; onAccept?: () => void; onDelete?: () => void; onRefresh?: () => void; onPrint?: () => void; disableNew?: boolean; disableEdit?: boolean; disableAccept?: boolean; disableDelete?: boolean; showEdit?: boolean; deleteIcon?: "trash" | "x"; deleteTitle?: string; newTitle?: string; newIcon?: ReactNode; extra?: ReactNode }>) {
+  const access = usePageAccess();
+  disableNew ||= !access.canCreate;
+  disableEdit ||= !access.canEdit;
+  disableDelete ||= !access.canDelete;
+  disableAccept ||= !access.canAccept;
   return (
     <div className="legacy-mdi-toolbar" aria-label="Barra de herramientas legacy" onMouseDown={stopToolbarEvent} onClick={stopToolbarEvent}>
       {onToggleFilters && <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" onClick={runToolbarAction(onToggleFilters)}><KeyRound size={15} /></button>}
@@ -2605,6 +2622,7 @@ function ClientMachinesDialog({ client, actorId, onClose }: Readonly<{ client: C
 }
 
 function ClientToolbar({ filtersVisible, onToggleFilters, onFirst, onPrevious, onNext, onLast, onNew, onEdit, onDelete, onRefresh, onFinance, onMap, onMachines }: Readonly<{ filtersVisible: boolean; onToggleFilters: () => void; onFirst: () => void; onPrevious: () => void; onNext: () => void; onLast: () => void; onNew: () => void; onEdit: () => void; onDelete: () => void; onRefresh: () => void; onFinance: () => void; onMap: () => void; onMachines: () => void }>) {
+  const access = usePageAccess();
   const action = (handler: () => void) => (event: ReactMouseEvent<HTMLButtonElement>) => { event.stopPropagation(); handler(); };
   return (
     <div className="legacy-mdi-toolbar clients-toolbar" aria-label="Barra de herramientas de clientes" onMouseDown={stopToolbarEvent} onClick={stopToolbarEvent}>
@@ -2614,22 +2632,23 @@ function ClientToolbar({ filtersVisible, onToggleFilters, onFirst, onPrevious, o
       <button type="button" className="nav-tool" title="Bajar" onClick={action(onNext)}>&gt;</button>
       <button type="button" className="nav-tool" title="Mover al final" onClick={action(onLast)}>&gt;|</button>
       <span className="mdi-toolbar-separator" />
-      <button type="button" title="Nuevo" onClick={action(onNew)}><Plus size={15} /></button>
-      <button type="button" title="Editar" onClick={action(onEdit)}><Pencil size={15} /></button>
-      <button type="button" className="danger-tool" title="Eliminar" onClick={action(onDelete)}><Trash2 size={15} /></button>
+      <button type="button" title="Nuevo" disabled={!access.canCreate} onClick={action(onNew)}><Plus size={15} /></button>
+      <button type="button" title="Editar" disabled={!access.canEdit} onClick={action(onEdit)}><Pencil size={15} /></button>
+      <button type="button" className="danger-tool" title="Eliminar" disabled={!access.canDelete} onClick={action(onDelete)}><Trash2 size={15} /></button>
       <button type="button" title="Refrescar" onClick={action(onRefresh)}><RefreshCw size={15} /></button>
-      <button type="button" title="Cobros y Pagos" onClick={action(onFinance)}>$</button>
+      <button type="button" title="Cobros y Pagos" disabled={!access.has(144)} onClick={action(onFinance)}>$</button>
       <button type="button" title="Mapa" onClick={action(onMap)}><MapPinned size={15} /></button>
-      <button type="button" title="Tragamonedas del Cliente" onClick={action(onMachines)}><Gamepad2 size={15} /></button>
+      <button type="button" title="Tragamonedas del Cliente" disabled={!access.canEdit} onClick={action(onMachines)}><Gamepad2 size={15} /></button>
     </div>
   );
 }
 
 function ClientsLegacyView({ snapshot, actorId, onRefresh }: Readonly<{ snapshot: Snapshot; actorId: string; onRefresh: () => Promise<void> }>): ReactNode {
+  const access = usePageAccess();
   const clientDialogVersion = useRef(0);
   const mapDialogVersion = useRef(0);
   const closeClientForm = () => { clientDialogVersion.current++; setFormMode(null); };
-  const openClientForm = (mode: "new" | "edit") => { clientDialogVersion.current++; setFormMode(mode); };
+  const openClientForm = (mode: "new" | "edit") => { if (mode === "new" ? !access.canCreate : !access.canEdit) return; clientDialogVersion.current++; setFormMode(mode); };
   const closeMap = () => { mapDialogVersion.current++; setMapOpen(false); };
   const openMap = () => { mapDialogVersion.current++; setMapOpen(true); };
   const [clientsData, setClientsData] = useState<ClientLegacyRecord[]>(() => defaultClientRecords(snapshot));
@@ -4177,6 +4196,7 @@ function validateSystemConfigInputs(config: Record<string, string | number | boo
 }
 
 function LegacyCodifierView({ page, snapshot, onRefresh, onAccount }: Readonly<{ page: Page; snapshot: Snapshot; onRefresh: () => void; onAccount: (operation: AccountOperation) => void }>) {
+  const access = usePageAccess();
   const [configTab, setConfigTab] = useState("General");
   const [printTab, setPrintTab] = useState<"Listados" | "Recibos">("Listados");
   const [systemCfg, setSystemCfg] = useState<Record<string, string | number | boolean>>(SYSTEM_CONFIG_DEFAULTS);
@@ -4216,7 +4236,7 @@ function LegacyCodifierView({ page, snapshot, onRefresh, onAccount }: Readonly<{
     };
   }, [page, cfgLoadAttempt]);
   const saveSystemCfg = async () => {
-    if (cfgLoadState !== "ready" || cfgSaving.current) return;
+    if (!access.canEdit || cfgLoadState !== "ready" || cfgSaving.current) return;
     cfgSaving.current = true;
     setCfgBusy(true);
     const generation = cfgGeneration.current;
@@ -4262,7 +4282,7 @@ function LegacyCodifierView({ page, snapshot, onRefresh, onAccount }: Readonly<{
   if (page === "generalConfig") {
     const tabs = ["General", "Clientes", "Cargos y Descargos", "Cobros y Pagos", "Interfaz", "GPS", "Soporte técnico"];
     const tmServiceOptions = ["No definido", "Serv", "Serv. pago de tarifa electrica", "Serv. ventas de recargas", "Serv. de Transporte Terrestre", "Donaciones de Dinero", "Venta de medicina natural", "MANEJO DE MAQUINITAS", "PRESTAMOS PERSONALES", "TELEFONOS INTELIGENTES", "prestamos empresariales", "Bicicleta", "Alambre THHN 10 BLANCO"];
-    const cfgLocked = cfgBusy || cfgLoadState !== "ready";
+    const cfgLocked = !access.canEdit || cfgBusy || cfgLoadState !== "ready";
     const CheckLine = ({ label, checked, disabled = false, onChange }: Readonly<{ label: string; checked: boolean; disabled?: boolean; onChange: (value: boolean) => void }>) => <label className={`legacy-check-line ${disabled || cfgLocked ? "disabled" : ""}`}><input type="checkbox" checked={checked} disabled={disabled || cfgLocked} onChange={(event) => onChange(event.target.checked)} /><span>{label}</span></label>;
     const fld = (key: string) => ({
       value: String(systemCfg[key] ?? ""),
@@ -4724,6 +4744,10 @@ export default function App() {
     latestSnapshotRead.current = version;
     setRefreshing(true);
     try {
+      const current = await api<User | { user: User }>("/auth/me");
+      if (version !== snapshotReadVersion) return false;
+      const actor = enrichUserRole("user" in current ? current.user : current);
+      setUser(actor);
       const result = await api<Snapshot>("/snapshot");
       if (version !== snapshotReadVersion) return false;
       setSnapshot(result);
@@ -4746,6 +4770,11 @@ export default function App() {
       if (version === latestSnapshotRead.current) setRefreshing(false);
     }
   }, [clearLocalSession]);
+  useEffect(() => {
+    const onPermissions = () => { void refresh(); };
+    window.addEventListener("cyp-user-permissions-updated", onPermissions);
+    return () => window.removeEventListener("cyp-user-permissions-updated", onPermissions);
+  }, [refresh]);
   useEffect(() => {
     if (!authenticated) return;
     api<User | { user: User }>("/auth/me")
@@ -4810,7 +4839,7 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: "instant" });
   }
   const openMdiWindow = useCallback((next: MdiPage, navKey = "") => {
-    if (!isUiPageVisible(next)) return;
+    if (!isUiPageVisible(next) || !user || !canOpenPage(user, next)) return;
     setActiveNavKey(navKey);
     const requestRemittanceReport = next === "remittances" && navKey === "reports-remittances";
     setMdiWindows((windows) => {
@@ -4844,7 +4873,7 @@ export default function App() {
         },
       ];
     });
-  }, [nextZIndex]);
+  }, [nextZIndex, user]);
   // "Entregas de Dinero" asks to open the remittances to deliver, filtered by a search.
   const [remittancePayoutRequest, setRemittancePayoutRequest] = useState<{ id: number; search: string }>();
   useEffect(() => {
@@ -4885,6 +4914,7 @@ export default function App() {
     null | "facturas" | "novedades" | "pagos"
   >(null);
   const downloadBackup = async () => {
+    if (!user || !hasPermission(user, 6)) return;
     try {
       const data = await api<unknown>("/snapshot");
       const blob = new Blob([JSON.stringify(data, null, 2)], {
@@ -4913,20 +4943,20 @@ export default function App() {
       pendingCollectionFunds.length
     : 0;
   const commandClients =
-    snapshot?.clients
-      .filter((c) =>
+    (user && canOpenPage(user, "clients") ? snapshot?.clients : undefined)
+      ?.filter((c) =>
         matchesClientSearch(c, commandQuery),
       )
       .slice(0, 6) ?? [];
   const commandRoutes =
-    snapshot?.routes
-      .filter((r) =>
+    (user && canOpenPage(user, "routes") ? snapshot?.routes : undefined)
+      ?.filter((r) =>
         `${r.name} ${r.sector}`
           .toLowerCase()
           .includes(commandQuery.toLowerCase()),
       )
       .slice(0, 3) ?? [];
-  const effectiveUser = user ?? enrichUserRole({ id: "UUID-AAA", name: "Administración", role: "ADMIN" });
+  const effectiveUser = user ?? enrichUserRole({ id: "", name: "", role: "UNDEFINED" });
   return (
     <>
       {createPortal(<Toaster position="top-right" richColors closeButton style={{ zIndex: 2147483647 }} />, document.body)}
@@ -4980,8 +5010,9 @@ export default function App() {
               {groupOrder.map((group) => {
                 const open = expandedGroups.includes(group) && !collapsed;
                 const groupItems = navigation.filter(
-                  (item) => item.group === group && (!item.page || isUiPageVisible(item.page)),
+                  (item) => item.group === group && (!item.page || isUiPageVisible(item.page)) && canOpenPage(effectiveUser, item.page ?? "controlPanel"),
                 );
+                if (!groupItems.length) return null;
                 const groupActive = groupItems.some((item) =>
                   activeNavKey ? activeNavKey === item.key : false,
                 );
@@ -5138,7 +5169,7 @@ export default function App() {
                 <span className="status-badge">
                   {snapshot?.totals.activeCollectors ?? 0} cobradores en calle
                 </span>
-                <button type="button" onClick={() => openMdiWindow("dailySettlements", "daily-settlements")} title="Abrir Cuadres Diarios"
+                {canOpenPage(effectiveUser, "dailySettlements") && <button type="button" onClick={() => openMdiWindow("dailySettlements", "daily-settlements")} title="Abrir Cuadres Diarios"
                   className={`status-badge ${
                     snapshot?.totals.difference ? "warning" : "ok"
                   }`}
@@ -5146,7 +5177,7 @@ export default function App() {
                   {snapshot?.totals.difference
                     ? "Cuadre en progreso"
                     : "Cuadre al día"}
-                </button>
+                </button>}
                 <button
                   className="command-trigger"
                   aria-label="Buscar en tu operación"
@@ -5167,14 +5198,14 @@ export default function App() {
                   <Bell size={19} />
                   {alertCount > 0 && <i />}
                 </button>
-                <button
+                {hasPermission(effectiveUser, 320) && <button
                   className="icon-button tablet-secondary"
                   aria-label="Facturas"
                   title="Ventana de Facturas"
                   onClick={() => setAuxWindow("facturas")}
                 >
                   <ReceiptText size={19} />
-                </button>
+                </button>}
                 <button
                   className="icon-button tablet-secondary"
                   aria-label="Qué hay de nuevo"
@@ -5184,23 +5215,23 @@ export default function App() {
                   <CircleHelp size={19} />
                 </button>
                 <ThemeToggle />
-                <button
+                {hasPermission(effectiveUser, 370) && <button
                   className="icon-button tablet-secondary"
                   aria-label="Ventana de Pagos"
                   title="Ventana de Pagos"
                   onClick={() => setAuxWindow("pagos")}
                 >
                   <Wallet size={19} />
-                </button>
-                <button
+                </button>}
+                {hasPermission(effectiveUser, 6) && <button
                   className="icon-button tablet-secondary"
                   aria-label="Hacer copia de respaldo"
                   title="Hacer copia de respaldo"
                   onClick={() => void downloadBackup()}
                 >
                   <Database size={19} />
-                </button>
-                {auxWindow === "facturas" && snapshot && (
+                </button>}
+                {auxWindow === "facturas" && hasPermission(effectiveUser, 320) && snapshot && (
                   <LegacyDialog
                     title="Ventana de Facturas"
                     onClose={() => setAuxWindow(null)}
@@ -5242,7 +5273,7 @@ export default function App() {
                     </div>
                   </LegacyDialog>
                 )}
-                {auxWindow === "pagos" && snapshot && (
+                {auxWindow === "pagos" && hasPermission(effectiveUser, 370) && snapshot && (
                   <LegacyDialog
                     title="Ventana de Pagos"
                     onClose={() => setAuxWindow(null)}
@@ -5295,15 +5326,15 @@ export default function App() {
               </div>
             </header>
             <nav className="desktop-launchers" aria-label="Operaciones principales">
-              <button type="button" className="btn launcher-collections" onClick={() => openMdiWindow("charges", "charges")}><FolderOpen size={17} />CARGOS</button>
-              <button type="button" className="btn launcher-collections" onClick={() => openMdiWindow("collections", "collections")}><ReceiptText size={17} />COBROS</button>
-              <button type="button" className="btn launcher-payments" onClick={() => openMdiWindow("payouts", "payouts")}><ArrowDownLeft size={17} />DESCARGOS</button>
-              <button type="button" className="btn launcher-payments" onClick={() => openMdiWindow("payments", "payments")}><Wallet size={17} />PAGOS</button>
-              <button type="button" className="btn launcher-remittances" onClick={() => openMdiWindow("remittances", "remittances")}><Globe size={17} />ENVÍO DE DINERO</button>
-              <button type="button" className="btn launcher-settlements" onClick={() => openMdiWindow("dailySettlements", "daily-settlements")}><FileCheck2 size={17} />CUADRES</button>
+              {canOpenPage(effectiveUser, "charges") && <button type="button" className="btn launcher-collections" onClick={() => openMdiWindow("charges", "charges")}><FolderOpen size={17} />CARGOS</button>}
+              {canOpenPage(effectiveUser, "collections") && <button type="button" className="btn launcher-collections" onClick={() => openMdiWindow("collections", "collections")}><ReceiptText size={17} />COBROS</button>}
+              {canOpenPage(effectiveUser, "payouts") && <button type="button" className="btn launcher-payments" onClick={() => openMdiWindow("payouts", "payouts")}><ArrowDownLeft size={17} />DESCARGOS</button>}
+              {canOpenPage(effectiveUser, "payments") && <button type="button" className="btn launcher-payments" onClick={() => openMdiWindow("payments", "payments")}><Wallet size={17} />PAGOS</button>}
+              {canOpenPage(effectiveUser, "remittances") && <button type="button" className="btn launcher-remittances" onClick={() => openMdiWindow("remittances", "remittances")}><Globe size={17} />ENVÍO DE DINERO</button>}
+              {canOpenPage(effectiveUser, "dailySettlements") && <button type="button" className="btn launcher-settlements" onClick={() => openMdiWindow("dailySettlements", "daily-settlements")}><FileCheck2 size={17} />CUADRES</button>}
             </nav>
             <main id="main-content" className="main-content desktop-canvas" tabIndex={-1}>
-          {snapshot && mdiWindows.filter((windowState) => isUiPageVisible(windowState.page)).map((windowState) => (
+          {snapshot && mdiWindows.filter((windowState) => isUiPageVisible(windowState.page) && canOpenPage(effectiveUser, windowState.page)).map((windowState) => (
             <MdiWindow
               key={windowState.id}
               windowState={windowState}
@@ -5313,6 +5344,7 @@ export default function App() {
               onResize={resizeMdiWindow}
               onToggleMaximize={toggleMaximizeMdiWindow}
             >
+              <PageAccessContext.Provider value={{ actor: effectiveUser, page: windowState.page }}>
               {windowState.page === "controlPanel" ? (
                 <ControlPanelContent onLaunch={openMdiWindow} />
               ) : windowState.page === "reports" ? (
@@ -5324,11 +5356,13 @@ export default function App() {
               ) : windowState.page === "banks" ? (
                 <ConnectedBanks actorId={effectiveUser.id} canManage={["ADMIN", "SUPERADMIN"].includes(normalizeRole(effectiveUser.role))} />
               ) : windowState.page === "exchangeRates" ? (
-                <ConnectedExchangeRates actorId={effectiveUser.id} isAdmin={["ADMIN", "SUPERADMIN"].includes(normalizeRole(effectiveUser.role))} />
+                <ConnectedExchangeRates actorId={effectiveUser.id} isAdmin={["ADMIN", "SUPERADMIN"].includes(normalizeRole(effectiveUser.role)) && hasPermission(effectiveUser, 201) && hasRemittancePermission(effectiveUser, "remittances.rates.manage")} />
               ) : windowState.page === "remittances" ? (
                 <RemittancesWorkspace api={remittancesApi} user={effectiveUser} isAdmin={["ADMIN", "SUPERADMIN"].includes(normalizeRole(effectiveUser.role))} reportRequest={windowState.remittanceReportRequest} payoutRequest={remittancePayoutRequest} />
+              ) : windowState.page === "remittanceCommissions" ? (
+                <ConnectedRemittanceCommissions actor={effectiveUser} />
               ) : isConnectedCatalog(windowState.page) ? (
-                <ConnectedCatalog page={windowState.page} snapshot={snapshot} actorId={effectiveUser.id} canManagePermissions={["ADMIN", "SUPERADMIN"].includes(normalizeRole(effectiveUser.role))} onRefresh={() => void refresh()} />
+                <ConnectedCatalog page={windowState.page} snapshot={snapshot} actorId={effectiveUser.id} canManagePermissions={hasPermission(effectiveUser, 106)} onRefresh={() => void refresh()} />
               ) : isConnectedAdminTool(windowState.page) ? (
                 <ConnectedAdminTools page={windowState.page} snapshot={snapshot} user={user ?? undefined} onRefresh={() => void refresh()} />
               ) : windowState.page === "clients" ? (
@@ -5354,7 +5388,7 @@ export default function App() {
                 })()
               ) : isMdiMonitoringPage(windowState.page) ? (
                 windowState.page === "dailySettlements" ? (
-                  <ConnectedSettlements snapshot={snapshot} actorId={effectiveUser.id} canManage={["ADMIN", "SUPERADMIN"].includes(normalizeRole(effectiveUser.role))} onRefresh={refresh} />
+                  <ConnectedSettlements snapshot={snapshot} actorId={effectiveUser.id} canManage={["ADMIN", "SUPERADMIN"].includes(normalizeRole(effectiveUser.role)) && hasPermission(effectiveUser, 402) && hasPermission(effectiveUser, 403)} onRefresh={refresh} />
                 ) : (
                   <MonitorView
                     page={windowState.page}
@@ -5372,6 +5406,7 @@ export default function App() {
                   onAccount={setAccountOperation}
                 />
               )}
+              </PageAccessContext.Provider>
             </MdiWindow>
           ))}
             </main>
@@ -5653,12 +5688,9 @@ export default function App() {
                 index={3}
               />
               <h3>{user?.name ?? "Administración"}</h3>
-              <Badge status="active">Administrador</Badge>
-              <p>
-                Acceso a clientes, rutas, autorizaciones, movimientos y cierres
-                diarios.
-              </p>
-              <button className="btn full" onClick={() => { setAccountOpen(false); setOwnPasswordOpen(true); }}><KeyRound size={17} />Cambiar mi clave</button>
+              <Badge status="active">{ROLE_DEFINITIONS[normalizeRole(effectiveUser.role) as keyof typeof ROLE_DEFINITIONS]?.label ?? (normalizeRole(effectiveUser.role) === "USER" ? "Usuario" : "No definido")}</Badge>
+              <p>Los módulos y las acciones disponibles corresponden a los permisos de tu cuenta.</p>
+              <button className="btn full" disabled={!hasPermission(effectiveUser, 2)} onClick={() => { setAccountOpen(false); setOwnPasswordOpen(true); }}><KeyRound size={17} />Cambiar mi clave</button>
               <button className="btn full" onClick={logout}>
                 <LogOut size={17} />
                 Cerrar sesión
@@ -5883,7 +5915,7 @@ function MasterDataView({
   const [selectedClientId, setSelectedClientId] = useState("");
   const [statement, setStatement] = useState<ClientStatement | null>(null);
   const config = masterSpec(page, snapshot, onAccount);
-  const permissions = permissionsFor(currentUser);
+  const permissions = useOperationalPermissions(currentUser);
   const rows = config.rows.filter((row) =>
     Object.values(row).join(" ").toLowerCase().includes(search.toLowerCase()),
   );
@@ -6503,7 +6535,7 @@ function ChargesOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{
   const [alertMessage, setAlertMessage] = useState("");
   const [clientSearchOpen, setClientSearchOpen] = useState(false);
   const [clientDirectory, setClientDirectory] = useState<Client[]>(snapshot.clients);
-  const permissions = permissionsFor(currentUser);
+  const permissions = useOperationalPermissions(currentUser);
   const zones = Array.from(new Set(snapshot.routes.map((route) => route.sector).filter(Boolean)));
   useEffect(() => {
     const refreshedCharges = snapshot.charges.map(asLocalCharge);
@@ -6934,7 +6966,7 @@ function RecurringChargesOperationalView({ snapshot, currentUser, onRefresh }: R
   const [clientSearchOpen, setClientSearchOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<"new" | "edit" | null>(null);
   const [confirmInactivate, setConfirmInactivate] = useState(false);
-  const permissions = permissionsFor(currentUser);
+  const permissions = useOperationalPermissions(currentUser);
   useEffect(() => {
     const reloaded = loadRecurringCharges(snapshot);
     setRecords(reloaded);
@@ -7137,7 +7169,7 @@ function LegacyOperationView({
   const [recurringModal, setRecurringModal] = useState<
     TableRow | "new" | null
   >(null);
-  const permissions = permissionsFor(currentUser);
+  const permissions = useOperationalPermissions(currentUser);
   const collectionOrderKey = spec.entity === "collections"
     ? spec.rows.map((row) => String(row.__id ?? "")).join("|")
     : "";
@@ -7769,7 +7801,7 @@ function DepositsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
   const pendingDeposit = pendingMovementDraft<{ draft: DepositDraft; print: boolean }>(currentUser.id, "manual-deposit");
   const lifecycleRequest = useMovementRequest(currentUser.id, "deposit-lifecycle");
   const pendingLifecycle = pendingMovementDraft<{ movement: Movement; action: "aceptar" | "cancelar"; desglose?: { denominacion: number; cantidad: number }[] }>(currentUser.id, "deposit-lifecycle");
-  const permissions = permissionsFor(currentUser);
+  const permissions = useOperationalPermissions(currentUser);
   const [mode, setMode] = useState("Todos");
   const [collectorFilter, setCollectorFilter] = useState("Todas");
   const [zoneFilter, setZoneFilter] = useState("Todas");
@@ -8153,7 +8185,7 @@ function CashDeliveriesOperationalView({ snapshot, currentUser, onRefresh }: Rea
   const deliveryRequest = useMovementRequest(currentUser.id, "manual-delivery");
   const [remittanceSearch, setRemittanceSearch] = useState("");
   const pendingDelivery = pendingMovementDraft<{ draft: DepositDraft; print: boolean }>(currentUser.id, "manual-delivery");
-  const permissions = permissionsFor(currentUser);
+  const permissions = useOperationalPermissions(currentUser);
   const [mode, setMode] = useState("Todos");
   const [collectorFilter, setCollectorFilter] = useState("Todas");
   const [fromDate, setFromDate] = useState(() => currentOperationalWeek().from);
@@ -8433,7 +8465,7 @@ type PayoutFormDraft = {
 function PayoutsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{ snapshot: Snapshot; currentUser: User; onRefresh: () => void }>) {
   const payoutRequest = useMovementRequest(currentUser.id, "manual-payout");
   const pendingPayout = pendingMovementDraft<PayoutFormDraft>(currentUser.id, "manual-payout");
-  const permissions = permissionsFor(currentUser);
+  const permissions = useOperationalPermissions(currentUser);
   const [mode, setMode] = useState("Todos");
   const [clientQuery, setClientQuery] = useState("");
   const [filterClientId, setFilterClientId] = useState("");
@@ -8685,7 +8717,7 @@ type PaymentFormDraft = {
 type PendingPaymentDraft = PaymentFormDraft & { print: boolean };
 
 function PaymentsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{ snapshot: Snapshot; currentUser: User; onRefresh: () => void }>) {
-  const permissions = permissionsFor(currentUser);
+  const permissions = useOperationalPermissions(currentUser);
   const [mode, setMode] = useState("Todos");
   const [clientQuery, setClientQuery] = useState("");
   const [filterClientId, setFilterClientId] = useState("");

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { assertAdmin, DomainError, type ClientIdentityReservation, type State, type User } from "./domain.js";
+import { hasRemittancePermission } from "../../shared/access.mjs";
 
 // Codes in these formats are assigned by the system and are never typed by hand:
 // a typed one would move the series or block a number that nobody uses.
@@ -19,7 +20,7 @@ const seriesNumber = (value: string | undefined) => {
 // placeholder, so the client's own code is not locked and no number of the generated
 // CLI series is used up.
 export function reserveClientIdentity(state: State, actor: User, now = new Date(), withCode = true): ClientIdentityReservation {
-  assertAdmin(actor);
+  if (!hasRemittancePermission(actor, "remittances.clients.create")) assertAdmin(actor);
   const reservations = (state.clientIdentityReservations ??= []);
   let sequence = 0, codeNumber = 0;
   for (const row of reservations) sequence = Math.max(sequence, row.sequence);
@@ -51,7 +52,7 @@ export function reserveClientIdentity(state: State, actor: User, now = new Date(
 
 // `code` is undefined when the reservation did not generate one (see `withCode`).
 export function claimClientIdentity(state: State, actor: User, clientId: string, reservationId?: string, withCode = true) {
-  assertAdmin(actor);
+  if (!hasRemittancePermission(actor, "remittances.clients.create")) assertAdmin(actor);
   const reservation = reservationId
     ? state.clientIdentityReservations.find((row) => row.id === reservationId)
     : reserveClientIdentity(state, actor, new Date(), withCode);

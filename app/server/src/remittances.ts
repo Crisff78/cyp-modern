@@ -1,5 +1,6 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { assertAdmin, businessDate, DomainError, type State, type User } from "./domain.js";
+import { effectiveAccess, hasRemittancePermission, hasRemittanceAccess } from "../../shared/access.mjs";
 
 export const currencies = ["DOP", "USD", "EUR"] as const;
 export type Currency = (typeof currencies)[number];
@@ -199,9 +200,11 @@ export function remittanceOperators(state: State, user: User, systemOperators: U
     fail("SESSION_EXPIRED", "La cuenta cambió. Inicia sesión de nuevo.", 401);
   // Only the business identity: the token payload also carries session fields.
   const self: User = { id: user.id, name: user.name, role: user.role, ...(user.collectorId ? { collectorId: user.collectorId } : {}) };
-  if (user.role !== "admin") return user.role === "collector" ? [self] : [];
-  const accounts: User[] = state.accounts.filter((a) => a.status === "active" && (a.role === "admin" || a.role === "collector")).map((a) => ({
+  if (user.access) self.access = user.access;
+  if (user.role !== "admin") return user.role === "collector" || (user.role === "user" && hasRemittanceAccess(user)) ? [self] : [];
+  const accounts: User[] = state.accounts.filter((a) => a.status === "active" && (a.role === "admin" || a.role === "collector" || (a.role === "user" && hasRemittanceAccess({ role: a.role, access: effectiveAccess(a.role, a) })))).map((a) => ({
     id: a.id, name: a.name, role: a.role, ...(a.collectorId ? { collectorId: a.collectorId } : {}),
+    access: effectiveAccess(a.role, a),
   }));
   return [...new Map([...systemOperators, ...accounts, self].map((operator) => [operator.id, operator])).values()];
 }
@@ -214,20 +217,29 @@ function operator(state: State, user: User, id: string, systemOperators: User[])
 }
 function clientInRoute(state: State, user: User, clientId: string) {
   if (user.role === "admin") return true;
+  if (user.role === "user" && hasRemittanceAccess(user)) return true;
   const client = state.clients.find((c) => c.id === clientId);
   return !!client && state.routes.some((r) => r.id === client.routeId && r.collectorId === user.collectorId);
 }
 export function canSeeOutgoing(state: State, user: User, transfer: Remittance) {
+  if (!hasRemittancePermission(user, "remittances.view")) return false;
+  if (user.role === "user") return transfer.sendingUserId === user.id;
   return user.role === "admin" || transfer.sendingUserId === user.id || clientInRoute(state, user, transfer.senderClientId);
 }
 export function canSeeReceipt(state: State, user: User, transfer: Remittance) {
+  if (!hasRemittancePermission(user, "remittances.receipts")) return false;
+  if (user.role === "user") return transfer.status === "pending" || transfer.paidBy === user.id;
   return clientInRoute(state, user, transfer.recipientClientId);
+}
+export function canReportTransfer(state: State, user: User, transfer: Remittance) {
+  if (user.role === "user") return transfer.sendingUserId === user.id || transfer.paidBy === user.id;
+  return user.role === "admin" || transfer.sendingUserId === user.id || clientInRoute(state, user, transfer.senderClientId) || clientInRoute(state, user, transfer.recipientClientId);
 }
 export function transferView(state: State, user: User, transfer: Remittance) {
   return {
     ...transfer,
-    canPay: transfer.status === "pending" && canSeeReceipt(state, user, transfer),
-    canCancel: transfer.status === "pending" && (user.role === "admin" || transfer.sendingUserId === user.id),
+    canPay: hasRemittancePermission(user, "remittances.pay") && transfer.status === "pending" && canSeeReceipt(state, user, transfer),
+    canCancel: hasRemittancePermission(user, "remittances.cancel") && transfer.status === "pending" && (user.role === "admin" || transfer.sendingUserId === user.id),
   };
 }
 export function cashBalance(state: State, cash: CashSession) {
@@ -242,7 +254,7 @@ export function cashBalance(state: State, cash: CashSession) {
   };
 }
 export const cashView = (state: State, user: User, cash: CashSession) => ({
-  ...cash, ...cashBalance(state, cash), canClose: cash.status === "open" && (user.role === "admin" || cash.operatorId === user.id),
+  ...cash, ...cashBalance(state, cash), canClose: hasRemittancePermission(user, "remittances.cash.close") && cash.status === "open" && (user.role === "admin" || cash.operatorId === user.id),
 });
 function assertCashMovement(state: State, cash: CashSession, type: "sent" | "paid" | "cancelled", amount: number) {
   const balance = cashBalance(state, cash);
@@ -290,6 +302,7 @@ export function closeRemittanceCash(state: State, user: User, id: string, counte
 export function createRemittance(state: State, user: User, input: CreateRemittanceInput, systemOperators: User[] = [], now = new Date()) {
   const managerCommission = manualManagerCommission(input.managerCommission);
   const sendingUser = operator(state, user, input.sendingUserId ?? user.id, systemOperators);
+  if (!hasRemittancePermission(sendingUser, "remittances.create")) fail("OPERATOR_FORBIDDEN", "El operador seleccionado no tiene permiso para registrar envíos.", 403);
   if (input.senderClientId === input.recipientClientId) fail("SAME_CLIENT", "Remitente y destinatario deben ser distintos.");
   for (const id of [input.senderClientId, input.recipientClientId]) {
     const client = state.clients.find((c) => c.id === id);
@@ -384,24 +397,26 @@ export function cancelRemittance(state: State, user: User, id: string, reason: s
 export function remittanceSnapshot(state: State, user: User, systemOperators: User[] = [], now = new Date()) {
   const date = businessDate(now);
   return {
-    businessDate: date, currencies, commissionPolicy: getCommissionPolicy(state),
+    businessDate: date, currencies, access: user.access ?? effectiveAccess(user.role),
+    commissionPolicy: getCommissionPolicy(state),
     receiptFooterNote: typeof state.systemConfig?.receiptFooterNote === "string" ? state.systemConfig.receiptFooterNote : "",
-    clients: state.clients.map((c) => ({ id: c.id, code: c.code, name: c.name, routeId: c.routeId, active: c.active !== false, preferredCurrency: c.preferredCurrency ?? "DOP",
-      canSendFrom: clientInRoute(state, user, c.id), canReceive: clientInRoute(state, user, c.id) })),
-    operators: remittanceOperators(state, user, systemOperators),
-    rates: [state.remittances.rates.find((r) => r.currency === "DOP" && r.date === date) ?? { id: `DOP-${date}`, currency: "DOP" as Currency, rate: "1.000000", date }, ...state.remittances.rates.filter((r) => r.currency !== "DOP")]
+    clients: hasRemittancePermission(user, "remittances.create") || hasRemittancePermission(user, "remittances.receipts") ? state.clients.map((c) => ({ id: c.id, code: c.code, name: c.name, routeId: c.routeId, active: c.active !== false, preferredCurrency: c.preferredCurrency ?? "DOP",
+      canSendFrom: clientInRoute(state, user, c.id), canReceive: clientInRoute(state, user, c.id) })) : [],
+    clientRoutes: hasRemittancePermission(user, "remittances.clients.create") ? state.routes.filter((route) => user.role !== "collector" || route.collectorId === user.collectorId).map(({ id, name }) => ({ id, name })) : [],
+    operators: remittanceOperators(state, user, systemOperators).map(({ access: _access, ...row }) => row),
+    rates: [state.remittances.rates.find((r) => r.currency === "DOP" && r.date === date) ?? { id: `DOP-${date}`, currency: "DOP" as Currency, rate: "1.000000", date }, ...state.remittances.rates.filter((r) => r.currency !== "DOP" && (hasRemittancePermission(user, "remittances.rates.view") || r.date === date))]
       .sort((a, b) => b.date.localeCompare(a.date) || (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "") || a.currency.localeCompare(b.currency))
       .map(({ updatedBy, ...row }) => ({ ...row, ...(user.role === "admin" && updatedBy ? { updatedBy } : {}) })),
-    rateHistory: user.role === "admin" ? [...(state.remittances.rateHistory ?? [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.date.localeCompare(a.date) || b.id.localeCompare(a.id)) : [],
+    rateHistory: user.role === "admin" && hasRemittancePermission(user, "remittances.rates.view") ? [...(state.remittances.rateHistory ?? [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.date.localeCompare(a.date) || b.id.localeCompare(a.id)) : [],
     transfers: state.remittances.transfers.filter((t) => canSeeOutgoing(state, user, t) || canSeeReceipt(state, user, t)).map((t) => transferView(state, user, t)),
-    cashSessions: state.remittances.cashSessions.filter((c) => user.role === "admin" || c.operatorId === user.id).map((c) => cashView(state, user, c)),
+    cashSessions: hasRemittancePermission(user, "remittances.cash.view") ? state.remittances.cashSessions.filter((c) => user.role === "admin" || c.operatorId === user.id).map((c) => cashView(state, user, c)) : [],
   };
 }
 export function remittanceReports(state: State, user: User, input: { from: string; to: string; grouping: "range" | "day" }) {
   if (input.from > input.to) fail("INVALID_DATE_RANGE", "La fecha inicial no puede superar la final.", 400);
   const within = (timestamp: string) => { const date = businessDate(new Date(timestamp)); return date >= input.from && date <= input.to; };
   const groupDate = (timestamp: string) => input.grouping === "day" ? businessDate(new Date(timestamp)) : `${input.from}/${input.to}`;
-  const visible = state.remittances.transfers.filter((t) => canSeeOutgoing(state, user, t) || canSeeReceipt(state, user, t));
+  const visible = state.remittances.transfers.filter((t) => canReportTransfer(state, user, t));
   type AmountRow = { date: string; sourceCurrency: Currency; destinationCurrency: Currency; count: number; pendingCount: number; paidCount: number; cancelledCount: number; amount: number; commissionAmount: number; totalAmount: number; receiveAmount: number };
   const amounts = new Map<string, AmountRow>();
   type CommissionTotal = { date: string; currency: Currency; count: number; commissionAmount: number; cancelledCount: number; cancelledCommissionAmount: number };

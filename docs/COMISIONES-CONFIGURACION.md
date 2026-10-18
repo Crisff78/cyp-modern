@@ -1,7 +1,7 @@
 # Configuración central de comisiones de remesas
 
-Las tasas se registran una vez en Administración → Envíos de Dinero → Tasas → Reparto
-de comisiones. Solo Admin puede modificarlas. Admin y la PWA del cobrador toman
+Los porcentajes se registran una vez en Archivos → Admin. → Comisiones de remesas.
+Solo Admin con permiso de administrar comisiones puede modificarlos. Admin y la PWA del cobrador toman
 la configuración guardada automáticamente; el formulario de una remesa muestra
 la comisión como solo lectura. Ambos porcentajes empiezan en 0%; Admin los
 introduce manualmente y puede cambiarlos cuando lo necesite. No se modifica el

@@ -1,4 +1,6 @@
 export type Currency = "DOP" | "USD" | "EUR";
+import type { EffectiveAccess } from "../access.mjs";
+export type NewRemittanceClient = { name: string; identification: string; phone: string; address: string; routeId: string; preferredCurrency: Currency };
 export type Quote = {
   date: string; sourceRate: string; destinationRate: string; quotedAt?: string;
   sourceRateChangeId?: string; destinationRateChangeId?: string;
@@ -32,11 +34,13 @@ export type Cash = {
   countedAmount?: number; sentTotal: number; cancelRefund: number; paid: number; expected: number; canClose: boolean;
 };
 export type RemittanceSnapshot = {
+  access?: EffectiveAccess;
+  clientRoutes?: { id: string; name: string }[];
   businessDate: string; currencies: Currency[];
   receiptFooterNote?: string;
   commissionPolicy?: CommissionPolicy;
   clients: { id: string; code: string; name: string; routeId: string; active: boolean; preferredCurrency?: Currency; canSendFrom: boolean; canReceive: boolean }[];
-  operators: { id: string; name: string; role: "admin" | "collector"; collectorId?: string }[];
+  operators: { id: string; name: string; role: "admin" | "collector" | "user"; collectorId?: string }[];
   rates: Rate[]; rateHistory?: RateChange[]; transfers: Transfer[]; cashSessions: Cash[];
 };
 export type Report = {

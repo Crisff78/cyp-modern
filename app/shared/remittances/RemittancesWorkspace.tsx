@@ -1,47 +1,39 @@
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { operationKey, StrictApiError, type StrictApi } from "./strictApi";
-import type { Cash, CommissionReportGroupBy, CommissionReportStatus, ConsolidatedCommissionReport, Currency, Quotation, Rate, RemittanceContact, RemittanceSnapshot, Report, Transfer } from "./types";
+import type { Cash, CommissionReportGroupBy, CommissionReportStatus, ConsolidatedCommissionReport, Currency, NewRemittanceClient, Quotation, RemittanceContact, RemittanceSnapshot, Report, Transfer } from "./types";
 import { decimalCents, exportSections, formatDate, formatMoney, printSections, type OutputSection } from "./output";
 import { clientCurrency, clientLabel, contactRows, eligibleClients, LatestRequestGate, managerCommissionRows, matchingClients, quoteHistoryRows, rateMoment, selectRemittanceClient, type ClientSide, type RemittanceClient } from "./suggestions";
 import "./remittances.css";
 import { formatCrossRate } from "./crossRate";
 import { INPUT_LIMITS, isDecimalDraft, validatePhone, validateText } from "../inputRules";
-import { confirmedRateResponse } from "./rateResponse";
 import { useClientContact } from "./useClientContact";
 import { confirmedCreatedTransfer } from "./createdTransferResponse";
 import { allocationRows, commissionReportStatusLabels } from "./commissionOutput";
-import { confirmedCommissionPolicy } from "./commissionPolicyResponse";
-import type { CommissionPolicy } from "./types";
+import { hasRemittancePermission, type EffectiveAccess, type RemittancePermission } from "../access.mjs";
+import { RemittanceDialog as Dialog } from "./RemittanceDialog";
+import { QuickClientDialog } from "./QuickClientDialog";
+import { advanceCaptureField } from "./formKeyboard";
 import { currentOperationalWeek } from "../operationalWeek";
 import { remittanceReportDefinitions, remittanceReportDefinition, remittanceReportPath, remittanceReportSections, remittanceReportTitle, type RemittanceReportFilters, type RemittanceReportType } from "./reporting";
 
-type Tab = "envios" | "recibos" | "tasas" | "comisiones" | "caja" | "reportes";
-const adminTabs: readonly Tab[] = ["tasas", "comisiones"];
+type Tab = "envios" | "recibos" | "caja" | "reportes";
+const tabPermission: Record<Tab, RemittancePermission> = { envios: "remittances.view", recibos: "remittances.receipts", caja: "remittances.cash.view", reportes: "remittances.reports" };
 // A phone matches however it was typed: with spaces, dashes, parentheses or country code.
 const digitsOf = (value: string) => value.replace(/\D/g, "");
 // Text matches without regard to case or accents: "maria" finds "María".
 const fold = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase();
-type Actor = { id: string; name: string };
-type Confirmation = { title: string; path: string; body: Record<string, unknown>; description: ReactNode; kind: "create" | "pay" | "cancel" | "rate" | "policy" | "open" | "close"; idempotencyKey?: string; expectedQuotation?: Quotation };
+type Actor = { id: string; name: string; role?: string; access?: EffectiveAccess };
+type Confirmation = { title: string; path: string; body: Record<string, unknown>; description: ReactNode; kind: "create" | "pay" | "cancel" | "open" | "close"; idempotencyKey?: string; expectedQuotation?: Quotation };
 // Only in-memory: retain an uncertain action across route changes and same-actor login.
 const pendingByActor = new Map<string, Confirmation>();
 // These domain errors are produced only after the server's idempotency lookup.
 // VALIDATION comes before it, for a body that could never have been saved: the same body cannot succeed on a retry.
-const definitiveDomainErrors = new Set(["QUOTE_CHANGED", "COMMISSION_POLICY_MISMATCH", "CASH_NOT_OPEN", "RATE_MISSING", "RATE_DATE", "DOP_RATE", "CASH_EXISTS", "PREVIOUS_CASH_OPEN", "CASH_CLOSED", "CASH_UNBALANCED", "CASH_NOT_FOUND", "CLIENT_INACTIVE", "CLIENT_NOT_FOUND", "SAME_CLIENT", "TRANSFER_NOT_PENDING", "TRANSFER_NOT_FOUND", "INSUFFICIENT_CASH", "SEQUENCE_EXHAUSTED", "MONEY_RANGE", "INVALID_AMOUNT", "INVALID_RATE", "INVALID_CURRENCY", "INVALID_COMMISSION", "INVALID_AMOUNT_MODE", "COMMISSION_EXCEEDS_TOTAL", "AMOUNT_TOO_SMALL", "REASON_REQUIRED", "VALIDATION"]);
+const definitiveDomainErrors = new Set(["QUOTE_CHANGED", "COMMISSION_POLICY_MISMATCH", "CASH_NOT_OPEN", "RATE_MISSING", "RATE_DATE", "DOP_RATE", "CASH_EXISTS", "PREVIOUS_CASH_OPEN", "CASH_CLOSED", "CASH_UNBALANCED", "CASH_NOT_FOUND", "CLIENT_INACTIVE", "CLIENT_NOT_FOUND", "CLIENT_ALREADY_EXISTS", "ROUTE_NOT_FOUND", "SAME_CLIENT", "TRANSFER_NOT_PENDING", "TRANSFER_NOT_FOUND", "INSUFFICIENT_CASH", "SEQUENCE_EXHAUSTED", "MONEY_RANGE", "INVALID_AMOUNT", "INVALID_RATE", "INVALID_CURRENCY", "INVALID_COMMISSION", "INVALID_AMOUNT_MODE", "COMMISSION_EXCEEDS_TOTAL", "AMOUNT_TOO_SMALL", "REASON_REQUIRED", "VALIDATION"]);
 type Draft = { senderClientId: string; recipientClientId: string; sendingUserId: string; sourceCurrency: Currency; destinationCurrency: Currency; amount: string; amountMode: "source" | "destination"; note: string };
 const statusText = { pending: "Pendiente de entrega", paid: "Pagado", cancelled: "Cancelado" };
-const tabs: { id: Tab; label: string }[] = [{ id: "envios", label: "Envíos" }, { id: "recibos", label: "Recibos" }, { id: "tasas", label: "Tasas" }, { id: "comisiones", label: "Comisiones" }, { id: "caja", label: "Caja" }, { id: "reportes", label: "Reportes" }];
+const tabs: { id: Tab; label: string }[] = [{ id: "envios", label: "Envíos" }, { id: "recibos", label: "Recibos" }, { id: "caja", label: "Caja" }, { id: "reportes", label: "Reportes" }];
 const money = formatMoney;
 const moneyInputLength = 17;
-
-function Dialog({ title, children, onClose, locked = false }: { title: string; children: ReactNode; onClose: () => void; locked?: boolean }) {
-  const element = useRef<HTMLDialogElement>(null);
-  useEffect(() => { element.current?.showModal(); return () => element.current?.close(); }, []);
-  return <dialog ref={element} className="remittances-dialog" aria-label={title} onCancel={(event) => { event.preventDefault(); if (!locked) onClose(); }}>
-    <header><h2>{title}</h2><button type="button" disabled={locked} onClick={onClose} aria-label={`Cerrar ${title}`} title={`Cerrar ${title}`}>×</button></header>
-    <div className="remittances-dialog-body">{children}</div>
-  </dialog>;
-}
 
 function QuoteDetails({ quote }: { quote: Quotation }) {
   const crossRate = formatCrossRate(quote.quote.sourceRate, quote.quote.destinationRate);
@@ -71,7 +63,7 @@ function ContactDetails({ contact, label }: { contact: RemittanceContact; label:
   </dl>;
 }
 
-export function ClientPicker({ api, side, senderId, label, clients, value, query, onQuery, onSelect, contactState }: { api: StrictApi; side: ClientSide; senderId: string; label: string; clients: RemittanceClient[]; value: string; query: string; onQuery: (value: string) => void; onSelect: (client: RemittanceClient) => void; contactState?: ReturnType<typeof useClientContact> }) {
+export function ClientPicker({ api, side, senderId, label, clients, value, query, onQuery, onSelect, onCreate, contactState }: { api: StrictApi; side: ClientSide; senderId: string; label: string; clients: RemittanceClient[]; value: string; query: string; onQuery: (value: string) => void; onSelect: (client: RemittanceClient) => void; onCreate?: () => void; contactState?: ReturnType<typeof useClientContact> }) {
   const id = useId();
   const [expanded, setExpanded] = useState(false);
   const [highlight, setHighlight] = useState(-1);
@@ -97,16 +89,26 @@ export function ClientPicker({ api, side, senderId, label, clients, value, query
   const matches = lookup?.query === query ? clients.filter((client) => lookup.ids.includes(client.id)) : matchingClients(clients, query);
   const visible = matches.slice(0, 20);
   const selected = clients.find((client) => client.id === value);
+  const missingSnapshotClients = lookup?.query === query && lookup.ids.some((id) => !clients.some((client) => client.id === id));
   const choose = (client: RemittanceClient) => { onSelect(client); setExpanded(false); setHighlight(-1); };
-  return <div className="remittance-client-picker">
+  return <div className="remittance-client-picker" data-client-side={side}>
+    {onCreate && !selected && !lookupBusy && !lookupError && !missingSnapshotClients && <button type="button" className="remittance-client-create" onClick={() => { setExpanded(false); onCreate(); }}>Registrar cliente nuevo</button>}
+    <div className="remittance-client-anchor">
     <label htmlFor={id}>{label}<input id={id} type="search" inputMode="text" autoComplete="off" value={query} role="combobox" aria-autocomplete="list" aria-expanded={expanded} aria-controls={`${id}-options`} aria-activedescendant={expanded && visible[highlight] ? `${id}-${highlight}` : undefined} onFocus={() => { setExpanded(true); setHighlight(-1); }} onBlur={() => setExpanded(false)} onChange={(event) => { onQuery(event.target.value); setExpanded(true); setHighlight(-1); }} onKeyDown={(event) => {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); setExpanded(true); setHighlight((current) => Math.min(Math.max(current + (event.key === "ArrowDown" ? 1 : -1), 0), Math.max(visible.length - 1, 0))); }
-      if (event.key === "Enter" && expanded) { event.preventDefault(); if (visible[Math.max(highlight, 0)]) choose(visible[Math.max(highlight, 0)]); }
+      if (event.key === "Enter" && expanded && !event.shiftKey) {
+        event.preventDefault();
+        if (!lookupBusy && !lookupError && (highlight >= 0 || (visible.length === 1 && !lookup?.hasMore))) {
+          const candidate = visible[Math.max(highlight, 0)]; if (candidate) choose(candidate);
+        } else if (visible.length) setHighlight(0);
+      }
       if (event.key === "Escape" && expanded) { event.preventDefault(); setExpanded(false); }
-    }} maxLength={160} placeholder="Teléfono, código o nombre del cliente" /></label>
+    }} maxLength={160} placeholder="Teléfono, código, identificación o nombre" /></label>
     {expanded && <div className="remittance-client-options" id={`${id}-options`} role="listbox" aria-label={`Clientes para ${label.toLocaleLowerCase()}`}>{visible.map((client, index) => <button type="button" key={client.id} id={`${id}-${index}`} role="option" aria-selected={client.id === value} className={index === highlight ? "highlighted" : undefined} onMouseDown={(event) => event.preventDefault()} onClick={() => choose(client)}>{clientLabel(client)}<small>Moneda habitual: {clientCurrency(client)}</small></button>)}{!visible.length && <p role="status">No hay clientes disponibles que coincidan.</p>}{matches.length > visible.length && <p>Escribe más caracteres para acotar los {matches.length} resultados.</p>}</div>}
+    </div>
     {expanded && lookupBusy && <p role="status">Buscando contactos…</p>}
     {expanded && lookupError && <p role="alert">{lookupError}</p>}
+    {missingSnapshotClients && <p role="status">Hay clientes recientes que todavía no están en esta vista. Pulsa Actualizar antes de seleccionar o registrar otra ficha.</p>}
     {expanded && lookup?.query === query && lookup.hasMore && <p role="status">Hay más coincidencias. Escribe más caracteres para acotar la búsqueda.</p>}
     <span className="remittance-client-selection" aria-live="polite">{selected ? `Seleccionado: ${clientLabel(selected)}` : "Selecciona un resultado para usar este cliente."}</span>
     {selected && contactState?.loading && <p className="remittance-help" role="status">Cargando teléfono y dirección…</p>}
@@ -121,7 +123,7 @@ let appliedPayoutRequest = 0;
 
 export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = "envios", reportRequest, payoutRequest }: { api: StrictApi; user: Actor; isAdmin: boolean; initialTab?: Tab; reportRequest?: number; payoutRequest?: { id: number; search: string } }) {
   const pendingPayout = payoutRequest && payoutRequest.id > appliedPayoutRequest ? payoutRequest : undefined;
-  const [tab, setTab] = useState<Tab>(reportRequest ? "reportes" : pendingPayout ? "recibos" : adminTabs.includes(initialTab) && !isAdmin ? "envios" : initialTab);
+  const [tab, setTab] = useState<Tab>(reportRequest ? "reportes" : pendingPayout ? "recibos" : initialTab);
   const [snapshot, setSnapshot] = useState<RemittanceSnapshot | null>(null);
   const [sent, setSent] = useState<Transfer[]>([]);
   const [received, setReceived] = useState<Transfer[]>([]);
@@ -132,12 +134,15 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   const [notice, setNotice] = useState("");
   const [search, setSearch] = useState(pendingPayout?.search ?? "");
   const [status, setStatus] = useState("all");
-  const [formOpen, setFormOpen] = useState(false);
+  const [formOpen, setFormOpen] = useState(true);
   const [draft, setDraft] = useState<Draft>({ senderClientId: "", recipientClientId: "", sendingUserId: user.id, sourceCurrency: "DOP", destinationCurrency: "DOP", amount: "", amountMode: "source", note: "" });
-  const [policyPercent, setPolicyPercent] = useState<string | null>(null);
-  const [transactionPolicyPercent, setTransactionPolicyPercent] = useState<string | null>(null);
-  const senderContact = useClientContact(api, formOpen ? draft.senderClientId : "", "sender", "", snapshot);
-  const recipientContact = useClientContact(api, formOpen ? draft.recipientClientId : "", "recipient", draft.senderClientId, snapshot);
+  const [newClients, setNewClients] = useState<{ sender?: NewRemittanceClient; recipient?: NewRemittanceClient }>({});
+  const [clientEditor, setClientEditor] = useState<ClientSide | null>(null);
+  const senderStoredContact = useClientContact(api, formOpen ? draft.senderClientId : "", "sender", "", snapshot);
+  const recipientStoredContact = useClientContact(api, formOpen ? draft.recipientClientId : "", "recipient", draft.senderClientId, snapshot);
+  const draftContact = (side: ClientSide): RemittanceContact | undefined => newClients[side] ? { ...newClients[side]!, id: `new-${side}`, code: "Se asignará al guardar", cellular: "" } : undefined;
+  const senderContact = newClients.sender ? { contact: draftContact("sender"), loading: false, error: undefined } : senderStoredContact;
+  const recipientContact = newClients.recipient ? { contact: draftContact("recipient"), loading: false, error: undefined } : recipientStoredContact;
   // Phone of the recipient: it starts with the one of the client record and can be typed or corrected.
   const knownRecipientPhone = recipientContact.contact ? recipientContact.contact.phone || recipientContact.contact.cellular || "" : "";
   const [recipientPhone, setRecipientPhone] = useState("");
@@ -170,6 +175,22 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   const reportRequests = useRef(new LatestRequestGate());
   const refreshRequests = useRef(new LatestRequestGate());
   const working = busy || quoteBusy || reportBusy;
+  const root = useRef<HTMLElement>(null);
+  const [focusVersion, setFocusVersion] = useState(0);
+  const lastFocus = useRef("");
+  const actor = { role: user.role ?? (isAdmin ? "admin" : "collector"), access: user.access && user.access.revision > (snapshot?.access?.revision ?? -1) ? user.access : snapshot?.access ?? user.access };
+  const can = (permission: RemittancePermission) => hasRemittancePermission(actor, permission);
+  const permittedTabs = tabs.filter(({ id }) => can(tabPermission[id]));
+  useEffect(() => {
+    if (snapshot && !permittedTabs.some(({ id }) => id === tab) && permittedTabs[0]) setTab(permittedTabs[0].id);
+  }, [snapshot, tab, permittedTabs.map(({ id }) => id).join(",")]);
+  useEffect(() => {
+    const marker = `${tab}:${focusVersion}`;
+    if (!snapshot || loading || busy || confirmation || printTransfer || clientEditor || detailId || marker === lastFocus.current) return;
+    const field = tab === "envios" ? root.current?.querySelector<HTMLInputElement>('[data-client-side="sender"] input')
+      : tab === "recibos" ? root.current?.querySelector<HTMLInputElement>('[data-receipt-search]') : null;
+    if (field) { lastFocus.current = marker; field.focus(); }
+  }, [tab, focusVersion, snapshot, loading, busy, confirmation, printTransfer, clientEditor, detailId]);
 
   const retireQuote = useCallback(() => { quoteRequests.current.invalidate(); quoteLock.current = false; setQuoteBusy(false); setQuote(null); }, []);
   const changeTab = useCallback((next: Tab) => { retireQuote(); reportRequests.current.invalidate(); setReportBusy(false); setTab(next); setError(""); setOutputError(""); }, [retireQuote]);
@@ -185,16 +206,19 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
     const request = refreshRequests.current.begin();
     setLoading(true); setError(""); setOutputError("");
     try {
-      const [data, outgoing, incoming] = await Promise.all([api<RemittanceSnapshot>("/envios/snapshot"), api<Transfer[]>("/envios"), api<Transfer[]>("/envios/recibos")]);
+      const data = await api<RemittanceSnapshot>("/envios/snapshot");
+      const accessActor = { role: user.role ?? (isAdmin ? "admin" : "collector"), access: data.access ?? user.access };
+      const [outgoing, incoming] = await Promise.all([
+        hasRemittancePermission(accessActor, "remittances.view") ? api<Transfer[]>("/envios") : Promise.resolve([]),
+        hasRemittancePermission(accessActor, "remittances.receipts") ? api<Transfer[]>("/envios/recibos") : Promise.resolve([]),
+      ]);
       if (!refreshRequests.current.accepts(request)) return;
       retireQuote();
       setSnapshot(data); setSent(outgoing); setReceived(incoming);
     } catch (failure) { if (refreshRequests.current.accepts(request)) setError(failure instanceof Error ? failure.message : "No pudimos cargar los envíos."); }
     finally { if (refreshRequests.current.accepts(request)) setLoading(false); }
-  }, [api, retireQuote]);
+  }, [api, retireQuote, user.id, user.role, user.access?.revision, isAdmin]);
   useEffect(() => { void refresh(); return () => { refreshRequests.current.invalidate(); quoteRequests.current.invalidate(); reportRequests.current.invalidate(); }; }, [refresh]);
-  // The rates tab is a read-only view of Administración: read it again on entry.
-  const ratesTabSeen = useRef(false);
   // Only the rates are read: the lists and a quote in progress are left untouched.
   const refreshRates = useCallback(async () => {
     try {
@@ -202,17 +226,14 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
       setSnapshot((current) => current ? { ...current, rates: data.rates, rateHistory: data.rateHistory } : current);
     } catch { /* The "Actualizar" button reports a failed read. */ }
   }, [api]);
-  useEffect(() => {
-    if (tab !== "tasas") { ratesTabSeen.current = true; return; }
-    if (ratesTabSeen.current) void refreshRates();
-    ratesTabSeen.current = true;
-  }, [tab, refreshRates]);
   // Administración announces a saved rate; the view shows it without leaving the tab.
   useEffect(() => {
     const onRates = () => { void refreshRates(); };
+    const onPolicy = () => { void refresh(); };
     window.addEventListener("cyp-exchange-rates-updated", onRates);
-    return () => window.removeEventListener("cyp-exchange-rates-updated", onRates);
-  }, [refreshRates]);
+    window.addEventListener("cyp-remittance-commissions-updated", onPolicy);
+    return () => { window.removeEventListener("cyp-exchange-rates-updated", onRates); window.removeEventListener("cyp-remittance-commissions-updated", onPolicy); };
+  }, [refreshRates, refresh]);
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => { if (uncertain || busy) { event.preventDefault(); event.returnValue = ""; } };
     window.addEventListener("beforeunload", warn);
@@ -230,17 +251,23 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
     setDraft((current) => ({ ...current, [key]: value })); retireQuote(); clearErrors();
   };
   const chooseClient = (side: ClientSide, client: RemittanceClient) => {
+    setNewClients((current) => ({ ...current, [side]: undefined }));
     setDraft((current) => selectRemittanceClient(current, side, client));
     if (side === "sender") { setSenderSearch(clientLabel(client)); if (draft.recipientClientId === client.id) setRecipientSearch(""); }
     else setRecipientSearch(clientLabel(client));
     retireQuote(); clearErrors();
+    window.requestAnimationFrame(() => root.current?.querySelector<HTMLSelectElement>(`[data-client-side="${side}"] + label select`)?.focus());
   };
-  const closeForm = () => { retireQuote(); setFormOpen(false); clearErrors(); };
+  const resetForm = () => {
+    retireQuote(); setFormOpen(true); clearErrors(); setNewClients({}); setSenderSearch(""); setRecipientSearch("");
+    setDraft({ senderClientId: "", recipientClientId: "", sendingUserId: user.id, sourceCurrency: "DOP", destinationCurrency: "DOP", amount: "", amountMode: "source", note: "" });
+    recipientPhoneTyped.current = false; setRecipientPhone(""); setFocusVersion((value) => value + 1);
+  };
   const updateReportFilter = (values: Partial<typeof reportFilters>) => { reportRequests.current.invalidate(); setReportBusy(false); setReportFilters((current) => ({ ...current, ...values })); setReport(null); setAllocationReport(null); setOutputError(""); };
   const confirm = (action: Confirmation) => { setConfirmation({ ...action, idempotencyKey: operationKey() }); setConfirmationError(""); setUncertain(false); setNotice(""); };
   const failureMessage = (failure: unknown) => failure instanceof Error ? failure.message : "No pudimos completar la operación.";
   const runOutput = (action: () => void) => { try { action(); setOutputError(""); } catch (failure) { setOutputError(failureMessage(failure)); } };
-  const closePrintPrompt = () => { setPrintTransfer(null); setReceiptPrintError(""); };
+  const closePrintPrompt = () => { setPrintTransfer(null); setReceiptPrintError(""); setFocusVersion((value) => value + 1); };
   const printSavedReceipt = () => {
     if (!printTransfer) return;
     try { printSections(`Comprobante ${printTransfer.envioReference}`, transferOutput(printTransfer, true), "CyP · Envíos de Dinero", { footerNote: snapshot?.receiptFooterNote }); closePrintPrompt(); }
@@ -268,14 +295,11 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
     pendingByActor.set(user.id, confirmation);
     try {
       const result = await api<Transfer>(confirmation.path, { method: "POST", headers: { "Idempotency-Key": confirmation.idempotencyKey! }, body: JSON.stringify(confirmation.body) });
-      if (confirmation.kind === "rate") confirmedRateResponse(result, confirmation.body as Pick<Rate, "currency" | "date" | "rate">);
-      if (confirmation.kind === "policy") confirmedCommissionPolicy(result, confirmation.body as Pick<CommissionPolicy, "transactionCommissionBps" | "managerCommissionBps">);
       const savedTransfer = confirmation.kind === "create" ? confirmedCreatedTransfer(result, confirmation.body, user.id, confirmation.expectedQuotation) : null;
       pendingByActor.delete(user.id);
       setNotice("Operación registrada correctamente.");
       // The phone typed for this transfer is not carried to the next one.
-      if (confirmation.kind === "create") { setFormOpen(false); setQuote(null); setDraft((current) => ({ ...current, amount: "", note: "" })); recipientPhoneTyped.current = false; setRecipientPhone(""); }
-      if (confirmation.kind === "policy") { setPolicyPercent(null); setTransactionPolicyPercent(null); }
+      if (confirmation.kind === "create") resetForm();
       if (confirmation.kind === "close") { setClosing(null); setCounted(""); }
       if (confirmation.kind === "cancel") setCancelReason("");
       setConfirmation(null); setUncertain(false); setReport(null); setAllocationReport(null);
@@ -297,8 +321,8 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
     const request = quoteRequests.current.begin();
     quoteLock.current = true; clearErrors(); setQuote(null); setQuoteBusy(true);
     try {
-      if (!draft.senderClientId || !draft.recipientClientId || draft.senderClientId === draft.recipientClientId) throw new Error("Selecciona un remitente y un destinatario distintos.");
-      if (!eligibleClients(snapshot.clients, "sender", draft.senderClientId).some((client) => client.id === draft.senderClientId) || !eligibleClients(snapshot.clients, "recipient", draft.senderClientId).some((client) => client.id === draft.recipientClientId)) throw new Error("El cliente seleccionado ya no está disponible. Selecciónalo de nuevo.");
+      if ((!draft.senderClientId && !newClients.sender) || (!draft.recipientClientId && !newClients.recipient) || (draft.senderClientId && draft.senderClientId === draft.recipientClientId)) throw new Error("Selecciona un remitente y un destinatario distintos.");
+      if ((draft.senderClientId && !eligibleClients(snapshot.clients, "sender", draft.senderClientId).some((client) => client.id === draft.senderClientId)) || (draft.recipientClientId && !eligibleClients(snapshot.clients, "recipient", draft.senderClientId).some((client) => client.id === draft.recipientClientId))) throw new Error("El cliente seleccionado ya no está disponible. Selecciónalo de nuevo.");
       if (!isDecimalDraft(draft.amount)) throw new Error("Revisa el importe: admite hasta dos decimales.");
       const amount = decimalCents(draft.amount);
       const params = new URLSearchParams({ sourceCurrency: draft.sourceCurrency, destinationCurrency: draft.destinationCurrency, amount: String(amount), amountMode: draft.amountMode });
@@ -320,23 +344,12 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
     catch (failure) { setError(failureMessage(failure)); return; }
     setError("");
     confirm({ title: "Confirmar envío", path: "/envios", kind: "create", expectedQuotation: quote, body: {
-      senderClientId: draft.senderClientId, recipientClientId: draft.recipientClientId,
+      ...(newClients.sender ? { newSenderClient: newClients.sender } : { senderClientId: draft.senderClientId }),
+      ...(newClients.recipient ? { newRecipientClient: newClients.recipient } : { recipientClientId: draft.recipientClientId }),
       ...(typedRecipientPhone ? { recipientPhone: typedRecipientPhone } : {}),
       ...(isAdmin ? { sendingUserId: draft.sendingUserId } : {}), sourceCurrency: quote.sourceCurrency, destinationCurrency: quote.destinationCurrency,
       amount: quote.amount, commissionBps: quote.commissionBps, quote: quote.quote, note: draft.note.trim(), ...(quote.requestedReceiveAmount === undefined ? {} : { requestedReceiveAmount: quote.requestedReceiveAmount }),
     }, description: <><p><strong>{senderContact.contact.name}</strong> envía a <strong>{recipientContact.contact.name}</strong>.</p><h3>Remitente</h3><ContactDetails contact={senderContact.contact} label="Remitente" /><h3>Destinatario</h3><ContactDetails contact={recipientContact.contact} label="Destinatario" />{typedRecipientPhone && <p><strong>Teléfono para este envío: {typedRecipientPhone}.</strong>{isAdmin && !recipientContact.contact.phone && digitsOf(typedRecipientPhone) !== digitsOf(recipientContact.contact.cellular) ? " También quedará guardado en la ficha del cliente, que no tiene teléfono." : " Sale en el comprobante; la ficha del cliente no cambia."}</p>}<p className="remittance-help">Datos actuales de las fichas de clientes. El comprobante conserva la copia guardada al registrar el envío.</p><QuoteDetails quote={quote} /><p>Operador: {operatorName(draft.sendingUserId)}. Registrado por: {user.name}.</p><p>Confirma después de recibir el total del remitente. La tasa queda guardada para este envío.</p></> });
-  }
-
-  function prepareCommissionPolicy(event: FormEvent) {
-    event.preventDefault(); if (!isAdmin || !snapshot) return;
-    try {
-      const transactionCommissionBps = decimalCents(transactionPolicyPercent ?? String((snapshot.commissionPolicy?.transactionCommissionBps ?? 0) / 100), true);
-      const managerCommissionBps = decimalCents(policyPercent ?? String((snapshot.commissionPolicy?.managerCommissionBps ?? 0) / 100), true);
-      if (transactionCommissionBps > 10000 || managerCommissionBps > 10000) throw new Error("Los porcentajes de comisión deben estar entre 0% y 100%.");
-      if (managerCommissionBps > transactionCommissionBps) throw new Error("La comisión del gestor no puede superar la comisión total de la transacción.");
-      confirm({ title: "Configurar comisiones de remesas", path: "/envios/politica-comisiones", kind: "policy", body: { transactionCommissionBps, managerCommissionBps },
-        description: <p>Guardar una comisión total de {transactionCommissionBps / 100}% sobre el monto a enviar y {managerCommissionBps / 100}% para el gestor sobre el importe final de destino. Se aplicarán automáticamente a remesas nuevas. La empresa recibe el resto de la comisión convertida; no se agrega otro cargo al cliente. Las remesas existentes conservan sus importes y reparto.</p> });
-    } catch (failure) { setError(failureMessage(failure)); }
   }
 
   function prepareOpening(event: FormEvent) {
@@ -416,20 +429,20 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   };
   const list = (tab === "recibos" ? received : sent).filter((transfer) => (status === "all" || transfer.status === status) && matchesSearch(transfer)).sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.sequence - a.sequence);
 
-  return <section className="remittances" aria-label="Envíos de Dinero">
+  return <section ref={root} className="remittances" aria-label="Envíos de Dinero">
     <header className="remittance-heading"><div><h1>Envíos de Dinero</h1><p>{snapshot ? `Fecha de operación: ${snapshot.businessDate}` : "Conexión con la API"} · {user.name}</p></div><button type="button" onClick={() => void refresh()} disabled={loading || working}>{loading ? "Cargando…" : "Actualizar"}</button></header>
-    <nav className="remittance-tabs" aria-label="Secciones de Envíos">{tabs.filter((item) => !adminTabs.includes(item.id) || isAdmin).map((item) => <button key={item.id} type="button" aria-current={tab === item.id ? "page" : undefined} onClick={() => changeTab(item.id)}>{item.label}</button>)}</nav>
+    <nav className="remittance-tabs" aria-label="Secciones de Envíos">{permittedTabs.map((item) => <button key={item.id} type="button" aria-current={tab === item.id ? "page" : undefined} onClick={() => changeTab(item.id)}>{item.label}</button>)}</nav>
     {error && <div className="remittance-error" role="alert">{error}</div>}
     {outputError && <div className="remittance-error" role="alert">{outputError}</div>}
     {notice && <div className="remittance-notice" role="status">{notice}</div>}
     {!snapshot ? <div className="remittance-empty">{loading ? "Cargando clientes, tasas y cajas…" : "No hay datos conectados. Actualiza para volver a intentar."}</div> : <>
-      {(snapshot.commissionPolicy?.managerCommissionBps ?? 0) > (snapshot.commissionPolicy?.transactionCommissionBps ?? 0) && <p className="remittance-error" role="alert">La comisión total configurada no cubre el porcentaje del gestor. Un administrador debe revisar Remesas → Comisiones antes de registrar nuevos envíos. Los recibos anteriores conservan sus importes.</p>}
+      {(snapshot.commissionPolicy?.managerCommissionBps ?? 0) > (snapshot.commissionPolicy?.transactionCommissionBps ?? 0) && <p className="remittance-error" role="alert">La comisión total configurada no cubre el porcentaje del gestor. Un administrador debe revisar Administración → Comisiones de remesas antes de registrar nuevos envíos. Los recibos anteriores conservan sus importes.</p>}
       {(tab === "envios" || tab === "recibos") && <>
-        <div className="remittance-toolbar"><label>Buscar<input type="search" maxLength={INPUT_LIMITS.name} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Serie, teléfono, nombre, identificación, dirección o nota" title="El teléfono se encuentra aunque lo escribas sin guiones ni espacios." /></label><label>Estado<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">Todos</option><option value="pending">Pendientes</option><option value="paid">Pagados</option><option value="cancelled">Cancelados</option></select></label>{tab === "envios" && <button type="button" className="remittance-primary" disabled={busy || uncertain} onClick={() => { if (formOpen) closeForm(); else { setFormOpen(true); clearErrors(); } }}>{formOpen ? "Cancelar nuevo envío" : "Nuevo envío"}</button>}</div>
-        {tab === "envios" && formOpen && <form className="remittance-panel" onSubmit={(event) => void requestQuote(event)}>
+        <div className="remittance-toolbar"><label>Buscar<input data-receipt-search={tab === "recibos" || undefined} type="search" maxLength={INPUT_LIMITS.name} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Serie, teléfono, nombre, identificación, dirección o nota" title="El teléfono se encuentra aunque lo escribas sin guiones ni espacios." /></label><label>Estado<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">Todos</option><option value="pending">Pendientes</option><option value="paid">Pagados</option><option value="cancelled">Cancelados</option></select></label>{tab === "envios" && can("remittances.create") && <button type="button" className="remittance-primary" disabled={working || uncertain} onClick={resetForm}>Nuevo envío</button>}</div>
+        {tab === "envios" && formOpen && can("remittances.create") && <form onKeyDown={advanceCaptureField} className="remittance-panel" onSubmit={(event) => void requestQuote(event)}>
           <h2>Nuevo envío</h2><fieldset disabled={working || uncertain} className="remittance-form-grid">
             <div className="remittance-party-fields" role="group" aria-label="Datos del remitente">
-              <ClientPicker api={api} side="sender" senderId="" label="Remitente" clients={eligibleClients(snapshot.clients, "sender", draft.senderClientId)} value={draft.senderClientId} query={senderSearch} onQuery={(value) => { setSenderSearch(value); updateDraft("senderClientId", ""); }} onSelect={(client) => chooseClient("sender", client)} contactState={senderContact} />
+              {newClients.sender ? <div data-client-side="sender"><strong>Nuevo remitente: {newClients.sender.name}</strong><ContactDetails contact={senderContact.contact!} label="Remitente" /><button type="button" onClick={() => setClientEditor("sender")}>Modificar datos del nuevo remitente</button><button type="button" onClick={() => { setNewClients((current) => ({ ...current, sender: undefined })); retireQuote(); setFocusVersion((value) => value + 1); }}>Elegir remitente registrado</button></div> : <ClientPicker api={api} side="sender" senderId="" label="Remitente" clients={eligibleClients(snapshot.clients, "sender", draft.senderClientId)} value={draft.senderClientId} query={senderSearch} onQuery={(value) => { setSenderSearch(value); updateDraft("senderClientId", ""); }} onSelect={(client) => chooseClient("sender", client)} onCreate={can("remittances.clients.create") && snapshot.clientRoutes?.length ? () => setClientEditor("sender") : undefined} contactState={senderContact} />}
               <label>Moneda del remitente<select value={draft.sourceCurrency} onChange={(event) => updateDraft("sourceCurrency", event.target.value as Currency)}>{snapshot.currencies.map((currency) => <option key={currency}>{currency}</option>)}</select></label>
               <label>Ingresar importe de<select value={draft.amountMode} onChange={(event) => { updateDraft("amountMode", event.target.value as Draft["amountMode"]); setDraft((current) => ({ ...current, amount: "" })); }}><option value="source">Origen · Monto a enviar</option><option value="destination">Destino · Monto a recibir</option></select></label>
               <label>{draft.amountMode === "source" ? `Monto a enviar (${draft.sourceCurrency})` : `Monto a recibir (${draft.destinationCurrency})`}<input required inputMode="decimal" maxLength={moneyInputLength} value={draft.amount} onChange={(event) => updateDraft("amount", event.target.value)} placeholder="0.00" /></label>
@@ -438,8 +451,8 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
               <label>Comisión (%)<input aria-label="Comisión (%)" readOnly value={String((quote?.commissionBps ?? snapshot.commissionPolicy?.transactionCommissionBps ?? 0) / 100)} /><small>Se aplica automáticamente desde la configuración de comisiones.</small></label>
             </div>
             <div className="remittance-party-fields" role="group" aria-label="Datos del destinatario">
-              <ClientPicker api={api} side="recipient" senderId={draft.senderClientId} label="Destinatario" clients={eligibleClients(snapshot.clients, "recipient", draft.senderClientId)} value={draft.recipientClientId} query={recipientSearch} onQuery={(value) => { setRecipientSearch(value); updateDraft("recipientClientId", ""); }} onSelect={(client) => chooseClient("recipient", client)} contactState={recipientContact} />
-              <label className="remittance-phone-field">Teléfono del destinatario<input type="tel" inputMode="tel" autoComplete="off" maxLength={INPUT_LIMITS.phone} value={recipientPhone} disabled={!draft.recipientClientId} onChange={(event) => { recipientPhoneTyped.current = true; setRecipientPhone(event.target.value); setError(""); }} placeholder="Escríbelo si no aparece" /></label>
+              {newClients.recipient ? <div data-client-side="recipient"><strong>Nuevo destinatario: {newClients.recipient.name}</strong><ContactDetails contact={recipientContact.contact!} label="Destinatario" /><button type="button" onClick={() => setClientEditor("recipient")}>Modificar datos del nuevo destinatario</button><button type="button" onClick={() => { setNewClients((current) => ({ ...current, recipient: undefined })); retireQuote(); }}>Elegir destinatario registrado</button></div> : <ClientPicker api={api} side="recipient" senderId={draft.senderClientId} label="Destinatario" clients={eligibleClients(snapshot.clients, "recipient", draft.senderClientId)} value={draft.recipientClientId} query={recipientSearch} onQuery={(value) => { setRecipientSearch(value); updateDraft("recipientClientId", ""); }} onSelect={(client) => chooseClient("recipient", client)} onCreate={can("remittances.clients.create") && snapshot.clientRoutes?.length ? () => setClientEditor("recipient") : undefined} contactState={recipientContact} />}
+              <label className="remittance-phone-field">Teléfono del destinatario<input type="tel" inputMode="tel" autoComplete="off" maxLength={INPUT_LIMITS.phone} value={recipientPhone} disabled={!draft.recipientClientId && !newClients.recipient} onChange={(event) => { recipientPhoneTyped.current = true; setRecipientPhone(event.target.value); setError(""); }} placeholder="Escríbelo si no aparece" /></label>
               {recipientContact.contact && !knownRecipientPhone && !recipientPhone.trim() && <p className="remittance-client-warning" role="status">Este destinatario no tiene teléfono registrado. Escríbelo en «Teléfono del destinatario» para poder ubicarlo.</p>}
               <label>Moneda del destinatario<select value={draft.destinationCurrency} onChange={(event) => updateDraft("destinationCurrency", event.target.value as Currency)}>{snapshot.currencies.map((currency) => <option key={currency}>{currency}</option>)}</select></label>
             </div>
@@ -453,16 +466,10 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
         <p className="remittance-help">{tab === "recibos" ? "Recibos por destino. Abre un pendiente para registrar su entrega completa." : "Envíos registrados por tu operación. Abre una referencia para consultar su detalle."}</p>
         <div className="remittance-table-wrap"><table className="remittance-table remittance-transfer-table"><caption>{tab === "recibos" ? "Recepción de dinero" : "Listado de envíos"} · {list.length}</caption><thead><tr><th>Referencia</th><th>Fecha</th><th>Remitente → destinatario · teléfono</th><th>Total recibido</th><th>A entregar</th><th>Estado</th></tr></thead><tbody>{list.map((transfer) => <tr key={transfer.id} onDoubleClick={() => { setDetailId(transfer.id); setCancelReason(""); }}><td data-label="Referencia"><button type="button" className="remittance-link" onClick={() => { setDetailId(transfer.id); setCancelReason(""); }}>{tab === "recibos" ? transfer.reciboReference : transfer.envioReference}</button><small>{transfer.operatingCode}</small></td><td data-label="Fecha">{formatDate(transfer.createdAt)}</td><td data-label="Clientes"><span className="remittance-client-cell">{clientName(transfer.senderClientId)}{transfer.senderContact?.phone || transfer.senderContact?.cellular ? <span className="remittance-client-phone"> · {transfer.senderContact.phone || transfer.senderContact.cellular}</span> : null}<br />→ {clientName(transfer.recipientClientId)}{transfer.recipientContact?.phone || transfer.recipientContact?.cellular ? <span className="remittance-client-phone"> · {transfer.recipientContact.phone || transfer.recipientContact.cellular}</span> : null}</span></td><td data-label="Total recibido">{money(transfer.totalAmount, transfer.sourceCurrency)}</td><td data-label="A entregar">{money(transfer.receiveAmount, transfer.destinationCurrency)}</td><td data-label="Estado"><span className={`remittance-status ${transfer.status}`}>{statusText[transfer.status]}</span></td></tr>)}{!list.length && <tr><td colSpan={6}>No hay {tab === "envios" ? "envíos" : "recibos"} para estos filtros.</td></tr>}</tbody></table></div>
       </>}
-      {tab === "comisiones" && isAdmin && <form className="remittance-panel" onSubmit={prepareCommissionPolicy}><h2>Reparto de comisiones</h2><p>Registra aquí los porcentajes aprobados por Gerencia. Cada nueva remesa los toma automáticamente en Admin y en la terminal del cobrador. Ambos empiezan en 0% hasta definir las tasas comerciales. Los cambios afectan solo remesas futuras.</p><fieldset disabled={working || uncertain} className="remittance-form-grid"><label>Comisión total de la transacción (%)<input aria-label="Comisión total de la transacción (%)" required inputMode="decimal" maxLength={6} value={transactionPolicyPercent ?? String((snapshot.commissionPolicy?.transactionCommissionBps ?? 0) / 100)} onChange={(event) => { if (isDecimalDraft(event.target.value, { wholeDigits: 3 })) setTransactionPolicyPercent(event.target.value); }} /><small>Se cobra sobre el monto a enviar en moneda de origen.</small></label><label>Comisión del gestor (%)<input aria-label="Comisión del gestor (%)" required inputMode="decimal" maxLength={6} value={policyPercent ?? String((snapshot.commissionPolicy?.managerCommissionBps ?? 0) / 100)} onChange={(event) => { if (isDecimalDraft(event.target.value, { wholeDigits: 3 })) setPolicyPercent(event.target.value); }} /><small>Se calcula sobre el importe final de destino. La empresa conserva el resto.</small></label></fieldset><button className="remittance-primary" disabled={working || uncertain}>Revisar reparto</button></form>}
-      {tab === "tasas" && isAdmin && <>
-        <p className="remittance-help">Consulta de tasas de Administración: esta pantalla solo muestra el historial. Para registrar o modificar una tasa utiliza Archivos → Admin. → Tasas de cambio. Los envíos conservan la tasa aplicada al confirmarlos.</p>
-        <DataTable section={{ title: "Tasas registradas por día · la más reciente arriba", columns: ["Fecha", "Moneda", "Tasa de remesas", "Compra", "Venta", "Último cambio (hora de Santo Domingo)"], rows: [...snapshot.rates].sort((a, b) => b.date.localeCompare(a.date) || (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "")).map((row) => [row.date, row.currency, row.rate, row.purchaseRate ?? "Sin configurar", row.saleRate ?? "Sin configurar", rateMoment(row.updatedAt)]) }} />
-        <DataTable section={{ title: "Historial de cambios de tasa · el más reciente arriba", columns: ["Fecha de operación", "Moneda", "Tasa de remesas", "Compra", "Venta", "Fecha y hora (hora de Santo Domingo)", "Registrado por"], rows: [...(snapshot.rateHistory ?? [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map((row) => [row.date, row.currency, row.rate, row.purchaseRate ?? "Sin configurar", row.saleRate ?? "Sin configurar", rateMoment(row.createdAt), operatorName(row.actorId)]) }} />
-      </>}
       {tab === "caja" && <>
         <p className="remittance-help">Caja exclusiva de envíos. Saldo = apertura + ingresos de envíos − devoluciones − pagos. Cada moneda se cuenta por separado.</p>
-        {isAdmin && <form className="remittance-panel" onSubmit={prepareOpening}><h2>Abrir caja del {snapshot.businessDate}</h2><fieldset disabled={busy} className="remittance-form-grid"><label>Operador<select required value={opening.operatorId} onChange={(event) => setOpening((current) => ({ ...current, operatorId: event.target.value }))}>{snapshot.operators.map((operator) => <option key={operator.id} value={operator.id}>{operator.name}</option>)}</select></label><label>Moneda<select value={opening.currency} onChange={(event) => setOpening((current) => ({ ...current, currency: event.target.value as Currency }))}>{snapshot.currencies.map((currency) => <option key={currency}>{currency}</option>)}</select></label><label>Efectivo inicial<input required inputMode="decimal" maxLength={moneyInputLength} value={opening.amount} onChange={(event) => { if (isDecimalDraft(event.target.value)) setOpening((current) => ({ ...current, amount: event.target.value })); }} /></label></fieldset><button className="remittance-primary" disabled={busy}>Revisar apertura</button></form>}
-        <div className="remittance-cash-grid">{snapshot.cashSessions.map((cash) => <article className="remittance-panel" key={cash.id}><h2>{cash.currency} · {operatorName(cash.operatorId)}</h2><p>{cash.date} · {cash.status === "open" ? "Abierta" : "Cerrada"}</p><dl className="remittance-summary"><div><dt>Apertura</dt><dd>{money(cash.openingAmount, cash.currency)}</dd></div><div><dt>Ingresos por envíos</dt><dd>{money(cash.sentTotal, cash.currency)}</dd></div><div><dt>Devoluciones</dt><dd>{money(cash.cancelRefund, cash.currency)}</dd></div><div><dt>Pagos</dt><dd>{money(cash.paid, cash.currency)}</dd></div><div className="remittance-total"><dt>Efectivo esperado</dt><dd>{money(cash.expected, cash.currency)}</dd></div>{cash.countedAmount !== undefined && <div><dt>Contado al cierre</dt><dd>{money(cash.countedAmount, cash.currency)}</dd></div>}</dl>{cash.canClose && <button type="button" onClick={() => { setClosing(cash); setCounted(""); clearErrors(); }}>Contar y cerrar</button>}</article>)}{!snapshot.cashSessions.length && <div className="remittance-empty">No hay cajas de envíos. Un administrador debe abrir la caja antes de operar.</div>}</div>
+        {isAdmin && can("remittances.cash.open") && <form className="remittance-panel" onSubmit={prepareOpening}><h2>Abrir caja del {snapshot.businessDate}</h2><fieldset disabled={busy} className="remittance-form-grid"><label>Operador<select required value={opening.operatorId} onChange={(event) => setOpening((current) => ({ ...current, operatorId: event.target.value }))}>{snapshot.operators.map((operator) => <option key={operator.id} value={operator.id}>{operator.name}</option>)}</select></label><label>Moneda<select value={opening.currency} onChange={(event) => setOpening((current) => ({ ...current, currency: event.target.value as Currency }))}>{snapshot.currencies.map((currency) => <option key={currency}>{currency}</option>)}</select></label><label>Efectivo inicial<input required inputMode="decimal" maxLength={moneyInputLength} value={opening.amount} onChange={(event) => { if (isDecimalDraft(event.target.value)) setOpening((current) => ({ ...current, amount: event.target.value })); }} /></label></fieldset><button className="remittance-primary" disabled={busy}>Revisar apertura</button></form>}
+        <div className="remittance-cash-grid">{snapshot.cashSessions.map((cash) => <article className="remittance-panel" key={cash.id}><h2>{cash.currency} · {operatorName(cash.operatorId)}</h2><p>{cash.date} · {cash.status === "open" ? "Abierta" : "Cerrada"}</p><dl className="remittance-summary"><div><dt>Apertura</dt><dd>{money(cash.openingAmount, cash.currency)}</dd></div><div><dt>Ingresos por envíos</dt><dd>{money(cash.sentTotal, cash.currency)}</dd></div><div><dt>Devoluciones</dt><dd>{money(cash.cancelRefund, cash.currency)}</dd></div><div><dt>Pagos</dt><dd>{money(cash.paid, cash.currency)}</dd></div><div className="remittance-total"><dt>Efectivo esperado</dt><dd>{money(cash.expected, cash.currency)}</dd></div>{cash.countedAmount !== undefined && <div><dt>Contado al cierre</dt><dd>{money(cash.countedAmount, cash.currency)}</dd></div>}</dl>{cash.canClose && can("remittances.cash.close") && <button type="button" onClick={() => { setClosing(cash); setCounted(""); clearErrors(); }}>Contar y cerrar</button>}</article>)}{!snapshot.cashSessions.length && <div className="remittance-empty">No hay cajas de envíos. Un administrador debe abrir la caja antes de operar.</div>}</div>
       </>}
       {tab === "reportes" && <>
         <form className="remittance-panel" onSubmit={(event) => void loadReport(event)}><h2>Reportes de envíos</h2><fieldset disabled={working} className="remittance-form-grid"><label>Desde<input type="date" required value={reportFilters.from} onChange={(event) => updateReportFilter({ from: event.target.value })} /></label><label>Hasta<input type="date" required value={reportFilters.to} onChange={(event) => updateReportFilter({ to: event.target.value })} /></label><label>Presentación<select value={reportFilters.grouping} onChange={(event) => updateReportFilter({ grouping: event.target.value as "range" | "day" })}><option value="range">Resumido del rango</option><option value="day">Diario</option></select></label><label>Reporte<select value={reportFilters.type} onChange={(event) => updateReportFilter({ type: event.target.value as RemittanceReportType })}>{remittanceReportDefinitions.map((definition) => <option key={definition.type} value={definition.type}>{definition.label}</option>)}</select></label>
@@ -476,13 +483,21 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
         {displayedReport && <><div className="remittance-toolbar"><strong>{reportTitle}</strong><button type="button" onClick={() => runOutput(() => printSections(reportTitle, reportSections))}>Imprimir</button><button type="button" onClick={() => runOutput(() => exportSections(`envios-${reportFilters.type}-${displayedReport.from}-${displayedReport.to}`, reportSections))}>Exportar CSV</button></div><p className="remittance-help">{remittanceReportDefinition(reportFilters.type).scope}</p>{reportSections.map((section) => <DataTable key={section.title} section={section} wide={Boolean(allocationReport) && section.columns.length > 2} />)}</>}
       </>}
     </>}
-    {detail && <Dialog title={`${detail.envioReference} · ${detail.reciboReference}`} onClose={() => setDetailId(null)}>
+    {clientEditor && snapshot && <QuickClientDialog key={clientEditor} side={clientEditor} initial={newClients[clientEditor]} currency={clientEditor === "sender" ? draft.sourceCurrency : draft.destinationCurrency} routes={snapshot.clientRoutes ?? []} onClose={() => setClientEditor(null)} onUse={(client) => {
+      const side = clientEditor;
+      setNewClients((current) => ({ ...current, [side]: client }));
+      setDraft((current) => ({ ...current, [side === "sender" ? "senderClientId" : "recipientClientId"]: "", [side === "sender" ? "sourceCurrency" : "destinationCurrency"]: client.preferredCurrency }));
+      if (side === "recipient") { recipientPhoneTyped.current = false; setRecipientPhone(client.phone); }
+      retireQuote(); clearErrors(); setClientEditor(null);
+      window.requestAnimationFrame(() => root.current?.querySelector<HTMLElement>(side === "sender" ? '[data-client-side="sender"] + label select' : '.remittance-phone-field input')?.focus());
+    }} />}
+    {detail && <Dialog title={`${detail.envioReference} · ${detail.reciboReference}`} onClose={() => { setDetailId(null); if (tab === "recibos") setFocusVersion((value) => value + 1); }}>
       <p><span className={`remittance-status ${detail.status}`}>{statusText[detail.status]}</span> · {detail.operatingCode}</p><p><strong>{detail.senderContact?.name ?? clientName(detail.senderClientId)}</strong> → <strong>{detail.recipientContact?.name ?? clientName(detail.recipientClientId)}</strong></p><QuoteDetails quote={detail} /><p>Creado: {formatDate(detail.createdAt)}<br />Operador: {operatorName(detail.sendingUserId)}<br />Registrado por: {operatorName(detail.registeredBy)}</p>{detail.note && <p>Nota: {detail.note}</p>}
       <DataTable section={{ title: "Contactos guardados en esta operación", columns: ["Dato", "Valor"], rows: contactRows(detail) }} />
       {detail.managerCommission && <DataTable section={{ title: "Anotación histórica manual del gestor", columns: ["Dato", "Valor"], rows: managerCommissionRows(detail.managerCommission) }} />}
       {detail.paidAt && <p>Pagado: {formatDate(detail.paidAt)} · {operatorName(detail.paidBy)}</p>}{detail.cancelReason && <p>Cancelado: {formatDate(detail.cancelledAt)}. Motivo: {detail.cancelReason}</p>}
-      <div className="remittance-actions"><button type="button" onClick={() => runOutput(() => printSections(`Comprobante ${detail.envioReference}`, transferOutput(detail, true), "CyP · Envíos de Dinero", { footerNote: snapshot?.receiptFooterNote }))}>Imprimir comprobante</button>{detail.status === "pending" && detail.canPay && <button type="button" className="remittance-primary" onClick={() => confirm({ title: "Confirmar entrega al destinatario", path: `/envios/${encodeURIComponent(detail.id)}/pagar`, body: {}, kind: "pay", description: <p>Registrar entrega única de <strong>{money(detail.receiveAmount, detail.destinationCurrency)}</strong> a <strong>{clientName(detail.recipientClientId)}</strong>. Se descuenta de tu caja abierta de hoy. Confirma después de entregar el dinero.</p> })}>Registrar pago completo</button>}</div>
-      {detail.status === "pending" && detail.canCancel && <form className="remittance-cancel" onSubmit={prepareCancellation}><label>Motivo de cancelación<textarea required maxLength={INPUT_LIMITS.freeNote} value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} /></label><button className="remittance-danger" type="submit" disabled={!cancelReason.trim()}>Revisar cancelación</button></form>}
+      <div className="remittance-actions"><button type="button" onClick={() => runOutput(() => printSections(`Comprobante ${detail.envioReference}`, transferOutput(detail, true), "CyP · Envíos de Dinero", { footerNote: snapshot?.receiptFooterNote }))}>Imprimir comprobante</button>{detail.status === "pending" && detail.canPay && can("remittances.pay") && <button type="button" className="remittance-primary" onClick={() => confirm({ title: "Confirmar entrega al destinatario", path: `/envios/${encodeURIComponent(detail.id)}/pagar`, body: {}, kind: "pay", description: <p>Registrar entrega única de <strong>{money(detail.receiveAmount, detail.destinationCurrency)}</strong> a <strong>{clientName(detail.recipientClientId)}</strong>. Se descuenta de tu caja abierta de hoy. Confirma después de entregar el dinero.</p> })}>Registrar pago completo</button>}</div>
+      {detail.status === "pending" && detail.canCancel && can("remittances.cancel") && <form className="remittance-cancel" onSubmit={prepareCancellation}><label>Motivo de cancelación<textarea required maxLength={INPUT_LIMITS.freeNote} value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} /></label><button className="remittance-danger" type="submit" disabled={!cancelReason.trim()}>Revisar cancelación</button></form>}
     </Dialog>}
     {closing && <Dialog title={`Contar caja ${closing.currency}`} onClose={() => setClosing(null)}><form onSubmit={prepareClosing}><p>{operatorName(closing.operatorId)} · {closing.date}</p><p>Esperado: <strong>{money(closing.expected, closing.currency)}</strong></p><label>Efectivo contado<input autoFocus required inputMode="decimal" maxLength={moneyInputLength} value={counted} onChange={(event) => { if (isDecimalDraft(event.target.value)) setCounted(event.target.value); }} /></label>{error && <p role="alert" className="remittance-error">{error}</p>}<button className="remittance-primary" type="submit">Revisar cierre</button></form></Dialog>}
     {confirmation && <Dialog title={confirmation.title} onClose={() => setConfirmation(null)} locked={busy || uncertain}>{confirmation.description}{confirmationError && <p className="remittance-error" role="alert">{confirmationError}</p>}{uncertain && <p>No cambies los datos ni cierres esta ventana. El reintento usa la misma referencia de operación.</p>}<div className="remittance-actions"><button type="button" disabled={busy || uncertain} onClick={() => setConfirmation(null)}>Volver</button><button type="button" className={confirmation.kind === "cancel" ? "remittance-danger" : "remittance-primary"} disabled={busy} onClick={() => void submitConfirmation()}>{busy ? "Registrando…" : uncertain ? "Reintentar misma operación" : "Confirmar"}</button></div></Dialog>}

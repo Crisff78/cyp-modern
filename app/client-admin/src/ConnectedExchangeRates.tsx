@@ -78,6 +78,10 @@ export function ConnectedExchangeRates({ actorId, isAdmin }: { actorId: string; 
         </tr>)}{!rates.length && <tr><td colSpan={7}>{loading ? "Cargando tasas…" : "No hay tasas guardadas."}</td></tr>}</tbody>
       </table>
     </div>
+    <details className="catalog-scope-note">
+      <summary>Historial de cambios de tasa · el más reciente arriba</summary>
+      <div className="legacy-mdi-table-wrap"><table className="legacy-mdi-table"><thead><tr><th>Fecha de operación</th><th>Moneda</th><th>Tasa de remesas</th><th>Compra</th><th>Venta</th><th>Fecha y hora (hora de Santo Domingo)</th><th>Registrado por</th></tr></thead><tbody>{[...(snapshot?.rateHistory ?? [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map((row) => <tr key={row.id}><td>{row.date}</td><td>{row.currency}</td><td>{row.rate}</td><td>{row.purchaseRate ?? "Sin configurar"}</td><td>{row.saleRate ?? "Sin configurar"}</td><td>{rateMoment(row.createdAt)}</td><td>{snapshot?.operators.find(({ id }) => id === row.actorId)?.name ?? row.actorId}</td></tr>)}{!snapshot?.rateHistory?.length && <tr><td colSpan={7}>No hay cambios registrados.</td></tr>}</tbody></table></div>
+    </details>
     <div className="legacy-footerbar"><span>Registros: {rates.length}</span><span>Jornada: {snapshot?.businessDate ?? "—"}</span></div>
     <p className="catalog-scope-note">Valores en DOP por una unidad de la moneda. Compra y venta se configuran por separado. Las remesas utilizan la tasa de remesas; sus operaciones anteriores conservan la tasa guardada. DOP siempre vale 1.</p>
     {draft && <LegacyDialog title={reviewing ? "Confirmar Tasa de Cambio..." : "Datos de la Tasa de Cambio..."} className="exchange-rate-dialog" onClose={close}>

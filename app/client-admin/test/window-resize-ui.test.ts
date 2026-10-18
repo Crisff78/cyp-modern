@@ -81,6 +81,9 @@ createRoot(document.getElementById("root")).render(<App />);
     };
     const openClients = async () => {
       const clients = page.locator(".sidebar").getByRole("button", { name: "Clientes", exact: true });
+      // A reload first restores the authenticated user's permissions. Do not
+      // mistake that pending state for a collapsed navigation group.
+      await clients.waitFor({ state: "attached" });
       if (!await clients.isVisible()) await page.locator(".sidebar").getByRole("button", { name: "ARCHIVOS", exact: true }).click();
       await clients.click();
       const frame = page.getByRole("dialog", { name: "Clientes", exact: true });

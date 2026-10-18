@@ -65,6 +65,9 @@ import { boundedId, fourDecimalNumber, freeText, machineCounter, optionalEmail, 
 import { claimClientIdentity, reserveClientIdentity, SYSTEM_CLIENT_CODE } from "./client-identities.js";
 import { ACCOUNT_ROLES, isOperationalRole } from "./account-roles.js";
 import { permissionCatalog, permissionsForAccount, updateAccountPermissions, userPermissionsBody } from "./user-permissions.js";
+import { authorizeRequest, currentAccessUser, filterOperationalSnapshot, guardCatalogChanges, requirePermission } from "./access.js";
+import { hasPermission, hasRemittanceAccess } from "../../shared/access.mjs";
+import { clientInput } from "./client-schema.js";
 import { previousCashPreview, reconcilePreviousCash } from "./cash-reconciliation.js";
 
 type Config = {
@@ -128,22 +131,6 @@ const depositComponent = z.discriminatedUnion("method", [
   z.object({ method: z.literal("bank_deposit"), ...nonCashComponent }).strict(),
 ]);
 const depositBody = transferBody.extend({ depositComponents: z.array(depositComponent).min(1).max(20).optional() });
-const clientInput = z.object({
-  name: text,
-  code: singleLine(80, 1),
-  phone: phone.pipe(phoneOrEmpty).default(""),
-  address: singleLine(240).default(""),
-  routeId: id,
-  preferredCurrency: z.enum(ledgerCurrencies).optional(),
-  alias: singleLine(160).default(""),
-  sector: singleLine(160).default(""),
-  cellular: phone.pipe(phoneOrEmpty).default(""),
-  email: optionalEmail.pipe(emailOrEmpty).default(""),
-  note: freeText(2000).default(""),
-  identification: singleLine(80).default(""),
-  lat: z.number().min(-90).max(90).optional(),
-  lng: z.number().min(-180).max(180).optional(),
-}).strict();
 const clientBody = clientInput.refine((body) => (body.lat === undefined) === (body.lng === undefined), {
   message: "Latitud y longitud deben enviarse juntas.",
 });
@@ -301,6 +288,8 @@ export async function buildApp(config: Config) {
       }
       if (config.demo && u.id === "demo-collector" && u.role === "collector" && u.collectorId === "col-1")
         u.name = "Cobrador";
+      req.user = currentAccessUser(state, u);
+      authorizeRequest(req.user as User, req.method, path);
       return;
     }
     // Provisioned accounts: the token carries the account's credential
@@ -320,11 +309,15 @@ export async function buildApp(config: Config) {
       );
     if (u.role === "collector" && !state.collectors.some((c) => c.id === u.collectorId && c.active !== false))
       throw new DomainError("COLLECTOR_INACTIVE", "El cobrador está inactivo.", 403);
+    const accessedUser = currentAccessUser(state, u);
+    req.user = accessedUser;
     if (!isOperationalRole(u.role)) {
       const ownSession = path === "/api/auth/me" || path === "/api/auth/logout" || path === `/api/usuarios/${u.id}/clave`;
-      if (!ownSession && !(u.role === "supervisor" && req.method === "GET"))
+      const remittanceOperator = u.role === "user" && hasRemittanceAccess(accessedUser) && (path.startsWith("/api/envios") || path === "/api/snapshot");
+      if (!ownSession && !remittanceOperator && !(u.role === "supervisor" && req.method === "GET"))
         throw new DomainError("FORBIDDEN", "Este rol no tiene permiso para realizar esta operación.", 403);
     }
+    authorizeRequest(accessedUser, req.method, path);
   });
   const user = (req: FastifyRequest) => req.user as User;
   const paths: Record<string, Record<string, unknown>> = {};
@@ -407,6 +400,8 @@ export async function buildApp(config: Config) {
           .digest("hex");
       return config.store.transaction(async (state) => {
         assertAuthSession(state, u, (u as User & { sid?: string }).sid);
+        const accessedUser = currentAccessUser(state, u);
+        authorizeRequest(accessedUser, req.method, req.url.split("?")[0]);
         const existing = state.idempotency.find((i) => i.id === scope);
         if (existing) {
           const legacyBody = legacyFinancialFingerprintBody(path, body, req.body);
@@ -420,7 +415,9 @@ export async function buildApp(config: Config) {
             );
           return existing.response;
         }
-        const response = await fn(state, u, body, params);
+        const checkCatalogChanges = guardCatalogChanges(state, accessedUser, req.url.split("?")[0]);
+        const response = await fn(state, accessedUser, body, params);
+        checkCatalogChanges();
         recordMutationTrace(state, u, path, req.params, response);
         state.idempotency.push({
           id: scope,
@@ -495,17 +492,20 @@ export async function buildApp(config: Config) {
         );
       if (u.role === "collector" && !(await config.store.read()).collectors.some((c) => c.id === u!.collectorId && c.active !== false))
         throw new DomainError("COLLECTOR_INACTIVE", "El cobrador está inactivo.", 403);
+      const accessedUser = currentAccessUser(stored, u);
+      if (accessedUser.access?.mode === "custom" && !hasPermission(accessedUser, 1))
+        throw new DomainError("ACCESS_REVOKED", "Tu cuenta no tiene permiso para entrar al sistema. Solicita una revisión a Administración.", 403);
       const session = await config.store.transaction((s) => createAuthSession(s, u!));
       return {
         token: app.jwt.sign({ ...u, authVersion: version, sid: session.id }, { expiresIn: "8h" }),
-        user: u,
+        user: accessedUser,
       };
     },
   );
   describe("post", "/api/auth/login", "Iniciar sesión", loginBody, true);
   app.get("/api/auth/me", (req) => {
-    const { id, name, role, collectorId } = user(req);
-    return { id, name, role, collectorId };
+    const { id, name, role, collectorId, access } = user(req);
+    return { id, name, role, collectorId, access };
   });
   describe("get", "/api/auth/me", "Usuario actual");
   const emailField = singleLine(200, 1);
@@ -556,6 +556,7 @@ export async function buildApp(config: Config) {
     accountBody,
     (state, u, body) => {
       assertAdmin(u);
+      if (!["undefined", "user"].includes(body.role)) requirePermission(u, 106);
       const email = body.email.trim().toLowerCase();
       if (bootstrapIdForLogin(email))
         throw new DomainError("DUPLICATE_EMAIL", "Ese usuario de inicio corresponde a una cuenta existente.", 409);
@@ -611,6 +612,7 @@ export async function buildApp(config: Config) {
     assertAdmin(actor);
     const account = state.accounts.find((item) => item.id === params.id);
     if (!account) throw new DomainError("NOT_FOUND", "La cuenta no existe.", 404);
+    if (body.role !== account.role && !["undefined", "user"].includes(body.role)) requirePermission(actor, 106);
     if (actor.id === account.id && body.role !== "admin") throw new DomainError("FORBIDDEN", "No puedes retirar tu propio acceso administrativo.", 403);
     if (body.role === "admin" && account.role !== "admin" && state.collectors.some((collector) => collector.accountId === account.id))
       throw new DomainError("ACCOUNT_LINKED_COLLECTOR", "Retira la cuenta del cobrador antes de cambiar su rol a Admin.", 409);
@@ -709,7 +711,7 @@ export async function buildApp(config: Config) {
     },
   );
   app.get("/api/snapshot", async (req) =>
-    snapshot(await config.store.read(), user(req)),
+    filterOperationalSnapshot(snapshot(await config.store.read(), user(req)), user(req)),
   );
   describe("get", "/api/snapshot", "Vista operacional autorizada");
 
@@ -1457,9 +1459,13 @@ export async function buildApp(config: Config) {
     async (req) => {
       assertAdmin(user(req));
       return config.store.transaction((s) => {
+        const actor = currentAccessUser(s, user(req));
+        assertAuthSession(s, actor, (actor as User & { sid?: string }).sid);
+        authorizeRequest(actor, req.method, req.url.split("?")[0]);
         const m = s.movements.find((m) => m.receiptToken === req.params.token);
         if (!m)
           throw new DomainError("NOT_FOUND", "Recibo no encontrado.", 404);
+        requirePermission(actor, ({ collection: 323, payout: 373, deposit: 333, office_delivery: 383 } as const)[m.type]);
         m.receiptRevoked = true;
         return { ok: true };
       });

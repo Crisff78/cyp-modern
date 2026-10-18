@@ -1,5 +1,11 @@
 # Envíos de Dinero: contrato local
 
+El flujo de captura continua, el alta transaccional de clientes y la autorización
+individual están documentados en [DIONEL-REMESAS-PERMISOS.md](DIONEL-REMESAS-PERMISOS.md).
+Esta versión requiere también la migración aditiva **034** antes de iniciar
+el servidor con PostgreSQL. Tasas y comisiones se mantienen desde Administración,
+fuera de la captura de remesas.
+
 La comisión de nuevas remesas se toma de la configuración central de Admin,
 sin edición por operación. Ver [COMISIONES-CONFIGURACION.md](COMISIONES-CONFIGURACION.md)
 para contrato y migración aditiva 026. Las referencias inferiores a

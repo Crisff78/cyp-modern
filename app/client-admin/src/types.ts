@@ -1,4 +1,5 @@
 import type { AccountRole } from "../../shared/accountRoles";
+import { hasRemittanceAccess, type EffectiveAccess } from "../../shared/access.mjs";
 
 export const ROLE_DEFINITIONS = {
   SUPERADMIN: {
@@ -22,6 +23,7 @@ export type User = {
   collectorId?: string;
   isActive?: boolean;
   hasWorkPermission?: boolean;
+  access?: EffectiveAccess;
 };
 export const normalizeRole = (role: User["role"]): RoleName => {
   const normalized = String(role).trim().toUpperCase();
@@ -57,7 +59,8 @@ export const enrichUserRole = <T extends User>(user: T): T => {
   };
 };
 export const canAccessAdmin = (user: User) =>
-  ["SUPERADMIN", "ADMIN", "SUPERVISOR"].includes(normalizeRole(user.role));
+  ["SUPERADMIN", "ADMIN", "SUPERVISOR"].includes(normalizeRole(user.role)) ||
+  (normalizeRole(user.role) === "USER" && hasRemittanceAccess(user));
 export const canAccessCollector = (user: User) =>
   ["COLLECTOR", "SUPERADMIN"].includes(normalizeRole(user.role));
 export const isSuspendedUser = (user: User) =>
@@ -213,6 +216,8 @@ export type PublicAccount = {
   note?: string;
   permissionIds?: number[];
   permissionRevision?: number;
+  permissionMode?: "role" | "custom";
+  remittancePermissions?: import("../../shared/access.mjs").RemittancePermission[];
   id: string;
   name: string;
   email: string;
@@ -293,6 +298,7 @@ export type Page =
   | "exchangeRates"
   | "banks"
   | "remittances"
+  | "remittanceCommissions"
   | "sessions"
   | "traces"
   | "users"

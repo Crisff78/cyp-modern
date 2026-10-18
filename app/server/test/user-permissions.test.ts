@@ -57,12 +57,12 @@ test("permission saves affect only the requested account and preserve credential
   const { store, token, account, get, post, login } = await setup(t);
   const first = await account(), other = await account(), admin = await account("admin");
   const ownToken = await login(first.email, first.body.password);
-  assert.deepEqual((await get(`/api/usuarios/${first.id}/permisos`)).json(), { userId: first.id, permissionIds: [], revision: 0 });
+  assert.deepEqual((await get(`/api/usuarios/${first.id}/permisos`)).json(), { userId: first.id, permissionIds: [], revision: 0, mode: "role", remittancePermissions: [] });
   assert.equal((await get(`/api/usuarios/${admin.id}/permisos`)).json().permissionIds.length, 119);
   const before = await store.read(), target = before.accounts.find(({ id }) => id === first.id)!;
   const saved = await post(`/api/usuarios/${first.id}/permisos`, { permissionIds: [501, 140, 2], revision: 0 });
   assert.equal(saved.statusCode, 200, saved.body);
-  assert.deepEqual(saved.json(), { userId: first.id, permissionIds: [2, 140, 501], revision: 1 });
+  assert.deepEqual(saved.json(), { userId: first.id, permissionIds: [2, 140, 501], revision: 1, mode: "custom", remittancePermissions: [] });
   const after = await store.read(), changed = after.accounts.find(({ id }) => id === first.id)!;
   for (const field of ["name", "email", "role", "collectorId", "salt", "passwordHash", "credentialVersion", "status", "createdAt"] as const)
     assert.deepEqual(changed[field], target[field], field);
@@ -157,11 +157,12 @@ test("PostgreSQL migration and Store persist user permissions without touching c
   const { account, post, get } = await setup(t, store);
   const targetAccount = await account("admin");
   const before = (await store.read()).accounts.find(({ id }) => id === targetAccount.id)!;
-  assert.equal((await post(`/api/usuarios/${targetAccount.id}/permisos`, { permissionIds: [2, 500, 501], revision: 0 })).statusCode, 200);
+  assert.equal((await post(`/api/usuarios/${targetAccount.id}/permisos`, { permissionIds: [1, 2, 500, 501], mode: "custom", remittancePermissions: ["remittances.view", "remittances.create"], revision: 0 })).statusCode, 200);
   const secondStore = new PostgresStore(url);
   t.after(() => secondStore.close());
   const saved = (await secondStore.read()).accounts.find(({ id }) => id === targetAccount.id)!;
-  assert.deepEqual(saved.permissionIds, [2, 500, 501]); assert.equal(saved.permissionRevision, 1);
+  assert.deepEqual(saved.permissionIds, [1, 2, 500, 501]); assert.equal(saved.permissionRevision, 1);
+  assert.equal(saved.permissionMode, "custom"); assert.deepEqual(saved.remittancePermissions, ["remittances.create", "remittances.view"]);
   assert.equal(saved.passwordHash, before.passwordHash); assert.equal(saved.credentialVersion, before.credentialVersion);
   assert.equal((await post(`/api/usuarios/${targetAccount.id}/permisos`, { permissionIds: [], revision: 1 })).statusCode, 200);
   assert.deepEqual((await get(`/api/usuarios/${targetAccount.id}/permisos`)).json().permissionIds, []);
@@ -175,6 +176,14 @@ test("PostgreSQL migration and Store persist user permissions without touching c
       await assert.rejects(client.query("UPDATE users SET legacy_permission_ids=$1 WHERE id=$2", [invalid, targetAccount.id]), (error: unknown) => (error as { code: string }).code === "23514");
       await client.query("ROLLBACK TO SAVEPOINT invalid_permissions");
     }
+    for (const invalid of [["remittances.unknown"], [null], Array(15).fill("remittances.view")]) {
+      await client.query("SAVEPOINT invalid_remittance_permissions");
+      await assert.rejects(client.query("UPDATE users SET remittance_permissions=$1 WHERE id=$2", [invalid, targetAccount.id]), (error: unknown) => (error as { code: string }).code === "23514");
+      await client.query("ROLLBACK TO SAVEPOINT invalid_remittance_permissions");
+    }
+    await client.query("SAVEPOINT invalid_permission_mode");
+    await assert.rejects(client.query("UPDATE users SET permission_mode='owner' WHERE id=$1", [targetAccount.id]), (error: unknown) => (error as { code: string }).code === "23514");
+    await client.query("ROLLBACK TO SAVEPOINT invalid_permission_mode");
     await client.query("ROLLBACK");
   } finally { await client.end(); }
 });

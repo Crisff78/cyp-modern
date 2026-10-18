@@ -6,10 +6,12 @@ import { isMockToken } from "./mock";
 import { pendingMovementDraft, useMovementRequest } from "./useMovementRequest";
 import { PERMISSION_CATALOG, PERMISSION_CATEGORIES, isUserPermissions, type PermissionCategory, type UserPermissions } from "../../shared/permissionCatalog";
 import "./connected-user-permissions.css";
+import { effectiveAccess, rolePermissionIds, roleRemittancePermissions, REMITTANCE_PERMISSIONS, REMITTANCE_PERMISSION_KEYS, REMITTANCE_PERMISSION_DEPENDENCIES, type PermissionMode, type RemittancePermission } from "../../shared/access.mjs";
 
-export function ConnectedUserPermissionsDialog({ userId, userName, actorId, canEdit = true, onClose }: Readonly<{
+export function ConnectedUserPermissionsDialog({ userId, userName, userRole, actorId, canEdit = true, onClose }: Readonly<{
   userId: string;
   userName: string;
+  userRole: string;
   actorId: string;
   canEdit?: boolean;
   onClose: () => void;
@@ -19,8 +21,10 @@ export function ConnectedUserPermissionsDialog({ userId, userName, actorId, canE
   const pending = pendingMovementDraft<UserPermissions>(actorId, scope);
   const request = useMovementRequest(actorId, scope);
   const [assignedIds, setAssignedIds] = useState<readonly number[]>(pending?.permissionIds ?? []);
+  const [mode, setMode] = useState<PermissionMode>(pending?.mode ?? "role");
+  const [remittanceKeys, setRemittanceKeys] = useState<readonly RemittancePermission[]>(pending?.remittancePermissions ?? []);
   const [revision, setRevision] = useState(pending?.revision ?? 0);
-  const [category, setCategory] = useState<PermissionCategory>("No definido");
+  const [category, setCategory] = useState<PermissionCategory | "Remesas">("No definido");
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [ready, setReady] = useState(false);
@@ -37,7 +41,10 @@ export function ConnectedUserPermissionsDialog({ userId, userName, actorId, canE
       if (controller.signal.aborted) return;
       if (!isUserPermissions(result, userId)) throw new Error("El servidor no devolvió permisos válidos para este usuario.");
       const submitted = pendingMovementDraft<UserPermissions>(actorId, scope);
-      setAssignedIds(submitted?.permissionIds ?? result.permissionIds);
+      const nextMode = submitted?.mode ?? result.mode ?? "role";
+      setMode(nextMode);
+      setAssignedIds(submitted?.permissionIds ?? (nextMode === "role" ? rolePermissionIds(userRole) : result.permissionIds));
+      setRemittanceKeys(submitted?.remittancePermissions ?? (nextMode === "role" ? roleRemittancePermissions(userRole) : result.remittancePermissions ?? []));
       setRevision(submitted?.revision ?? result.revision);
       setReady(true);
     }).catch((error: unknown) => {
@@ -46,18 +53,34 @@ export function ConnectedUserPermissionsDialog({ userId, userName, actorId, canE
       if (!controller.signal.aborted) setLoading(false);
     });
     return () => controller.abort();
-  }, [userId, actorId, scope, reload]);
+  }, [userId, userRole, actorId, scope, reload]);
 
-  const visible = category === "No definido" ? PERMISSION_CATALOG : PERMISSION_CATALOG.filter((permission) => permission.category === category);
+  const visible = category === "No definido" ? PERMISSION_CATALOG : category === "Remesas" ? [] : PERMISSION_CATALOG.filter((permission) => permission.category === category);
+  const visibleRemittances = category === "No definido" || category === "Remesas" ? REMITTANCE_PERMISSIONS : [];
+  const ceiling = effectiveAccess(userRole, { permissionMode: "custom", permissionIds: PERMISSION_CATALOG.map(({ id }) => id), remittancePermissions: REMITTANCE_PERMISSION_KEYS });
+  const requiredOwn = userId === actorId ? [1, 10, 101, 106] : [];
   const assigned = new Set(assignedIds);
   const toggle = (id: number) => {
-    if (locked) return;
+    if (locked || !ceiling.legacy.includes(id) || requiredOwn.includes(id)) return;
+    setMode("custom");
     setAssignedIds((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
   };
   const selectCategory = (checked: boolean) => {
     if (locked) return;
-    const categoryIds = new Set(visible.map(({ id }) => id));
-    setAssignedIds((current) => checked ? [...new Set([...current, ...categoryIds])] : current.filter((id) => !categoryIds.has(id)));
+    setMode("custom");
+    const categoryIds = new Set(visible.filter(({ id }) => ceiling.legacy.includes(id)).map(({ id }) => id));
+    const keys = visibleRemittances.map(({ key }) => key).filter((key) => ceiling.remittances.includes(key));
+    setAssignedIds((current) => checked ? [...new Set([...current, ...categoryIds])] : current.filter((id) => !categoryIds.has(id) || requiredOwn.includes(id)));
+    setRemittanceKeys((current) => checked ? [...new Set([...current, ...keys])] : current.filter((key) => !keys.includes(key)));
+    if (checked && keys.length) setAssignedIds((current) => [...new Set([...current, 1])]);
+  };
+  const toggleRemittance = (key: RemittancePermission) => {
+    if (locked || !ceiling.remittances.includes(key)) return;
+    setMode("custom");
+    if (!remittanceKeys.includes(key)) setAssignedIds((current) => [...new Set([...current, 1])]);
+    setRemittanceKeys((current) => current.includes(key)
+      ? current.filter((value) => value !== key && !REMITTANCE_PERMISSION_DEPENDENCIES[value]?.includes(key))
+      : [...new Set([...current, key, ...(REMITTANCE_PERMISSION_DEPENDENCIES[key] ?? [])])]);
   };
   const close = () => {
     if (request.locked) return;
@@ -73,11 +96,12 @@ export function ConnectedUserPermissionsDialog({ userId, userName, actorId, canE
   const save = async (event: FormEvent) => {
     event.preventDefault();
     if (!canEdit || !ready || loading || request.busy) return;
-    const draft: UserPermissions = { userId, permissionIds: [...assignedIds].sort((a, b) => a - b), revision };
+    const draft: UserPermissions = { userId, permissionIds: [...assignedIds].sort((a, b) => a - b), mode, remittancePermissions: [...remittanceKeys].sort(), revision };
     try {
-      await request.run<UserPermissions>(`/usuarios/${encodeURIComponent(userId)}/permisos`, { permissionIds: draft.permissionIds, revision }, draft,
-        (result) => isUserPermissions(result, userId) && JSON.stringify([...result.permissionIds].sort((a, b) => a - b)) === JSON.stringify(draft.permissionIds),
+      await request.run<UserPermissions>(`/usuarios/${encodeURIComponent(userId)}/permisos`, { permissionIds: draft.permissionIds, mode, remittancePermissions: draft.remittancePermissions, revision }, draft,
+        (result) => isUserPermissions(result, userId) && result.mode === draft.mode && JSON.stringify([...(result.remittancePermissions ?? [])].sort()) === JSON.stringify(draft.remittancePermissions) && JSON.stringify([...result.permissionIds].sort((a, b) => a - b)) === JSON.stringify(draft.permissionIds),
         "POST", isMockToken(getToken()) ? "api" : "strict");
+      window.dispatchEvent(new CustomEvent("cyp-user-permissions-updated", { detail: { userId } }));
       onClose();
     } catch {
       // The request lifecycle exposes the error and retains uncertain attempts for a safe retry.
@@ -87,14 +111,18 @@ export function ConnectedUserPermissionsDialog({ userId, userName, actorId, canE
   return <LegacyDialog title="Permisos del Usuario..." onClose={close} className="connected-user-permissions-dialog">
     <form className="connected-user-permissions-content" onSubmit={(event) => void save(event)}>
       <div className="connected-permissions-user"><strong>{userName}</strong><span>{userId}</span></div>
+      <label>Aplicar:<select aria-label="Modo de permisos" value={mode} disabled={locked} onChange={(event) => {
+        const next = event.target.value as PermissionMode; setMode(next);
+        if (next === "role") { setAssignedIds(rolePermissionIds(userRole)); setRemittanceKeys(roleRemittancePermissions(userRole)); }
+      }}><option value="role">Perfil del rol</option><option value="custom">Permisos personalizados</option></select></label>
       <div className="connected-permissions-controls">
         <label className="connected-permission-category">Categoría:
-          <select aria-label="Categoría" value={category} disabled={request.busy} onChange={(event) => { setCategory(event.target.value as PermissionCategory); setSelectedId(null); }}>
-            {PERMISSION_CATEGORIES.map((item) => <option key={item} value={item}>{item}</option>)}
+          <select aria-label="Categoría" value={category} disabled={request.busy} onChange={(event) => { setCategory(event.target.value as PermissionCategory | "Remesas"); setSelectedId(null); }}>
+            {[...PERMISSION_CATEGORIES, "Remesas"].map((item) => <option key={item} value={item}>{item}</option>)}
           </select>
         </label>
-        <button type="button" disabled={locked || visible.length === 0} onClick={() => selectCategory(true)}>Seleccionar Todos</button>
-        <button type="button" disabled={locked || visible.length === 0} onClick={() => selectCategory(false)}>Desmarcar Todos</button>
+        <button type="button" disabled={locked || visible.length + visibleRemittances.length === 0} onClick={() => selectCategory(true)}>Seleccionar Todos</button>
+        <button type="button" disabled={locked || visible.length + visibleRemittances.length === 0} onClick={() => selectCategory(false)}>Desmarcar Todos</button>
         <button type="button" disabled={loading || request.locked} onClick={refresh}><RefreshCw size={14} /> Refrescar</button>
       </div>
       {loading && <p className="connected-permissions-feedback" role="status">Cargando permisos…</p>}
@@ -105,18 +133,20 @@ export function ConnectedUserPermissionsDialog({ userId, userName, actorId, canE
           <tbody>
             {visible.map((permission) => <tr key={permission.id} className={selectedId === permission.id ? "is-selected" : ""} aria-selected={selectedId === permission.id} tabIndex={0}
               onClick={() => setSelectedId(permission.id)} onKeyDown={(event) => { if (event.target === event.currentTarget) handleKeyboardActivation(event, () => { setSelectedId(permission.id); toggle(permission.id); }); }}>
-              <td><input id={`${controlId}-${permission.id}`} type="checkbox" aria-label={`Permiso ${permission.id}: ${permission.name}`} checked={assigned.has(permission.id)} disabled={locked} onChange={() => toggle(permission.id)} /></td>
+              <td><input id={`${controlId}-${permission.id}`} type="checkbox" aria-label={`Permiso ${permission.id}: ${permission.name}`} checked={assigned.has(permission.id)} disabled={locked || !ceiling.legacy.includes(permission.id) || requiredOwn.includes(permission.id)} onChange={() => toggle(permission.id)} /></td>
               <td>{permission.id}</td><td><label htmlFor={`${controlId}-${permission.id}`} className="connected-permissions-name">{permission.name}</label></td><td>{permission.category}</td>
             </tr>)}
-            {visible.length === 0 && <tr><td colSpan={4}>No hay permisos en esta categoría.</td></tr>}
+            {visibleRemittances.map((permission) => <tr key={permission.key}><td><input id={`${controlId}-${permission.key}`} type="checkbox" aria-label={`Remesas: ${permission.name}`} checked={remittanceKeys.includes(permission.key)} disabled={locked || !ceiling.remittances.includes(permission.key)} onChange={() => toggleRemittance(permission.key)} /></td><td>Remesas</td><td><label htmlFor={`${controlId}-${permission.key}`}>{permission.name}</label></td><td>Remesas</td></tr>)}
+            {visible.length + visibleRemittances.length === 0 && <tr><td colSpan={4}>No hay permisos en esta categoría.</td></tr>}
           </tbody>
         </table>
       </div>
-      <p className="connected-user-permissions-note">Esta lista queda guardada como referencia para este usuario. No cambia lo que la cuenta puede hacer: eso lo define su rol (Admin, todo; Supervisor, solo consulta; Cobrador, solo su terminal).</p>
+      <p className="connected-user-permissions-note">{mode === "role" ? "Se aplica el perfil inicial del rol. Al marcar o desmarcar una acción pasarás a permisos personalizados." : "Al guardar se aplicarán estos permisos en las pantallas y en cada operación. El rol no cambia: Supervisor conserva solo consulta y Cobrador conserva su ruta."}</p>
+      {mode === "custom" && !assigned.has(1) && <p role="status" className="connected-permission-error">Sin «Entrar al sistema» esta cuenta no podrá iniciar sesión ni realizar operaciones.</p>}
       {!canEdit && <p className="connected-permissions-feedback">Acción restringida para Supervisores.</p>}
       {request.error && <p className="connected-permission-error" role="alert">{request.error}</p>}
       <div className="connected-permissions-footer">
-        <span>{assignedIds.length} de {PERMISSION_CATALOG.length} permisos seleccionados</span>
+        <span>{assignedIds.length + remittanceKeys.length} de {PERMISSION_CATALOG.length + REMITTANCE_PERMISSIONS.length} permisos seleccionados</span>
         <div className="legacy-dialog-actions connected-permission-actions">
           <button type="submit" disabled={!canEdit || loading || !ready || request.busy}>{request.busy ? "Guardando…" : request.uncertain ? "Reintentar guardado" : "Guardar"}</button>
           <button type="button" disabled={request.locked} onClick={close}>Cancelar</button>

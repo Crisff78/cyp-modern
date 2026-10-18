@@ -77,9 +77,10 @@ test("CyP browser installation proves persistence, reviewed mutations and exact 
     const fixture = path.join(output, "fixture.tsx"), module = (name: string) => JSON.stringify(path.join(adminRoot, "src", name).replaceAll("\\", "/"));
     fs.writeFileSync(fixture, `import { createRoot } from "react-dom/client";
 import { ConnectedAdminTools } from ${module("ConnectedAdminTools.tsx")};
+import { PageAccessContext } from ${module("PageAccess.tsx")};
 import { remittancesApi } from ${module("remittancesApi.ts")};
 import ${module("styles.css")};
-remittancesApi("/snapshot").then(snapshot => createRoot(document.getElementById("root")).render(<ConnectedAdminTools page="stations" snapshot={snapshot} user={${JSON.stringify({ id: user.id, role: user.role })}} onRefresh={() => {}} />));`, "utf8");
+remittancesApi("/snapshot").then(snapshot => createRoot(document.getElementById("root")).render(<PageAccessContext.Provider value={{actor:{role:"admin"},page:new URLSearchParams(location.search).get("view") || "stations"}}><ConnectedAdminTools page="stations" snapshot={snapshot} user={${JSON.stringify({ id: user.id, role: user.role })}} onRefresh={() => {}} /></PageAccessContext.Provider>));`, "utf8");
     const [{ build }, { default: react }, { chromium }] = await Promise.all([
       import(pathToFileURL(localRequire.resolve("vite")).href), import(pathToFileURL(localRequire.resolve("@vitejs/plugin-react")).href), import(pathToFileURL(playwrightEntry!).href),
     ]);
