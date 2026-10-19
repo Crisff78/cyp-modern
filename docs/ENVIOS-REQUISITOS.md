@@ -120,10 +120,13 @@ Observaciones técnicas del DDL:
 
 ## 5. Pantallas y recorrido
 
-Central/admin usa una ventana MDI de Envíos de Dinero, con el estilo compacto
-azul/gris de CyP. Teléfono y tablet presentan el mismo flujo adaptado al espacio.
+Central/admin usa ventanas MDI con el estilo compacto azul/gris de CyP. Teléfono
+y tablet presentan el mismo flujo adaptado al espacio. Desde octubre de 2026, en
+Administración estas funciones están repartidas en varias ventanas; la ubicación
+vigente está en la sección 8. Los pasos siguientes describen el recorrido.
 
-1. Administración mantiene clientes y tasas del día, y abre cajas de operadores.
+1. Administración mantiene clientes y tasas del día, y abre cajas de operadores;
+   el Cajero abre la suya.
 2. En Envíos se seleccionan remitente, destinatario, monedas, principal y comisión.
    Central puede indicar quién realiza el envío; se mantiene visible quién registra.
 3. El servidor cotiza; la confirmación muestra principal, comisión, total cobrado,
@@ -163,3 +166,28 @@ código, comisión fija ni restricción de longitud. La personalización conserv
 configuración ya existente; no se infiere un editor de interfaces a partir de una
 palabra. Estas referencias se conservan como contexto de origen y no bloquean el
 alcance explícito del jefe.
+
+## 8. Ubicación de funciones (octubre de 2026)
+
+En el portal administrativo la ventana Envíos de Dinero queda solo para enviar;
+las demás funciones están en sus lugares del sistema. Cada entrada aparece si la
+cuenta tiene el permiso indicado (claves de `app/shared/access.mjs`). El grupo
+del menú se muestra como «ENVÍOS»; su clave interna sigue siendo `REMESAS`.
+
+| Función | Dónde está | Permiso |
+|---|---|---|
+| Registrar envíos: formulario fijo arriba, con el cursor en el remitente, y listado de envíos debajo. Alta rápida de clientes con «Registrar cliente nuevo». Cancelación desde el detalle. | Envíos → Envíos de Dinero | `remittances.view` (registrar: `remittances.create`; alta rápida: `remittances.clients.create`; cancelar: `remittances.cancel`) |
+| Pagar al destinatario los envíos recibidos | Envíos → Pagos de Envíos | `remittances.receipts` (pagar: `remittances.pay`) |
+| Entregas de efectivo de la oficina al cobrador; su buscador abre Pagos de Envíos con los envíos pendientes que coinciden | Envíos → Entregas de Dinero | 380 (buscador: `remittances.receipts`) |
+| Abrir, contar y cerrar la caja de envíos | Reportes & Monitoreo → Cuadres Diarios → Caja de envíos | `remittances.cash.view` (abrir: `remittances.cash.open`; cerrar: `remittances.cash.close`) |
+| Tasas del día y su historial | Archivos → Admin. → Tasas de cambio | 200 y `remittances.rates.view` (registrar: 201 y `remittances.rates.manage`) |
+| Comisiones de envíos | Archivos → Admin. → Comisiones de envíos | rol Admin y `remittances.commissions.view` (cambiar: `remittances.commissions.manage`) |
+| Reportes de envíos | Reportes & Monitoreo → Reportes, grupo «-- Envíos de Dinero --» | `remittances.reports` |
+
+Cuadres Diarios reúne dos secciones, «Cuadres de cobradores» (401) y «Caja de
+envíos»; el conmutador aparece solo si la cuenta tiene ambas. Admin abre la caja
+de cualquier operador; el Cajero, solo la suya; Cobrador, Usuario y Supervisor no
+abren cajas.
+
+En la terminal del cobrador la vista de envíos conserva sus pestañas Envíos,
+Recibos, Caja y Reportes, según los permisos de la cuenta, y el botón «Nuevo envío».

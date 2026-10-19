@@ -3,6 +3,11 @@
 Alcance: Administración → Tasas de Cambio y Envíos de Dinero → Tasas.
 Las escrituras de prueba usan exclusivamente datos ficticios aislados.
 
+Nota del 19 de octubre de 2026: esta revisión describe la interfaz de esa fecha.
+Hoy las tasas se mantienen solo en Archivos → Admin. → Tasas de cambio, donde la
+columna que usan los envíos se llama «Tasa de envíos». Envíos de Dinero ya no
+tiene una pestaña Tasas: toma la tasa del día al cotizar.
+
 ## Fallos reproducidos y corregidos
 
 1. Escribir `60,50` carácter por carácter eliminaba la coma y mostraba `6050`

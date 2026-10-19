@@ -1,8 +1,9 @@
 # Permisos individuales de usuario
 
-La autorización efectiva y la captura de remesas están descritas en
-[DIONEL-REMESAS-PERMISOS.md](DIONEL-REMESAS-PERMISOS.md). Esta versión necesita
-la migración aditiva **034**, además de la 023 original.
+La autorización efectiva, la captura de envíos y el perfil de cada rol están
+descritos en [DIONEL-REMESAS-PERMISOS.md](DIONEL-REMESAS-PERMISOS.md). Esta
+versión necesita las migraciones aditivas **034** y **035** (rol Cajero), además
+de la 023 original.
 
 El catálogo común vive en `app/shared/permission-catalog.json`: 119 permisos con
 sus nombres originales y códigos entre 1 y 501. Los huecos son parte del catálogo;
@@ -12,6 +13,17 @@ Las selecciones personalizadas restringen las acciones efectivas de cada cuenta,
 dentro del alcance de su rol, y se comprueban en la interfaz y en cada petición.
 No cambian el rol, contraseña, versión de credenciales o identidad de sesión.
 Admin con permiso 106 puede guardar; Supervisor conserva solo consulta.
+
+Además de las categorías del catálogo, el diálogo ofrece la categoría **Envíos de
+Dinero** con las claves `remittances.*`; cada casilla se anuncia como «Envíos de
+Dinero: {nombre}». Las acciones que superan el máximo del rol aparecen
+desactivadas. El Cajero parte de los códigos 1 y 2 y de nueve claves de envíos
+(consultar, registrar, recibos, pagar, cancelar, alta de clientes, y consultar,
+abrir y cerrar su caja); en permisos personalizados solo puede ganar además
+`remittances.reports`. Nunca recibe tasas, comisiones ni códigos de catálogo.
+Usuario no tiene acceso con el perfil del rol; con permisos personalizados puede
+recibir los códigos 1 y 2 y las claves de envíos, salvo abrir cajas y administrar
+tasas o comisiones.
 
 ## Contrato
 
@@ -35,7 +47,10 @@ formulario conserva la solicitud y permite reintentar antes de cerrarse.
 ## Persistencia
 
 Aplicar `pnpm db:migrate --apply` en la base local configurada para incorporar
-`023_user_permissions.sql` y `034_effective_user_permissions.sql`. Se conservan
+`023_user_permissions.sql`, `034_effective_user_permissions.sql` y
+`035_cashier_role.sql`; sin `--apply`, `pnpm db:migrate` solo muestra las
+migraciones registradas y pendientes. La 035 admite el rol `cashier` en cuentas
+y sesiones sin tocar las asignaciones. Se conservan
 los datos de las asignaciones antiguas y se añade un modo explícito. `role`
 aplica el perfil inicial; `custom` aplica las selecciones dentro del alcance del
 rol y `[]` significa ninguno. Las listas antiguas se revisan antes de pasar a

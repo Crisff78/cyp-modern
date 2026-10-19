@@ -2,11 +2,11 @@
 
 El flujo de captura continua, el alta transaccional de clientes y la autorización
 individual están documentados en [DIONEL-REMESAS-PERMISOS.md](DIONEL-REMESAS-PERMISOS.md).
-Esta versión requiere también la migración aditiva **034** antes de iniciar
-el servidor con PostgreSQL. Tasas y comisiones se mantienen desde Administración,
-fuera de la captura de remesas.
+Esta versión requiere también las migraciones aditivas **034** y **035** (rol
+Cajero) antes de iniciar el servidor con PostgreSQL. Tasas y comisiones se
+mantienen desde Administración, fuera de la captura de envíos.
 
-La comisión de nuevas remesas se toma de la configuración central de Admin,
+La comisión de los envíos nuevos se toma de la configuración central de Admin,
 sin edición por operación. Ver [COMISIONES-CONFIGURACION.md](COMISIONES-CONFIGURACION.md)
 para contrato y migración aditiva 026. Las referencias inferiores a
 `commissionBps` en solicitudes son compatibles solo cuando coinciden con la
@@ -16,7 +16,7 @@ El contrato vigente de entrada por origen/destino, redondeos y reparto devengado
 está en [REMESAS-COTIZACION-REPARTO.md](REMESAS-COTIZACION-REPARTO.md). Requiere la
 migración aditiva `024_remittance_commission_allocation.sql` antes de iniciar esta
 versión con PostgreSQL. Las referencias a comisión manual describen información
-histórica: las remesas nuevas usan el reparto calculado en el servidor.
+histórica: los envíos nuevos usan el reparto calculado en el servidor.
 
 Todas las rutas requieren sesión. Base `/api`. Todos los POST requieren
 `Idempotency-Key` (UUID recomendado; reutilizar al reintentar el mismo payload).
@@ -57,7 +57,7 @@ type Snapshot = {
   businessDate: string; currencies: Currency[];
   clients: {id:string; code:string; name:string; routeId:string; active:boolean;
     canSendFrom:boolean; canReceive:boolean}[];
-  operators: {id:string; name:string; role:'admin'|'collector'; collectorId?:string}[];
+  operators: {id:string; name:string; role:'admin'|'collector'|'user'|'cashier'; collectorId?:string}[];
   rates: Rate[]; transfers: TransferView[]; cashSessions: CashView[];
 };
 ```
@@ -76,7 +76,12 @@ intermedios y rechaza resultados fuera del rango seguro.
 - `GET /envios/snapshot` → `Snapshot`. Clientes mínimos sirven para seleccionar
   destinatario; solo `canSendFrom` habilita remitente. `transfers` contiene la unión
   de operaciones visibles por origen propio/ruta y recepción por ruta destino.
-  Admin ve todas. Cajas: admin todas; cobrador solo propias.
+  Admin ve todas. Usuario y Cajero con acceso de envíos atienden a cualquier
+  cliente (`canSendFrom` y `canReceive` verdaderos) y ven los envíos que
+  realizaron, todos los recibos pendientes y los que ellos pagaron. Cajas: admin
+  todas; los demás, solo las propias. `operators` del admin incluye las cuentas
+  activas que pueden operar (Admin, Cobrador, y Usuario o Cajero con acceso de
+  envíos); los demás reciben solo su propia cuenta.
 - `GET /envios/clientes/:id/contacto?side=sender|recipient&senderId=...`
   devuelve `{id,code,name,phone,cellular,address}` del cliente seleccionado.
   Requiere sesión de operador, cliente activo y ruta propia para remitentes de
@@ -84,14 +89,16 @@ intermedios y rechaza resultados fuera del rango seguro.
   de `senderId`. No devuelve notas, documentos ni un índice global de contactos.
   Formulario y confirmación muestran estos datos actuales; el POST captura la
   copia definitiva en servidor y el comprobante usa los contactos guardados.
-- `GET /envios` → `TransferView[]` visibles como envíos propios/ruta origen.
-- `GET /envios/recibos` → `TransferView[]` visibles por ruta destino (admin todas).
+- `GET /envios` → `TransferView[]` visibles como envíos propios/ruta origen
+  (Usuario y Cajero: solo los que realizaron).
+- `GET /envios/recibos` → `TransferView[]` visibles por ruta destino (admin todas;
+  Usuario y Cajero: todos los pendientes y los que pagaron).
 - `POST /envios/tasas` admin: `{currency,rate:string,date:'YYYY-MM-DD'}` → `Rate`.
   Solo fecha de negocio actual; DOP solo admite 1. Los envíos previos retienen su tasa.
 - `POST /envios/politica-comisiones` admin:
   `{transactionCommissionBps,managerCommissionBps}` → configuración central.
   Cada porcentaje es un entero 0..10000; gestor no puede superar transacción.
-  Cambios afectan solo remesas futuras y requieren recotizar antes de registrar.
+  Cambios afectan solo envíos futuros y requieren recotizar antes de registrar.
 - `GET /envios/cotizacion?sourceCurrency=USD&destinationCurrency=DOP&amount=10000`
   → `{sourceCurrency,destinationCurrency,amount,commissionBps,commissionAmount,totalAmount,receiveAmount,quote}`.
 - `POST /envios`:
@@ -102,8 +109,10 @@ intermedios y rechaza resultados fuera del rango seguro.
   `sendingUserId` omitido usa usuario
   autenticado; solo admin puede representar otro operador activo. `registeredBy`
   siempre es el autenticado. Clientes deben ser distintos, existentes y activos.
-  El remitente debe pertenecer a la ruta del operador si este es cobrador.
-  Necesita caja abierta del operador en moneda origen y fecha actual.
+  El remitente debe pertenecer a la ruta del operador si este es cobrador;
+  Usuario y Cajero pueden usar cualquier cliente y dar de alta clientes nuevos
+  en cualquier ruta. Necesita caja abierta del operador en moneda origen y
+  fecha actual.
 
 Al confirmar el alta, la interfaz valida la respuesta persistida y pregunta
 «¿Quieres imprimir el recibo?». Imprimir reutiliza el mismo comprobante del
@@ -116,12 +125,17 @@ pregunta conserva el recibo y muestra el aviso para volver a imprimir, sin otro 
 ## Pago y cancelación
 
 - `POST /envios/:id/pagar` con `{}` → `TransferView`. Pago único y completo,
-  solo pendiente, por admin o cobrador de la ruta destino. Usa la caja abierta del
-  usuario autenticado en moneda destino y fecha actual; requiere saldo suficiente.
+  solo pendiente, por admin, por el cobrador de la ruta destino o por un Usuario
+  o Cajero con `remittances.pay` (cualquier recibo pendiente). Usa la caja abierta
+  del usuario autenticado en moneda destino y fecha actual; requiere saldo suficiente.
 - `POST /envios/:id/cancelar` con `{reason:string}` (1..500) → `TransferView`.
   Solo pendiente; admin o usuario `sendingUserId` autorizado. Devuelve principal
   más comisión contra la caja actual abierta de `sendingUserId` en moneda origen,
   con saldo suficiente. No modifica una caja cerrada ni el día del envío original.
+
+En Administración el pago se registra en Envíos → Pagos de Envíos («Registrar
+pago completo») y la cancelación en el detalle de Envíos → Envíos de Dinero. La
+terminal del cobrador conserva ambas acciones en el detalle del envío.
 
 Estados terminales no admiten otra operación. Un reintento con misma clave vuelve
 a la respuesta anterior; otra clave sobre un terminal produce `TRANSFER_NOT_PENDING`.
@@ -130,16 +144,23 @@ El código operativo aleatorio es referencia, nunca permiso de acceso.
 
 ## Caja
 
-- `POST /envios/cajas/abrir` admin:
-  `{operatorId,currency,openingAmount}` → `CashView`. Fecha actual asignada por
-  servidor; operador activo; apertura >=0; una caja por operador/moneda/día.
-  Debe estar cerrada cualquier caja anterior de ese operador y moneda.
-- `POST /envios/cajas/:id/cerrar` self/admin:
+- `POST /envios/cajas/abrir` admin, o Cajero para su propia caja:
+  `{operatorId,currency,openingAmount}` → `CashView`. Requiere
+  `remittances.cash.open`. Admin abre la de cualquier operador activo; el Cajero
+  solo con `operatorId` igual a su propia cuenta, y otro operador devuelve 403
+  `FORBIDDEN` «Solo puedes abrir tu propia caja de envíos.». Cobrador, Usuario y
+  Supervisor reciben 403. Fecha actual asignada por servidor; operador activo;
+  apertura >=0; una caja por operador/moneda/día (`CASH_EXISTS` 409). Debe estar
+  cerrada cualquier caja anterior de ese operador y moneda (`PREVIOUS_CASH_OPEN` 409).
+- `POST /envios/cajas/:id/cerrar` self/admin, con `remittances.cash.close`:
   `{countedAmount}` → `CashView`. Solo abierta; contado debe igualar esperado.
   Cerrada bloquea movimientos. Puede cerrarse una caja anterior antes de abrir hoy.
 
-En la interfaz administrativa: Envíos de Dinero → Caja → operador del envío →
-moneda de origen → efectivo inicial → Revisar apertura → Confirmar.
+En la interfaz administrativa: Reportes & Monitoreo → Cuadres Diarios → Caja de
+envíos → «Abrir caja del …» → operador (Admin lo elige; el Cajero ve su propio
+nombre, sin selector) → moneda → efectivo inicial → Revisar apertura → Confirmar.
+Con `remittances.cash.view`, las ventanas Envíos de Dinero y Pagos de Envíos
+avisan cuando falta la caja de hoy del operador y ofrecen «Ir a Caja de envíos».
 La fecha viene del servidor; 0 es válido si la caja comienza sin efectivo.
 Una caja ya cerrada en la fecha actual no puede reabrirse. Para entregar un
 recibo se requiere caja abierta del usuario que paga en la moneda de destino,
@@ -173,6 +194,9 @@ Rango inclusivo. `date` de agregado es día o `from/to` cuando grouping=range.
 Montos filtran por fecha de emisión, excluyen cancelados de sumas monetarias y
 mantienen sus conteos. Tiempos y entregados filtran por fecha de pago.
 Reportes respetan visibilidad del usuario; caja filtrada por fecha de sesión.
+Usuario y Cajero solo reciben los envíos que realizaron o pagaron y sus propias
+cajas. En Administración se consultan en Reportes & Monitoreo → Reportes, grupo
+«-- Envíos de Dinero --», con `remittances.reports`.
 Los agregados de montos conservan pares origen/destino y entregados conserva
 moneda destino; nunca hay un total que mezcle monedas.
 `deliveryTimeSummary` agrupa por fecha de pago o rango y conserva mínimo, máximo

@@ -3,13 +3,21 @@
 Las entregas del libro de Cobros y Pagos son fondos de oficina al cobrador para
 pagos autorizados. La caja de Envíos de Dinero sigue siendo independiente.
 
+**Reportes & Monitoreo → Cuadres Diarios** tiene dos secciones: **Cuadres de
+cobradores**, el libro que describe este documento (permiso 401), y **Caja de
+envíos**, donde se abre, cuenta y cierra la caja de Envíos de Dinero
+(`remittances.cash.view`). El conmutador entre ambas aparece solo si la cuenta
+tiene las dos; una cuenta sin el 401, como el Cajero, ve únicamente la Caja de
+envíos. Las dos cajas no se mezclan ni se cuadran juntas.
+
 ## Dónde se realiza el cierre
 
 El cierre y la devolución se realizan exclusivamente en **Cuadres Diarios**.
 Entregas de Dinero registra las entregas; si encuentra un pendiente anterior,
 indica que debe completarse el cuadre y no ofrece otro lugar para conciliar.
 
-1. Abrir **Cuadres Diarios** con una cuenta Admin. La grilla incluye jornadas
+1. Abrir **Cuadres Diarios** con una cuenta Admin y, si aparece el conmutador,
+   elegir **Cuadres de cobradores**. La grilla incluye jornadas
    **Pendientes**, **Cerradas** y **Conciliadas**, por cobrador y moneda.
 2. Seleccionar una jornada pendiente y pulsar **Revisar cuadre**, o hacer doble
    clic. **Generar cuadre** permite elegir directamente cobrador y fecha.

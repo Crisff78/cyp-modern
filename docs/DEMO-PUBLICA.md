@@ -10,7 +10,8 @@ de clientes, cobradores, cobros, pagos, tasas y envíos. La decisión vigente es
 iniciar una demo nueva de pruebas en Supabase con esos ejemplos y conservar
 Neon intacto. No se transfieren registros anteriores ni datos reales.
 No se copia la base de la laptop ni se publica `.env`.
-Las credenciales ficticias de ambos roles se describen en el README. Los
+Las credenciales ficticias de Administración, Cobrador y Cajero se describen en
+el README. Los
 cambios que haga un evaluador serán visibles para los demás porque comparten
 la misma base de demostración. No introduzcas datos de personas ni operaciones
 reales.
@@ -30,10 +31,56 @@ la base dedicada `cyp_demo`. Las instalaciones locales normales quedan intactas.
 - Tasas y envíos DOP/USD/EUR con recibos pagados, pendientes y cancelaciones.
 - Grupos, PCPs, estaciones, máquinas, plantillas de cargos y solicitudes de
   autorización. Las cuentas ficticias adicionales están deshabilitadas; se
-  conservan los accesos habituales de Administración y Cobrador.
+  conservan los accesos habituales de Administración y Cobrador, y la cuenta de
+  Cajero de práctica descrita abajo.
 - Doce comercios de práctica adicionales en la ruta del cobrador habitual,
   con cargos y autorizaciones de pago pendientes. Los límites, fondos, jornadas
   y permisos normales siguen aplicándose al operar.
+
+**Cuenta de Cajero de práctica (`cashier-v1`).** Todo arranque en modo demo, con
+PostgreSQL o con el archivo local, agrega una sola vez la cuenta
+`cajero@cyp.local` («Cajero de práctica»), con la misma clave de prueba que las
+otras cuentas demo, sin cobrador y con el perfil del rol Cajero. Queda registrada
+con la marca `__demo_seed__:cashier-v1`: si un evaluador la edita, la desactiva,
+la borra o le cambia los permisos, no se repone. El modo real nunca la crea. En
+PostgreSQL necesita la migración 035; el comando de inicio de Render la aplica
+antes de abrir el puerto.
+
+### Recorrido del Cajero
+
+Entra en el portal de administración (`/`) con `cajero@cyp.local`. El menú
+muestra **ENVÍOS** (Envíos de Dinero y Pagos de Envíos) y **REPORTES &
+MONITOREO** (Cuadres Diarios), ya desplegados, y el escritorio los lanzadores
+ENVÍO DE DINERO y CUADRES.
+
+1. **Abrir caja.** Reportes & Monitoreo → Cuadres Diarios. Para el Cajero solo
+   aparece la sección Caja de envíos. En «Abrir caja del …» el operador es el
+   propio Cajero, sin selector: elige la moneda, escribe el efectivo inicial,
+   pulsa Revisar apertura y confirma. Abre una caja por cada moneda con la que
+   vayas a enviar o pagar. Una caja cerrada hoy no se reabre hasta la jornada
+   siguiente; una de un día anterior que siga abierta debe cerrarse primero.
+2. **Enviar.** Envíos → Envíos de Dinero. El formulario está arriba y el cursor
+   empieza en Remitente: busca por teléfono, código, nombre o identificación.
+   Enter pasa al campo siguiente y Shift+Enter vuelve al anterior. Pulsa Calcular
+   cotización, Revisar y confirmar envío y Confirmar. Sin caja abierta en la
+   moneda de origen la ventana avisa y ofrece «Ir a Caja de envíos». Si falta la
+   tasa del día de una moneda, envía en DOP o pide a Administración que la
+   registre en Archivos → Admin. → Tasas de cambio. El listado de debajo muestra
+   solo los envíos del Cajero; desde su detalle puede cancelar un envío pendiente.
+3. **Alta rápida.** Si el cliente no existe, «Registrar cliente nuevo» abre una
+   captura con cliente, cédula o pasaporte, teléfono, dirección, ruta y moneda
+   habitual. El Cajero puede elegir cualquier ruta. «Usar estos datos» prepara la
+   ficha, que se guarda junto con el envío al confirmarlo; Cancelar no crea nada.
+4. **Pagar.** Envíos → Pagos de Envíos lista los envíos pendientes de cualquier
+   operador y los que el Cajero ya pagó. Abre la referencia REC…, pulsa
+   «Registrar pago completo» y confirma la entrega. El pago sale de su caja
+   abierta en la moneda de destino, que debe tener efectivo suficiente.
+5. **Cerrar.** En Cuadres Diarios → Caja de envíos, pulsa «Contar y cerrar» en su
+   caja, escribe el efectivo contado, que debe ser igual al saldo esperado, pulsa
+   Revisar cierre y confirma.
+
+Como la base es compartida, los envíos, pagos y cajas del Cajero los ven también
+los demás evaluadores.
 
 La ampliación conserva los datos que ya existan en su misma base. El historial
 nuevo se construye aparte usando las reglas del dominio, con cierres equilibrados
@@ -89,7 +136,7 @@ intacta y no se elimina. No se requiere copiarla para iniciar esta nueva demo.
    migraciones y agrega los ejemplos ficticios. No restaures datos de Neon ni
    de la instalación local sobre esta base de pruebas.
 4. Comprueba `GET /api/health`, `/`, `/collector/`, la invitación y el acceso de
-   Administración y Cobrador. Verifica que los ejemplos nuevos se cargaron y que
+   Administración, Cobrador y Cajero. Verifica que los ejemplos nuevos se cargaron y que
    otro arranque no los duplica. Registra el resultado real del despliegue antes
    de presentarlo como completado.
 
@@ -167,7 +214,8 @@ no necesita otro servicio ni otro dominio.
    (ver [RRAA-ESTACIONES.md](RRAA-ESTACIONES.md)); sin ellas responde el control de prueba.
    No introduzcas contraseñas de la instalación local ni publiques estas variables.
 4. Espera el deploy y comprueba `GET /api/health`, `/`, `/collector/`, el login
-   de ambos roles y un flujo de Envío/Recibo. `/` debe pedir primero la invitación.
+   de Administración, Cobrador y Cajero, y un envío con su pago. `/` debe pedir
+   primero la invitación.
    El enlace público será el dominio
    HTTPS `onrender.com` que muestre Render.
 

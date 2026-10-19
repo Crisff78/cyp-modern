@@ -33,7 +33,7 @@ Usar un recibo ficticio de un entorno de prueba aislado; no crear una operación
 real únicamente para probar la impresora.
 
 1. Abrir la vista de impresión del recibo y verificar importe, moneda, detalle y
-   referencia antes de imprimir. En remesas, comprobar el total pagado por el
+   referencia antes de imprimir. En envíos de dinero, comprobar el total pagado por el
    remitente, incluida la comisión; el recibo omite su desglose.
 2. Seleccionar «Papel de la impresora (A4 / Carta / otro)» o un ancho térmico de
    58/80 mm en el recibo. Elegir la impresora habitual y el mismo papel en el
@@ -74,10 +74,10 @@ sus criterios comerciales; RRAA no proporciona esos datos. Esto no es un paso
 pendiente de implementación: ambos se introducen manualmente por Admin
 y se pueden modificar cuando lo necesite, según la instrucción del 10 de octubre.
 
-El administrador lo configura en Envíos de Dinero → Tasas → Reparto de comisiones. El
+El administrador lo configura en Archivos → Admin. → Comisiones de envíos. El
 valor inicial de ambos es 0%; no equivale a una tasa comercial aprobada. Los
-cambios se aplican a nuevas remesas y las anteriores conservan el reparto guardado. Las
-canceladas no incrementan el saldo vigente del gestor.
+cambios se aplican a nuevos envíos y los anteriores conservan el reparto guardado. Los
+cancelados no incrementan el saldo vigente del gestor.
 
 El asistente no elige porcentajes. Se conserva la configuración guardada y el
 valor inicial de 0% cuando aún no haya cambios del Admin. No se cambian saldos
