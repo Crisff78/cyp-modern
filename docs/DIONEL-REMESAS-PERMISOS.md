@@ -27,6 +27,29 @@ del servidor.
 7. **Recibos** enfoca la búsqueda. El pago completo sigue requiriendo revisión,
    permiso, caja, saldo y estado válidos en el servidor.
 
+### Ajustes de consulta y ventanas
+
+- En **Envíos**, enfocar o escribir en **Buscar** oculta la captura y deja el
+  listado disponible. No guarda ni borra el borrador; **Nuevo envío** limpia los
+  filtros y prepara otra captura con foco en el remitente.
+- El detalle de un envío o recibo es una ventana independiente: se mueve por su
+  título, se maximiza, se minimiza y se restaura desde el botón inferior. Al tocar
+  otra ventana se intercambia el primer plano. Cerrar el detalle no cierra Envíos.
+- Los importes principales y participantes quedan visibles; contactos completos
+  y desglose de tasas/comisiones se consultan en secciones desplegables.
+- La revisión de pago/cancelación sigue siendo modal y bloqueante. Mover,
+  minimizar o cerrar el visor nunca registra una operación financiera.
+- Los reportes ya no son una pestaña de la captura. En Administración están en
+  **Reportes y Monitoreo → Reportes → Envíos de Dinero**; en la PWA, en el acceso
+  **Reportes** de su navegación principal. Se conservan filtros, CSV e impresión.
+
+Verificación de estos ajustes: 14 pruebas específicas de navegador aprobadas,
+incluyendo búsqueda, foco, arrastre, minimizar/restaurar, maximizar, cambio de
+recibo minimizado, revisión bloqueante de pago, reportes del menú, CSV e impresión
+aislada. La revisión completa ejecutó 558 pruebas sin fallos; 15 integraciones
+PostgreSQL quedaron omitidas por requerir sus entornos dedicados. No se escribieron
+datos financieros en la demo compartida para estas comprobaciones.
+
 ## Mantenimiento administrativo único
 
 - **Archivos → Admin. → Tasas de cambio**: alta/edición autorizada, valores

@@ -52,7 +52,7 @@ import {
 import { CollectionSheet } from "./CollectionSheet";
 import { ReceiptView } from "./ReceiptView";
 import RemittancesWorkspace from "../../shared/remittances/RemittancesWorkspace";
-import { hasPermission, hasRemittanceAccess } from "../../shared/access.mjs";
+import { hasPermission, hasRemittanceAccess, hasRemittancePermission } from "../../shared/access.mjs";
 import { remittancesApi } from "./remittancesApi";
 import { isMockToken } from "./mock";
 import { GeoMap } from "../../client-admin/src/GeoMap";
@@ -74,7 +74,7 @@ import type {
 import { canAccessCollector, enrichUserRole, isSuspendedUser } from "./types";
 
 const APP_BASE_URL = import.meta.env.BASE_URL;
-type View = "route" | "payouts" | "receipts" | "pocket" | "remittances";
+type View = "route" | "payouts" | "receipts" | "pocket" | "remittances" | "reports";
 type Filter = "Todos" | "Pendientes" | "Cobrados" | "Con atraso";
 type RouteMode = "Por rutas" | "Por zonas" | "Rutas y zonas";
 type InstallEvent = Event & {
@@ -86,6 +86,7 @@ const tabs = [
   { id: "payouts", name: "Pagos", icon: ArrowUpRight },
   { id: "receipts", name: "Recibos", icon: ReceiptText },
   { id: "remittances", name: "Envíos", icon: ArrowRight },
+  { id: "reports", name: "Reportes", icon: ReceiptText },
   { id: "pocket", name: "Mi bolsillo", icon: Wallet },
 ] as const;
 const getView = (): View => {
@@ -524,6 +525,7 @@ export function App() {
               <ReceiptsView snapshot={snapshot} onOpen={openReceipt} />
             )}
             {view === "remittances" && user && hasRemittanceAccess(user) && <RemittancesWorkspace api={remittancesApi} user={user} isAdmin={String(user.role).toUpperCase().replace("ROLE_", "") === "SUPERADMIN"} />}
+            {view === "reports" && user && hasRemittancePermission(user, "remittances.reports") && <RemittancesWorkspace api={remittancesApi} user={user} isAdmin={false} reportsOnly />}
             {view === "pocket" && (
               <PocketView
                 snapshot={snapshot}
@@ -546,7 +548,7 @@ export function App() {
         </div>
       </main>
       <nav className="bottom-nav" aria-label="Navegación principal">
-        {tabs.filter(({ id }) => user && (id === "pocket" || (id === "remittances" ? hasRemittanceAccess(user) : hasPermission(user, id === "route" ? 300 : id === "payouts" ? 370 : 320)))).map(({ id, name, icon: Icon }) => (
+        {tabs.filter(({ id }) => user && (id === "pocket" || (id === "reports" ? hasRemittancePermission(user, "remittances.reports") : id === "remittances" ? hasRemittanceAccess(user) : hasPermission(user, id === "route" ? 300 : id === "payouts" ? 370 : 320)))).map(({ id, name, icon: Icon }) => (
           <button
             key={id}
             className={view === id ? "active" : ""}
