@@ -7,7 +7,7 @@ import "./remittances.css";
 import { formatCrossRate } from "./crossRate";
 import { INPUT_LIMITS, isDecimalDraft, validatePhone, validateText } from "../inputRules";
 import { useClientContact } from "./useClientContact";
-import { confirmedCreatedTransfer } from "./createdTransferResponse";
+import { changedRecipientPhone, confirmedCreatedTransfer } from "./createdTransferResponse";
 import { allocationRows, commissionReportStatusLabels } from "./commissionOutput";
 import { accessRole, hasRemittancePermission, type EffectiveAccess, type RemittancePermission } from "../access.mjs";
 import { RemittanceDialog as Dialog } from "./RemittanceDialog";
@@ -35,7 +35,7 @@ type Confirmation = { title: string; path: string; body: Record<string, unknown>
 const pendingByActor = new Map<string, Confirmation>();
 // These domain errors are produced only after the server's idempotency lookup.
 // VALIDATION comes before it, for a body that could never have been saved: the same body cannot succeed on a retry.
-const definitiveDomainErrors = new Set(["QUOTE_CHANGED", "COMMISSION_POLICY_MISMATCH", "CASH_NOT_OPEN", "RATE_MISSING", "RATE_DATE", "DOP_RATE", "CASH_EXISTS", "PREVIOUS_CASH_OPEN", "CASH_CLOSED", "CASH_UNBALANCED", "CASH_NOT_FOUND", "CLIENT_INACTIVE", "CLIENT_NOT_FOUND", "CLIENT_ALREADY_EXISTS", "ROUTE_NOT_FOUND", "SAME_CLIENT", "TRANSFER_NOT_PENDING", "TRANSFER_NOT_FOUND", "INSUFFICIENT_CASH", "SEQUENCE_EXHAUSTED", "MONEY_RANGE", "INVALID_AMOUNT", "INVALID_RATE", "INVALID_CURRENCY", "INVALID_COMMISSION", "INVALID_AMOUNT_MODE", "COMMISSION_EXCEEDS_TOTAL", "AMOUNT_TOO_SMALL", "REASON_REQUIRED", "VALIDATION"]);
+const definitiveDomainErrors = new Set(["QUOTE_CHANGED", "COMMISSION_POLICY_MISMATCH", "CASH_NOT_OPEN", "RATE_MISSING", "RATE_DATE", "DOP_RATE", "CASH_EXISTS", "PREVIOUS_CASH_OPEN", "CASH_CLOSED", "CASH_UNBALANCED", "CASH_NOT_FOUND", "CLIENT_INACTIVE", "CLIENT_NOT_FOUND", "CLIENT_ALREADY_EXISTS", "CLIENT_INACTIVE_EXISTS", "CLIENT_OTHER_ROUTE", "ROUTE_NOT_FOUND", "SAME_CLIENT", "TRANSFER_NOT_PENDING", "TRANSFER_NOT_FOUND", "INSUFFICIENT_CASH", "SEQUENCE_EXHAUSTED", "MONEY_RANGE", "INVALID_AMOUNT", "INVALID_RATE", "INVALID_CURRENCY", "INVALID_COMMISSION", "INVALID_AMOUNT_MODE", "COMMISSION_EXCEEDS_TOTAL", "AMOUNT_TOO_SMALL", "REASON_REQUIRED", "VALIDATION"]);
 type Draft = { senderClientId: string; recipientClientId: string; sendingUserId: string; sourceCurrency: Currency; destinationCurrency: Currency; amount: string; amountMode: "source" | "destination"; note: string };
 const statusText = { pending: "Pendiente de entrega", paid: "Pagado", cancelled: "Cancelado" };
 const tabs: { id: Tab; label: string }[] = [{ id: "envios", label: "Envíos" }, { id: "recibos", label: "Recibos" }, { id: "caja", label: "Caja" }, { id: "reportes", label: "Reportes" }];
@@ -97,25 +97,31 @@ export function ClientPicker({ api, side, senderId, label, clients, value, query
   const visible = matches.slice(0, 20);
   const selected = clients.find((client) => client.id === value);
   const missingSnapshotClients = lookup?.query === query && lookup.ids.some((id) => !clients.some((client) => client.id === id));
-  const choose = (client: RemittanceClient) => { onSelect(client); setExpanded(false); setHighlight(-1); };
+  // Coming back to the chosen client changes nothing: its currencies and the quote stay.
+  const choose = (client: RemittanceClient) => { if (client.id !== value) onSelect(client); setExpanded(false); setHighlight(-1); };
+  const missingNotice = missingSnapshotClients && <p role="status">Hay clientes recientes que todavía no están en esta vista. Pulsa Actualizar antes de seleccionar o registrar otra ficha.</p>;
   return <div className="remittance-client-picker" data-client-side={side}>
-    {onCreate && !selected && !lookupBusy && !lookupError && !missingSnapshotClients && <button type="button" className="remittance-client-create" onClick={() => { setExpanded(false); onCreate(); }}>Registrar cliente nuevo</button>}
+    {/* While the search runs, fails or finds clients missing from this view, registering waits; the button keeps its place so the field does not move. */}
+    {onCreate && !selected && <button type="button" className="remittance-client-create" disabled={lookupBusy || Boolean(lookupError) || missingSnapshotClients} onClick={() => { setExpanded(false); onCreate(); }}>Registrar cliente nuevo</button>}
     <div className="remittance-client-anchor">
     <label htmlFor={id}>{label}<input id={id} type="search" inputMode="text" autoComplete="off" value={query} role="combobox" aria-autocomplete="list" aria-expanded={expanded} aria-controls={`${id}-options`} aria-activedescendant={expanded && visible[highlight] ? `${id}-${highlight}` : undefined} onFocus={() => { setExpanded(true); setHighlight(-1); }} onBlur={() => setExpanded(false)} onChange={(event) => { onQuery(event.target.value); setExpanded(true); setHighlight(-1); }} onKeyDown={(event) => {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); setExpanded(true); setHighlight((current) => Math.min(Math.max(current + (event.key === "ArrowDown" ? 1 : -1), 0), Math.max(visible.length - 1, 0))); }
-      if (event.key === "Enter" && expanded && !event.shiftKey) {
+      // Enter picks only a highlighted option, or the only match of a typed search when the view holds all of them.
+      // With nothing typed or highlighted, Enter goes on to the next field.
+      if (event.key === "Enter" && expanded && !event.shiftKey && (query.trim() || highlight >= 0)) {
         event.preventDefault();
-        if (!lookupBusy && !lookupError && (highlight >= 0 || (visible.length === 1 && !lookup?.hasMore))) {
+        if (!lookupBusy && !lookupError && (highlight >= 0 || (visible.length === 1 && !lookup?.hasMore && !missingSnapshotClients))) {
           const candidate = visible[Math.max(highlight, 0)]; if (candidate) choose(candidate);
-        } else if (visible.length) setHighlight(0);
+        } else if (visible.length && !missingSnapshotClients) setHighlight(0);
       }
       if (event.key === "Escape" && expanded) { event.preventDefault(); setExpanded(false); }
     }} maxLength={160} placeholder="Teléfono, código, identificación o nombre" /></label>
-    {expanded && <div className="remittance-client-options" id={`${id}-options`} role="listbox" aria-label={`Clientes para ${label.toLocaleLowerCase()}`}>{visible.map((client, index) => <button type="button" key={client.id} id={`${id}-${index}`} role="option" aria-selected={client.id === value} className={index === highlight ? "highlighted" : undefined} onMouseDown={(event) => event.preventDefault()} onClick={() => choose(client)}>{clientLabel(client)}<small>Moneda habitual: {clientCurrency(client)}</small></button>)}{!visible.length && <p role="status">No hay clientes disponibles que coincidan.</p>}{matches.length > visible.length && <p>Escribe más caracteres para acotar los {matches.length} resultados.</p>}</div>}
+    {expanded && <div className="remittance-client-options" id={`${id}-options`} role="listbox" aria-label={`Clientes para ${label.toLocaleLowerCase()}`}>{missingNotice}{visible.map((client, index) => <button type="button" key={client.id} id={`${id}-${index}`} role="option" aria-selected={client.id === value} className={index === highlight ? "highlighted" : undefined} onMouseDown={(event) => event.preventDefault()} onClick={() => choose(client)}>{clientLabel(client)}<small>Moneda habitual: {clientCurrency(client)}</small></button>)}{!visible.length && <p role="status">No hay clientes disponibles que coincidan.</p>}{matches.length > visible.length && <p>Escribe más caracteres para acotar los {matches.length} resultados.</p>}</div>}
     </div>
     {expanded && lookupBusy && <p role="status">Buscando contactos…</p>}
     {expanded && lookupError && <p role="alert">{lookupError}</p>}
-    {missingSnapshotClients && <p role="status">Hay clientes recientes que todavía no están en esta vista. Pulsa Actualizar antes de seleccionar o registrar otra ficha.</p>}
+    {/* With the list open the notice goes inside it, where the list cannot cover it. */}
+    {!expanded && missingNotice}
     {expanded && lookup?.query === query && lookup.hasMore && <p role="status">Hay más coincidencias. Escribe más caracteres para acotar la búsqueda.</p>}
     <span className="remittance-client-selection" aria-live="polite">{selected ? `Seleccionado: ${clientLabel(selected)}` : "Selecciona un resultado para usar este cliente."}</span>
     {selected && contactState?.loading && <p className="remittance-help" role="status">Cargando teléfono y dirección…</p>}
@@ -340,9 +346,22 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
       if (savedTransfer) { setPrintTransfer(savedTransfer); setReceiptPrintError(""); }
       await refresh();
     } catch (failure) {
+      // An answer 200 that does not match what was sent: the API finished this operation and a retry repeats the
+      // same answer. The window is not locked, its data are not offered again and the list shows what was saved.
+      if (failure instanceof StrictApiError && failure.code === "REMITTANCE_CONFIRMATION_INVALID") {
+        pendingByActor.delete(pendingKey);
+        window.dispatchEvent(new CustomEvent(REMITTANCES_CHANGED_EVENT, { detail: { source: instanceId, kind: confirmation.kind } }));
+        resetForm(); setConfirmation(null); setUncertain(false);
+        await refresh(); setError(failure.message);
+        return;
+      }
       setConfirmationError(failureMessage(failure));
       const definitive = failure instanceof StrictApiError && definitiveDomainErrors.has(failure.code ?? "");
-      const unresolved = !definitive && (uncertain || (failure instanceof StrictApiError && failure.uncertain));
+      // A refusal (403) comes before the API looks the operation up, so every retry is refused again: the window is
+      // unlocked and, after an uncertain attempt, asks to check the list before repeating it.
+      const refused = failure instanceof StrictApiError && failure.status === 403;
+      const unresolved = !definitive && !refused && (uncertain || (failure instanceof StrictApiError && failure.uncertain));
+      if (refused && uncertain) { setConfirmationError(`${failureMessage(failure)} No pudimos confirmar si el intento anterior quedó registrado: revisa el listado antes de repetirlo.`); void refresh(); }
       setUncertain(unresolved);
       if (!unresolved) pendingByActor.delete(pendingKey);
       if (failure instanceof StrictApiError && ["QUOTE_CHANGED", "COMMISSION_POLICY_MISMATCH"].includes(failure.code ?? "")) setQuote(null);
@@ -366,14 +385,26 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
     finally { if (quoteRequests.current.accepts(request)) { quoteLock.current = false; setQuoteBusy(false); } }
   }
 
+  // A record created with this transfer: the review shows its document and route, which its contact does not carry.
+  const newRecordDetails = (side: ClientSide, label: string) => {
+    const client = newClients[side];
+    return client && <dl className="remittance-summary" aria-label={`Ficha nueva del ${label.toLocaleLowerCase()}`}>
+      <div><dt>Ficha nueva</dt><dd>Se registrará al confirmar el envío</dd></div>
+      <div><dt>Cédula o pasaporte</dt><dd>{client.identification}</dd></div>
+      <div><dt>Ruta</dt><dd>{snapshot?.clientRoutes?.find(({ id }) => id === client.routeId)?.name ?? client.routeId}</dd></div>
+    </dl>;
+  };
+
   function confirmCreate() {
     if (!quote) return;
     if (!senderContact.contact || !recipientContact.contact) { setError("Espera a que se carguen el teléfono y la dirección de ambos clientes. Si hubo un error, pulsa Actualizar y vuelve a cotizar."); return; }
-    // Sent only when it differs from the record; it is checked here with the same rule the server applies.
-    const typedRecipientPhone = recipientPhone.trim() !== knownRecipientPhone ? recipientPhone.trim() : "";
+    // A phone edited here is checked as typed, and sent only when its digits differ from the record's:
+    // the same rule the server applies, so the saved copy matches what the confirmation expects.
+    const editedRecipientPhone = recipientPhone.trim() !== knownRecipientPhone ? recipientPhone.trim() : "";
+    const typedRecipientPhone = changedRecipientPhone(editedRecipientPhone, knownRecipientPhone);
     try {
       validateText(draft.note, "La nota", INPUT_LIMITS.freeNote, { multiline: true });
-      validatePhone(typedRecipientPhone, "Teléfono del destinatario");
+      validatePhone(editedRecipientPhone, "Teléfono del destinatario");
     }
     catch (failure) { setError(failureMessage(failure)); return; }
     setError("");
@@ -383,7 +414,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
       ...(typedRecipientPhone ? { recipientPhone: typedRecipientPhone } : {}),
       ...(isAdmin ? { sendingUserId: draft.sendingUserId } : {}), sourceCurrency: quote.sourceCurrency, destinationCurrency: quote.destinationCurrency,
       amount: quote.amount, commissionBps: quote.commissionBps, quote: quote.quote, note: draft.note.trim(), ...(quote.requestedReceiveAmount === undefined ? {} : { requestedReceiveAmount: quote.requestedReceiveAmount }),
-    }, description: <><p><strong>{senderContact.contact.name}</strong> envía a <strong>{recipientContact.contact.name}</strong>.</p><h3>Remitente</h3><ContactDetails contact={senderContact.contact} label="Remitente" /><h3>Destinatario</h3><ContactDetails contact={recipientContact.contact} label="Destinatario" />{typedRecipientPhone && <p><strong>Teléfono para este envío: {typedRecipientPhone}.</strong>{isAdmin && !recipientContact.contact.phone && digitsOf(typedRecipientPhone) !== digitsOf(recipientContact.contact.cellular) ? " También quedará guardado en la ficha del cliente, que no tiene teléfono." : " Sale en el comprobante; la ficha del cliente no cambia."}</p>}<p className="remittance-help">Datos actuales de las fichas de clientes. El comprobante conserva la copia guardada al registrar el envío.</p><QuoteDetails quote={quote} /><p>Operador: {operatorName(draft.sendingUserId)}. Registrado por: {user.name}.</p><p>Confirma después de recibir el total del remitente. La tasa queda guardada para este envío.</p></> });
+    }, description: <><p><strong>{senderContact.contact.name}</strong> envía a <strong>{recipientContact.contact.name}</strong>.</p><h3>Remitente</h3><ContactDetails contact={senderContact.contact} label="Remitente" />{newRecordDetails("sender", "Remitente")}<h3>Destinatario</h3><ContactDetails contact={recipientContact.contact} label="Destinatario" />{newRecordDetails("recipient", "Destinatario")}{typedRecipientPhone && <p><strong>Teléfono para este envío: {typedRecipientPhone}.</strong>{isAdmin && !recipientContact.contact.phone && digitsOf(typedRecipientPhone) !== digitsOf(recipientContact.contact.cellular) ? " También quedará guardado en la ficha del cliente, que no tiene teléfono." : " Sale en el comprobante; la ficha del cliente no cambia."}</p>}<p className="remittance-help">Datos actuales de las fichas de clientes. El comprobante conserva la copia guardada al registrar el envío.</p><QuoteDetails quote={quote} /><p>Operador: {operatorName(draft.sendingUserId)}. Registrado por: {user.name}.</p><p>Confirma después de recibir el total del remitente. La tasa queda guardada para este envío.</p></> });
   }
 
   function prepareOpening(event: FormEvent) {
@@ -466,7 +497,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   const toolbar = <div className="remittance-toolbar"><label>Buscar<input data-receipt-search={view === "recibos" || undefined} type="search" maxLength={INPUT_LIMITS.name} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Serie, teléfono, nombre, identificación, dirección o nota" title="El teléfono se encuentra aunque lo escribas sin guiones ni espacios." /></label><label>Estado<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">Todos</option><option value="pending">Pendientes</option><option value="paid">Pagados</option><option value="cancelled">Cancelados</option></select></label>{view === "envios" && !fixedForm && can("remittances.create") && <button type="button" className="remittance-primary" disabled={working || uncertain} onClick={resetForm}>Nuevo envío</button>}</div>;
   const transferList = <>
     <p className="remittance-help">{view === "recibos" ? "Recibos por destino. Abre un pendiente para registrar su entrega completa." : "Envíos registrados por tu operación. Abre una referencia para consultar su detalle."}</p>
-    <div className="remittance-table-wrap"><table className="remittance-table remittance-transfer-table"><caption>{view === "recibos" ? "Recepción de dinero" : "Listado de envíos"} · {list.length}</caption><thead><tr><th>Referencia</th><th>Fecha</th><th>Remitente → destinatario · teléfono</th><th>Total recibido</th><th>A entregar</th><th>Estado</th></tr></thead><tbody>{list.map((transfer) => <tr key={transfer.id} onDoubleClick={() => { setDetailId(transfer.id); setCancelReason(""); }}><td data-label="Referencia"><button type="button" className="remittance-link" onClick={() => { setDetailId(transfer.id); setCancelReason(""); }}>{view === "recibos" ? transfer.reciboReference : transfer.envioReference}</button><small>{transfer.operatingCode}</small></td><td data-label="Fecha">{formatDate(transfer.createdAt)}</td><td data-label="Clientes"><span className="remittance-client-cell">{clientName(transfer.senderClientId)}{transfer.senderContact?.phone || transfer.senderContact?.cellular ? <span className="remittance-client-phone"> · {transfer.senderContact.phone || transfer.senderContact.cellular}</span> : null}<br />→ {clientName(transfer.recipientClientId)}{transfer.recipientContact?.phone || transfer.recipientContact?.cellular ? <span className="remittance-client-phone"> · {transfer.recipientContact.phone || transfer.recipientContact.cellular}</span> : null}</span></td><td data-label="Total recibido">{money(transfer.totalAmount, transfer.sourceCurrency)}</td><td data-label="A entregar">{money(transfer.receiveAmount, transfer.destinationCurrency)}</td><td data-label="Estado"><span className={`remittance-status ${transfer.status}`}>{statusText[transfer.status]}</span></td></tr>)}{!list.length && <tr><td colSpan={6}>No hay {view === "envios" ? "envíos" : "recibos"} para estos filtros.</td></tr>}</tbody></table></div>
+    <div className="remittance-table-wrap"><table className="remittance-table remittance-transfer-table"><caption>{view === "recibos" ? "Recepción de dinero" : "Listado de envíos"} · {list.length}</caption><thead><tr><th>Referencia</th><th>Fecha</th><th>Remitente → destinatario · teléfono</th><th>Total recibido</th><th>A entregar</th><th>Estado</th></tr></thead><tbody>{list.map((transfer) => <tr key={transfer.id} onDoubleClick={() => { setDetailId(transfer.id); setCancelReason(""); }}><td data-label="Referencia"><button type="button" className="remittance-link" onClick={() => { setDetailId(transfer.id); setCancelReason(""); }}>{view === "recibos" ? transfer.reciboReference : transfer.envioReference}</button><small>{transfer.operatingCode}</small></td><td data-label="Fecha">{formatDate(transfer.createdAt)}</td><td data-label="Clientes"><span className="remittance-client-cell">{transfer.senderContact?.name ?? clientName(transfer.senderClientId)}{transfer.senderContact?.phone || transfer.senderContact?.cellular ? <span className="remittance-client-phone"> · {transfer.senderContact.phone || transfer.senderContact.cellular}</span> : null}<br />→ {transfer.recipientContact?.name ?? clientName(transfer.recipientClientId)}{transfer.recipientContact?.phone || transfer.recipientContact?.cellular ? <span className="remittance-client-phone"> · {transfer.recipientContact.phone || transfer.recipientContact.cellular}</span> : null}</span></td><td data-label="Total recibido">{money(transfer.totalAmount, transfer.sourceCurrency)}</td><td data-label="A entregar">{money(transfer.receiveAmount, transfer.destinationCurrency)}</td><td data-label="Estado"><span className={`remittance-status ${transfer.status}`}>{statusText[transfer.status]}</span></td></tr>)}{!list.length && <tr><td colSpan={6}>No hay {view === "envios" ? "envíos" : "recibos"} para estos filtros.</td></tr>}</tbody></table></div>
   </>;
   // Warnings only: without a box open today the server refuses the operation (CASH_NOT_OPEN, PREVIOUS_CASH_OPEN).
   // A window that shows the box itself (the collector terminal) does not repeat them.
@@ -487,6 +518,8 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
     {onOpenCash && <button type="button" onClick={() => { setDetailId(null); onOpenCash(); }}>Ir a Caja de envíos</button>}
   </div>;
   const openingCash = snapshot && canOpenCash ? remittanceCashNotice(snapshot, openingOperator, opening.currency) : "ok";
+  // A transfer is registered only for an operator who can send; the boxes still list every operator.
+  const sendingOperators = snapshot?.sendingOperatorIds ? snapshot.operators.filter(({ id }) => snapshot.sendingOperatorIds!.includes(id)) : snapshot?.operators ?? [];
   // Classes that only the compact layout of the sending window uses to place a field.
   const fixedPlace = (name: string) => fixedForm ? ` ${name}` : "";
 
@@ -519,7 +552,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
               {recipientContact.contact && !knownRecipientPhone && !recipientPhone.trim() && <p className="remittance-client-warning" role="status">Este destinatario no tiene teléfono registrado. Escríbelo en «Teléfono del destinatario» para poder ubicarlo.</p>}
               <label>Moneda del destinatario<select value={draft.destinationCurrency} onChange={(event) => updateDraft("destinationCurrency", event.target.value as Currency)}>{snapshot.currencies.map((currency) => <option key={currency}>{currency}</option>)}</select></label>
             </div>
-            {isAdmin && <label className={"remittance-wide" + fixedPlace("remittance-operator-field")}>Operador del envío<select required value={draft.sendingUserId} onChange={(event) => updateDraft("sendingUserId", event.target.value)}>{snapshot.operators.map((operator) => <option key={operator.id} value={operator.id}>{operator.name}</option>)}</select></label>}
+            {isAdmin && <label className={"remittance-wide" + fixedPlace("remittance-operator-field")}>Operador del envío<select required value={draft.sendingUserId} onChange={(event) => updateDraft("sendingUserId", event.target.value)}>{sendingOperators.map((operator) => <option key={operator.id} value={operator.id}>{operator.name}</option>)}</select></label>}
             <p className={"remittance-help remittance-wide" + fixedPlace("remittance-manager-help")}>Gestor: {operatorName(draft.sendingUserId)}. Reparto automático: {snapshot.commissionPolicy?.managerCommissionBps ? snapshot.commissionPolicy.managerCommissionBps / 100 : 0}% del importe final de destino. La comisión se divide entre empresa y gestor; no se cobra un cargo adicional por el reparto.</p>
             <label className={"remittance-wide" + fixedPlace("remittance-note-field")}>Nota (opcional)<textarea maxLength={INPUT_LIMITS.freeNote} rows={fixedForm ? 1 : 2} value={draft.note} onChange={(event) => updateDraft("note", event.target.value)} /></label>
           </fieldset><p className="remittance-help">Selecciona cada cliente para cargar su moneda habitual; después puedes ajustar cada moneda por separado. La comisión se suma al principal. Se necesita una caja abierta del operador en la moneda de origen.</p>
@@ -562,10 +595,10 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
       {detail.managerCommission && <DataTable section={{ title: "Anotación histórica manual del gestor", columns: ["Dato", "Valor"], rows: managerCommissionRows(detail.managerCommission) }} />}
       {detail.paidAt && <p>Pagado: {formatDate(detail.paidAt)} · {operatorName(detail.paidBy)}</p>}{detail.cancelReason && <p>Cancelado: {formatDate(detail.cancelledAt)}. Motivo: {detail.cancelReason}</p>}
       {payCashNotice}
-      <div className="remittance-actions"><button type="button" onClick={() => runOutput(() => printSections(`Comprobante ${detail.envioReference}`, transferOutput(detail, true), "CyP · Envíos de Dinero", { footerNote: snapshot?.receiptFooterNote }))}>Imprimir comprobante</button>{payoutsShown && detail.status === "pending" && detail.canPay && can("remittances.pay") && <button type="button" className="remittance-primary" onClick={() => confirm({ title: "Confirmar entrega al destinatario", path: `/envios/${encodeURIComponent(detail.id)}/pagar`, body: {}, kind: "pay", description: <p>Registrar entrega única de <strong>{money(detail.receiveAmount, detail.destinationCurrency)}</strong> a <strong>{clientName(detail.recipientClientId)}</strong>. Se descuenta de tu caja abierta de hoy. Confirma después de entregar el dinero.</p> })}>Registrar pago completo</button>}</div>
+      <div className="remittance-actions"><button type="button" onClick={() => runOutput(() => printSections(`Comprobante ${detail.envioReference}`, transferOutput(detail, true), "CyP · Envíos de Dinero", { footerNote: snapshot?.receiptFooterNote }))}>Imprimir comprobante</button>{payoutsShown && detail.status === "pending" && detail.canPay && can("remittances.pay") && <button type="button" className="remittance-primary" onClick={() => confirm({ title: "Confirmar entrega al destinatario", path: `/envios/${encodeURIComponent(detail.id)}/pagar`, body: {}, kind: "pay", description: <p>Registrar entrega única de <strong>{money(detail.receiveAmount, detail.destinationCurrency)}</strong> a <strong>{detail.recipientContact?.name ?? clientName(detail.recipientClientId)}</strong>. Se descuenta de tu caja abierta de hoy. Confirma después de entregar el dinero.</p> })}>Registrar pago completo</button>}</div>
       {sendsShown && detail.status === "pending" && detail.canCancel && can("remittances.cancel") && <form className="remittance-cancel" onSubmit={prepareCancellation}><label>Motivo de cancelación<textarea required maxLength={INPUT_LIMITS.freeNote} value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} /></label><button className="remittance-danger" type="submit" disabled={!cancelReason.trim()}>Revisar cancelación</button></form>}
     </Dialog>}
-    {closing && <Dialog title={`Contar caja ${closing.currency}`} onClose={() => setClosing(null)}><form onSubmit={prepareClosing}><p>{operatorName(closing.operatorId)} · {closing.date}</p><p>Esperado: <strong>{money(closing.expected, closing.currency)}</strong></p><label>Efectivo contado<input autoFocus required inputMode="decimal" maxLength={moneyInputLength} value={counted} onChange={(event) => { if (isDecimalDraft(event.target.value)) setCounted(event.target.value); }} /></label>{error && <p role="alert" className="remittance-error">{error}</p>}<button className="remittance-primary" type="submit">Revisar cierre</button></form></Dialog>}
+    {closing && <Dialog title={`Contar caja ${closing.currency}`} onClose={() => setClosing(null)}><form onSubmit={prepareClosing}><p>{operatorName(closing.operatorId)} · {closing.date}</p><p>Esperado: <strong>{money(closing.expected, closing.currency)}</strong></p><label>Efectivo contado<input data-autofocus required inputMode="decimal" maxLength={moneyInputLength} value={counted} onChange={(event) => { if (isDecimalDraft(event.target.value)) setCounted(event.target.value); }} /></label>{error && <p role="alert" className="remittance-error">{error}</p>}<button className="remittance-primary" type="submit">Revisar cierre</button></form></Dialog>}
     {confirmation && <Dialog title={confirmation.title} onClose={() => setConfirmation(null)} locked={busy || uncertain}>{confirmation.description}{confirmationError && <p className="remittance-error" role="alert">{confirmationError}</p>}{uncertain && <p>No cambies los datos ni cierres esta ventana. El reintento usa la misma referencia de operación.</p>}<div className="remittance-actions"><button type="button" disabled={busy || uncertain} onClick={() => setConfirmation(null)}>Volver</button><button type="button" className={confirmation.kind === "cancel" ? "remittance-danger" : "remittance-primary"} disabled={busy} onClick={() => void submitConfirmation()}>{busy ? "Registrando…" : uncertain ? "Reintentar misma operación" : "Confirmar"}</button></div></Dialog>}
     {printTransfer && <Dialog title="¿Quieres imprimir el recibo?" onClose={closePrintPrompt}>
       <p>El envío <strong>{printTransfer.envioReference}</strong> quedó registrado correctamente. Recibo: <strong>{printTransfer.reciboReference}</strong>.</p>

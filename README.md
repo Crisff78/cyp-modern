@@ -80,7 +80,9 @@ de permisos y **Usuarios → Permisos** permite limitarlo (ver
 [docs/ROLES-Y-CUENTAS-COBRADORES.md](docs/ROLES-Y-CUENTAS-COBRADORES.md)). La
 contraseña inicial exige 12 caracteres mínimo, se entrega personalmente y el
 cobrador puede cambiarla; cualquier cambio de contraseña o de estado cierra las
-sesiones abiertas de esa cuenta.
+sesiones abiertas de esa cuenta. Para cambiar la clave, el estado, el rol o los
+datos de inicio de otra cuenta hay que tener todos sus permisos, y la cuenta
+principal de administración solo la modifica ella misma.
 
 API equivalente (con `Idempotency-Key` en las mutaciones): `GET /api/usuarios`,
 `POST /api/usuarios`, `POST /api/usuarios/:id/clave` y

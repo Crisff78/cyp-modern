@@ -51,6 +51,8 @@ export function roleRemittancePermissions(role) {
   switch (accessRole(role)) {
     case "admin": return [...REMITTANCE_PERMISSION_KEYS];
     case "supervisor": return [...readKeys];
+    // Intentional since PR 36: the collector keeps the quick client sign-up during a remittance
+    // (`remittances.clients.create`), always limited to his own route by the server.
     case "collector": return REMITTANCE_PERMISSION_KEYS.filter((key) => !maintenance.has(key) && key !== "remittances.commissions.view");
     case "cashier": return [...cashierKeys];
     default: return [];
@@ -76,6 +78,9 @@ export const hasRemittancePermission = (actor, key) => {
 };
 export const hasRemittanceAccess = (actor) => actorAccess(actor).remittances.some((key) =>
   ["remittances.view", "remittances.receipts", "remittances.cash.view", "remittances.reports"].includes(key));
+// On its role profile every account changes its own password, as before PR 36; only
+// personalized permissions can withdraw it through code 2.
+export const canChangeOwnPassword = (actor) => actorAccess(actor).mode !== "custom" || hasPermission(actor, 2);
 
 // Every UI entry point uses the same page requirement, including direct hashes.
 export const PAGE_PERMISSIONS = {

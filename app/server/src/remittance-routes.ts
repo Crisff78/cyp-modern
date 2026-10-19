@@ -84,8 +84,11 @@ export function registerRemittanceRoutes(
     .refine((input) => Boolean(input.recipientClientId) !== Boolean(input.newRecipientClient), { path: ["recipientClientId"], message: "Selecciona un destinatario o completa su ficha nueva." }), (state, actor, input) => {
     // Both client identities and the remittance commit in the same transaction.
     // A rejected quote, cancelled form or retry cannot leave orphan client records.
-    const senderClientId = input.senderClientId ?? registerRemittanceClient(state, actor, input.newSenderClient!);
-    const recipientClientId = input.recipientClientId ?? registerRemittanceClient(state, actor, input.newRecipientClient!);
+    const senderClientId = input.senderClientId ?? registerRemittanceClient(state, actor, input.newSenderClient!, "sender", input.recipientClientId);
+    // A new recipient record without its own phone keeps the one written in «Teléfono del destinatario».
+    const recipientDraft = input.newRecipientClient && !input.newRecipientClient.phone && input.recipientPhone
+      ? { ...input.newRecipientClient, phone: input.recipientPhone } : input.newRecipientClient;
+    const recipientClientId = input.recipientClientId ?? registerRemittanceClient(state, actor, recipientDraft!, "recipient", senderClientId);
     const { newSenderClient: _sender, newRecipientClient: _recipient, ...values } = input;
     return createRemittance(state, actor, { ...values, senderClientId, recipientClientId }, systemOperators);
   });

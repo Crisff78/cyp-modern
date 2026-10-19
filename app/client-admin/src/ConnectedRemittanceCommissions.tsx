@@ -69,11 +69,11 @@ export function ConnectedRemittanceCommissions({ actor }: { actor: AccessActor &
       {policy?.updatedAt && <p className="remittance-help">Último cambio: {new Intl.DateTimeFormat("es-DO", { dateStyle: "short", timeStyle: "short", timeZone: "America/Santo_Domingo" }).format(new Date(policy.updatedAt))}</p>}
       <button className="remittance-primary" disabled={loading || !policy || !canManage || request.locked}>Revisar reparto</button>
     </form>
-    {review && <LegacyDialog title="Confirmar configuración de comisiones" onClose={() => { if (!request.locked) setReview(null); }}>
+    {review && <LegacyDialog title="Confirmar configuración de comisiones" onClose={() => { if (request.closable) setReview(null); }}>
       <p>Comisión total: <strong>{review.transactionCommissionBps / 100}%</strong>. Gestor: <strong>{review.managerCommissionBps / 100}%</strong>.</p><p>Se aplicará únicamente a envíos nuevos.</p>
       {request.error && <p className="remittance-error" role="alert">{request.error}</p>}
       {request.uncertain && <p>Conservamos la misma configuración para reintentar el guardado sin duplicarlo.</p>}
-      <div className="legacy-dialog-actions"><button type="button" disabled={request.locked} onClick={() => setReview(null)}>Cancelar</button><button type="button" disabled={request.busy} onClick={() => void save()}>{request.busy ? "Guardando…" : request.uncertain ? "Reintentar guardado" : "Confirmar"}</button></div>
+      <div className="legacy-dialog-actions"><button type="button" disabled={!request.closable} onClick={() => setReview(null)}>Cancelar</button><button type="button" disabled={request.busy} onClick={() => void save()}>{request.busy ? "Guardando…" : request.uncertain ? "Reintentar guardado" : "Confirmar"}</button></div>
     </LegacyDialog>}
   </section>;
 }

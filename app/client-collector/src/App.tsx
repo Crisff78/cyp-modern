@@ -192,20 +192,23 @@ export function App() {
   useEffect(() => {
     void authenticate();
   }, [authenticate]);
+  // The reads belong to the signed-in account, not to its current permissions: a poll that brings new
+  // permissions updates the account without starting a second read of everything.
+  const userId = user?.id;
   const refresh = useCallback(
     async (quiet = false) => {
-      if (!user || !navigator.onLine) return;
+      if (!userId || !navigator.onLine) return;
       if (!quiet) setLoading(true);
       try {
         const current = await api<User>("/auth/me");
-        if (currentUser.current?.id !== user.id) return;
+        if (currentUser.current?.id !== userId) return;
         setUser((previous) => previous?.access?.revision === current.access?.revision && previous?.access?.mode === current.access?.mode ? previous : current);
         const data = await api<Snapshot>("/snapshot");
-        if (currentUser.current?.id !== user.id) return;
+        if (currentUser.current?.id !== userId) return;
         setSnapshot(data);
         setError("");
       } catch (err) {
-        if (currentUser.current?.id !== user.id) return;
+        if (currentUser.current?.id !== userId) return;
         if (err instanceof ApiError && err.status === 401) {
           setToken(null);
           setUser(null);
@@ -221,11 +224,11 @@ export function App() {
         if (!quiet) setLoading(false);
       }
     },
-    [user],
+    [userId],
   );
   useEffect(() => {
-    if (user && online) void refresh();
-  }, [user, online, refresh]);
+    if (userId && online) void refresh();
+  }, [userId, online, refresh]);
   useEffect(() => {
     const interval = window.setInterval(() => {
       if (document.visibilityState === "visible" && navigator.onLine)
@@ -389,6 +392,10 @@ export function App() {
   );
   const maxCash =
     (collector?.collectionLimit ?? 0) + (collector?.payoutLimit ?? 0);
+  // Views this account may open; "Mi bolsillo" is always one of them. A view without permission
+  // (the default "Mi ruta", or a ?view link) shows the first allowed one instead of a blank page.
+  const allowedTabs = tabs.filter(({ id }) => id === "pocket" || (id === "remittances" ? hasRemittanceAccess(user) : hasPermission(user, id === "route" ? 300 : id === "payouts" ? 370 : 320)));
+  const shownView: View = allowedTabs.some(({ id }) => id === view) ? view : allowedTabs[0].id;
   return (
     <div className="app-shell">
       <a className="skip-link" href="#main">
@@ -502,7 +509,7 @@ export function App() {
           )
         ) : (
           <>
-            {view === "route" && user && hasPermission(user, 300) && (
+            {shownView === "route" && user && hasPermission(user, 300) && (
               <RouteView
                 snapshot={snapshot}
                 user={user}
@@ -512,7 +519,7 @@ export function App() {
                 onCollect={hasPermission(user, 321) ? setOperation : () => toast.error("Tu cuenta no tiene permiso para registrar cobros.")}
               />
             )}
-            {view === "payouts" && user && hasPermission(user, 370) && (
+            {shownView === "payouts" && user && hasPermission(user, 370) && (
               <PayoutsView
                 snapshot={snapshot}
                 online={online}
@@ -520,11 +527,11 @@ export function App() {
                 onPay={hasPermission(user, 371) ? setOperation : () => toast.error("Tu cuenta no tiene permiso para registrar pagos.")}
               />
             )}
-            {view === "receipts" && user && hasPermission(user, 320) && (
+            {shownView === "receipts" && user && hasPermission(user, 320) && (
               <ReceiptsView snapshot={snapshot} onOpen={openReceipt} />
             )}
-            {view === "remittances" && user && hasRemittanceAccess(user) && <RemittancesWorkspace api={remittancesApi} user={user} isAdmin={String(user.role).toUpperCase().replace("ROLE_", "") === "SUPERADMIN"} />}
-            {view === "pocket" && (
+            {shownView === "remittances" && user && hasRemittanceAccess(user) && <RemittancesWorkspace api={remittancesApi} user={user} isAdmin={String(user.role).toUpperCase().replace("ROLE_", "") === "SUPERADMIN"} />}
+            {shownView === "pocket" && (
               <PocketView
                 snapshot={snapshot}
                 collector={collector}
@@ -539,19 +546,19 @@ export function App() {
             )}
           </>
         )}
-        {view === "pocket" && trackingDetail && <p className="location-feedback" role="status">{trackingDetail}</p>}
+        {shownView === "pocket" && trackingDetail && <p className="location-feedback" role="status">{trackingDetail}</p>}
         <div className="content-end">
           <ShieldCheck size={14} />
           <span>CyP · Cobros y pagos, bajo control.</span>
         </div>
       </main>
       <nav className="bottom-nav" aria-label="Navegación principal">
-        {tabs.filter(({ id }) => user && (id === "pocket" || (id === "remittances" ? hasRemittanceAccess(user) : hasPermission(user, id === "route" ? 300 : id === "payouts" ? 370 : 320)))).map(({ id, name, icon: Icon }) => (
+        {allowedTabs.map(({ id, name, icon: Icon }) => (
           <button
             key={id}
-            className={view === id ? "active" : ""}
+            className={shownView === id ? "active" : ""}
             aria-label={name}
-            aria-current={view === id ? "page" : undefined}
+            aria-current={shownView === id ? "page" : undefined}
             onClick={(event) => navigate(id, event.detail > 0)}
           >
             <span>

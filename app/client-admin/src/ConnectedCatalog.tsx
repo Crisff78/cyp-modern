@@ -64,6 +64,8 @@ export function ConnectedCatalog({ page, snapshot, actorId, canManagePermissions
   const [message, setMessage] = useState("");
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<RecordRow | "new" | null>(null);
+  // Accounts that may see but not modify the record (Supervisor, consultation) open it read-only.
+  const [viewOnly, setViewOnly] = useState(false);
   const [passwordTarget, setPasswordTarget] = useState<RecordRow | null>(null);
   const [draft, setDraft] = useState<Draft>({});
   const [busy, setBusy] = useState(false);
@@ -133,7 +135,7 @@ export function ConnectedCatalog({ page, snapshot, actorId, canManagePermissions
     { key: "day1", label: "Primer día", type: "number", maxLength: 2 }, { key: "day2", label: "Segundo día", type: "number", maxLength: 2 }, { key: "amount", label: "Importe (DOP)", type: "money", required: true, maxLength: 11 }, { key: "note", label: "Nota", maxLength: INPUT_LIMITS.note, multiline: true },
   ];
   const open = (record: RecordRow | "new") => {
-    if (record === "new" ? !access.canCreate : !access.canEdit) return;
+    if (record === "new" && !access.canCreate) return;
     // After a failed or empty read the field waits again instead of changing from text to list while typing.
     if (page === "recurringCharges" && !serviceCatalog?.length) setServiceCatalog(null);
     void loadServices();
@@ -142,7 +144,7 @@ export function ConnectedCatalog({ page, snapshot, actorId, canManagePermissions
     for (const field of fields) next[field.key] = field.type === "money" ? moneyString(record === "new" ? page === "collectors" ? 1_000_000 : 0 : record[field.key]) : field.type === "boolean" ? Boolean(record !== "new" && record[field.key]) : String(record === "new" ? next[field.key] ?? "" : record[field.key] ?? "");
     if (page === "servicesProducts") next.referencePriceCents = record === "new" || record.referencePriceCents == null ? "" : moneyString(record.referencePriceCents);
     if (next.frequency === "Semestal") next.frequency = "Semestral";
-    setDraft(next); setEditing(record); setFormError(""); setMessage(""); setPickedAccount(null); setAccountPickerOpen(false);
+    setDraft(next); setEditing(record); setViewOnly(record !== "new" && !access.canEdit); setFormError(""); setMessage(""); setPickedAccount(null); setAccountPickerOpen(false);
   };
   const payloadFor = (value: Draft) => {
     const payload: Record<string, unknown> = {};
@@ -407,7 +409,7 @@ export function ConnectedCatalog({ page, snapshot, actorId, canManagePermissions
       onToggleFilters={page === "recurringCharges" ? () => setFiltersVisible((current) => !current) : undefined}
       filtersVisible={filtersVisible}
       onFirst={() => moveSelected("first")} onPrevious={() => moveSelected("up")} onNext={() => moveSelected("down")} onLast={() => moveSelected("last")}
-      onNew={() => open("new")} onEdit={() => selected && open(selected)}
+      onNew={() => open("new")} onEdit={() => selected && open(selected)} consultOnEdit
       onDelete={() => { if (selected && !busy) { setToggleTarget(selected); setFormError(""); } }}
       deleteIcon="x" deleteTitle={selected && !active(selected) ? "Reactivar" : "Inactivar"}
       disableNew={loading || busy} disableEdit={!selected || loading || busy} disableDelete={!selected || loading || busy}
@@ -445,7 +447,9 @@ export function ConnectedCatalog({ page, snapshot, actorId, canManagePermissions
     {page === "users" && <p className="catalog-scope-note">{ACCOUNT_ROLE_SUMMARY} Permisos permite aplicar un perfil personalizado a cada cuenta, respetando el alcance de su rol.</p>}
     {limitsTarget && <CollectorLimitsDialog key={`${actorId}-${limitsTarget.id}`} actorId={actorId} collector={limitsTarget} onClose={() => setLimitsTarget(null)} onSaved={async (saved) => { setLimitsTarget(null); setRelationRow(saved); await refresh(); setMessage("Límites del cobrador guardados. Sus demás datos se conservan."); onRefresh(); }} />}
     {editing && <LegacyDialog title={formTitles[page]} className={dialogClasses[page] + " catalog-legacy-dialog"} onClose={() => { if (!busy) setEditing(null); }}>
-      <form className={formClasses[page]} onSubmit={submit}>{formContent()}{formError && <p role="alert">{formError}</p>}<div className="legacy-dialog-actions centered"><button type="submit" disabled={busy}>{busy ? "Guardando…" : "oK"}</button><button type="button" disabled={busy} onClick={() => setEditing(null)}>Cancelar</button></div></form>
+      <form className={formClasses[page]} onSubmit={submit}>{viewOnly ? <fieldset disabled className="catalog-readonly-fieldset" style={{ border: 0, padding: 0, margin: 0, display: "contents" }}>{formContent()}</fieldset> : formContent()}{formError && <p role="alert">{formError}</p>}
+        {viewOnly ? <><p className="catalog-scope-note">Solo consulta: tu cuenta no tiene permiso para modificar este registro.</p><div className="legacy-dialog-actions centered"><button type="button" autoFocus onClick={() => setEditing(null)}>Cerrar</button></div></>
+          : <div className="legacy-dialog-actions centered"><button type="submit" disabled={busy}>{busy ? "Guardando…" : "oK"}</button><button type="button" disabled={busy} onClick={() => setEditing(null)}>Cancelar</button></div>}</form>
     </LegacyDialog>}
     {accountPickerOpen && editing && <CollectorAccountPicker currentId={String(draft.accountId ?? "")} collectorId={editing === "new" ? undefined : editing.id} onClose={() => setAccountPickerOpen(false)} onSelect={(account) => { setDraft((current) => ({ ...current, accountId: account.id })); setPickedAccount(account); setAccountPickerOpen(false); }} />}
     {toggleTarget && <LegacyDialog title="Confirmar" className="legacy-confirm-dialog catalog-legacy-dialog" onClose={() => { if (!busy) setToggleTarget(null); }}><div className="legacy-confirm-content"><span className="legacy-question-icon">?</span><p>¿{active(toggleTarget) ? "Inactivar" : "Reactivar"} {text(toggleTarget, definition.label)}?</p></div><p className="catalog-scope-note">El historial se conserva.</p>{formError && <p role="alert">{formError}</p>}<div className="legacy-dialog-actions centered"><button type="button" disabled={busy} onClick={() => void toggle()}>{busy ? "Guardando…" : "Sí"}</button><button type="button" disabled={busy} onClick={() => setToggleTarget(null)}>No</button></div></LegacyDialog>}
@@ -464,7 +468,7 @@ function CollectorLimitsDialog({ actorId, collector, onClose, onSaved }: { actor
   const [draft, setDraft] = useState<CollectorLimitsDraft>(() => pendingMovementDraft<CollectorLimitsDraft>(actorId, scope) ?? { collectionLimit: moneyString(collector.collectionLimit), payoutLimit: moneyString(collector.payoutLimit), previousCollectionLimit: Number(collector.collectionLimit ?? 0), previousPayoutLimit: Number(collector.payoutLimit ?? 0) });
   const [reviewing, setReviewing] = useState(() => Boolean(pendingMovementDraft(actorId, scope)));
   const [formError, setFormError] = useState("");
-  const close = () => { if (!request.locked) { request.clear(); onClose(); } };
+  const close = () => { if (request.closable) { request.clear(); onClose(); } };
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (request.busy) return;

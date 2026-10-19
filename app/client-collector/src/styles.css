@@ -1101,7 +1101,9 @@ strong {
   left: 50%;
   transform: translateX(-50%);
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  /* One equal column per allowed view: an account without some views has no empty slots. */
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   background: #ffffffef;
   backdrop-filter: blur(16px);
   border-top: 1px solid #e1e7e1;

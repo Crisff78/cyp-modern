@@ -185,3 +185,13 @@ test("editing a catalog record cannot hide an unauthorized activation change ins
   assert.equal((await post(`/api/zonas/${zone.id}`, { name: `${zone.name} QA`, active: true }, token)).statusCode, 200,
     "saving an existing active legacy row does not require inactivation permission");
 });
+
+test("an Admin cannot remove his own access or the permission administration from himself", async (t) => {
+  const { store, post, login, account } = await setup(t);
+  const own = await account("admin"), token = await login(own.email, "Ficticia-segura-2026!");
+  const before = (await store.read()).accounts.find(({ id }) => id === own.id)!;
+  const refused = await post(`/api/usuarios/${own.id}/permisos`, { mode: "custom", permissionIds: [1, 10, 101], remittancePermissions: [], revision: before.permissionRevision ?? 0 }, token);
+  assert.equal(refused.statusCode, 409, refused.body); assert.equal(refused.json().error.code, "OWN_ADMIN_ACCESS");
+  const after = (await store.read()).accounts.find(({ id }) => id === own.id)!;
+  assert.equal(after.permissionRevision ?? 0, before.permissionRevision ?? 0); assert.equal(after.permissionMode ?? "role", before.permissionMode ?? "role");
+});

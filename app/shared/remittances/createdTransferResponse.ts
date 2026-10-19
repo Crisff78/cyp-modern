@@ -2,6 +2,15 @@ import { StrictApiError } from "./strictApi";
 import { managerCommissionMatches } from "./suggestions";
 import type { NewRemittanceClient, Quotation, RemittanceContact, Transfer } from "./types";
 
+// A phone is the same however it is written: the server compares only its digits.
+const phoneDigits = (value: string) => value.replace(/\D/g, "");
+
+/** The phone written for the recipient of one transfer, sent only when its digits differ from the record's. */
+export function changedRecipientPhone(typed: string, known: string) {
+  const phone = typed.trim();
+  return phone && phoneDigits(phone) !== phoneDigits(known) ? phone : "";
+}
+
 /** Only offer the saved receipt after the API confirms the original operation. */
 export function confirmedCreatedTransfer(value: unknown, expected: Record<string, unknown>, actorId: string, quotation?: Quotation): Transfer {
   const row = value as Transfer | null;
@@ -13,7 +22,8 @@ export function confirmedCreatedTransfer(value: unknown, expected: Record<string
     const id = row[`${side}ClientId`], draft = expected[side === "sender" ? "newSenderClient" : "newRecipientClient"] as NewRemittanceClient | undefined;
     if (!draft) return typeof id === "string" && id === expected[`${side}ClientId`];
     const contact = row[`${side}Contact`];
-    const phone = side === "recipient" && expected.recipientPhone ? expected.recipientPhone : draft.phone;
+    // The record keeps its own phone unless the one written for the transfer has other digits (as the server does).
+    const phone = (side === "recipient" && typeof expected.recipientPhone === "string" && changedRecipientPhone(expected.recipientPhone, draft.phone)) || draft.phone;
     return Boolean(typeof id === "string" && id && contact && contact.id === id && contact.name === draft.name.trim() && contact.identification === draft.identification.trim() && contact.address === draft.address.trim() && contact.phone === phone);
   };
   const valid = Boolean(row && typeof row === "object" && !Array.isArray(row) &&
@@ -31,6 +41,11 @@ export function confirmedCreatedTransfer(value: unknown, expected: Record<string
         Object.entries(quotation.commissionAllocation).every(([key, value]) => row.commissionAllocation?.[key as keyof NonNullable<Transfer["commissionAllocation"]>] === value)))
     )) &&
     managerCommissionMatches(expected.managerCommission as Transfer["managerCommission"], row.managerCommission));
-  if (!valid) throw new StrictApiError("La respuesta no confirmó el envío guardado. Conservamos los datos: reintenta esta misma operación sin cambiarlos.", 200, true, "REMITTANCE_CONFIRMATION_INVALID");
+  // An answer 200 means the API finished this operation, and a retry with the same key repeats the same answer:
+  // the window does not wait for another one. It names the saved reference so the operator checks it in the list.
+  if (!valid) {
+    const reference = row && typeof row === "object" && typeof row.envioReference === "string" && /^[A-Z0-9-]{1,40}$/.test(row.envioReference) ? ` ${row.envioReference}` : "";
+    throw new StrictApiError(`La API respondió que registró el envío${reference}, pero su respuesta no coincide con los datos enviados. Revisa el envío en el listado antes de registrar otro; no lo repitas sin comprobarlo.`, 200, false, "REMITTANCE_CONFIRMATION_INVALID");
+  }
   return row!;
 }

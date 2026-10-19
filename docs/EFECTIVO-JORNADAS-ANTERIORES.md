@@ -51,13 +51,19 @@ recepción. No borra, cancela ni cambia de fecha los movimientos originales.
 Los saldos disponibles descuentan ese efectivo, manteniendo separados DOP, USD
 y EUR. Cuadres y monitores conservan los importes históricos y muestran el saldo
 neto; Cuadres identifica el importe devuelto/conciliado.
-La campana descuenta las devoluciones confirmadas de los cobros pendientes. Si
-un depósito anterior estaba pendiente de aceptación, todavía puede aceptarse:
-eso reconoce su recepción y no cambia el importe ni reabre el saldo conciliado.
+La campana descuenta las devoluciones confirmadas de los cobros pendientes. Su
+aviso «Hay cobros sin depósito confirmado» solo aparece si la cuenta puede ver
+cobros, depósitos y cuadres (320, 330 y 401), y su botón abre Cuadres Diarios. Si
+un depósito anterior estaba pendiente de aceptación, todavía puede aceptarse con
+«Aceptar depósito» (330 y 334): eso reconoce su recepción y no cambia el importe
+ni reabre el saldo conciliado.
 
-Solo Admin puede registrar la recepción. Los permisos de lectura administrativa
-se conservan. No existe una acción para saltarse la validación de caja ni resetear
-los datos compartidos de la demo.
+Solo Admin puede registrar la recepción. Con permisos personalizados, consultar
+Cuadres de cobradores requiere el 401, y **Cerrar jornada** o **Registrar
+devolución y cerrar** requieren además el 402 «Hacer cuadre» y el 403 «Cerrar
+Día». En la API, `POST /api/cuadres` exige 402 y 403, y `/api/cuadres/regularizar`,
+el 403. Los permisos de lectura administrativa se conservan. No existe una acción
+para saltarse la validación de caja ni resetear los datos compartidos de la demo.
 
 ## Contrato de API
 
@@ -68,15 +74,16 @@ los datos compartidos de la demo.
   Devuelve las filas por fecha/moneda, los totales en centavos enteros, incidencias,
   el historial y una `revision` del estado revisado. `canReconcile` solo es cierto
   si todos los pendientes pueden recibirse sin inconsistencias.
-- `POST /api/cuadres/regularizar`: requiere sesión Admin e `Idempotency-Key`.
+- `POST /api/cuadres/regularizar`: requiere sesión Admin, el código 403 e `Idempotency-Key`.
   Cuerpo estricto: `collectorId`, `date` opcional, `revision`, `amounts` con `DOP`, `USD` y `EUR`
   en centavos enteros, `note` de 1–2000 caracteres y `confirmReceived: true`.
   Los importes deben coincidir exactamente con el saldo del servidor en **todas**
   las monedas; no se convierten ni se mezclan. Registra todas las filas en una
   sola transacción y devuelve los registros y totales confirmados.
 - `POST /api/cuadres`: cierre sin devolución, con `collectorId`, `date` e
-  `Idempotency-Key`. Requiere cada bolsillo en cero y ningún efectivo anterior
-  pendiente. El formulario conserva la operación original si se pierde la respuesta.
+  `Idempotency-Key`. Exige los códigos 402 y 403. Requiere cada bolsillo en cero y
+  ningún efectivo anterior pendiente. El formulario conserva la operación original
+  si se pierde la respuesta.
 - Un saldo cambiado devuelve `CASH_RECONCILIATION_CHANGED` (409); una diferencia
   requiere `CASH_RECONCILIATION_REVIEW_REQUIRED` (409). Importes distintos se
   rechazan con `CASH_RECONCILIATION_AMOUNT_MISMATCH` (422).

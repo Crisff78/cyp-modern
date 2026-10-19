@@ -115,7 +115,7 @@ remittancesApi('/snapshot').then(snapshot=>createRoot(document.getElementById('r
       const totals = await popup.locator("table").last().innerText(); for (const amount of ["DOP 100.00", "USD 10.00", "EUR 5.00"]) assert.ok(totals.includes(amount)); assert.ok(!totals.includes("115.00")); await popup.close();
       await page.screenshot({ path: path.join(output, "settlements.png"), fullPage: true });
     });
-    await t.test("remittance rates are readonly central references and receipt print hides commission splits", async () => {
+    await t.test("remittance windows have no rate or commission maintenance and the printed receipt hides commission splits", async () => {
       await page.getByRole("button", { name: "remittances", exact: true }).click();
       assert.equal(await page.getByRole("button", { name: "Revisar tasa", exact: true }).count(), 0); assert.equal(await page.getByRole("button", { name: "Tasas", exact: true }).count(), 0); assert.equal(await page.getByRole("button", { name: "Comisiones", exact: true }).count(), 0);
       // Administración pays in its own window «Pagos de Envíos», without the sections of the collector terminal.

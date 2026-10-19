@@ -42,7 +42,7 @@ export function ConnectedExchangeRates({ actorId, isAdmin }: { actorId: string; 
     request.clear(); setFormError(""); setNotice(""); setReviewing(false);
     setDraft({ currency: rate?.currency ?? "USD", rate: rate?.currency === "DOP" ? "1.000000" : rate?.rate ?? "", purchaseRate: rate?.currency === "DOP" ? "1.000000" : rate?.purchaseRate ?? "", saleRate: rate?.currency === "DOP" ? "1.000000" : rate?.saleRate ?? "", date: snapshot.businessDate });
   };
-  const close = () => { if (!request.locked) { request.clear(); setDraft(null); setReviewing(false); } };
+  const close = () => { if (request.closable) { request.clear(); setDraft(null); setReviewing(false); } };
   const review = (event: FormEvent) => {
     event.preventDefault();
     if (!draft || request.locked) return;

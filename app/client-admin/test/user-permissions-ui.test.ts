@@ -11,6 +11,7 @@ import { buildApp } from "../../server/src/app.js";
 import { seed } from "../../server/src/seed.js";
 import { MemoryStore } from "../../server/src/store.js";
 import catalog from "../../shared/permission-catalog.json" with { type: "json" };
+import { roleRemittancePermissions } from "../../shared/access.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const localRequire = createRequire(path.join(root, "package.json"));
@@ -51,8 +52,14 @@ test("user permission checkboxes, categories, cancel and backend saves work in t
     };
     const first = await create("Usuario de prueba uno"), second = await create("Usuario de prueba dos"), supervisor = await create("Supervisor de prueba", "supervisor"), cashier = await create("Cajero de prueba", "user");
     const cashierRole = await create("Cajero con perfil de rol", "cashier");
+    // An account carried over by the 034 migration: «Perfil del rol» with its earlier, referential list.
+    const migrated = await create("Cuenta migrada", "supervisor");
+    const limited = await create("Administración limitada"), delegate = await create("Administración delegada");
     await store.transaction((state) => { for (const account of state.accounts.filter(({ id }) => [first.id, second.id].includes(id))) { account.permissionMode = "custom"; account.permissionIds = []; account.remittancePermissions = []; } });
+    await store.transaction((state) => { const account = state.accounts.find(({ id }) => id === migrated.id)!; account.permissionMode = "role"; account.permissionIds = [1, 2, 140, 141, 400]; account.remittancePermissions = []; });
+    assert.equal((await post(`/api/usuarios/${limited.id}/permisos`, { mode: "custom", permissionIds: [1, 10, 101, 103, 104, 107], remittancePermissions: [], revision: 0 })).statusCode, 200);
     const supervisorToken = (await login(supervisor.email, "Synthetic-Permissions-2026!")).json().token;
+    const limitedToken = (await login(limited.email, "Synthetic-Permissions-2026!")).json().token, delegateToken = (await login(delegate.email, "Synthetic-Permissions-2026!")).json().token;
     const getProfile = async (id = first.id) => {
       const result = await app.inject({ url: `/api/usuarios/${id}/permisos`, headers: { authorization: `Bearer ${adminToken}` } });
       assert.equal(result.statusCode, 200, result.body); return result.json();
@@ -62,6 +69,7 @@ test("user permission checkboxes, categories, cancel and backend saves work in t
 import { useState } from "react";
 import { ConnectedCatalog } from ${source("ConnectedCatalog.tsx")};
 import { PageAccessContext } from ${source("PageAccess.tsx")};
+import { hasUnresolvedMovementRequest } from ${source("useMovementRequest.ts")};
 import { setToken, api } from ${source("api.ts")};
 import ${source("styles.css")};
 setToken(${JSON.stringify(adminToken)});
@@ -69,6 +77,8 @@ const snapshot = await api("/snapshot");
 function Fixture(){
  const [actor,setActor] = useState({id:"demo-admin",canEdit:true});
  window.__qaSupervisor = () => { setToken(${JSON.stringify(supervisorToken)}); setActor({id:${JSON.stringify(supervisor.id)},canEdit:false}); };
+ window.__qaActor = (token, id) => { setToken(token); setActor({id,canEdit:true}); };
+ window.__qaUnresolved = (id) => hasUnresolvedMovementRequest(id);
  return <main><PageAccessContext.Provider value={{actor:{role:actor.canEdit?'admin':'supervisor'},page:'users'}}><ConnectedCatalog key={actor.id} page="users" snapshot={snapshot} actorId={actor.id} canManagePermissions={actor.canEdit} onRefresh={()=>{}} /></PageAccessContext.Provider></main>;
 }
 createRoot(document.getElementById("root")).render(<Fixture />);`, "utf8");
@@ -221,11 +231,93 @@ createRoot(document.getElementById("root")).render(<Fixture />);`, "utf8");
         "remittances.create", "remittances.pay", "remittances.receipts", "remittances.reports", "remittances.view"]);
       assert.equal((await store.read()).accounts.find(({ id }) => id === cashierRole.id)?.role, "cashier");
     });
+    await t.test("U1 a migrated account in «Perfil del rol» shows its earlier list, keeps it when saving and adopts it only on request", async () => {
+      await open(migrated.name);
+      const mode = dialog().getByRole("combobox", { name: "Modo de permisos", exact: true });
+      const stored = dialog().getByRole("group", { name: "Selección anterior de permisos", exact: true });
+      assert.equal(await mode.inputValue(), "role");
+      assert.match(await stored.innerText(), /conserva una selección anterior de 5 permisos que no se aplica mientras use «Perfil del rol»/);
+      assert.match(await stored.innerText(), /Códigos: 1, 2, 140, 141, 400\./);
+      assert.match(await stored.innerText(), /Fuera del alcance del rol, no se aplicarán: 141\./);
+      assert.equal(await checkbox(101).isChecked(), true, "the table shows the role profile, which is what applies");
+      await page.screenshot({ path: path.join(output, "permissions-earlier-list.png") });
+      const count = writes.length;
+      await dialog().getByRole("button", { name: "Guardar", exact: true }).click(); await dialog().waitFor({ state: "detached" });
+      assert.deepEqual(writes[count].body, { permissionIds: [1, 2, 140, 141, 400], revision: 0, mode: "role", remittancePermissions: [...roleRemittancePermissions("supervisor")].sort() });
+      let profile = await getProfile(migrated.id);
+      assert.equal(profile.mode, "role"); assert.deepEqual(profile.permissionIds, [1, 2, 140, 141, 400], "saving with the role profile keeps the earlier list");
+      await open(migrated.name);
+      await stored.getByRole("button", { name: "Aplicar selección anterior", exact: true }).click();
+      assert.equal(await mode.inputValue(), "custom");
+      for (const id of [1, 2, 140, 400]) assert.equal(await checkbox(id).isChecked(), true, `kept ${id}`);
+      for (const id of [101, 141, 500]) assert.equal(await checkbox(id).isChecked(), false, `not in the earlier list or out of reach: ${id}`);
+      assert.match(await stored.innerText(), /Al guardar, los permisos marcados la sustituirán\./);
+      // U5: the legacy report codes are kept but do not open or hide reports by themselves.
+      assert.match(await dialog().innerText(), /Los códigos 410–415 \(reportes del sistema anterior\) se conservan, pero los reportes se abren con «Visualizar Reportes» \(400\)/);
+      await dialog().getByRole("button", { name: "Guardar", exact: true }).click(); await dialog().waitFor({ state: "detached" });
+      profile = await getProfile(migrated.id);
+      assert.equal(profile.mode, "custom"); assert.deepEqual(profile.permissionIds, [1, 2, 140, 400]);
+      assert.equal((await store.read()).accounts.find(({ id }) => id === migrated.id)?.role, "supervisor");
+    });
+    await t.test("S1 a limited administrator gets the server's reason when the account has permissions it lacks", async () => {
+      const credentials = (await store.read()).accounts.find(({ id }) => id === supervisor.id)?.credentialVersion;
+      await page.evaluate(({ token, id }: { token: string; id: string }) => (window as any).__qaActor(token, id), { token: limitedToken, id: limited.id });
+      await page.getByRole("cell", { name: supervisor.name, exact: true }).click();
+      await page.getByRole("button", { name: "Cambiar Clave", exact: true }).click();
+      const password = page.getByRole("dialog", { name: "Cambiar clave de usuario...", exact: true });
+      await password.getByLabel("Clave:").fill("Synthetic-Takeover-2026!"); await password.getByLabel("Confirmación:").fill("Synthetic-Takeover-2026!");
+      await password.getByRole("button", { name: "oK", exact: true }).click();
+      await password.getByRole("alert").getByText("Esa cuenta tiene permisos que la tuya no tiene. Solo puede gestionarla una cuenta que tenga todos sus permisos.", { exact: true }).waitFor();
+      assert.equal(await password.getByRole("button", { name: "oK", exact: true }).isEnabled(), true, "a definitive answer, not an operation to retry");
+      await password.getByRole("button", { name: "Cancelar", exact: true }).click(); await password.waitFor({ state: "detached" });
+      assert.equal((await store.read()).accounts.find(({ id }) => id === supervisor.id)?.credentialVersion, credentials);
+    });
+    await t.test("U3 Supervisor consults a user's data read-only", async () => {
+      await page.evaluate(() => (window as any).__qaSupervisor());
+      await page.getByRole("cell", { name: first.name, exact: true }).click();
+      await page.getByTitle("Consultar", { exact: true }).click();
+      const ficha = page.getByRole("dialog", { name: "Datos de Usuario...", exact: true });
+      await ficha.getByText("Solo consulta: tu cuenta no tiene permiso para modificar este registro.", { exact: true }).waitFor();
+      const name = ficha.getByLabel("Nombre", { exact: true });
+      assert.equal(await name.inputValue(), first.name); assert.equal(await name.isDisabled(), true);
+      assert.equal(await ficha.getByLabel("Rol", { exact: true }).isDisabled(), true);
+      assert.equal(await ficha.getByRole("button", { name: "oK", exact: true }).count(), 0);
+      await ficha.getByRole("button", { name: "Cerrar", exact: true }).click(); await ficha.waitFor({ state: "detached" });
+    });
     await t.test("Supervisor can inspect but cannot toggle, bulk-select or submit permissions", async () => {
       await page.evaluate(() => (window as any).__qaSupervisor()); await open(); const count = writes.length;
       assert.equal(await checkbox(1).isDisabled(), true);
       for (const name of ["Seleccionar Todos", "Desmarcar Todos", "Guardar"]) assert.equal(await dialog().getByRole("button", { name, exact: true }).isDisabled(), true);
+      await dialog().getByText("Tu cuenta no tiene permiso para modificar permisos («Modificar permisos de usuario», 106).", { exact: true }).waitFor();
       await dialog().getByRole("button", { name: "Cancelar", exact: true }).click(); assert.equal(writes.length, count);
+    });
+    await t.test("U9 a retry refused because the permission was withdrawn lets the dialog close and keeps the attempt", async () => {
+      await page.evaluate(({ token, id }: { token: string; id: string }) => (window as any).__qaActor(token, id), { token: delegateToken, id: delegate.id });
+      await open(second.name); await checkbox(500).check(); const count = writes.length;
+      loseNextResponse = true;
+      await dialog().getByRole("button", { name: "Guardar", exact: true }).click();
+      const retry = dialog().getByRole("button", { name: "Reintentar guardado", exact: true }), cancel = dialog().getByRole("button", { name: "Cancelar", exact: true });
+      await retry.waitFor();
+      assert.equal(await cancel.isDisabled(), true); assert.equal(await page.evaluate((id: string) => (window as any).__qaUnresolved(id), delegate.id), true);
+      // Another administrator withdraws «Modificar permisos de usuario» while the result is unknown.
+      const all = catalog.permissions.map(({ id }) => id), current = await getProfile(delegate.id);
+      assert.equal((await post(`/api/usuarios/${delegate.id}/permisos`, { mode: "custom", permissionIds: all.filter((id) => id !== 106), remittancePermissions: [], revision: current.revision })).statusCode, 200);
+      await retry.click();
+      await dialog().getByRole("alert").getByText(/No se pudo confirmar si la operación anterior quedó registrada: pide a Administración que lo revise\. Puedes cerrar esta ventana/).waitFor();
+      assert.equal(await cancel.isDisabled(), false, "the dialog can be closed");
+      assert.equal(await page.evaluate((id: string) => (window as any).__qaUnresolved(id), delegate.id), false, "its window can be closed too");
+      await cancel.click(); await dialog().waitFor({ state: "detached" });
+      await page.getByRole("cell", { name: second.name, exact: true }).click(); await page.getByRole("button", { name: "Permisos", exact: true }).click();
+      await retry.waitFor();
+      assert.equal(await checkbox(500).isChecked(), true); assert.equal(await checkbox(500).isDisabled(), true, "the kept attempt stays frozen");
+      // With the permission back, the same key recovers the saved result instead of writing twice.
+      const restored = await getProfile(delegate.id);
+      assert.equal((await post(`/api/usuarios/${delegate.id}/permisos`, { mode: "role", permissionIds: all, remittancePermissions: [], revision: restored.revision })).statusCode, 200);
+      await retry.click(); await dialog().waitFor({ state: "detached" });
+      const attempts = writes.slice(count);
+      assert.deepEqual(attempts.map(({ status }) => status), [200, 403, 200]);
+      assert.equal(new Set(attempts.map(({ key }) => key)).size, 1);
+      assert.deepEqual((await getProfile(second.id)).permissionIds, [500]);
     });
     assert.deepEqual(errors, []); assert.equal(unexpectedExternalAttempts, 0, "The application must not attempt any unexpected external request.");
     t.diagnostic(`Blocked known antivirus attempts: ${blockedAntivirusAttempts}; unexpected external attempts: ${unexpectedExternalAttempts}; no external URLs recorded or requests sent.`);

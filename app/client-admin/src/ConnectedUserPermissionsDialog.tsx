@@ -11,6 +11,8 @@ import { effectiveAccess, rolePermissionIds, roleRemittancePermissions, REMITTAN
 // The keys stay "remittances.*"; the dialog shows the name of the module.
 const REMITTANCE_CATEGORY = "Envíos de Dinero";
 type DialogCategory = PermissionCategory | typeof REMITTANCE_CATEGORY;
+const sortedIds = (ids: readonly number[]) => [...new Set(ids)].sort((a, b) => a - b);
+const sameIds = (left: readonly number[], right: readonly number[]) => JSON.stringify(sortedIds(left)) === JSON.stringify(sortedIds(right));
 
 export function ConnectedUserPermissionsDialog({ userId, userName, userRole, actorId, canEdit = true, onClose }: Readonly<{
   userId: string;
@@ -24,7 +26,11 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
   const controlId = useId();
   const pending = pendingMovementDraft<UserPermissions>(actorId, scope);
   const request = useMovementRequest(actorId, scope);
-  const [assignedIds, setAssignedIds] = useState<readonly number[]>(pending?.permissionIds ?? []);
+  // The list saved for the account. With «Perfil del rol» it is only a reference (for example the list kept
+  // by the 034 migration): the table shows the role profile, and saving sends that list back unchanged.
+  const [storedIds, setStoredIds] = useState<readonly number[] | null>(pending?.mode === "role" ? pending.permissionIds : null);
+  const [loadedMode, setLoadedMode] = useState<PermissionMode | null>(null);
+  const [assignedIds, setAssignedIds] = useState<readonly number[]>(pending ? pending.mode === "role" ? rolePermissionIds(userRole) : pending.permissionIds : []);
   const [mode, setMode] = useState<PermissionMode>(pending?.mode ?? "role");
   const [remittanceKeys, setRemittanceKeys] = useState<readonly RemittancePermission[]>(pending?.remittancePermissions ?? []);
   const [revision, setRevision] = useState(pending?.revision ?? 0);
@@ -47,7 +53,9 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
       const submitted = pendingMovementDraft<UserPermissions>(actorId, scope);
       const nextMode = submitted?.mode ?? result.mode ?? "role";
       setMode(nextMode);
-      setAssignedIds(submitted?.permissionIds ?? (nextMode === "role" ? rolePermissionIds(userRole) : result.permissionIds));
+      setLoadedMode(result.mode ?? "role");
+      setStoredIds(submitted?.mode === "role" ? submitted.permissionIds : result.permissionIds);
+      setAssignedIds(nextMode === "role" ? rolePermissionIds(userRole) : submitted?.permissionIds ?? result.permissionIds);
       setRemittanceKeys(submitted?.remittancePermissions ?? (nextMode === "role" ? roleRemittancePermissions(userRole) : result.remittancePermissions ?? []));
       setRevision(submitted?.revision ?? result.revision);
       setReady(true);
@@ -64,6 +72,16 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
   const ceiling = effectiveAccess(userRole, { permissionMode: "custom", permissionIds: PERMISSION_CATALOG.map(({ id }) => id), remittancePermissions: REMITTANCE_PERMISSION_KEYS });
   const requiredOwn = userId === actorId ? [1, 10, 101, 106] : [];
   const assigned = new Set(assignedIds);
+  // A saved list different from the role profile is shown and can be adopted explicitly, never silently lost.
+  const storedReach = storedIds?.filter((id) => ceiling.legacy.includes(id)) ?? [];
+  const storedOutOfReach = storedIds?.filter((id) => !ceiling.legacy.includes(id)) ?? [];
+  const adoptedIds = sortedIds([...storedReach, ...requiredOwn]);
+  const showStored = storedIds !== null && !sameIds(storedIds, rolePermissionIds(userRole)) && (mode === "role" || loadedMode === "role");
+  const adoptStored = () => {
+    if (locked || !storedIds) return;
+    setMode("custom");
+    setAssignedIds(adoptedIds);
+  };
   const toggle = (id: number) => {
     if (locked || !ceiling.legacy.includes(id) || requiredOwn.includes(id)) return;
     setMode("custom");
@@ -87,7 +105,7 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
       : [...new Set([...current, key, ...(REMITTANCE_PERMISSION_DEPENDENCIES[key] ?? [])])]);
   };
   const close = () => {
-    if (request.locked) return;
+    if (!request.closable) return;
     request.clear();
     onClose();
   };
@@ -100,7 +118,9 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
   const save = async (event: FormEvent) => {
     event.preventDefault();
     if (!canEdit || !ready || loading || request.busy) return;
-    const draft: UserPermissions = { userId, permissionIds: [...assignedIds].sort((a, b) => a - b), mode, remittancePermissions: [...remittanceKeys].sort(), revision };
+    // «Perfil del rol» keeps the saved reference list as it is; only «Permisos personalizados» replaces it.
+    const savedIds = mode === "role" ? storedIds ?? rolePermissionIds(userRole) : assignedIds;
+    const draft: UserPermissions = { userId, permissionIds: sortedIds(savedIds), mode, remittancePermissions: [...remittanceKeys].sort(), revision };
     try {
       await request.run<UserPermissions>(`/usuarios/${encodeURIComponent(userId)}/permisos`, { permissionIds: draft.permissionIds, mode, remittancePermissions: draft.remittancePermissions, revision }, draft,
         (result) => isUserPermissions(result, userId) && result.mode === draft.mode && JSON.stringify([...(result.remittancePermissions ?? [])].sort()) === JSON.stringify(draft.remittancePermissions) && JSON.stringify([...result.permissionIds].sort((a, b) => a - b)) === JSON.stringify(draft.permissionIds),
@@ -131,6 +151,13 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
       </div>
       {loading && <p className="connected-permissions-feedback" role="status">Cargando permisos…</p>}
       {loadError && <p className="connected-permission-error" role="alert">{loadError}</p>}
+      {showStored && storedIds && <div className="connected-permissions-stored" role="group" aria-label="Selección anterior de permisos">
+        <p>{mode === "role"
+          ? `Esta cuenta conserva una selección anterior de ${storedIds.length} permisos que no se aplica mientras use «Perfil del rol»; al guardar con el perfil del rol se sigue conservando.`
+          : `Selección anterior de esta cuenta (${storedIds.length} permisos). Al guardar, los permisos marcados la sustituirán.`} Códigos: {sortedIds(storedIds).join(", ")}.</p>
+        {storedOutOfReach.length > 0 && <p>Fuera del alcance del rol, no se aplicarán: {sortedIds(storedOutOfReach).join(", ")}.</p>}
+        {!(mode === "custom" && sameIds(assignedIds, adoptedIds)) && <button type="button" disabled={locked} onClick={adoptStored}>Aplicar selección anterior</button>}
+      </div>}
       <div className="legacy-mdi-table-wrap connected-user-permissions-scroll">
         <table className="legacy-mdi-table connected-user-permissions-table">
           <thead><tr><th>Activo</th><th>Código</th><th>Permiso</th><th>Categoría</th></tr></thead>
@@ -145,15 +172,15 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
           </tbody>
         </table>
       </div>
-      <p className="connected-user-permissions-note">{mode === "role" ? "Se aplica el perfil inicial del rol. Al marcar o desmarcar una acción pasarás a permisos personalizados." : "Al guardar se aplicarán estos permisos en las pantallas y en cada operación. El rol no cambia: Supervisor conserva solo consulta, Cobrador conserva su ruta y Cajero atiende solo Envíos de Dinero y su propia caja, sin catálogos, tasas ni comisiones."}</p>
+      <p className="connected-user-permissions-note">{mode === "role" ? "Se aplica el perfil inicial del rol. Al marcar o desmarcar una acción pasarás a permisos personalizados." : "Al guardar se aplicarán estos permisos en las pantallas y en cada operación. El rol no cambia: Supervisor conserva solo consulta, Cobrador conserva su ruta y Cajero atiende solo Envíos de Dinero y su propia caja, sin catálogos, tasas ni comisiones. Los códigos 410–415 (reportes del sistema anterior) se conservan, pero los reportes se abren con «Visualizar Reportes» (400) y muestran solo los datos que la cuenta puede consultar."}</p>
       {mode === "custom" && !assigned.has(1) && <p role="status" className="connected-permission-error">Sin «Entrar al sistema» esta cuenta no podrá iniciar sesión ni realizar operaciones.</p>}
-      {!canEdit && <p className="connected-permissions-feedback">Acción restringida para Supervisores.</p>}
+      {!canEdit && <p className="connected-permissions-feedback">Tu cuenta no tiene permiso para modificar permisos («Modificar permisos de usuario», 106).</p>}
       {request.error && <p className="connected-permission-error" role="alert">{request.error}</p>}
       <div className="connected-permissions-footer">
         <span>{assignedIds.length + remittanceKeys.length} de {PERMISSION_CATALOG.length + REMITTANCE_PERMISSIONS.length} permisos seleccionados</span>
         <div className="legacy-dialog-actions connected-permission-actions">
           <button type="submit" disabled={!canEdit || loading || !ready || request.busy}>{request.busy ? "Guardando…" : request.uncertain ? "Reintentar guardado" : "Guardar"}</button>
-          <button type="button" disabled={request.locked} onClick={close}>Cancelar</button>
+          <button type="button" disabled={!request.closable} onClick={close}>Cancelar</button>
         </div>
       </div>
     </form>

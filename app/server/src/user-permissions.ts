@@ -2,6 +2,7 @@ import { z } from "zod";
 import catalog from "../../shared/permission-catalog.json" with { type: "json" };
 import { assertAdmin, DomainError, type Account, type State, type User } from "./domain.js";
 import { effectiveAccess, rolePermissionIds, roleRemittancePermissions, REMITTANCE_PERMISSION_KEYS } from "../../shared/access.mjs";
+import { assertBootstrapManagedBySelf } from "./access.js";
 
 export const permissionCatalog = catalog;
 const permissionIds = catalog.permissions.map(({ id }) => id);
@@ -28,10 +29,13 @@ export function updateAccountPermissions(state: State, actor: User, userId: stri
   assertAdmin(actor);
   const account = state.accounts.find(({ id }) => id === userId);
   if (!account) throw new DomainError("NOT_FOUND", "La cuenta no existe.", 404);
+  assertBootstrapManagedBySelf(actor, account.id);
   if (body.revision !== (account.permissionRevision ?? 0))
     throw new DomainError("PERMISSIONS_CHANGED", "Otro operador modificó los permisos. Refresca el catálogo antes de guardar.", 409);
   const next = [...body.permissionIds].sort((a, b) => a - b);
-  const mode = body.mode ?? "custom";
+  // Without `mode` (the previous contract) the account keeps its current mode: a stored list never
+  // becomes effective silently. Only an explicit `mode: "custom"` applies it.
+  const mode = body.mode ?? account.permissionMode ?? "role";
   const remittancePermissions = [...(body.remittancePermissions ?? ((account.permissionMode ?? "role") === "role" ? roleRemittancePermissions(account.role) : account.remittancePermissions ?? []))].sort();
   const access = effectiveAccess(account.role, { permissionMode: mode, permissionIds: next, remittancePermissions });
   if (actor.id === account.id && account.role === "admin" && ![1, 10, 101, 106].every((id) => access.legacy.includes(id)))

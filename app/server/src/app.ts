@@ -66,8 +66,8 @@ import { claimClientIdentity, reserveClientIdentity, SYSTEM_CLIENT_CODE } from "
 import { ACCOUNT_ROLES, isCollectorAccountRole, isOperationalRole } from "./account-roles.js";
 import { DEMO_PASSWORD } from "./demo-credentials.js";
 import { permissionCatalog, permissionsForAccount, updateAccountPermissions, userPermissionsBody } from "./user-permissions.js";
-import { authorizeRequest, currentAccessUser, filterOperationalSnapshot, guardCatalogChanges, requirePermission } from "./access.js";
-import { hasPermission, hasRemittanceAccess } from "../../shared/access.mjs";
+import { assertBootstrapManagedBySelf, assertManagesAccount, authorizeRequest, currentAccessUser, filterOperationalSnapshot, guardCatalogChanges, requirePermission } from "./access.js";
+import { effectiveAccess, hasPermission, hasRemittanceAccess } from "../../shared/access.mjs";
 import { clientInput } from "./client-schema.js";
 import { previousCashPreview, reconcilePreviousCash } from "./cash-reconciliation.js";
 
@@ -611,7 +611,12 @@ export async function buildApp(config: Config) {
     assertAdmin(actor);
     const account = state.accounts.find((item) => item.id === params.id);
     if (!account) throw new DomainError("NOT_FOUND", "La cuenta no existe.", 404);
-    if (body.role !== account.role && !["undefined", "user"].includes(body.role)) requirePermission(actor, 106);
+    assertBootstrapManagedBySelf(actor, account.id);
+    // A role change grants, changes or withdraws operational access, so it needs 106, also towards
+    // Usuario or No definido. Only moving between those two without access on either side keeps 103.
+    const withoutAccess = (role: string) => { const access = effectiveAccess(role, account); return !access.legacy.length && !access.remittances.length; };
+    if (body.role !== account.role && !([account.role, body.role].every((role) => role === "undefined" || role === "user") && withoutAccess(account.role) && withoutAccess(body.role)))
+      requirePermission(actor, 106);
     if (actor.id === account.id && body.role !== "admin") throw new DomainError("FORBIDDEN", "No puedes retirar tu propio acceso administrativo.", 403);
     if (body.role !== account.role && !isCollectorAccountRole(body.role) && state.collectors.some((collector) => collector.accountId === account.id))
       throw new DomainError("ACCOUNT_LINKED_COLLECTOR", `Retira la cuenta del cobrador antes de cambiar su rol a ${body.role === "admin" ? "Admin" : "Cajero"}.`, 409);
@@ -629,6 +634,8 @@ export async function buildApp(config: Config) {
     // Keep the existing revocation behavior for changes reflected in auth claims.
     const authChanged = account.name !== body.name || account.email !== email ||
       account.role !== body.role || account.collectorId !== body.collectorId;
+    // These changes revoke the account's sessions: only for accounts within the actor's own access.
+    if (authChanged) assertManagesAccount(state, actor, account.id);
     Object.assign(account, { name: body.name, email, role: body.role });
     if (body.nickname !== undefined) account.nickname = body.nickname;
     if (body.note !== undefined) account.note = body.note;
@@ -675,6 +682,7 @@ export async function buildApp(config: Config) {
           "Solo puedes cambiar tu propia contraseña.",
           403,
         );
+      if (!own) assertManagesAccount(state, u, account.id);
       const { salt: newSalt, passwordHash } = hashPassword(body.password);
       Object.assign(account, { salt: newSalt, passwordHash });
       touch(account);
@@ -691,6 +699,8 @@ export async function buildApp(config: Config) {
       const account = state.accounts.find((a) => a.id === params.id);
       if (!account)
         throw new DomainError("NOT_FOUND", "La cuenta no existe.", 404);
+      // Disabling or reactivating another account needs all of its effective access.
+      assertManagesAccount(state, u, account.id);
       if (account.status === body.status)
         throw new DomainError(
           "NO_CHANGE",

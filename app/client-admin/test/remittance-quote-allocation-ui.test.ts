@@ -294,7 +294,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
         assert.match(await totals.innerText(), /No hay resultados/);
       } finally { await context.close(); }
     });
-    await t.test("office cashier permissions, atomic quick customers, keyboard capture and continuous focus in the actual Admin shell", async () => {
+    await t.test("office Usuario with remittance permissions, atomic quick customers, keyboard capture and continuous focus in the actual Admin shell", async () => {
       const post = (url: string, payload: object, token = tokens.admin) => app.inject({ method: "POST", url, payload, headers: { authorization: `Bearer ${token}`, "idempotency-key": randomUUID() } });
       const account = await post("/api/usuarios", { role: "user", name: "Cajero sintético", email: "cashier-dionel@example.invalid", password: "Ficticia-2026!" });
       assert.equal(account.statusCode, 200, account.body);

@@ -12,7 +12,12 @@ no hay 501 permisos consecutivos ni nombres inventados.
 Las selecciones personalizadas restringen las acciones efectivas de cada cuenta,
 dentro del alcance de su rol, y se comprueban en la interfaz y en cada petición.
 No cambian el rol, contraseña, versión de credenciales o identidad de sesión.
-Admin con permiso 106 puede guardar; Supervisor conserva solo consulta.
+Admin con permiso 106 puede guardar; Supervisor conserva solo consulta. Sin el
+106, el diálogo lo explica: «Tu cuenta no tiene permiso para modificar permisos
+(«Modificar permisos de usuario», 106).». Los permisos de la cuenta principal de
+administración solo los cambia ella misma (403 `ACCOUNT_PROTECTED`), y un
+administrador no puede retirarse los códigos 1, 10, 101 y 106 (409
+`OWN_ADMIN_ACCESS`).
 
 Además de las categorías del catálogo, el diálogo ofrece la categoría **Envíos de
 Dinero** con las claves `remittances.*`; cada casilla se anuncia como «Envíos de
@@ -36,13 +41,25 @@ El cuerpo es estricto: solo acepta códigos enteros existentes, sin duplicados, 
 una revisión entera no negativa. Un usuario inexistente devuelve 404. Una revisión
 desactualizada devuelve 409 `PERMISSIONS_CHANGED` sin cambiar los datos. Reintentar
 con la misma clave y cuerpo recupera la respuesta original sin duplicar la escritura.
+Si se omite `mode`, la cuenta conserva su modo actual: en modo `role` la lista se
+guarda como referencia sin efecto, y solo `mode: "custom"` explícito la aplica.
 El contrato de solicitudes también está publicado en `/api/openapi.json`.
 
 El modal carga las asignaciones del servidor y mantiene un borrador. Seleccionar
 o desmarcar todos afecta solo la categoría visible; cambiar de categoría conserva
-las demás selecciones. Guardar reemplaza el conjunto del usuario elegido. Cancelar,
-Escape y X descartan el borrador. Si el resultado de un guardado es incierto, el
-formulario conserva la solicitud y permite reintentar antes de cerrarse.
+las demás selecciones. Guardar reemplaza el conjunto del usuario elegido y envía
+siempre `mode`. Cancelar, Escape y X descartan el borrador. Si el resultado de un
+guardado es incierto, el formulario conserva la solicitud y permite reintentar
+antes de cerrarse. Si ese reintento se rechaza porque la cuenta perdió el permiso
+(403), el diálogo y su ventana se pueden cerrar: el intento se conserva, con su
+clave y sus datos, y al recuperar el permiso «Reintentar guardado» recupera el
+resultado sin escribir dos veces.
+
+En «Perfil del rol», si la cuenta tiene guardada una lista distinta del perfil, el
+diálogo la muestra en el grupo «Selección anterior de permisos», sin efecto, con
+los códigos que quedan fuera del alcance del rol. Guardar con el perfil del rol la
+conserva; «Aplicar selección anterior» la convierte en permisos personalizados
+(ver [DIONEL-REMESAS-PERMISOS.md](DIONEL-REMESAS-PERMISOS.md#migración-y-transición)).
 
 ## Persistencia
 
@@ -54,7 +71,8 @@ y sesiones sin tocar las asignaciones. Se conservan
 los datos de las asignaciones antiguas y se añade un modo explícito. `role`
 aplica el perfil inicial; `custom` aplica las selecciones dentro del alcance del
 rol y `[]` significa ninguno. Las listas antiguas se revisan antes de pasar a
-modo personalizado; no se activan silenciosamente al actualizar.
+modo personalizado; no se activan silenciosamente al actualizar ni al guardar sin
+`mode`.
 FileStore y el modo mock también conservan la selección en sus almacenes respectivos.
 
 Las pruebas usan cuentas ficticias y almacenes aislados. La prueba PostgreSQL

@@ -46,6 +46,7 @@ import {
   Minimize2,
   Plus,
   Pencil,
+  Eye,
   ReceiptText,
   RefreshCw,
   Search,
@@ -95,7 +96,8 @@ import { isMockToken } from "./mock";
 import OperationModal, { type Operation } from "./Operations";
 import AccountModal, { type AccountOperation } from "./Users";
 import RemittancesWorkspace from "../../shared/remittances/RemittancesWorkspace";
-import { hasPermission, hasRemittancePermission, canOpenPage } from "../../shared/access.mjs";
+import { hasPermission, hasRemittancePermission, canOpenPage, canChangeOwnPassword } from "../../shared/access.mjs";
+import { PERMISSION_CATALOG } from "../../shared/permissionCatalog";
 import { accountRoleLabel as accountRoleName } from "../../shared/accountRoles";
 import { PageAccessContext, usePageAccess } from "./PageAccess";
 import { ConnectedRemittanceCommissions } from "./ConnectedRemittanceCommissions";
@@ -124,7 +126,7 @@ import { LoginPasswordInput, PasswordManagerHint } from "../../shared/LoginPassw
 import { loginCredentials } from "../../shared/loginCredentials";
 import { ReceiptPaperSelect, type ReceiptPaper } from "../../shared/ReceiptPaperSelect";
 import { matchesClientSearch, copyPhoneIntoEmptyFields, clientCodeFromPhone } from "./clientSearch";
-import { unconfirmedCollectionBalances, recentMovementReceipts } from "./collectionAlerts";
+import { canReviewCollectionFunds, unconfirmedCollectionBalances, recentMovementReceipts } from "./collectionAlerts";
 import { locationUnavailable, locationError as gpsError, validLocation } from "../../shared/geolocation";
 
 const collectorUrl = String(import.meta.env.VITE_COLLECTOR_URL || "http://127.0.0.1:5174");
@@ -318,12 +320,22 @@ type AdminPermissions = {
   canEdit: boolean;
   canDelete: boolean;
   deleteNeedsConfirm: boolean;
+  canImport?: boolean;
   readOnlyReason?: string;
 };
 
 function useOperationalPermissions(user: User): AdminPermissions {
   const access = usePageAccess();
-  return { ...permissionsFor(user), canCreate: access.canCreate, canEdit: access.canEdit, canDelete: access.canDelete };
+  return { ...permissionsFor(user), canCreate: access.canCreate, canEdit: access.canEdit, canDelete: access.canDelete, canImport: access.canImport };
+}
+// Why an account cannot use this panel: checked at sign-in and on every refresh of the session.
+function adminSessionRejection(user: User) {
+  if (isSuspendedUser(user)) return "Cuenta o empresa suspendida.";
+  if (!canAccessAdmin(user)) return normalizeRole(user.role) === "COLLECTOR"
+    ? "Acceso no autorizado al panel administrativo. Ingrese desde la terminal móvil de cobrador."
+    : "Usa una cuenta autorizada para acceder a este portal. Si tu acceso cambió, solicita a Administración que revise tus permisos.";
+  if (user.access?.mode === "custom" && !hasPermission(user, 1)) return "Tu cuenta no tiene permiso para entrar al sistema. Solicita una revisión a Administración.";
+  return "";
 }
 function permissionsFor(user: User): AdminPermissions {
   const role = normalizeRole(user.role);
@@ -694,7 +706,29 @@ function ReportLayout({ title, snapshot, children }: Readonly<{ title: string; s
   );
 }
 
-function ReportView({ page, snapshot, onRefresh }: Readonly<{ page: ReportPageId; snapshot: Snapshot; onRefresh: () => void }>) {
+// What each report reads from the snapshot, by permission (any code of a group is enough). The
+// snapshot arrives without the data the account cannot consult, so the report must say so.
+const reportDataPermissions: Record<ReportPageId, readonly (readonly number[])[]> = {
+  reportClientPendingCharges: [[300]], reportClientPendingChargesByRoutes: [[300]], reportClientPendingChargesByZones: [[300]],
+  reportPendingChargesByRoutes: [[300]], reportPendingChargesByZones: [[300]], reportClientChargesByZoneService: [[300]],
+  reportCollectionsSummary: [[320]], reportCollectionsGeneralSummary: [[320], [370], [330], [380]], reportCollectionsByService: [[320], [300]],
+  reportPaymentsDetailed: [[370]], reportClientPendingPayouts: [[360, 370]], reportPendingPayoutsByRoutes: [[360, 370]],
+  reportPendingPayoutsByZones: [[360, 370]], reportPaymentsByServiceDetailed: [[370]], reportPaymentsByServiceSummary: [[370]],
+  reportServicesByZone: [[300]],
+};
+const permissionName = (id: number) => PERMISSION_CATALOG.find((permission) => permission.id === id)?.name ?? `Permiso ${id}`;
+
+function ReportView(props: Readonly<{ page: ReportPageId; snapshot: Snapshot; onRefresh: () => void }>) {
+  const { actor } = usePageAccess();
+  const missing = reportDataPermissions[props.page].filter((group) => !group.some((id) => hasPermission(actor, id)));
+  if (!missing.length) return <ReportViewContent {...props} />;
+  return <div className="report-permission-frame">
+    <p className="report-permission-note" role="status">Este reporte usa datos que tu cuenta no tiene permiso para consultar: {missing.map((group) => group.map((id) => `«${permissionName(id)}» (${id})`).join(" o ")).join(", ")}. Se muestra sin esos datos.</p>
+    <ReportViewContent {...props} />
+  </div>;
+}
+
+function ReportViewContent({ page, snapshot, onRefresh }: Readonly<{ page: ReportPageId; snapshot: Snapshot; onRefresh: () => void }>) {
   if (page === "reportClientPendingCharges") {
     return <PendingClientChargesReport snapshot={snapshot} onRefresh={onRefresh} />;
   }
@@ -2321,7 +2355,7 @@ const clientRecordFromSnapshot = (client: Client): ClientLegacyRecord => ({
 
 const defaultClientRecords = (snapshot: Snapshot): ClientLegacyRecord[] => snapshot.clients.map((client) => clientRecordFromSnapshot(client));
 
-export function ClientDataDialog({ client, zones, routes, defaultCode = "", onClose, onSave }: Readonly<{ client?: ClientLegacyRecord; zones: readonly string[]; routes: Snapshot["routes"]; defaultCode?: string; onClose: () => void; onSave: (draft: ClientLegacyDraft) => Promise<string | void> | string | void }>) {
+export function ClientDataDialog({ client, readOnly = false, zones, routes, defaultCode = "", onClose, onSave }: Readonly<{ client?: ClientLegacyRecord; readOnly?: boolean; zones: readonly string[]; routes: Snapshot["routes"]; defaultCode?: string; onClose: () => void; onSave: (draft: ClientLegacyDraft) => Promise<string | void> | string | void }>) {
   const [draft, setDraft] = useState<ClientLegacyDraft>({
     preferredCurrency: client?.preferredCurrency ?? "DOP",
     code: client?.code ?? defaultCode,
@@ -2437,7 +2471,8 @@ export function ClientDataDialog({ client, zones, routes, defaultCode = "", onCl
   };
   return (
     <LegacyDialog title="Datos del Cliente..." onClose={onClose} className="client-form-dialog">
-      <form className="client-form" onSubmit={submit}>
+      <form className="client-form" onSubmit={readOnly ? (event) => event.preventDefault() : submit}>
+        <fieldset disabled={readOnly} className="client-form-fields" style={{ border: 0, padding: 0, margin: 0, minWidth: 0, display: "contents" }}>
         <div className="client-form-row client-generated-field"><label htmlFor="client-generated-code">Código:</label><input id="client-generated-code" autoFocus maxLength={INPUT_LIMITS.id} placeholder={client ? undefined : "Se asignará al guardar"} value={draft.code} onChange={(event) => update("code", event.target.value)} /><button type="button" disabled={generating || Boolean(client?.internalIdentification)} title={client?.internalIdentification ? "El cliente ya tiene identificación interna. Puedes modificar su código manualmente." : "Reservar un código secuencial para este cliente"} onClick={() => void generate("code")}>Generar código</button></div>
         <div className="client-form-row client-generated-field"><label htmlFor="client-internal-identification">Identificación interna:</label><input id="client-internal-identification" value={draft.internalIdentification ?? ""} readOnly placeholder="Se asignará al guardar" />{!client?.internalIdentification && <button type="button" disabled={generating} onClick={() => void generate("internalIdentification")}>Generar identificación</button>}</div>
         <label className="client-form-row"><span>Cédula / pasaporte:</span><input required={!client} maxLength={80} placeholder={client ? "Número del documento" : "Documento, o pulsa Generar identificación"} value={draft.identification} onChange={(event) => update("identification", event.target.value)} /></label>
@@ -2454,10 +2489,12 @@ export function ClientDataDialog({ client, zones, routes, defaultCode = "", onCl
           <label>EMail:<input type="email" maxLength={INPUT_LIMITS.email} value={draft.email} onChange={(event) => update("email", event.target.value)} /></label>
         </div>
         <label className="client-form-row"><span>Nota:</span><input maxLength={INPUT_LIMITS.note} value={draft.note} onChange={(event) => update("note", event.target.value)} /></label>
+        </fieldset>
         {!client && <p className="client-form-hint">Al guardar un cliente nuevo, el teléfono se copia a Celular y Nota si los dejas vacíos.</p>}
-        <button type="button" title="Completa celular y nota únicamente si están vacíos." disabled={!draft.phone.trim()} onClick={() => setDraft(copyPhoneIntoEmptyFields)}>Copiar teléfono a campos vacíos</button>
+        {!readOnly && <button type="button" title="Completa celular y nota únicamente si están vacíos." disabled={!draft.phone.trim()} onClick={() => setDraft(copyPhoneIntoEmptyFields)}>Copiar teléfono a campos vacíos</button>}
         {!client && <button type="button" disabled={!draft.phone.trim()} onClick={usePhoneAsCode}>Usar teléfono como código</button>}
-        <div className="legacy-dialog-actions"><button type="submit" disabled={generating}>oK</button><button type="button" disabled={generating} onClick={onClose}>Cancelar</button></div>
+        {readOnly ? <><p className="client-form-hint">Solo consulta: tu cuenta no tiene permiso para modificar clientes.</p><div className="legacy-dialog-actions"><button type="button" autoFocus onClick={onClose}>Cerrar</button></div></>
+          : <div className="legacy-dialog-actions"><button type="submit" disabled={generating}>oK</button><button type="button" disabled={generating} onClick={onClose}>Cancelar</button></div>}
       </form>
       {error && <LegacyAlertDialog message={error} onClose={() => setError("")} />}
     </LegacyDialog>
@@ -2509,7 +2546,7 @@ function ClientFinancialDialog({ client, snapshot, onClose, onRefresh }: Readonl
 
 type ClientMapStyle = "Hybrid" | "Roadmap" | "Satellite" | "Terrain";
 
-function ClientMapDialog({ client, onClose, onSave }: Readonly<{ client: ClientLegacyRecord; onClose: () => void; onSave: (lat: number, lng: number) => Promise<boolean> }>) {
+function ClientMapDialog({ client, canSave = true, onClose, onSave }: Readonly<{ client: ClientLegacyRecord; canSave?: boolean; onClose: () => void; onSave: (lat: number, lng: number) => Promise<boolean> }>) {
   const hasStoredLocation = validLocation(client.lat, client.lng);
   const [latitude, setLatitude] = useState(hasStoredLocation ? String(client.lat) : "");
   const [longitude, setLongitude] = useState(hasStoredLocation ? String(client.lng) : "");
@@ -2554,7 +2591,8 @@ function ClientMapDialog({ client, onClose, onSave }: Readonly<{ client: ClientL
         {locationDetail && <p role="status">{locationDetail}</p>}
         {(validCoordinates || mapPicking) && <GeoMap points={validCoordinates ? [{ id: client.id, lat: Number(latitude), lng: Number(longitude), label: client.name }] : []} onPick={(lat, lng) => { setLatitude(lat.toFixed(6)); setLongitude(lng.toFixed(6)); setLocationDetail("Punto seleccionado en el mapa. Guarda para confirmar la ubicación."); }} />}
         {(validCoordinates || mapPicking) ? <p>También puedes tocar el mapa para seleccionar el punto.</p> : <button type="button" onClick={() => setMapPicking(true)}>Seleccionar en mapa</button>}
-        <div className="client-map-actions"><button type="button" onClick={locate} disabled={locating || saving}>{locating ? "Obteniendo GPS…" : "Usar mi ubicación GPS"}</button>{validCoordinates && <a href={`https://www.openstreetmap.org/?mlat=${encodeURIComponent(latitude)}&mlon=${encodeURIComponent(longitude)}#map=17/${encodeURIComponent(latitude)}/${encodeURIComponent(longitude)}`} target="_blank" rel="noopener noreferrer">Ver punto en mapa</a>}<button type="button" onClick={() => void save(true)} disabled={saving || locating}>Guardar y cerrar</button><button type="button" className="primary" onClick={() => void save(false)} disabled={saving || locating}>{saving ? "Guardando…" : "Guardar"}</button><button type="button" onClick={onClose}>Cerrar</button></div>
+        <div className="client-map-actions"><button type="button" onClick={locate} disabled={locating || saving}>{locating ? "Obteniendo GPS…" : "Usar mi ubicación GPS"}</button>{validCoordinates && <a href={`https://www.openstreetmap.org/?mlat=${encodeURIComponent(latitude)}&mlon=${encodeURIComponent(longitude)}#map=17/${encodeURIComponent(latitude)}/${encodeURIComponent(longitude)}`} target="_blank" rel="noopener noreferrer">Ver punto en mapa</a>}{canSave && <><button type="button" onClick={() => void save(true)} disabled={saving || locating}>Guardar y cerrar</button><button type="button" className="primary" onClick={() => void save(false)} disabled={saving || locating}>{saving ? "Guardando…" : "Guardar"}</button></>}<button type="button" onClick={onClose}>Cerrar</button></div>
+        {!canSave && <p className="location-feedback">Solo consulta: guardar la ubicación requiere «Modificar cliente» (142) y «Modificar GeoCoordenas del Cliente» (145).</p>}
       </div>
     </LegacyDialog>
   );
@@ -2650,7 +2688,7 @@ function ClientToolbar({ filtersVisible, onToggleFilters, onFirst, onPrevious, o
       <button type="button" className="nav-tool" title="Mover al final" onClick={action(onLast)}>&gt;|</button>
       <span className="mdi-toolbar-separator" />
       <button type="button" title="Nuevo" disabled={!access.canCreate} onClick={action(onNew)}><Plus size={15} /></button>
-      <button type="button" title="Editar" disabled={!access.canEdit} onClick={action(onEdit)}><Pencil size={15} /></button>
+      <button type="button" title={access.canEdit ? "Editar" : "Consultar"} onClick={action(onEdit)}>{access.canEdit ? <Pencil size={15} /> : <Eye size={15} />}</button>
       <button type="button" className="danger-tool" title="Eliminar" disabled={!access.canDelete} onClick={action(onDelete)}><Trash2 size={15} /></button>
       <button type="button" title="Refrescar" onClick={action(onRefresh)}><RefreshCw size={15} /></button>
       <button type="button" title="Cobros y Pagos" disabled={!access.has(144)} onClick={action(onFinance)}>$</button>
@@ -2665,7 +2703,8 @@ function ClientsLegacyView({ snapshot, actorId, onRefresh }: Readonly<{ snapshot
   const clientDialogVersion = useRef(0);
   const mapDialogVersion = useRef(0);
   const closeClientForm = () => { clientDialogVersion.current++; setFormMode(null); };
-  const openClientForm = (mode: "new" | "edit") => { if (mode === "new" ? !access.canCreate : !access.canEdit) return; clientDialogVersion.current++; setFormMode(mode); };
+  // Without «Modificar cliente» the ficha opens read-only, as Supervisor and consultation accounts need it.
+  const openClientForm = (mode: "new" | "edit") => { if (mode === "new" && !access.canCreate) return; clientDialogVersion.current++; setFormMode(mode); };
   const closeMap = () => { mapDialogVersion.current++; setMapOpen(false); };
   const openMap = () => { mapDialogVersion.current++; setMapOpen(true); };
   const [clientsData, setClientsData] = useState<ClientLegacyRecord[]>(() => defaultClientRecords(snapshot));
@@ -2798,10 +2837,10 @@ function ClientsLegacyView({ snapshot, actorId, onRefresh }: Readonly<{ snapshot
         </aside>}
         <div className="clients-grid-panel"><div className="legacy-mdi-table-wrap"><table className="legacy-mdi-table clients-grid"><thead><tr><th>Código</th><th>Identificación</th><th>Cliente</th><th>Zona</th><th>Ruta</th><th>Teléfono</th><th>Celular</th><th>Activo</th></tr></thead><tbody>{visibleClients.map((client) => { const isSelected = selectedClient?.id === client.id; return <tr key={client.id} className={isSelected ? "selected-row" : ""} role="button" tabIndex={0} onClick={() => chooseClient(client.id)} onKeyDown={(event) => handleKeyboardActivation(event, () => chooseClient(client.id))}><td><span className={`mdi-row-select ${isSelected ? "selected" : ""}`}>{client.code}</span></td><td>{client.identification || "No registrada"}</td><td>{client.name}</td><td>{client.zone}</td><td>{snapshot.routes.find((route) => route.id === client.routeId)?.name ?? ""}</td><td>{client.phone}</td><td>{client.cellular}</td><td><LegacyCheck checked={client.active} /></td></tr>; })}</tbody></table></div><div className="legacy-footerbar"><span>Cantidad</span><strong>{visibleClients.length}</strong></div></div>
       </div>
-      {formMode && <ClientDataDialog key={`${clientDialogVersion.current}-${formMode === "edit" ? selectedClient?.id ?? "" : "nuevo"}`} client={formMode === "edit" ? selectedClient : undefined} zones={zones} routes={snapshot.routes} onClose={closeClientForm} onSave={saveClient} />}
+      {formMode && <ClientDataDialog key={`${clientDialogVersion.current}-${formMode === "edit" ? selectedClient?.id ?? "" : "nuevo"}`} client={formMode === "edit" ? selectedClient : undefined} readOnly={formMode === "edit" && !access.canEdit} zones={zones} routes={snapshot.routes} onClose={closeClientForm} onSave={saveClient} />}
       {confirmDelete && <LegacyConfirmDialog message={selectedClient?.active ? "¿Inactivar cliente? Se conserva su historial." : "¿Activar cliente?"} onYes={() => void inactivateClient()} onNo={() => setConfirmDelete(false)} />}
       {financeOpen && selectedClient && <ClientFinancialDialog key={selectedClient.id} client={selectedClient} snapshot={snapshot} onRefresh={onRefresh} onClose={() => setFinanceOpen(false)} />}
-      {mapOpen && selectedClient && <ClientMapDialog key={`${mapDialogVersion.current}-${selectedClient.id}`} client={selectedClient} onClose={closeMap} onSave={saveClientLocation} />}
+      {mapOpen && selectedClient && <ClientMapDialog key={`${mapDialogVersion.current}-${selectedClient.id}`} client={selectedClient} canSave={access.canEdit && access.has(145)} onClose={closeMap} onSave={saveClientLocation} />}
       {machinesOpen && selectedClient && <ClientMachinesDialog key={selectedClient.id} actorId={actorId} client={selectedClient} onClose={() => setMachinesOpen(false)} />}
     </div>
   );
@@ -4764,6 +4803,13 @@ export default function App() {
       const current = await api<User | { user: User }>("/auth/me");
       if (version !== snapshotReadVersion) return false;
       const actor = enrichUserRole("user" in current ? current.user : current);
+      // Access can change while the session is open: the panel closes with the reason instead of going blank.
+      const rejection = adminSessionRejection(actor);
+      if (rejection) {
+        clearLocalSession();
+        toast.error(rejection, { id: "admin-session-access" });
+        return false;
+      }
       setUser(actor);
       const result = await api<Snapshot>("/snapshot");
       if (version !== snapshotReadVersion) return false;
@@ -4798,16 +4844,10 @@ export default function App() {
       .then((result) => {
         const next = "user" in result ? result.user : result;
         const user = enrichUserRole(next);
-        if (isSuspendedUser(user)) {
+        const rejection = adminSessionRejection(user);
+        if (rejection) {
           clearLocalSession();
-          toast.error("Cuenta o empresa suspendida.");
-        } else if (!canAccessAdmin(user)) {
-          clearLocalSession();
-          toast.error(
-            normalizeRole(user.role) === "COLLECTOR"
-              ? "Acceso no autorizado al panel administrativo. Ingrese desde la terminal móvil de cobrador."
-              : "Usa una cuenta autorizada para acceder a este portal.",
-          );
+          toast.error(rejection, { id: "admin-session-access" });
         } else setUser(user);
       })
       .catch(() => clearLocalSession());
@@ -4822,13 +4862,17 @@ export default function App() {
     const interval = setInterval(() => setClock(new Date()), 1000);
     return () => clearInterval(interval);
   }, []);
+  // Applied when the account or its role changes, not on every refresh: each periodic read of
+  // /auth/me replaces the user object and would fold the groups the user opened.
+  const menuProfile = user ? `${normalizeRole(user.role)}\n${user.id}` : "";
   useEffect(() => {
-    if (user && normalizeRole(user.role) === "SUPERVISOR")
+    const role = menuProfile.split("\n")[0];
+    if (role === "SUPERVISOR")
       setExpandedGroups(["REPORTES & MONITOREO"]);
     // The cashier works in Envíos and its box in Cuadres Diarios: both groups start unfolded.
-    if (user && normalizeRole(user.role) === "CASHIER")
+    if (role === "CASHIER")
       setExpandedGroups(["REMESAS", "REPORTES & MONITOREO"]);
-  }, [user]);
+  }, [menuProfile]);
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
@@ -4956,7 +5000,8 @@ export default function App() {
   };
   const [notificationReceiptId, setNotificationReceiptId] = useState<string | null>(null);
   const notificationReceiptTrigger = useRef<HTMLButtonElement | null>(null);
-  const pendingCollectionFunds = snapshot ? unconfirmedCollectionBalances(snapshot.movements, snapshot.cashReconciliations) : [];
+  // The balance needs collections, accepted deposits and closed days: without them the snapshot is partial.
+  const pendingCollectionFunds = snapshot && user && canReviewCollectionFunds(user) ? unconfirmedCollectionBalances(snapshot.movements, snapshot.cashReconciliations) : [];
   const recentReceipts = snapshot ? recentMovementReceipts(snapshot.movements) : [];
   const notificationReceipt = snapshot?.movements.find((movement) => movement.id === notificationReceiptId);
   const alertCount = snapshot
@@ -5719,7 +5764,7 @@ export default function App() {
               <h3>{user?.name ?? "Administración"}</h3>
               <Badge status="active">{ROLE_DEFINITIONS[normalizeRole(effectiveUser.role) as keyof typeof ROLE_DEFINITIONS]?.label ?? (normalizeRole(effectiveUser.role) === "USER" ? "Usuario" : "No definido")}</Badge>
               <p>Los módulos y las acciones disponibles corresponden a los permisos de tu cuenta.</p>
-              <button className="btn full" disabled={!hasPermission(effectiveUser, 2)} onClick={() => { setAccountOpen(false); setOwnPasswordOpen(true); }}><KeyRound size={17} />Cambiar mi clave</button>
+              <button className="btn full" disabled={!canChangeOwnPassword(effectiveUser)} onClick={() => { setAccountOpen(false); setOwnPasswordOpen(true); }}><KeyRound size={17} />Cambiar mi clave</button>
               <button className="btn full" onClick={logout}>
                 <LogOut size={17} />
                 Cerrar sesión
@@ -5739,11 +5784,11 @@ export default function App() {
                 }
                 snapshot={snapshot}
                 onClose={() => setSelectedCollector(null)}
-                onSettle={(id) => {
+                onSettle={hasPermission(effectiveUser, 401) ? (id) => {
                   setSelectedCollector(null);
                   setSettlementCollector(id);
                   openMdiWindow("dailySettlements", "daily-settlements");
-                }}
+                } : undefined}
               />
               <OperationModal
                 operation={operation}
@@ -6707,7 +6752,7 @@ function ChargesOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{
         disableNew={!permissions.canCreate}
         disableEdit={!selectedCharge || !permissions.canEdit}
         disableDelete={!selectedCharge || !permissions.canDelete}
-        extra={<button type="button" title="Subir" aria-label="Subir archivo de cargos" disabled={!permissions.canCreate} onClick={() => setUploadOpen(true)}><Upload size={15} /></button>}
+        extra={<button type="button" title="Subir" aria-label="Subir archivo de cargos" disabled={!permissions.canImport} onClick={() => setUploadOpen(true)}><Upload size={15} /></button>}
       />
       <div className={`charges-layout ${filtersVisible ? "" : "filters-collapsed"}`}>
         {filtersVisible && (
@@ -7618,14 +7663,14 @@ function LegacyOperationView({
                 />
                 <button
                   title="Subir archivo"
-                  disabled={!permissions.canCreate}
+                  disabled={!permissions.canImport}
                   onClick={() => importFileRef.current?.click()}
                 >
                   <FolderOpen size={16} />
                 </button>
                 <button
                   title="Importar datos"
-                  disabled={!importFilas || !permissions.canCreate}
+                  disabled={!importFilas || !permissions.canImport}
                   onClick={() => void runImport()}
                 >
                   <FileCheck2 size={16} />
@@ -8050,7 +8095,7 @@ function DepositsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
           onPrint={() => setPrintChoiceOpen(true)}
           disableNew={!permissions.canCreate || lifecycleRequest.locked}
           disableEdit={!currentSelection || !permissions.canEdit}
-          disableAccept={!currentSelection || currentSelection.__status !== "Pendiente" || !permissions.canEdit || lifecycleRequest.locked}
+          disableAccept={!currentSelection || currentSelection.__status !== "Pendiente" || lifecycleRequest.locked}
           disableDelete={!currentSelection || currentSelection.__status === "Cancelado" || currentSelection.__status === "Aceptado" || !permissions.canDelete || lifecycleRequest.locked}
           deleteIcon="x"
           deleteTitle="Cancelar depósito"
@@ -8928,7 +8973,7 @@ function PaymentDataDialog({ actorId, snapshot, onClose, onSaved }: Readonly<{ a
   const selectedLine = draft.lines.find((line) => line.id === selectedLineId) ?? null;
   const total = draft.lines.reduce((sum, line) => sum + line.amount, 0);
   const clearSelection = () => { setSelectedLineId(""); setPayoutPickerOpen(false); setEditingLine(null); setConfirmDeleteOpen(false); setSaveError(""); };
-  const close = () => { if (!request.locked) { request.clear(); onClose(); } };
+  const close = () => { if (request.closable) { request.clear(); onClose(); } };
   const update = <K extends keyof PaymentFormDraft>(field: K, value: PaymentFormDraft[K]) => {
     if (request.locked) return;
     if ((field === "collectorId" || field === "currency") && value !== draft[field]) clearSelection();
@@ -9022,7 +9067,7 @@ function PaymentDataDialog({ actorId, snapshot, onClose, onSaved }: Readonly<{ a
         </fieldset>
         {(saveError || request.error) && <div className="collection-receipt-error" role="alert">{saveError || request.error}</div>}
         <p role="status">Esta caja registra efectivo en la moneda seleccionada, con la fecha del servidor. Cada moneda requiere sus propios fondos.{request.uncertain ? " El resultado aún no está confirmado; reintenta la misma solicitud para recuperarlo sin duplicar pagos." : ""}</p>
-        <div className="collection-receipt-footer"><label className="collection-receipt-total">Total:<input value={nativeMoney(total, draft.currency)} readOnly disabled aria-label="Total del pago" /></label><div className="collection-receipt-footer-actions"><button type="button" disabled={busy} onClick={(event) => void submit(event)}>{busy ? "Guardando…" : request.uncertain ? "Reintentar" : "Guardar"}</button><button type="button" disabled={request.locked} onClick={(event) => void submit(event, true)}>Guardar e Imp.</button><button type="button" disabled={request.locked} onClick={close}>Cancelar</button></div></div>
+        <div className="collection-receipt-footer"><label className="collection-receipt-total">Total:<input value={nativeMoney(total, draft.currency)} readOnly disabled aria-label="Total del pago" /></label><div className="collection-receipt-footer-actions"><button type="button" disabled={busy} onClick={(event) => void submit(event)}>{busy ? "Guardando…" : request.uncertain ? "Reintentar" : "Guardar"}</button><button type="button" disabled={request.locked} onClick={(event) => void submit(event, true)}>Guardar e Imp.</button><button type="button" disabled={!request.closable} onClick={close}>Cancelar</button></div></div>
       </form>
       {clientSearchOpen && <ClientSearchSubmodal clients={snapshot.clients} onClose={() => setClientSearchOpen(false)} onSelect={chooseClient} />}
       {payoutPickerOpen && <PaymentPayoutPickerDialog payouts={eligiblePayouts} onClose={() => setPayoutPickerOpen(false)} onSelect={addPayoutLine} />}
@@ -9615,7 +9660,7 @@ function MovementCancellationDialog({ actorId, movement, kind, onClose, onSaved 
   const [reason, setReason] = useState(() => pendingMovementDraft<{ reason: string }>(actorId, scope)?.reason ?? "");
   const [validation, setValidation] = useState("");
   const label = kind === "cobros" ? "cobro" : kind === "pagos" ? "pago" : "entrega";
-  const close = () => { if (!request.locked) { request.clear(); onClose(); } };
+  const close = () => { if (request.closable) { request.clear(); onClose(); } };
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (request.busy) return;
@@ -9634,14 +9679,14 @@ function MovementCancellationDialog({ actorId, movement, kind, onClose, onSaved 
       <label className="collection-flow-field">Motivo:<input autoFocus required maxLength={500} disabled={request.locked} value={reason} onChange={(event) => { setReason(event.target.value); setValidation(""); }} /></label>
       {(validation || request.error) && <p className="collection-receipt-error" role="alert">{validation || request.error}</p>}
       {request.uncertain && <p role="status">El resultado está pendiente de confirmación. Reintenta con estos mismos datos.</p>}
-      <div className="legacy-dialog-actions centered"><button type="submit" disabled={request.busy}>{request.busy ? "Enviando…" : request.uncertain ? "Reintentar" : "Confirmar cancelación"}</button><button type="button" disabled={request.locked} onClick={close}>Volver</button></div>
+      <div className="legacy-dialog-actions centered"><button type="submit" disabled={request.busy}>{request.busy ? "Enviando…" : request.uncertain ? "Reintentar" : "Confirmar cancelación"}</button><button type="button" disabled={!request.closable} onClick={close}>Volver</button></div>
     </form>
   </LegacyDialog>;
 }
 
 function RecurringPayoutArchiveDialog({ actorId, row, onClose, onSaved }: Readonly<{ actorId: string; row: TableRow; onClose: () => void; onSaved: () => void }>) {
   const request = useMovementRequest(actorId, "archive-recurring-payout");
-  const close = () => { if (!request.locked) { request.clear(); onClose(); } };
+  const close = () => { if (request.closable) { request.clear(); onClose(); } };
   const archive = async () => {
     if (request.busy) return;
     try {
@@ -9655,7 +9700,7 @@ function RecurringPayoutArchiveDialog({ actorId, row, onClose, onSaved }: Readon
     <p>Quedará archivada. Los descargos ya generados se conservan.</p>
     {request.error && <p className="collection-receipt-error" role="alert">{request.error}</p>}
     {request.uncertain && <p role="status">Reintenta para confirmar el resultado con la misma solicitud.</p>}
-    <div className="legacy-dialog-actions centered"><button type="button" disabled={request.busy} onClick={() => void archive()}>{request.busy ? "Archivando…" : request.uncertain ? "Reintentar" : "Archivar"}</button><button type="button" disabled={request.locked} onClick={close}>Volver</button></div>
+    <div className="legacy-dialog-actions centered"><button type="button" disabled={request.busy} onClick={() => void archive()}>{request.busy ? "Archivando…" : request.uncertain ? "Reintentar" : "Archivar"}</button><button type="button" disabled={!request.closable} onClick={close}>Volver</button></div>
   </LegacyDialog>;
 }
 
@@ -9749,7 +9794,7 @@ function CollectionReceiptDialog({ snapshot, actorId, onClose, onSaved, onRefres
   const collector = snapshot.collectors.find((item) => item.id === collectorId);
   const selectedLine = lines.find((line) => line.id === selectedLineId) ?? null;
   const total = lines.reduce((sum, line) => sum + line.amount, 0);
-  const close = () => { if (!request.locked) { request.clear(); onClose(); } };
+  const close = () => { if (request.closable) { request.clear(); onClose(); } };
   const chooseClient = (id: string, code: string) => {
     if (request.locked) return;
     if (id !== clientId) { setLines([]); setSelectedLineId(""); }
@@ -9814,7 +9859,7 @@ function CollectionReceiptDialog({ snapshot, actorId, onClose, onSaved, onRefres
       </fieldset>
       {(saveError || request.error) && <div className="collection-receipt-error" role="alert">{saveError || request.error}</div>}
       {request.uncertain && <p role="status">No se ha confirmado el resultado. Reintenta la misma solicitud para evitar cobros duplicados.</p>}
-      <div className="collection-receipt-footer"><label className="collection-receipt-total">Total:<input value={nativeMoney(total, currency)} readOnly aria-label="Total del recibo" /></label><div className="collection-receipt-footer-actions"><button type="button" disabled={request.busy} onClick={() => void save(false)}>{request.busy ? "Guardando…" : request.uncertain ? "Reintentar" : "Guardar"}</button><button type="button" disabled={request.locked} onClick={() => void save(true)}>Guardar e Imp.</button><button type="button" disabled={request.locked} onClick={close}>Cancelar</button></div></div>
+      <div className="collection-receipt-footer"><label className="collection-receipt-total">Total:<input value={nativeMoney(total, currency)} readOnly aria-label="Total del recibo" /></label><div className="collection-receipt-footer-actions"><button type="button" disabled={request.busy} onClick={() => void save(false)}>{request.busy ? "Guardando…" : request.uncertain ? "Reintentar" : "Guardar"}</button><button type="button" disabled={request.locked} onClick={() => void save(true)}>Guardar e Imp.</button><button type="button" disabled={!request.closable} onClick={close}>Cancelar</button></div></div>
     </div>
     {clientSearchOpen && <ClientSearchSubmodal clients={snapshot.clients.filter((item) => item.active !== false)} onClose={() => setClientSearchOpen(false)} onSelect={(item) => chooseClient(item.id, item.code)} />}
     {chargePickerOpen && <CollectionChargePickerDialog charges={eligibleCharges} onClose={() => setChargePickerOpen(false)} onSelect={addLine} />}

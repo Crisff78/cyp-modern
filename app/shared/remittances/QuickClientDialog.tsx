@@ -26,7 +26,7 @@ export function QuickClientDialog({ side, currency, routes, initial, onClose, on
     <form onSubmit={use} onKeyDown={advanceCaptureField} className="remittance-panel">
       <p className="remittance-help">La ficha se guardará al confirmar el envío. Cancelar esta captura no registra ningún cliente.</p>
       <div className="remittance-form-grid">
-        <label>Cliente:<input autoFocus required maxLength={INPUT_LIMITS.name} value={draft.name} onChange={(event) => update("name", event.target.value)} /></label>
+        <label>Cliente:<input data-autofocus required maxLength={INPUT_LIMITS.name} value={draft.name} onChange={(event) => update("name", event.target.value)} /></label>
         <label>Cédula o pasaporte:<input required maxLength={80} value={draft.identification} onChange={(event) => update("identification", event.target.value)} /></label>
         <label>Teléfono:<input type="tel" inputMode="tel" maxLength={INPUT_LIMITS.phone} value={draft.phone} onChange={(event) => update("phone", event.target.value)} /></label>
         <label>Dirección:<input maxLength={240} value={draft.address} onChange={(event) => update("address", event.target.value)} /></label>

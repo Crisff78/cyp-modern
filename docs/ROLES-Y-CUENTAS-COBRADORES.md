@@ -17,9 +17,18 @@ asignación de una cuenta sigue revocando sus sesiones anteriores. El perfil y e
 máximo de permisos de cada rol están en
 [DIONEL-REMESAS-PERMISOS.md](DIONEL-REMESAS-PERMISOS.md#roles-y-permisos).
 
-Crear una cuenta, o cambiarla, a Admin, Supervisor, Cobrador o Cajero requiere
-el permiso 106; Usuario y No definido no lo requieren porque no conceden acceso
-inicial.
+Crear una cuenta como Admin, Supervisor, Cobrador o Cajero requiere el permiso
+106; crearla como Usuario o No definido no lo requiere, porque esos roles no
+conceden acceso inicial. Cambiar el rol de una cuenta existente requiere el 106
+en todos los casos, también hacia Usuario o Cajero: el cambio puede dar, cambiar o
+quitar acceso. Solo el paso entre No definido y Usuario, cuando ninguno de los dos
+tiene acceso, sigue con el 103.
+
+Cambiar el nombre, el usuario de inicio, el rol o el cobrador de otra cuenta, su
+clave o su estado, o cerrar sus sesiones, exige además que el acceso efectivo de
+quien lo hace incluya todos los permisos de esa cuenta: si no, 403
+`ACCOUNT_MORE_PRIVILEGED`. El apodo y la nota siguen con el 103. La cuenta
+principal de administración solo la modifica ella misma (403 `ACCOUNT_PROTECTED`).
 
 Una cuenta de Admin o de Cajero no se asocia a un cobrador. `POST /api/usuarios`
 y `POST /api/usuarios/:id` con `collectorId` devuelven 422 `COLLECTOR_NOT_ALLOWED`

@@ -4,8 +4,11 @@ import { api, ApiError } from "./api";
 import { remittancesApi } from "./remittancesApi";
 
 type Attempt = { key: string; path: string; method: "POST" | "PUT"; transport: "strict" | "api"; body: string; draft: unknown };
-type RequestState = { attempt?: Attempt; busy: boolean; uncertain: boolean; error: string };
+// `denied`: a retry of an unconfirmed operation was refused because the account lost the permission.
+// The attempt (key and data) stays in memory, but its window and dialog can be closed.
+type RequestState = { attempt?: Attempt; busy: boolean; uncertain: boolean; denied?: boolean; error: string };
 const idle: RequestState = { busy: false, uncertain: false, error: "" };
+const permissionCodes = new Set(["PERMISSION_REQUIRED", "ACCESS_REVOKED", "FORBIDDEN"]);
 // These business errors are emitted after the server has checked the saved key.
 const definitiveCodes = new Set([
   "NOT_FOUND", "CLIENT_ROUTE_INACTIVE", "ROUTE_MISMATCH", "INVALID_COLLECTION_LINES",
@@ -43,7 +46,7 @@ export function pendingMovementDraft<T>(actorId: string, scope: string): T | und
   return states.get(requestId(actorId, scope))?.attempt?.draft as T | undefined;
 }
 export function hasUnresolvedMovementRequest(actorId: string) {
-  return [...states.entries()].some(([id, state]) => id.startsWith(`${actorId}\n`) && (state.busy || state.uncertain));
+  return [...states.entries()].some(([id, state]) => id.startsWith(`${actorId}\n`) && (state.busy || state.uncertain && !state.denied));
 }
 
 export function useMovementRequest(actorId: string, scope: string) {
@@ -70,7 +73,11 @@ export function useMovementRequest(actorId: string, scope: string) {
       // Auth/prevalidation failures cannot resolve an earlier lost response.
       const definitive = Boolean(failure.code && definitiveCodes.has(failure.code));
       const uncertain = failure.uncertain || (previous.uncertain && !definitive);
-      publish(id, { attempt: uncertain ? attempt : undefined, busy: false, uncertain, error: failure.message });
+      // Without the permission no retry can confirm the earlier attempt: keep it, but let the user leave.
+      const denied = uncertain && !failure.uncertain && failure.status === 403 && Boolean(failure.code && permissionCodes.has(failure.code));
+      publish(id, { attempt: uncertain ? attempt : undefined, busy: false, uncertain, denied, error: denied
+        ? `${failure.message} No se pudo confirmar si la operación anterior quedó registrada: pide a Administración que lo revise. Puedes cerrar esta ventana; el intento se conserva para reintentarlo si recuperas el permiso.`
+        : failure.message });
       throw failure;
     }
   };
@@ -78,5 +85,6 @@ export function useMovementRequest(actorId: string, scope: string) {
     const current = states.get(id) ?? idle;
     if (!current.busy && !current.uncertain) publish(id, idle);
   };
-  return { ...state, run, clear, locked: state.busy || state.uncertain };
+  // `locked` keeps the data frozen while the result is unknown; `closable` says whether the dialog may close.
+  return { ...state, run, clear, locked: state.busy || state.uncertain, closable: !state.busy && (!state.uncertain || Boolean(state.denied)) };
 }

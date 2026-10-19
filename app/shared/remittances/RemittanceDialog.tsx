@@ -4,7 +4,14 @@ export function RemittanceDialog({ title, children, onClose, locked = false }: {
   const element = useRef<HTMLDialogElement>(null);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [drag, setDrag] = useState<null | { x: number; y: number; left: number; top: number }>(null);
-  useEffect(() => { element.current?.showModal(); return () => element.current?.close(); }, []);
+  useEffect(() => {
+    const dialog = element.current, opener = document.activeElement;
+    dialog?.showModal();
+    // React's autoFocus runs before the dialog opens; the field marked data-autofocus takes the focus once it is open.
+    dialog?.querySelector<HTMLElement>("[data-autofocus]")?.focus();
+    // Closing gives the focus back to what opened the dialog while it is still on the page.
+    return () => { dialog?.close(); if (opener instanceof HTMLElement && opener.isConnected) opener.focus(); };
+  }, []);
   useEffect(() => {
     if (!drag) return;
     const move = (event: MouseEvent) => {
