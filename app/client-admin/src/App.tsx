@@ -433,7 +433,6 @@ const mdiTitle = (page: MdiPage) => {
 type MdiWindowState = {
   id: string;
   page: MdiPage;
-  remittanceReportRequest?: number;
   title: string;
   x: number;
   y: number;
@@ -737,7 +736,10 @@ function MdiWindow({ windowState, onClose, onFocus, onMove, onResize, onToggleMa
     document.addEventListener("mouseup", onMouseUp, { once: true });
     return () => { document.removeEventListener("mousemove", onMouseMove); document.removeEventListener("mouseup", onMouseUp); };
   }, [drag, onMove, windowState.id]);
-  const focusIfNeeded = () => {
+  const focusIfNeeded = (event: ReactPointerEvent<HTMLElement>) => {
+    // A portal is a React child but an independent desktop window. Do not
+    // raise this parent over a click that belongs to the portaled receipt.
+    if (!frame.current?.contains(event.target as Node)) return;
     if (!windowState.isFocused) onFocus(windowState.id);
   };
   const startDrag = (event: ReactMouseEvent<HTMLDivElement>) => {
@@ -4717,6 +4719,10 @@ export default function App() {
     highestZIndex.current += 1;
     return highestZIndex.current;
   }, []);
+  const nextReceiptZIndex = useCallback(() => {
+    setMdiWindows((windows) => windows.map((item) => item.isFocused ? { ...item, isFocused: false } : item));
+    return nextZIndex();
+  }, [nextZIndex]);
   const clearLocalSession = useCallback(() => {
     invalidateSnapshotReads();
     clearToken();
@@ -4841,14 +4847,10 @@ export default function App() {
   const openMdiWindow = useCallback((next: MdiPage, navKey = "") => {
     if (!isUiPageVisible(next) || !user || !canOpenPage(user, next)) return;
     setActiveNavKey(navKey);
-    const requestRemittanceReport = next === "remittances" && navKey === "reports-remittances";
     setMdiWindows((windows) => {
       const existing = windows.find((item) => item.page === next);
       const zIndex = nextZIndex();
-      if (existing) return focusWindowCollection(windows, existing.id, zIndex).map((item) =>
-        requestRemittanceReport && item.id === existing.id
-          ? { ...item, remittanceReportRequest: (item.remittanceReportRequest ?? 0) + 1 }
-          : item);
+      if (existing) return focusWindowCollection(windows, existing.id, zIndex);
 
       const offset = windows.length * 26;
       const compact = next === "controlPanel";
@@ -4862,7 +4864,6 @@ export default function App() {
         {
           id: `${next}-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`,
           page: next,
-          remittanceReportRequest: requestRemittanceReport ? 1 : undefined,
           title: mdiTitle(next),
           x: place(compact ? 180 : 118 + offset, width, desktop?.width),
           y: place(compact ? 78 : 78 + offset, height, desktop?.height),
@@ -5358,7 +5359,7 @@ export default function App() {
               ) : windowState.page === "exchangeRates" ? (
                 <ConnectedExchangeRates actorId={effectiveUser.id} isAdmin={["ADMIN", "SUPERADMIN"].includes(normalizeRole(effectiveUser.role)) && hasPermission(effectiveUser, 201) && hasRemittancePermission(effectiveUser, "remittances.rates.manage")} />
               ) : windowState.page === "remittances" ? (
-                <RemittancesWorkspace api={remittancesApi} user={effectiveUser} isAdmin={["ADMIN", "SUPERADMIN"].includes(normalizeRole(effectiveUser.role))} reportRequest={windowState.remittanceReportRequest} payoutRequest={remittancePayoutRequest} />
+                <RemittancesWorkspace api={remittancesApi} user={effectiveUser} isAdmin={["ADMIN", "SUPERADMIN"].includes(normalizeRole(effectiveUser.role))} desktopId="main-content" nextWindowZIndex={nextReceiptZIndex} payoutRequest={remittancePayoutRequest} />
               ) : windowState.page === "remittanceCommissions" ? (
                 <ConnectedRemittanceCommissions actor={effectiveUser} />
               ) : isConnectedCatalog(windowState.page) ? (

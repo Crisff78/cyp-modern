@@ -85,6 +85,7 @@
 .remittance-notice { padding: 12px; margin: 12px 0; border: 1px solid var(--cyp-border-strong, #91bfaa); color: var(--cyp-success-text, #185c42); background: var(--cyp-surface-muted, #edf8f2); border-radius: 4px; }
 .remittances-dialog { max-width: min(620px, calc(100vw - 24px)); width: 620px; max-height: calc(100dvh - 32px); padding: 0; border: 1px solid var(--cyp-border-strong, #7a92ae); border-radius: 6px; box-shadow: 0 20px 80px #152c4b40; background: var(--cyp-surface, #fff); overflow: auto; }
 .remittances-dialog::backdrop { background: #12233b99; }
+dialog.remittances-dialog { position: fixed; inset: 0; margin: auto; }
 .remittances-dialog > header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; background: var(--cyp-info-surface, #dce7f4); border-bottom: 1px solid var(--rem-edge); gap: 12px; }
 .remittances-dialog > header h2 { margin: 0; }
 .remittances-dialog > header button { min-width: 40px; font-size: 22px; line-height: 1; }
@@ -92,6 +93,27 @@
 .remittances-dialog-body form > button { margin-top: 14px; }
 .remittance-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-top: 18px; }
 .remittance-cancel { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--cyp-border-strong, #d6aaa7); }
+.remittance-receipt-window { flex-direction: column; container-type: inline-size; margin: 0; max-width: none; max-height: none; overflow: hidden; border-radius: 5px; box-shadow: 0 10px 35px #152c4b40; }
+.remittance-receipt-window > .remittance-receipt-titlebar { flex: 0 0 36px; min-height: 36px; padding: 0 7px 0 12px; gap: 8px; color: #f8fafc; background: linear-gradient(180deg, #0f766e, #065f46); cursor: move; user-select: none; touch-action: none; }
+.remittance-receipt-titlebar h2 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: inherit; font-size: 13px; }
+.remittance-window-controls { display: flex; flex: 0 0 auto; gap: 5px; }
+.remittance-receipt-titlebar .remittance-window-controls button { display: grid; place-items: center; width: 27px; height: 25px; min-width: 27px; min-height: 25px; padding: 0; border: 1px solid #ffffff60; color: #f8fafc; background: #0f172a38; }
+.remittance-receipt-titlebar .remittance-window-controls button:hover { background: #ffffff26; }
+.remittance-receipt-titlebar .remittance-window-controls button:last-child:hover { background: #b91c1c; }
+.remittance-receipt-body { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; background: var(--cyp-surface-muted, #f2f5f9); padding: 16px; }
+.remittance-receipt-status { display: flex; justify-content: space-between; align-items: center; gap: 12px; color: var(--cyp-text-muted, #526176); font-size: 12px; }
+.remittance-receipt-parties { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; padding: 16px 0; border-bottom: 1px solid var(--rem-edge); }
+.remittance-receipt-parties > div { display: flex; flex-direction: column; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.remittance-receipt-parties span { color: var(--cyp-text-muted, #526176); font-size: 12px; }
+.remittance-receipt-parties strong { font-size: 17px; }
+.remittance-receipt-columns { display: grid; grid-template-columns: 1.15fr 1fr; gap: 24px; margin: 16px 0; }
+.remittance-receipt-columns h3 { font-size: 13px; margin: 0; }
+.remittance-receipt-columns .remittance-summary { font-size: 12px; }
+.remittance-receipt-extra { padding: 10px 0; border-top: 1px solid var(--rem-edge); }
+.remittance-receipt-extra summary { font-size: 12px; font-weight: 600; cursor: pointer; }
+.remittance-receipt-extra[open] summary { margin-bottom: 10px; }
+.remittance-window-restore { position: fixed; bottom: 18px; right: 18px; z-index: 2147482000; display: flex; align-items: center; gap: 8px; max-width: min(350px, calc(100vw - 32px)); padding: 10px 14px; border: 1px solid var(--cyp-border-strong, #879db8); border-radius: 5px; background: var(--cyp-surface, #fff); color: var(--cyp-text, #172a45); box-shadow: 0 3px 14px #152c4b26; font: 600 12px/1.4 Inter, Arial, sans-serif; cursor: pointer; }
+@media (max-width: 700px) { .remittance-receipt-columns { grid-template-columns: 1fr; gap: 12px; } .remittance-window-restore { bottom: 88px; } }
 @container (max-width: 600px) {
   .remittance-form-grid { grid-template-columns: 1fr; }
   .remittance-heading { align-items: flex-start; }
