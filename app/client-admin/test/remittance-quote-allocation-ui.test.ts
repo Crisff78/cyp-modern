@@ -183,7 +183,9 @@ createRoot(document.getElementById("root")).render(<App />);`);
         assert.equal(await workspace.getByRole("combobox", { name: "Remitente", exact: true }).inputValue(), "", "confirmed sends clear the prior sender");
         assert.equal(await workspace.getByRole("combobox", { name: "Destinatario", exact: true }).inputValue(), "", "confirmed sends clear the prior recipient");
         assert.equal(await workspace.getByLabel("Monto a enviar (DOP)", { exact: true }).inputValue(), "");
-        assert.equal(await workspace.getByRole("combobox", { name: "Remitente", exact: true }).evaluate((element: Element) => element === document.activeElement), true);
+        // Focus returns to the sender after the print prompt closes; wait for it instead of sampling one frame.
+        await page.waitForFunction(() => !document.querySelector("dialog[open]") && document.activeElement?.closest('[data-client-side="sender"]') !== null, undefined, { timeout: 5000 }).catch(() => undefined);
+        assert.equal(await workspace.getByRole("combobox", { name: "Remitente", exact: true }).evaluate((element: Element) => element === document.activeElement), true, "after a confirmed send the cursor returns to the sender");
         const saved = (await store.read()).remittances.transfers.find((row) => row.id === registeredTransfer.id)!;
         assert.ok(saved, "The exact transfer returned by the creation response must exist in the ledger.");
         assert.equal(saved.status, "pending");

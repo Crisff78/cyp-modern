@@ -231,6 +231,40 @@ createRoot(document.getElementById("root")).render(<Fixture />);`, "utf8");
         "remittances.create", "remittances.pay", "remittances.receipts", "remittances.reports", "remittances.view"]);
       assert.equal((await store.read()).accounts.find(({ id }) => id === cashierRole.id)?.role, "cashier");
     });
+    // The Cajero saved above uses its profile plus the reports of Envíos.
+    const cashierReports = () => dialog().getByRole("checkbox", { name: "Envíos de Dinero: Consultar e imprimir reportes de envíos", exact: true });
+    const personalizedCashier = [...roleRemittancePermissions("cashier"), "remittances.reports"].sort();
+    await t.test("a personalized account taken to «Perfil del rol» and back, without saving, shows again the selection it was loaded with", async () => {
+      await open(cashierRole.name);
+      const count = writes.length;
+      try {
+        const mode = dialog().getByRole("combobox", { name: "Modo de permisos", exact: true });
+        assert.equal(await mode.inputValue(), "custom"); assert.equal(await cashierReports().isChecked(), true);
+        await mode.selectOption("role"); assert.equal(await cashierReports().isChecked(), false, "the role profile is shown");
+        await mode.selectOption("custom"); assert.equal(await cashierReports().isChecked(), true, "back to the personalized selection that was loaded");
+      } finally { await dialog().getByRole("button", { name: "Cancelar", exact: true }).click(); await dialog().waitFor({ state: "detached" }); }
+      assert.equal(writes.length, count);
+    });
+    await t.test("«Perfil del rol» keeps the personalized keys of Envíos as an earlier selection that is adopted again with them", async () => {
+      await open(cashierRole.name);
+      const mode = dialog().getByRole("combobox", { name: "Modo de permisos", exact: true });
+      const stored = dialog().getByRole("group", { name: "Selección anterior de permisos", exact: true });
+      await mode.selectOption("role");
+      const count = writes.length;
+      await dialog().getByRole("button", { name: "Guardar", exact: true }).click(); await dialog().waitFor({ state: "detached" });
+      const { mode: sentMode, permissionIds, remittancePermissions } = writes[count].body as { mode: string; permissionIds: number[]; remittancePermissions: string[] };
+      assert.deepEqual([sentMode, permissionIds, remittancePermissions], ["role", [1, 2], personalizedCashier], "the saved lists go back unchanged");
+      let profile = await getProfile(cashierRole.id);
+      assert.deepEqual([profile.mode, profile.remittancePermissions], ["role", personalizedCashier]);
+      await open(cashierRole.name);
+      assert.equal(await mode.inputValue(), "role"); assert.equal(await cashierReports().isChecked(), false, "the role profile is what applies");
+      assert.match(await stored.innerText(), /Envíos de Dinero: .*Consultar e imprimir reportes de envíos/);
+      await stored.getByRole("button", { name: "Aplicar selección anterior", exact: true }).click();
+      assert.equal(await mode.inputValue(), "custom"); assert.equal(await cashierReports().isChecked(), true);
+      await dialog().getByRole("button", { name: "Guardar", exact: true }).click(); await dialog().waitFor({ state: "detached" });
+      profile = await getProfile(cashierRole.id);
+      assert.deepEqual([profile.mode, profile.permissionIds, profile.remittancePermissions], ["custom", [1, 2], personalizedCashier]);
+    });
     await t.test("U1 a migrated account in «Perfil del rol» shows its earlier list, keeps it when saving and adopts it only on request", async () => {
       await open(migrated.name);
       const mode = dialog().getByRole("combobox", { name: "Modo de permisos", exact: true });

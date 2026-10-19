@@ -13,6 +13,9 @@ const REMITTANCE_CATEGORY = "Envíos de Dinero";
 type DialogCategory = PermissionCategory | typeof REMITTANCE_CATEGORY;
 const sortedIds = (ids: readonly number[]) => [...new Set(ids)].sort((a, b) => a - b);
 const sameIds = (left: readonly number[], right: readonly number[]) => JSON.stringify(sortedIds(left)) === JSON.stringify(sortedIds(right));
+const sortedKeys = (keys: readonly RemittancePermission[]) => [...new Set(keys)].sort();
+const sameKeys = (left: readonly RemittancePermission[], right: readonly RemittancePermission[]) => JSON.stringify(sortedKeys(left)) === JSON.stringify(sortedKeys(right));
+const remittanceName = (key: RemittancePermission) => REMITTANCE_PERMISSIONS.find((permission) => permission.key === key)?.name ?? key;
 
 export function ConnectedUserPermissionsDialog({ userId, userName, userRole, actorId, canEdit = true, onClose }: Readonly<{
   userId: string;
@@ -26,13 +29,15 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
   const controlId = useId();
   const pending = pendingMovementDraft<UserPermissions>(actorId, scope);
   const request = useMovementRequest(actorId, scope);
-  // The list saved for the account. With «Perfil del rol» it is only a reference (for example the list kept
-  // by the 034 migration): the table shows the role profile, and saving sends that list back unchanged.
+  // The lists saved for the account. With «Perfil del rol» they are only a reference (for example the list kept
+  // by the 034 migration, or the personalized one before choosing the role profile): the table shows the role
+  // profile, and saving sends those lists back unchanged, the codes and the keys of Envíos alike.
   const [storedIds, setStoredIds] = useState<readonly number[] | null>(pending?.mode === "role" ? pending.permissionIds : null);
+  const [storedKeys, setStoredKeys] = useState<readonly RemittancePermission[] | null>(pending?.mode === "role" ? pending.remittancePermissions ?? null : null);
   const [loadedMode, setLoadedMode] = useState<PermissionMode | null>(null);
   const [assignedIds, setAssignedIds] = useState<readonly number[]>(pending ? pending.mode === "role" ? rolePermissionIds(userRole) : pending.permissionIds : []);
   const [mode, setMode] = useState<PermissionMode>(pending?.mode ?? "role");
-  const [remittanceKeys, setRemittanceKeys] = useState<readonly RemittancePermission[]>(pending?.remittancePermissions ?? []);
+  const [remittanceKeys, setRemittanceKeys] = useState<readonly RemittancePermission[]>(pending ? pending.mode === "role" ? roleRemittancePermissions(userRole) : pending.remittancePermissions ?? [] : []);
   const [revision, setRevision] = useState(pending?.revision ?? 0);
   const [category, setCategory] = useState<DialogCategory>("No definido");
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -55,8 +60,9 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
       setMode(nextMode);
       setLoadedMode(result.mode ?? "role");
       setStoredIds(submitted?.mode === "role" ? submitted.permissionIds : result.permissionIds);
+      setStoredKeys(submitted?.mode === "role" ? submitted.remittancePermissions ?? null : result.remittancePermissions ?? null);
       setAssignedIds(nextMode === "role" ? rolePermissionIds(userRole) : submitted?.permissionIds ?? result.permissionIds);
-      setRemittanceKeys(submitted?.remittancePermissions ?? (nextMode === "role" ? roleRemittancePermissions(userRole) : result.remittancePermissions ?? []));
+      setRemittanceKeys(nextMode === "role" ? roleRemittancePermissions(userRole) : submitted?.remittancePermissions ?? result.remittancePermissions ?? []);
       setRevision(submitted?.revision ?? result.revision);
       setReady(true);
     }).catch((error: unknown) => {
@@ -73,14 +79,22 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
   const requiredOwn = userId === actorId ? [1, 10, 101, 106] : [];
   const assigned = new Set(assignedIds);
   // A saved list different from the role profile is shown and can be adopted explicitly, never silently lost.
+  // The keys of Envíos count too: for Cajero and Usuario they are almost all a personalization can change.
+  const roleKeys = roleRemittancePermissions(userRole);
   const storedReach = storedIds?.filter((id) => ceiling.legacy.includes(id)) ?? [];
   const storedOutOfReach = storedIds?.filter((id) => !ceiling.legacy.includes(id)) ?? [];
+  const storedKeysDiffer = storedKeys !== null && !sameKeys(storedKeys, roleKeys);
+  const storedKeysOutOfReach = storedKeysDiffer ? storedKeys!.filter((key) => !ceiling.remittances.includes(key)) : [];
   const adoptedIds = sortedIds([...storedReach, ...requiredOwn]);
-  const showStored = storedIds !== null && !sameIds(storedIds, rolePermissionIds(userRole)) && (mode === "role" || loadedMode === "role");
+  // Without a saved list of its own the keys of Envíos start from the role profile.
+  const adoptedKeys = sortedKeys(storedKeysDiffer ? storedKeys!.filter((key) => ceiling.remittances.includes(key)) : roleKeys);
+  const showStored = ((storedIds !== null && !sameIds(storedIds, rolePermissionIds(userRole))) || storedKeysDiffer) && (mode === "role" || loadedMode === "role");
+  const storedCount = (storedIds?.length ?? 0) + (storedKeysDiffer ? storedKeys!.length : 0);
   const adoptStored = () => {
-    if (locked || !storedIds) return;
+    if (locked || (!storedIds && !storedKeys)) return;
     setMode("custom");
     setAssignedIds(adoptedIds);
+    setRemittanceKeys(adoptedKeys);
   };
   const toggle = (id: number) => {
     if (locked || !ceiling.legacy.includes(id) || requiredOwn.includes(id)) return;
@@ -118,9 +132,11 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
   const save = async (event: FormEvent) => {
     event.preventDefault();
     if (!canEdit || !ready || loading || request.busy) return;
-    // «Perfil del rol» keeps the saved reference list as it is; only «Permisos personalizados» replaces it.
+    // «Perfil del rol» keeps the saved reference lists as they are; only «Permisos personalizados» replaces them.
     const savedIds = mode === "role" ? storedIds ?? rolePermissionIds(userRole) : assignedIds;
-    const draft: UserPermissions = { userId, permissionIds: sortedIds(savedIds), mode, remittancePermissions: [...remittanceKeys].sort(), revision };
+    // The server keeps an empty reference of keys as the role profile, so that is what goes back.
+    const savedKeys = mode === "role" ? storedKeys?.length ? storedKeys : roleKeys : remittanceKeys;
+    const draft: UserPermissions = { userId, permissionIds: sortedIds(savedIds), mode, remittancePermissions: [...savedKeys].sort(), revision };
     try {
       await request.run<UserPermissions>(`/usuarios/${encodeURIComponent(userId)}/permisos`, { permissionIds: draft.permissionIds, mode, remittancePermissions: draft.remittancePermissions, revision }, draft,
         (result) => isUserPermissions(result, userId) && result.mode === draft.mode && JSON.stringify([...(result.remittancePermissions ?? [])].sort()) === JSON.stringify(draft.remittancePermissions) && JSON.stringify([...result.permissionIds].sort((a, b) => a - b)) === JSON.stringify(draft.permissionIds),
@@ -137,7 +153,9 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
       <div className="connected-permissions-user"><strong>{userName}</strong><span>{userId}</span></div>
       <label>Aplicar:<select aria-label="Modo de permisos" value={mode} disabled={locked} onChange={(event) => {
         const next = event.target.value as PermissionMode; setMode(next);
-        if (next === "role") { setAssignedIds(rolePermissionIds(userRole)); setRemittanceKeys(roleRemittancePermissions(userRole)); }
+        if (next === "role") { setAssignedIds(rolePermissionIds(userRole)); setRemittanceKeys(roleKeys); }
+        // Back to the personalized permissions it was loaded with: that selection, not the role profile.
+        else if (loadedMode === "custom") { setAssignedIds(storedIds ?? []); setRemittanceKeys(storedKeys ?? []); }
       }}><option value="role">Perfil del rol</option><option value="custom">Permisos personalizados</option></select></label>
       <div className="connected-permissions-controls">
         <label className="connected-permission-category">Categoría:
@@ -151,12 +169,13 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
       </div>
       {loading && <p className="connected-permissions-feedback" role="status">Cargando permisos…</p>}
       {loadError && <p className="connected-permission-error" role="alert">{loadError}</p>}
-      {showStored && storedIds && <div className="connected-permissions-stored" role="group" aria-label="Selección anterior de permisos">
+      {showStored && <div className="connected-permissions-stored" role="group" aria-label="Selección anterior de permisos">
         <p>{mode === "role"
-          ? `Esta cuenta conserva una selección anterior de ${storedIds.length} permisos que no se aplica mientras use «Perfil del rol»; al guardar con el perfil del rol se sigue conservando.`
-          : `Selección anterior de esta cuenta (${storedIds.length} permisos). Al guardar, los permisos marcados la sustituirán.`} Códigos: {sortedIds(storedIds).join(", ")}.</p>
-        {storedOutOfReach.length > 0 && <p>Fuera del alcance del rol, no se aplicarán: {sortedIds(storedOutOfReach).join(", ")}.</p>}
-        {!(mode === "custom" && sameIds(assignedIds, adoptedIds)) && <button type="button" disabled={locked} onClick={adoptStored}>Aplicar selección anterior</button>}
+          ? `Esta cuenta conserva una selección anterior de ${storedCount} permisos que no se aplica mientras use «Perfil del rol»; al guardar con el perfil del rol se sigue conservando.`
+          : `Selección anterior de esta cuenta (${storedCount} permisos). Al guardar, los permisos marcados la sustituirán.`} Códigos: {sortedIds(storedIds ?? []).join(", ") || "ninguno"}.</p>
+        {storedKeysDiffer && <p>{REMITTANCE_CATEGORY}: {storedKeys!.length ? sortedKeys(storedKeys!).map(remittanceName).join(", ") : "ninguno"}.</p>}
+        {storedOutOfReach.length + storedKeysOutOfReach.length > 0 && <p>Fuera del alcance del rol, no se aplicarán: {[...sortedIds(storedOutOfReach).map(String), ...sortedKeys(storedKeysOutOfReach).map(remittanceName)].join(", ")}.</p>}
+        {!(mode === "custom" && sameIds(assignedIds, adoptedIds) && sameKeys(remittanceKeys, adoptedKeys)) && <button type="button" disabled={locked} onClick={adoptStored}>Aplicar selección anterior</button>}
       </div>}
       <div className="legacy-mdi-table-wrap connected-user-permissions-scroll">
         <table className="legacy-mdi-table connected-user-permissions-table">

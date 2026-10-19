@@ -80,7 +80,12 @@ ENVÍO DE DINERO y CUADRES.
    Revisar cierre y confirma.
 
 Como la base es compartida, los envíos, pagos y cajas del Cajero los ven también
-los demás evaluadores.
+los demás evaluadores. La cuenta de práctica es una sola y cada operador tiene una
+caja por moneda y día: si un evaluador la cierra (paso 5), los demás ya no pueden
+abrir ni usar la caja de esa moneda con esa cuenta hasta la jornada siguiente, y
+la ventana de Envíos lo indica. Para practicar el cierre sin afectar a otros, entra
+con `admin@cyp.local`, crea un Cajero propio en Archivos → Admin. → Usuarios y haz
+el recorrido con esa cuenta.
 
 La ampliación conserva los datos que ya existan en su misma base. El historial
 nuevo se construye aparte usando las reglas del dominio, con cierres equilibrados
@@ -214,7 +219,8 @@ no necesita otro servicio ni otro dominio.
    (ver [RRAA-ESTACIONES.md](RRAA-ESTACIONES.md)); sin ellas responde el control de prueba.
    No introduzcas contraseñas de la instalación local ni publiques estas variables.
 4. Espera el deploy y comprueba `GET /api/health`, `/`, `/collector/`, el login
-   de Administración, Cobrador y Cajero, y un envío con su pago. `/` debe pedir
+   de Administración, Cobrador y Cajero, y un envío con su pago (sin cerrar la caja
+   del Cajero de práctica, que comparten los evaluadores). `/` debe pedir
    primero la invitación.
    El enlace público será el dominio
    HTTPS `onrender.com` que muestre Render.

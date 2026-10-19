@@ -144,7 +144,12 @@ Visibilidad de las operaciones, igual en `snapshot`, listados y reportes:
   propia cuenta, y Supervisor ninguna. `sendingOperatorIds` es la parte de
   `operators` que tiene `remittances.create`: solo esas cuentas son válidas como
   operador del envío. Las demás siguen en `operators` porque Admin puede abrirles
-  la caja para pagar recibos.
+  la caja para pagar recibos. `operatorNames` (`{id: nombre}`) nombra a todos los
+  operadores que aparecen en lo que la cuenta ve: operador, registro, pago y
+  cancelación de sus envíos y recibos, sus cajas y, con `remittances.reports`, las
+  filas de sus reportes, también de cuentas desactivadas. Solo lleva id y nombre,
+  sin rol ni acceso, y no los ofrece como operadores elegibles. Así el detalle, el
+  comprobante impreso, las cajas y los reportes muestran nombres, nunca un id.
 - `GET /envios/clientes/buscar?query=...&side=sender|recipient&senderId=...`
   → `{ids: string[], hasMore: boolean}`, hasta 100 IDs de clientes activos que
   coinciden por código, nombre o identificación, o por al menos 3 dígitos de su
@@ -273,9 +278,12 @@ En la interfaz administrativa: Reportes & Monitoreo → Cuadres Diarios → Caja
 envíos → «Abrir caja del …» → operador (Admin lo elige; el Cajero ve su propio
 nombre, sin selector) → moneda → efectivo inicial → Revisar apertura → Confirmar.
 Con `remittances.cash.view`, las ventanas Envíos de Dinero y Pagos de Envíos
-avisan cuando falta la caja de hoy del operador y ofrecen «Ir a Caja de envíos».
+avisan cuando falta la caja de hoy del operador y ofrecen «Ir a Caja de envíos»,
+que abre el formulario con el operador y la moneda del aviso y lleva allí el teclado.
 La fecha viene del servidor; 0 es válido si la caja comienza sin efectivo.
-Una caja ya cerrada en la fecha actual no puede reabrirse. Para entregar un
+Una caja ya cerrada en la fecha actual no puede reabrirse: el aviso dice que la
+caja de hoy ya se cerró, sin «Ir a Caja de envíos», y el formulario de apertura no
+deja revisar esa apertura. Para entregar un
 recibo se requiere caja abierta del usuario que paga en la moneda de destino,
 con fondos suficientes; no se usa la caja de cobros ni se mezclan monedas.
 

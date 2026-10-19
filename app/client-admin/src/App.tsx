@@ -95,7 +95,7 @@ import { parseImportCsv } from "./services/importCsv";
 import { isMockToken } from "./mock";
 import OperationModal, { type Operation } from "./Operations";
 import AccountModal, { type AccountOperation } from "./Users";
-import RemittancesWorkspace from "../../shared/remittances/RemittancesWorkspace";
+import RemittancesWorkspace, { type RemittanceCashOpening } from "../../shared/remittances/RemittancesWorkspace";
 import { hasPermission, hasRemittancePermission, canOpenPage, canChangeOwnPassword } from "../../shared/access.mjs";
 import { PERMISSION_CATALOG } from "../../shared/permissionCatalog";
 import { accountRoleLabel as accountRoleName } from "../../shared/accountRoles";
@@ -4870,8 +4870,10 @@ export default function App() {
     if (role === "SUPERVISOR")
       setExpandedGroups(["REPORTES & MONITOREO"]);
     // The cashier works in Envíos and its box in Cuadres Diarios: both groups start unfolded.
-    if (role === "CASHIER")
+    else if (role === "CASHIER")
       setExpandedGroups(["REMESAS", "REPORTES & MONITOREO"]);
+    // Any other account, also one that signs in after another on this page, starts with every group unfolded.
+    else setExpandedGroups([...groupOrder]);
   }, [menuProfile]);
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -4944,10 +4946,15 @@ export default function App() {
     window.addEventListener("cyp-open-remittance-payout", handler);
     return () => window.removeEventListener("cyp-open-remittance-payout", handler);
   }, [openMdiWindow]);
-  // "Ir a Caja de envíos" opens Cuadres Diarios on its Caja de envíos section.
-  const [settlementSectionRequest, setSettlementSectionRequest] = useState<{ id: number; section: DailySettlementSection }>();
-  const openRemittanceCash = useCallback(() => {
-    setSettlementSectionRequest((current) => ({ id: (current?.id ?? 0) + 1, section: "remittanceCash" }));
+  // "Ir a Caja de envíos" opens Cuadres Diarios on its Caja de envíos section, ready to open the box the
+  // notice named; the entries about collector settlements (401) open it on those, whatever was shown before.
+  const [settlementSectionRequest, setSettlementSectionRequest] = useState<{ id: number; section: DailySettlementSection; opening?: RemittanceCashOpening }>();
+  const openRemittanceCash = useCallback((opening?: RemittanceCashOpening) => {
+    setSettlementSectionRequest((current) => ({ id: (current?.id ?? 0) + 1, section: "remittanceCash", ...(opening ? { opening } : {}) }));
+    openMdiWindow("dailySettlements", "daily-settlements");
+  }, [openMdiWindow]);
+  const openCollectorSettlements = useCallback(() => {
+    setSettlementSectionRequest((current) => ({ id: (current?.id ?? 0) + 1, section: "collectors" }));
     openMdiWindow("dailySettlements", "daily-settlements");
   }, [openMdiWindow]);
   const focusMdiWindow = useCallback((id: string) => {
@@ -5240,7 +5247,7 @@ export default function App() {
                   {snapshot?.totals.activeCollectors ?? 0} cobradores en calle
                 </span>}
                 {/* The state of the collector settlements (401), not the box of envíos. */}
-                {hasPermission(effectiveUser, 401) && <button type="button" onClick={() => openMdiWindow("dailySettlements", "daily-settlements")} title="Abrir Cuadres Diarios"
+                {hasPermission(effectiveUser, 401) && <button type="button" onClick={openCollectorSettlements} title="Abrir Cuadres Diarios"
                   className={`status-badge ${
                     snapshot?.totals.difference ? "warning" : "ok"
                   }`}
@@ -5580,7 +5587,7 @@ export default function App() {
                 {pendingCollectionFunds.length > 0 && (
                   <button onClick={() => {
                     setNotificationsOpen(false);
-                    openMdiWindow("dailySettlements", "daily-settlements");
+                    openCollectorSettlements();
                   }}>
                     <span className="notification-icon amber">
                       <FileCheck2 size={20} />
@@ -5787,7 +5794,7 @@ export default function App() {
                 onSettle={hasPermission(effectiveUser, 401) ? (id) => {
                   setSelectedCollector(null);
                   setSettlementCollector(id);
-                  openMdiWindow("dailySettlements", "daily-settlements");
+                  openCollectorSettlements();
                 } : undefined}
               />
               <OperationModal

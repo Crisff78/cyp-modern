@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { operationKey, StrictApiError, type StrictApi } from "./strictApi";
 import type { Cash, CommissionReportGroupBy, CommissionReportStatus, ConsolidatedCommissionReport, Currency, NewRemittanceClient, Quotation, RemittanceContact, RemittanceSnapshot, Report, Transfer } from "./types";
 import { decimalCents, exportSections, formatDate, formatMoney, printSections, type OutputSection } from "./output";
@@ -7,7 +7,7 @@ import "./remittances.css";
 import { formatCrossRate } from "./crossRate";
 import { INPUT_LIMITS, isDecimalDraft, validatePhone, validateText } from "../inputRules";
 import { useClientContact } from "./useClientContact";
-import { changedRecipientPhone, confirmedCreatedTransfer } from "./createdTransferResponse";
+import { changedRecipientPhone, confirmedCreatedTransfer, recipientPhoneRecord } from "./createdTransferResponse";
 import { allocationRows, commissionReportStatusLabels } from "./commissionOutput";
 import { accessRole, hasRemittancePermission, type EffectiveAccess, type RemittancePermission } from "../access.mjs";
 import { RemittanceDialog as Dialog } from "./RemittanceDialog";
@@ -16,6 +16,7 @@ import { advanceCaptureField } from "./formKeyboard";
 import { currentOperationalWeek } from "../operationalWeek";
 import { remittanceReportDefinitions, remittanceReportDefinition, remittanceReportPath, remittanceReportSections, remittanceReportTitle, type RemittanceReportFilters, type RemittanceReportType } from "./reporting";
 import { previousOpenCashDate, remittanceCashNotice } from "./cashNotice";
+import { remittanceOperatorName } from "./operatorNames";
 
 export type RemittanceSection = "envios" | "recibos" | "caja" | "reportes";
 type Tab = RemittanceSection;
@@ -38,9 +39,20 @@ const pendingByActor = new Map<string, Confirmation>();
 const definitiveDomainErrors = new Set(["QUOTE_CHANGED", "COMMISSION_POLICY_MISMATCH", "CASH_NOT_OPEN", "RATE_MISSING", "RATE_DATE", "DOP_RATE", "CASH_EXISTS", "PREVIOUS_CASH_OPEN", "CASH_CLOSED", "CASH_UNBALANCED", "CASH_NOT_FOUND", "CLIENT_INACTIVE", "CLIENT_NOT_FOUND", "CLIENT_ALREADY_EXISTS", "CLIENT_INACTIVE_EXISTS", "CLIENT_OTHER_ROUTE", "ROUTE_NOT_FOUND", "SAME_CLIENT", "TRANSFER_NOT_PENDING", "TRANSFER_NOT_FOUND", "INSUFFICIENT_CASH", "SEQUENCE_EXHAUSTED", "MONEY_RANGE", "INVALID_AMOUNT", "INVALID_RATE", "INVALID_CURRENCY", "INVALID_COMMISSION", "INVALID_AMOUNT_MODE", "COMMISSION_EXCEEDS_TOTAL", "AMOUNT_TOO_SMALL", "REASON_REQUIRED", "VALIDATION"]);
 type Draft = { senderClientId: string; recipientClientId: string; sendingUserId: string; sourceCurrency: Currency; destinationCurrency: Currency; amount: string; amountMode: "source" | "destination"; note: string };
 const statusText = { pending: "Pendiente de entrega", paid: "Pagado", cancelled: "Cancelado" };
+const phoneRecordText = {
+  newRecord: " También quedará guardado en la ficha nueva del destinatario, que no tiene teléfono.",
+  existingRecord: " También quedará guardado en la ficha del cliente, que no tiene teléfono.",
+  transferOnly: " Sale en el comprobante; la ficha del cliente no cambia.",
+};
 const tabs: { id: Tab; label: string }[] = [{ id: "envios", label: "Envíos" }, { id: "recibos", label: "Recibos" }, { id: "caja", label: "Caja" }, { id: "reportes", label: "Reportes" }];
 const money = formatMoney;
 const moneyInputLength = 17;
+// A quote stays valid for the server while its date, rates of the day and commission policy are the same.
+function quoteStillCurrent(quote: Quotation, snapshot: RemittanceSnapshot) {
+  const changeOf = (currency: Currency) => snapshot.rates.find((rate) => rate.currency === currency && rate.date === snapshot.businessDate)?.changeId;
+  return quote.quote.date === snapshot.businessDate && (quote.quote.commissionPolicyRevision ?? "default") === (snapshot.commissionPolicy?.revision ?? "default") &&
+    changeOf(quote.sourceCurrency) === quote.quote.sourceRateChangeId && changeOf(quote.destinationCurrency) === quote.quote.destinationRateChangeId;
+}
 
 function QuoteDetails({ quote }: { quote: Quotation }) {
   const crossRate = formatCrossRate(quote.quote.sourceRate, quote.quote.destinationRate);
@@ -70,9 +82,37 @@ function ContactDetails({ contact, label }: { contact: RemittanceContact; label:
   </dl>;
 }
 
-export function ClientPicker({ api, side, senderId, label, clients, value, query, onQuery, onSelect, onCreate, contactState }: { api: StrictApi; side: ClientSide; senderId: string; label: string; clients: RemittanceClient[]; value: string; query: string; onQuery: (value: string) => void; onSelect: (client: RemittanceClient) => void; onCreate?: () => void; contactState?: ReturnType<typeof useClientContact> }) {
+// floating: the list of clients is drawn over the window instead of inside the form, which keeps its own scroll.
+export function ClientPicker({ api, side, senderId, label, clients, value, query, onQuery, onSelect, onCreate, contactState, floating = false }: { api: StrictApi; side: ClientSide; senderId: string; label: string; clients: RemittanceClient[]; value: string; query: string; onQuery: (value: string) => void; onSelect: (client: RemittanceClient) => void; onCreate?: () => void; contactState?: ReturnType<typeof useClientContact>; floating?: boolean }) {
   const id = useId();
   const [expanded, setExpanded] = useState(false);
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  // Under the field (above it when the window has more room there), as wide as the field and inside the window.
+  // A fixed list may be placed by the window and not by the page, so the origin it really gets is measured first.
+  const placeList = useCallback(() => {
+    const anchor = anchorRef.current, list = listRef.current;
+    if (!anchor || !list) return;
+    for (const property of ["position", "top", "left", "right", "width", "max-height", "visibility"]) list.style.removeProperty(property);
+    if (!floating || !window.matchMedia("(min-width: 701px)").matches) return;
+    const field = anchor.getBoundingClientRect();
+    Object.assign(list.style, { position: "fixed", top: "0px", left: "0px", right: "auto", width: `${field.width}px` });
+    const origin = list.getBoundingClientRect();
+    const frame = anchor.closest(".remittances")?.getBoundingClientRect(), form = anchor.closest("form")?.getBoundingClientRect();
+    const below = (frame?.bottom ?? window.innerHeight) - field.bottom - 8, above = field.top - (frame?.top ?? 0) - 8;
+    const wanted = Math.min(list.scrollHeight + 2, 220), down = below >= wanted || below >= above;
+    const height = Math.max(Math.min(wanted, down ? below : above), 60);
+    Object.assign(list.style, { maxHeight: `${height}px`, left: `${field.left - origin.left}px`,
+      top: `${(down ? field.bottom + 4 : field.top - 4 - height) - origin.top}px`,
+      // A field scrolled out of the form takes its list with it.
+      visibility: form && (field.bottom < form.top || field.top > form.bottom) ? "hidden" : "" });
+  }, [floating]);
+  useLayoutEffect(() => { if (expanded) placeList(); });
+  useEffect(() => {
+    if (!floating || !expanded) return;
+    window.addEventListener("resize", placeList); document.addEventListener("scroll", placeList, true);
+    return () => { window.removeEventListener("resize", placeList); document.removeEventListener("scroll", placeList, true); };
+  }, [floating, expanded, placeList]);
   const [highlight, setHighlight] = useState(-1);
   const [lookup, setLookup] = useState<{ query: string; ids: string[]; hasMore: boolean } | null>(null);
   const [lookupError, setLookupError] = useState("");
@@ -101,9 +141,10 @@ export function ClientPicker({ api, side, senderId, label, clients, value, query
   const choose = (client: RemittanceClient) => { if (client.id !== value) onSelect(client); setExpanded(false); setHighlight(-1); };
   const missingNotice = missingSnapshotClients && <p role="status">Hay clientes recientes que todavía no están en esta vista. Pulsa Actualizar antes de seleccionar o registrar otra ficha.</p>;
   return <div className="remittance-client-picker" data-client-side={side}>
-    {/* While the search runs, fails or finds clients missing from this view, registering waits; the button keeps its place so the field does not move. */}
-    {onCreate && !selected && <button type="button" className="remittance-client-create" disabled={lookupBusy || Boolean(lookupError) || missingSnapshotClients} onClick={() => { setExpanded(false); onCreate(); }}>Registrar cliente nuevo</button>}
-    <div className="remittance-client-anchor">
+    {/* While the search runs, fails or finds clients missing from this view, registering waits. The button keeps its
+        place, hidden while a client is chosen, so the field never moves when the choice is made or edited. */}
+    {onCreate && <button type="button" className={"remittance-client-create" + (selected ? " is-reserved" : "")} aria-hidden={selected ? true : undefined} tabIndex={selected ? -1 : undefined} disabled={Boolean(selected) || lookupBusy || Boolean(lookupError) || missingSnapshotClients} onClick={() => { setExpanded(false); onCreate(); }}>Registrar cliente nuevo</button>}
+    <div className="remittance-client-anchor" ref={anchorRef}>
     <label htmlFor={id}>{label}<input id={id} type="search" inputMode="text" autoComplete="off" value={query} role="combobox" aria-autocomplete="list" aria-expanded={expanded} aria-controls={`${id}-options`} aria-activedescendant={expanded && visible[highlight] ? `${id}-${highlight}` : undefined} onFocus={() => { setExpanded(true); setHighlight(-1); }} onBlur={() => setExpanded(false)} onChange={(event) => { onQuery(event.target.value); setExpanded(true); setHighlight(-1); }} onKeyDown={(event) => {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); setExpanded(true); setHighlight((current) => Math.min(Math.max(current + (event.key === "ArrowDown" ? 1 : -1), 0), Math.max(visible.length - 1, 0))); }
       // Enter picks only a highlighted option, or the only match of a typed search when the view holds all of them.
@@ -116,7 +157,7 @@ export function ClientPicker({ api, side, senderId, label, clients, value, query
       }
       if (event.key === "Escape" && expanded) { event.preventDefault(); setExpanded(false); }
     }} maxLength={160} placeholder="Teléfono, código, identificación o nombre" /></label>
-    {expanded && <div className="remittance-client-options" id={`${id}-options`} role="listbox" aria-label={`Clientes para ${label.toLocaleLowerCase()}`}>{missingNotice}{visible.map((client, index) => <button type="button" key={client.id} id={`${id}-${index}`} role="option" aria-selected={client.id === value} className={index === highlight ? "highlighted" : undefined} onMouseDown={(event) => event.preventDefault()} onClick={() => choose(client)}>{clientLabel(client)}<small>Moneda habitual: {clientCurrency(client)}</small></button>)}{!visible.length && <p role="status">No hay clientes disponibles que coincidan.</p>}{matches.length > visible.length && <p>Escribe más caracteres para acotar los {matches.length} resultados.</p>}</div>}
+    {expanded && <div ref={listRef} className="remittance-client-options" id={`${id}-options`} role="listbox" aria-label={`Clientes para ${label.toLocaleLowerCase()}`}>{missingNotice}{visible.map((client, index) => <button type="button" key={client.id} id={`${id}-${index}`} role="option" aria-selected={client.id === value} className={index === highlight ? "highlighted" : undefined} onMouseDown={(event) => event.preventDefault()} onClick={() => choose(client)}>{clientLabel(client)}<small>Moneda habitual: {clientCurrency(client)}</small></button>)}{!visible.length && <p role="status">No hay clientes disponibles que coincidan.</p>}{matches.length > visible.length && <p>Escribe más caracteres para acotar los {matches.length} resultados.</p>}</div>}
     </div>
     {expanded && lookupBusy && <p role="status">Buscando contactos…</p>}
     {expanded && lookupError && <p role="alert">{lookupError}</p>}
@@ -133,14 +174,20 @@ export function ClientPicker({ api, side, senderId, label, clients, value, query
 // Last request to open the delivery list that was already applied. The request object
 // outlives the window, so reopening the module later must not repeat an old search.
 let appliedPayoutRequest = 0;
+// Same for the box asked from a notice: the operator and currency it named are prepared only once.
+let appliedCashRequest = 0;
+/** The box a notice asks for: the opening form starts with this operator and currency. */
+export type RemittanceCashOpening = { operatorId: string; currency: Currency };
 
 // sections: the parts this window shows; the collector terminal keeps all four.
 // fixedForm: the sending window of Administración, with the form always open above its list.
-// onOpenCash: opens the window where the box of envíos is opened and closed.
-export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = "envios", sections = allSections, heading = "Envíos de Dinero", fixedForm = false, onOpenCash, payoutRequest }: {
-  api: StrictApi; user: Actor; isAdmin: boolean; initialTab?: Tab; sections?: readonly RemittanceSection[]; heading?: string; fixedForm?: boolean; onOpenCash?: () => void;
+// onOpenCash: opens the window where the box of envíos is opened and closed, for the box the notice names.
+// cashRequest: in that window, the box asked from a notice of another one.
+export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = "envios", sections = allSections, heading = "Envíos de Dinero", fixedForm = false, onOpenCash, payoutRequest, cashRequest }: {
+  api: StrictApi; user: Actor; isAdmin: boolean; initialTab?: Tab; sections?: readonly RemittanceSection[]; heading?: string; fixedForm?: boolean; onOpenCash?: (opening: RemittanceCashOpening) => void;
   /** @deprecated Ignored: the reports of envíos open from Reportes & Monitoreo → Reportes. */
   reportRequest?: number; payoutRequest?: { id: number; search: string };
+  cashRequest?: RemittanceCashOpening & { id: number };
 }) {
   const sectionsKey = sections.join(",");
   const pendingKey = `${user.id}\n${sectionsKey}`;
@@ -185,7 +232,11 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   const [confirmationError, setConfirmationError] = useState("");
   const [printTransfer, setPrintTransfer] = useState<Transfer | null>(null);
   const [receiptPrintError, setReceiptPrintError] = useState("");
-  const [opening, setOpening] = useState({ operatorId: user.id, currency: "DOP" as Currency, amount: "0" });
+  const pendingCash = cashShown && cashRequest && cashRequest.id > appliedCashRequest ? cashRequest : undefined;
+  const [opening, setOpening] = useState({ operatorId: pendingCash?.operatorId ?? user.id, currency: pendingCash?.currency ?? "DOP" as Currency, amount: "0" });
+  // The keyboard goes to the box asked from a notice; a closed detail then does not take it back.
+  const cashFocus = useRef(false);
+  const detailFocusReturn = useRef(true);
   const [closing, setClosing] = useState<Cash | null>(null);
   const [counted, setCounted] = useState("");
   const [reportFilters, setReportFilters] = useState<RemittanceReportFilters>({ ...currentOperationalWeek(), grouping: "range", type: "amounts",
@@ -226,6 +277,19 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
 
   const retireQuote = useCallback(() => { quoteRequests.current.invalidate(); quoteLock.current = false; setQuoteBusy(false); setQuote(null); }, []);
   const changeTab = useCallback((next: Tab) => { retireQuote(); reportRequests.current.invalidate(); setReportBusy(false); setTab(next); setError(""); setOutputError(""); }, [retireQuote]);
+  // Coming from "Ir a Caja de envíos": the opening form names the box of the notice, and takes the keyboard.
+  useEffect(() => {
+    if (!cashShown || !cashRequest || cashRequest.id <= appliedCashRequest) return;
+    appliedCashRequest = cashRequest.id;
+    setOpening((current) => ({ ...current, operatorId: cashRequest.operatorId, currency: cashRequest.currency }));
+    cashFocus.current = true;
+  }, [cashRequest, cashShown]);
+  useEffect(() => { if (detailId) detailFocusReturn.current = true; }, [detailId]);
+  useEffect(() => {
+    if (!cashFocus.current || !snapshot || loading || confirmation || closing) return;
+    cashFocus.current = false;
+    (root.current?.querySelector<HTMLElement>("[data-cash-opening-amount]") ?? root.current?.querySelector<HTMLElement>(".remittance-heading button"))?.focus();
+  });
   // Coming from "Entregas de Dinero": show the transfers to deliver, already filtered.
   // Only a window with Recibos takes the request; another one leaves it for that window.
   useEffect(() => {
@@ -234,9 +298,11 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
     changeTab("recibos"); setSearch(payoutRequest.search); setStatus("pending");
   }, [payoutRequest, payoutsShown, changeTab]);
 
-  const refresh = useCallback(async () => {
+  // background: an operation saved in another window. This one reloads what it shows and keeps the errors on
+  // view and a quote whose date, rates and commission policy did not change (the server checks it again).
+  const refresh = useCallback(async ({ background = false } = {}) => {
     const request = refreshRequests.current.begin();
-    setLoading(true); setError(""); setOutputError("");
+    setLoading(true); if (!background) { setError(""); setOutputError(""); }
     try {
       const data = await api<RemittanceSnapshot>("/envios/snapshot");
       const accessActor = { role: user.role ?? (isAdmin ? "admin" : "collector"), access: data.access ?? user.access };
@@ -246,7 +312,8 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
         payoutsShown && hasRemittancePermission(accessActor, "remittances.receipts") ? api<Transfer[]>("/envios/recibos") : Promise.resolve([]),
       ]);
       if (!refreshRequests.current.accepts(request)) return;
-      retireQuote();
+      if (!background) retireQuote();
+      else setQuote((current) => current && quoteStillCurrent(current, data) ? current : null);
       setSnapshot(data); setSent(outgoing); setReceived(incoming);
     } catch (failure) { if (refreshRequests.current.accepts(request)) setError(failure instanceof Error ? failure.message : "No pudimos cargar los envíos."); }
     finally { if (refreshRequests.current.accepts(request)) setLoading(false); }
@@ -265,7 +332,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   useEffect(() => {
     const onRates = () => { void refreshRates(); };
     const onPolicy = () => { void refresh(); };
-    const onChanged = (event: Event) => { if ((event as CustomEvent<{ source?: string }>).detail?.source !== instanceId) void refresh(); };
+    const onChanged = (event: Event) => { if ((event as CustomEvent<{ source?: string }>).detail?.source !== instanceId) void refresh({ background: true }); };
     window.addEventListener("cyp-exchange-rates-updated", onRates);
     window.addEventListener("cyp-remittance-commissions-updated", onPolicy);
     window.addEventListener(REMITTANCES_CHANGED_EVENT, onChanged);
@@ -278,7 +345,9 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   }, [uncertain, busy]);
 
   const clientName = (id: string) => snapshot?.clients.find((client) => client.id === id)?.name ?? "Cliente";
-  const operatorName = (id?: string) => snapshot?.operators.find((operator) => operator.id === id)?.name ?? (id === user.id ? user.name : id || "—");
+  const operatorName = (id?: string) => remittanceOperatorName(snapshot, id) ?? (id === user.id ? user.name : id || "—");
+  // A printed receipt never carries an internal id: the manager saved with the transfer, or a plain "—".
+  const receiptOperatorName = (id: string | undefined, saved?: string) => remittanceOperatorName(snapshot, id) ?? (id && id === user.id ? user.name : saved || "—");
   const detail = snapshot?.transfers.find((transfer) => transfer.id === detailId);
   // Only an administrator chooses the operator of a box; anyone else opens their own.
   const openingOperator = isAdmin ? opening.operatorId : user.id;
@@ -414,11 +483,13 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
       ...(typedRecipientPhone ? { recipientPhone: typedRecipientPhone } : {}),
       ...(isAdmin ? { sendingUserId: draft.sendingUserId } : {}), sourceCurrency: quote.sourceCurrency, destinationCurrency: quote.destinationCurrency,
       amount: quote.amount, commissionBps: quote.commissionBps, quote: quote.quote, note: draft.note.trim(), ...(quote.requestedReceiveAmount === undefined ? {} : { requestedReceiveAmount: quote.requestedReceiveAmount }),
-    }, description: <><p><strong>{senderContact.contact.name}</strong> envía a <strong>{recipientContact.contact.name}</strong>.</p><h3>Remitente</h3><ContactDetails contact={senderContact.contact} label="Remitente" />{newRecordDetails("sender", "Remitente")}<h3>Destinatario</h3><ContactDetails contact={recipientContact.contact} label="Destinatario" />{newRecordDetails("recipient", "Destinatario")}{typedRecipientPhone && <p><strong>Teléfono para este envío: {typedRecipientPhone}.</strong>{isAdmin && !recipientContact.contact.phone && digitsOf(typedRecipientPhone) !== digitsOf(recipientContact.contact.cellular) ? " También quedará guardado en la ficha del cliente, que no tiene teléfono." : " Sale en el comprobante; la ficha del cliente no cambia."}</p>}<p className="remittance-help">Datos actuales de las fichas de clientes. El comprobante conserva la copia guardada al registrar el envío.</p><QuoteDetails quote={quote} /><p>Operador: {operatorName(draft.sendingUserId)}. Registrado por: {user.name}.</p><p>Confirma después de recibir el total del remitente. La tasa queda guardada para este envío.</p></> });
+    }, description: <><p><strong>{senderContact.contact.name}</strong> envía a <strong>{recipientContact.contact.name}</strong>.</p><h3>Remitente</h3><ContactDetails contact={senderContact.contact} label="Remitente" />{newRecordDetails("sender", "Remitente")}<h3>Destinatario</h3><ContactDetails contact={recipientContact.contact} label="Destinatario" />{newRecordDetails("recipient", "Destinatario")}{typedRecipientPhone && <p><strong>Teléfono para este envío: {typedRecipientPhone}.</strong>{phoneRecordText[recipientPhoneRecord(typedRecipientPhone, recipientContact.contact, newClients.recipient, isAdmin)]}</p>}<p className="remittance-help">Datos actuales de las fichas de clientes. El comprobante conserva la copia guardada al registrar el envío.</p><QuoteDetails quote={quote} /><p>Operador: {operatorName(draft.sendingUserId)}. Registrado por: {user.name}.</p><p>Confirma después de recibir el total del remitente. La tasa queda guardada para este envío.</p></> });
   }
 
   function prepareOpening(event: FormEvent) {
     event.preventDefault();
+    // The box of today was already closed: the server keeps one per operator, currency and day (CASH_EXISTS).
+    if (snapshot && remittanceCashNotice(snapshot, openingOperator, opening.currency) === "closedToday") return;
     try {
       if (!isDecimalDraft(opening.amount)) throw new Error("El efectivo inicial admite hasta dos decimales.");
       const openingAmount = decimalCents(opening.amount, true);
@@ -468,10 +539,11 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
     ...(!receipt && transfer.managerCommission ? managerCommissionRows(transfer.managerCommission) : []),
     ...(transfer.amountDop === undefined ? [] : [["Equivalente del principal en DOP", money(transfer.amountDop, "DOP")]]),
     ...(transfer.requestedReceiveAmount === undefined ? [] : [["Destino solicitado", money(transfer.requestedReceiveAmount, transfer.destinationCurrency)]]),
-    ["Operador del envío", operatorName(transfer.sendingUserId)], ["Registrado por", operatorName(transfer.registeredBy)], ["Creado", formatDate(transfer.createdAt)],
+    ["Operador del envío", receiptOperatorName(transfer.sendingUserId, transfer.commissionAllocation?.managerName)],
+    ["Registrado por", receiptOperatorName(transfer.registeredBy, transfer.registeredBy === transfer.sendingUserId ? transfer.commissionAllocation?.managerName : undefined)], ["Creado", formatDate(transfer.createdAt)],
     ["Monto a enviar", money(transfer.amount, transfer.sourceCurrency)], ...(!receipt ? [["Comisión", money(transfer.commissionAmount, transfer.sourceCurrency)]] : []), ["Total recibido del remitente", money(transfer.totalAmount, transfer.sourceCurrency)],
     ["Importe para destinatario", money(transfer.receiveAmount, transfer.destinationCurrency)], ["Tasa origen DOP/unidad", transfer.quote.sourceRate], ["Tasa destino DOP/unidad", transfer.quote.destinationRate], ...quoteHistoryRows(transfer.quote, transfer.sourceCurrency, transfer.destinationCurrency),
-    ["Pagado", formatDate(transfer.paidAt)], ["Pagado por", operatorName(transfer.paidBy)], ["Cancelado", formatDate(transfer.cancelledAt)], ["Motivo cancelación", transfer.cancelReason || "—"], ["Nota", transfer.note || "—"],
+    ["Pagado", formatDate(transfer.paidAt)], ["Pagado por", receiptOperatorName(transfer.paidBy)], ["Cancelado", formatDate(transfer.cancelledAt)], ["Motivo cancelación", transfer.cancelReason || "—"], ["Nota", transfer.note || "—"],
   ] }];
   const reportSections = remittanceReportSections(reportFilters.type, report, allocationReport, operatorName);
   const displayedReport = allocationReport ?? report;
@@ -503,19 +575,26 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   // A window that shows the box itself (the collector terminal) does not repeat them.
   const cashWarnings = !cashShown && can("remittances.cash.view");
   const sendCash = snapshot && cashWarnings && view === "envios" && formOpen && can("remittances.create") ? remittanceCashNotice(snapshot, draft.sendingUserId, draft.sourceCurrency) : "ok";
-  const sendCashNotice = snapshot && sendCash !== "ok" && <div className="remittance-cash-warning" role="status">
-    <p>{sendCash === "missing"
-      ? `No hay caja de envíos abierta hoy en ${draft.sourceCurrency} para ${operatorName(draft.sendingUserId)}. Sin caja abierta no se puede registrar el envío. ${canOpenCashOf(draft.sendingUserId) ? "Ábrela" : "Un administrador debe abrirla"} en ${cashPlace}. Si ya está abierta, pulsa Actualizar.`
-      : `La caja de envíos en ${draft.sourceCurrency} del ${previousOpenCashDate(snapshot, draft.sendingUserId, draft.sourceCurrency)} de ${operatorName(draft.sendingUserId)} sigue abierta: hay que cerrarla y abrir la de hoy en ${cashPlace}.`}</p>
-    {onOpenCash && <button type="button" onClick={onOpenCash}>Ir a Caja de envíos</button>}
+  // A box closed today cannot be opened again (one per operator, currency and day): no "Ábrela" and no way to the box.
+  const sendCashText = !snapshot || sendCash === "ok" ? ""
+    : sendCash === "missing" ? `No hay caja de envíos abierta hoy en ${draft.sourceCurrency} para ${operatorName(draft.sendingUserId)}. Sin caja abierta no se puede registrar el envío. ${canOpenCashOf(draft.sendingUserId) ? "Ábrela" : "Un administrador debe abrirla"} en ${cashPlace}. Si ya está abierta, pulsa Actualizar.`
+    : sendCash === "closedToday" ? `La caja de envíos de hoy en ${draft.sourceCurrency} de ${operatorName(draft.sendingUserId)} ya se cerró y no admite más movimientos: no se pueden registrar más envíos en ${draft.sourceCurrency} hasta la jornada siguiente.`
+    : `La caja de envíos en ${draft.sourceCurrency} del ${previousOpenCashDate(snapshot, draft.sendingUserId, draft.sourceCurrency)} de ${operatorName(draft.sendingUserId)} sigue abierta: hay que cerrarla y abrir la de hoy en ${cashPlace}.`;
+  // The sending window keeps the notice on one line under its heading, so the list keeps its rows; the whole text
+  // stays readable and in its title.
+  const sendCashNotice = sendCashText && <div className="remittance-cash-warning" role="status">
+    <p title={fixedForm ? sendCashText : undefined}>{sendCashText}</p>
+    {onOpenCash && sendCash !== "closedToday" && <button type="button" onClick={() => onOpenCash({ operatorId: draft.sendingUserId, currency: draft.sourceCurrency })}>Ir a Caja de envíos</button>}
   </div>;
   // Paying takes the money from the box of whoever pays, in the destination currency.
   const payCash = snapshot && cashWarnings && payoutsShown && detail?.status === "pending" && detail.canPay && can("remittances.pay") ? remittanceCashNotice(snapshot, user.id, detail.destinationCurrency) : "ok";
   const payCashNotice = snapshot && detail && payCash !== "ok" && <div className="remittance-cash-warning" role="status">
     <p>{payCash === "missing"
       ? `No tienes caja de envíos abierta hoy en ${detail.destinationCurrency}. Sin caja abierta no se puede registrar el pago. ${canOpenCashOf(user.id) ? "Ábrela" : "Un administrador debe abrirla"} en ${cashPlace}.`
+      : payCash === "closedToday" ? `Tu caja de envíos de hoy en ${detail.destinationCurrency} ya se cerró y no admite más movimientos: no se pueden registrar más pagos en ${detail.destinationCurrency} hasta la jornada siguiente.`
       : `Tu caja de envíos en ${detail.destinationCurrency} del ${previousOpenCashDate(snapshot, user.id, detail.destinationCurrency)} sigue abierta: hay que cerrarla y abrir la de hoy en ${cashPlace}.`}</p>
-    {onOpenCash && <button type="button" onClick={() => { setDetailId(null); onOpenCash(); }}>Ir a Caja de envíos</button>}
+    {/* Going to the box moves the keyboard there: the closed detail does not give the focus back behind it. */}
+    {onOpenCash && payCash !== "closedToday" && <button type="button" onClick={() => { detailFocusReturn.current = false; setDetailId(null); onOpenCash({ operatorId: user.id, currency: detail.destinationCurrency }); }}>Ir a Caja de envíos</button>}
   </div>;
   const openingCash = snapshot && canOpenCash ? remittanceCashNotice(snapshot, openingOperator, opening.currency) : "ok";
   // A transfer is registered only for an operator who can send; the boxes still list every operator.
@@ -524,7 +603,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   const fixedPlace = (name: string) => fixedForm ? ` ${name}` : "";
 
   return <section ref={root} className={"remittances" + (fixedForm ? " remittances-fixed" : "")} aria-label={heading}>
-    <header className="remittance-heading"><div><h1>{heading}</h1><p>{snapshot ? `Fecha de operación: ${snapshot.businessDate}` : "Conexión con la API"} · {user.name}</p></div><button type="button" onClick={() => void refresh()} disabled={loading || working}>{loading ? "Cargando…" : "Actualizar"}</button></header>
+    <header className="remittance-heading"><div><h1>{heading}</h1><p>{snapshot ? `Fecha de operación: ${snapshot.businessDate}` : "Conexión con la API"} · {user.name}</p>{fixedForm && sendCashNotice}</div><button type="button" onClick={() => void refresh()} disabled={loading || working}>{loading ? "Cargando…" : "Actualizar"}</button></header>
     {permittedTabs.length > 1 && <nav className="remittance-tabs" aria-label="Secciones de Envíos">{permittedTabs.map((item) => <button key={item.id} type="button" aria-current={view === item.id ? "page" : undefined} onClick={() => changeTab(item.id)}>{item.label}</button>)}</nav>}
     {error && <div className="remittance-error" role="alert">{error}</div>}
     {outputError && <div className="remittance-error" role="alert">{outputError}</div>}
@@ -534,11 +613,11 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
       {!view && <div className="remittance-empty" role="status">No tienes permiso para usar esta ventana. Pide a un administrador que revise tus permisos de Envíos de Dinero.</div>}
       {(view === "envios" || view === "recibos") && <>
         {!fixedForm && toolbar}
-        {sendCashNotice}
+        {!fixedForm && sendCashNotice}
         {view === "envios" && formOpen && can("remittances.create") && <form onKeyDown={advanceCaptureField} className={"remittance-panel" + fixedPlace("remittance-send-form")} onSubmit={(event) => void requestQuote(event)}>
           <h2>Nuevo envío</h2><fieldset disabled={working || uncertain} className="remittance-form-grid">
             <div className="remittance-party-fields" role="group" aria-label="Datos del remitente">
-              {newClients.sender ? <div data-client-side="sender"><strong>Nuevo remitente: {newClients.sender.name}</strong><ContactDetails contact={senderContact.contact!} label="Remitente" /><button type="button" onClick={() => setClientEditor("sender")}>Modificar datos del nuevo remitente</button><button type="button" onClick={() => { setNewClients((current) => ({ ...current, sender: undefined })); retireQuote(); setFocusVersion((value) => value + 1); }}>Elegir remitente registrado</button></div> : <ClientPicker api={api} side="sender" senderId="" label="Remitente" clients={eligibleClients(snapshot.clients, "sender", draft.senderClientId)} value={draft.senderClientId} query={senderSearch} onQuery={(value) => { setSenderSearch(value); updateDraft("senderClientId", ""); }} onSelect={(client) => chooseClient("sender", client)} onCreate={can("remittances.clients.create") && snapshot.clientRoutes?.length ? () => setClientEditor("sender") : undefined} contactState={senderContact} />}
+              {newClients.sender ? <div data-client-side="sender"><strong>Nuevo remitente: {newClients.sender.name}</strong><ContactDetails contact={senderContact.contact!} label="Remitente" /><button type="button" onClick={() => setClientEditor("sender")}>Modificar datos del nuevo remitente</button><button type="button" onClick={() => { setNewClients((current) => ({ ...current, sender: undefined })); retireQuote(); setFocusVersion((value) => value + 1); }}>Elegir remitente registrado</button></div> : <ClientPicker api={api} side="sender" senderId="" label="Remitente" clients={eligibleClients(snapshot.clients, "sender", draft.senderClientId)} value={draft.senderClientId} query={senderSearch} onQuery={(value) => { setSenderSearch(value); updateDraft("senderClientId", ""); }} onSelect={(client) => chooseClient("sender", client)} onCreate={can("remittances.clients.create") && snapshot.clientRoutes?.length ? () => setClientEditor("sender") : undefined} contactState={senderContact} floating={fixedForm} />}
               <label>Moneda del remitente<select value={draft.sourceCurrency} onChange={(event) => updateDraft("sourceCurrency", event.target.value as Currency)}>{snapshot.currencies.map((currency) => <option key={currency}>{currency}</option>)}</select></label>
               <label>Ingresar importe de<select value={draft.amountMode} onChange={(event) => { updateDraft("amountMode", event.target.value as Draft["amountMode"]); setDraft((current) => ({ ...current, amount: "" })); }}><option value="source">Origen · Monto a enviar</option><option value="destination">Destino · Monto a recibir</option></select></label>
               <label>{draft.amountMode === "source" ? `Monto a enviar (${draft.sourceCurrency})` : `Monto a recibir (${draft.destinationCurrency})`}<input required inputMode="decimal" maxLength={moneyInputLength} value={draft.amount} onChange={(event) => updateDraft("amount", event.target.value)} placeholder="0.00" /></label>
@@ -547,7 +626,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
               <label>Comisión (%)<input aria-label="Comisión (%)" readOnly value={String((quote?.commissionBps ?? snapshot.commissionPolicy?.transactionCommissionBps ?? 0) / 100)} /><small>Se aplica automáticamente desde la configuración de comisiones.</small></label>
             </div>
             <div className="remittance-party-fields" role="group" aria-label="Datos del destinatario">
-              {newClients.recipient ? <div data-client-side="recipient"><strong>Nuevo destinatario: {newClients.recipient.name}</strong><ContactDetails contact={recipientContact.contact!} label="Destinatario" /><button type="button" onClick={() => setClientEditor("recipient")}>Modificar datos del nuevo destinatario</button><button type="button" onClick={() => { setNewClients((current) => ({ ...current, recipient: undefined })); retireQuote(); }}>Elegir destinatario registrado</button></div> : <ClientPicker api={api} side="recipient" senderId={draft.senderClientId} label="Destinatario" clients={eligibleClients(snapshot.clients, "recipient", draft.senderClientId)} value={draft.recipientClientId} query={recipientSearch} onQuery={(value) => { setRecipientSearch(value); updateDraft("recipientClientId", ""); }} onSelect={(client) => chooseClient("recipient", client)} onCreate={can("remittances.clients.create") && snapshot.clientRoutes?.length ? () => setClientEditor("recipient") : undefined} contactState={recipientContact} />}
+              {newClients.recipient ? <div data-client-side="recipient"><strong>Nuevo destinatario: {newClients.recipient.name}</strong><ContactDetails contact={recipientContact.contact!} label="Destinatario" /><button type="button" onClick={() => setClientEditor("recipient")}>Modificar datos del nuevo destinatario</button><button type="button" onClick={() => { setNewClients((current) => ({ ...current, recipient: undefined })); retireQuote(); }}>Elegir destinatario registrado</button></div> : <ClientPicker api={api} side="recipient" senderId={draft.senderClientId} label="Destinatario" clients={eligibleClients(snapshot.clients, "recipient", draft.senderClientId)} value={draft.recipientClientId} query={recipientSearch} onQuery={(value) => { setRecipientSearch(value); updateDraft("recipientClientId", ""); }} onSelect={(client) => chooseClient("recipient", client)} onCreate={can("remittances.clients.create") && snapshot.clientRoutes?.length ? () => setClientEditor("recipient") : undefined} contactState={recipientContact} floating={fixedForm} />}
               <label className="remittance-phone-field">Teléfono del destinatario<input type="tel" inputMode="tel" autoComplete="off" maxLength={INPUT_LIMITS.phone} value={recipientPhone} disabled={!draft.recipientClientId && !newClients.recipient} onChange={(event) => { recipientPhoneTyped.current = true; setRecipientPhone(event.target.value); setError(""); }} placeholder="Escríbelo si no aparece" /></label>
               {recipientContact.contact && !knownRecipientPhone && !recipientPhone.trim() && <p className="remittance-client-warning" role="status">Este destinatario no tiene teléfono registrado. Escríbelo en «Teléfono del destinatario» para poder ubicarlo.</p>}
               <label>Moneda del destinatario<select value={draft.destinationCurrency} onChange={(event) => updateDraft("destinationCurrency", event.target.value as Currency)}>{snapshot.currencies.map((currency) => <option key={currency}>{currency}</option>)}</select></label>
@@ -566,7 +645,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
       </>}
       {view === "caja" && <>
         <p className="remittance-help">Caja exclusiva de envíos. Saldo = apertura + ingresos de envíos − devoluciones − pagos. Cada moneda se cuenta por separado.</p>
-        {canOpenCash && <form className="remittance-panel" onSubmit={prepareOpening}><h2>Abrir caja del {snapshot.businessDate}</h2><fieldset disabled={busy} className="remittance-form-grid">{isAdmin ? <label>Operador<select required value={opening.operatorId} onChange={(event) => setOpening((current) => ({ ...current, operatorId: event.target.value }))}>{snapshot.operators.map((operator) => <option key={operator.id} value={operator.id}>{operator.name}</option>)}</select></label> : <label>Operador<input readOnly value={operatorName(user.id)} /></label>}<label>Moneda<select value={opening.currency} onChange={(event) => setOpening((current) => ({ ...current, currency: event.target.value as Currency }))}>{snapshot.currencies.map((currency) => <option key={currency}>{currency}</option>)}</select></label><label>Efectivo inicial<input required inputMode="decimal" maxLength={moneyInputLength} value={opening.amount} onChange={(event) => { if (isDecimalDraft(event.target.value)) setOpening((current) => ({ ...current, amount: event.target.value })); }} /></label></fieldset>{openingCash === "previousOpen" && <p className="remittance-cash-warning" role="status">La caja de envíos en {opening.currency} del {previousOpenCashDate(snapshot, openingOperator, opening.currency)} de {operatorName(openingOperator)} sigue abierta. Ciérrala con «Contar y cerrar» antes de abrir la de hoy.</p>}<button className="remittance-primary" disabled={busy}>Revisar apertura</button></form>}
+        {canOpenCash && <form className="remittance-panel" onSubmit={prepareOpening}><h2>Abrir caja del {snapshot.businessDate}</h2><fieldset disabled={busy} className="remittance-form-grid">{isAdmin ? <label>Operador<select required value={opening.operatorId} onChange={(event) => setOpening((current) => ({ ...current, operatorId: event.target.value }))}>{snapshot.operators.map((operator) => <option key={operator.id} value={operator.id}>{operator.name}</option>)}</select></label> : <label>Operador<input readOnly value={operatorName(user.id)} /></label>}<label>Moneda<select value={opening.currency} onChange={(event) => setOpening((current) => ({ ...current, currency: event.target.value as Currency }))}>{snapshot.currencies.map((currency) => <option key={currency}>{currency}</option>)}</select></label><label>Efectivo inicial<input data-cash-opening-amount required inputMode="decimal" maxLength={moneyInputLength} value={opening.amount} onChange={(event) => { if (isDecimalDraft(event.target.value)) setOpening((current) => ({ ...current, amount: event.target.value })); }} /></label></fieldset>{openingCash === "previousOpen" && <p className="remittance-cash-warning" role="status">La caja de envíos en {opening.currency} del {previousOpenCashDate(snapshot, openingOperator, opening.currency)} de {operatorName(openingOperator)} sigue abierta. Ciérrala con «Contar y cerrar» antes de abrir la de hoy.</p>}{openingCash === "closedToday" && <p className="remittance-cash-warning" role="status">La caja de envíos de hoy en {opening.currency} de {operatorName(openingOperator)} ya se cerró. Hay una sola caja por operador, moneda y día: no se puede abrir otra hasta la jornada siguiente.</p>}<button className="remittance-primary" disabled={busy || openingCash === "closedToday"}>Revisar apertura</button></form>}
         <div className="remittance-cash-grid">{snapshot.cashSessions.map((cash) => <article className="remittance-panel" key={cash.id}><h2>{cash.currency} · {operatorName(cash.operatorId)}</h2><p>{cash.date} · {cash.status === "open" ? "Abierta" : "Cerrada"}</p><dl className="remittance-summary"><div><dt>Apertura</dt><dd>{money(cash.openingAmount, cash.currency)}</dd></div><div><dt>Ingresos por envíos</dt><dd>{money(cash.sentTotal, cash.currency)}</dd></div><div><dt>Devoluciones</dt><dd>{money(cash.cancelRefund, cash.currency)}</dd></div><div><dt>Pagos</dt><dd>{money(cash.paid, cash.currency)}</dd></div><div className="remittance-total"><dt>Efectivo esperado</dt><dd>{money(cash.expected, cash.currency)}</dd></div>{cash.countedAmount !== undefined && <div><dt>Contado al cierre</dt><dd>{money(cash.countedAmount, cash.currency)}</dd></div>}</dl>{cash.canClose && can("remittances.cash.close") && <button type="button" onClick={() => { setClosing(cash); setCounted(""); clearErrors(); }}>Contar y cerrar</button>}</article>)}{!snapshot.cashSessions.length && <div className="remittance-empty">{!canOpenCash ? "No hay cajas de envíos. Un administrador debe abrir la caja antes de operar." : isAdmin ? "No hay cajas de envíos. Abre la caja del operador antes de operar." : "No hay cajas de envíos. Abre tu caja antes de operar."}</div>}</div>
       </>}
       {view === "reportes" && <>
@@ -589,7 +668,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
       retireQuote(); clearErrors(); setClientEditor(null);
       window.requestAnimationFrame(() => root.current?.querySelector<HTMLElement>(side === "sender" ? '[data-client-side="sender"] + label select' : '.remittance-phone-field input')?.focus());
     }} />}
-    {detail && <Dialog title={`${detail.envioReference} · ${detail.reciboReference}`} onClose={() => { setDetailId(null); if (view === "recibos") setFocusVersion((value) => value + 1); }}>
+    {detail && <Dialog title={`${detail.envioReference} · ${detail.reciboReference}`} returnFocus={detailFocusReturn} onClose={() => { setDetailId(null); if (view === "recibos") setFocusVersion((value) => value + 1); }}>
       <p><span className={`remittance-status ${detail.status}`}>{statusText[detail.status]}</span> · {detail.operatingCode}</p><p><strong>{detail.senderContact?.name ?? clientName(detail.senderClientId)}</strong> → <strong>{detail.recipientContact?.name ?? clientName(detail.recipientClientId)}</strong></p><QuoteDetails quote={detail} /><p>Creado: {formatDate(detail.createdAt)}<br />Operador: {operatorName(detail.sendingUserId)}<br />Registrado por: {operatorName(detail.registeredBy)}</p>{detail.note && <p>Nota: {detail.note}</p>}
       <DataTable section={{ title: "Contactos guardados en esta operación", columns: ["Dato", "Valor"], rows: contactRows(detail) }} />
       {detail.managerCommission && <DataTable section={{ title: "Anotación histórica manual del gestor", columns: ["Dato", "Valor"], rows: managerCommissionRows(detail.managerCommission) }} />}

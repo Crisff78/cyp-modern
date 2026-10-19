@@ -33,7 +33,7 @@ Si `.env` ya existe, conserva sus valores. Completa localmente `JWT_SECRET` y `D
 | API / health   | http://127.0.0.1:3001/api/health       |
 | OpenAPI        | http://127.0.0.1:3001/api/openapi.json |
 
-Demo: `admin@cyp.local`, `collector@cyp.local` y `cajero@cyp.local` (Cajero de práctica), los tres con `Demo-CyP-2026!`. Son identidades ficticias: Administración y Cobrador se habilitan únicamente con `DEMO_MODE=true`, y la del cajero se guarda una sola vez en la base o el archivo de la demo al arrancar en modo demo, sin cobrador y con el perfil del rol Cajero (si alguien la edita o la borra, no se repone; con PostgreSQL requiere la migración 035). Con `DATABASE_URL`, estas cuentas acceden a esa base; no uses el modo demo con datos reales. No se importa ningún cliente del respaldo.
+Demo: `admin@cyp.local`, `collector@cyp.local` y `cajero@cyp.local` (Cajero de práctica), los tres con `Demo-CyP-2026!`. Son identidades ficticias: Administración y Cobrador se habilitan únicamente con `DEMO_MODE=true`, y la del cajero se guarda una sola vez en la base o el archivo de la demo al arrancar en modo demo, sin cobrador y con el perfil del rol Cajero (si alguien la edita o la borra, no se repone; con PostgreSQL requiere la migración 035). Esa cuenta queda guardada, pero solo el modo demo la acepta: si la misma base o el mismo archivo arrancan después con `DEMO_MODE=false`, su inicio de sesión y sus sesiones abiertas se rechazan. Con `DATABASE_URL`, estas cuentas acceden a esa base; no uses el modo demo con datos reales. No se importa ningún cliente del respaldo.
 
 Para empezar una demo nueva, usa una base PostgreSQL dedicada vacía y ejecuta `pnpm --filter @cyp/server db:migrate --apply`. La API rechaza la operación si existe efectivo pendiente de una jornada anterior; no arrastra saldos silenciosamente.
 
@@ -44,7 +44,7 @@ Para empezar una demo nueva, usa una base PostgreSQL dedicada vacía y ejecuta `
 3. En Pagos, entregar la remesa autorizada de RD$ 2,000.00 a María. La demo incluye ese anticipo inicial de oficina.
 4. En Cuadre administrativo, confirmar depósito de RD$ 4,500.00 para Cobrador. La fórmula resulta `(4,500 - 4,500) + (2,000 - 2,000) = 0`.
 5. Cerrar la jornada. Intentar un nuevo cobro de Cobrador devuelve `DAY_CLOSED`. Los demás cobradores mantienen sus jornadas independientes.
-6. Entrar en el portal administrativo como `cajero@cyp.local`: abrir su caja en Reportes & Monitoreo → Cuadres Diarios → Caja de envíos, registrar un envío en Envíos → Envíos de Dinero, pagar un recibo pendiente en Envíos → Pagos de Envíos y cerrar la caja con el contado exacto. El recorrido detallado está en [docs/DEMO-PUBLICA.md](docs/DEMO-PUBLICA.md#recorrido-del-cajero).
+6. Entrar en el portal administrativo como `cajero@cyp.local`: abrir su caja en Reportes & Monitoreo → Cuadres Diarios → Caja de envíos, registrar un envío en Envíos → Envíos de Dinero, pagar un recibo pendiente en Envíos → Pagos de Envíos y cerrar la caja con el contado exacto. Hay una sola caja por operador, moneda y día, y la cuenta de práctica es la misma para todos: en una demo compartida, cerrar su caja la deja sin caja en esa moneda para los demás evaluadores hasta la jornada siguiente. Para practicar el cierre sin afectarles, crea un Cajero propio en Archivos → Admin. → Usuarios con la cuenta de Administración. El recorrido detallado está en [docs/DEMO-PUBLICA.md](docs/DEMO-PUBLICA.md#recorrido-del-cajero).
 
 Un recibo es operacional, no fiscal. Descargar ESC/POS produce bytes para un puente/controlador local compatible; no instala ni conecta una impresora. La impresión web abre el diálogo del navegador. El tamaño, corte y caracteres deben verificarse con la impresora física.
 
@@ -69,7 +69,8 @@ La migración está en `app/server/database/` (`001_initial.sql` más los script
 ## Aprovisionamiento de usuarios
 
 Las identidades `admin@cyp.local`, `collector@cyp.local` y `cajero@cyp.local` son
-ficticias y solo se crean con `DEMO_MODE=true`. Para que el jefe, los cobradores
+ficticias y solo se crean con `DEMO_MODE=true`; fuera del modo demo la clave demo no
+abre ninguna de ellas, tampoco el Cajero de práctica que quedó guardado en la base. Para que el jefe, los cobradores
 y los cajeros entren con su propia cuenta, desde el portal administrativo:
 **Archivos → Admin. → Usuarios**, botón **Nuevo**. Una cuenta de cobrador se vincula
 a un cobrador existente (y por tanto a su ruta y sus clientes); una de
@@ -78,7 +79,7 @@ Supervisor, Cobrador, Usuario, Cajero y No definido; el rol fija el perfil inici
 de permisos y **Usuarios → Permisos** permite limitarlo (ver
 [docs/DIONEL-REMESAS-PERMISOS.md](docs/DIONEL-REMESAS-PERMISOS.md) y
 [docs/ROLES-Y-CUENTAS-COBRADORES.md](docs/ROLES-Y-CUENTAS-COBRADORES.md)). La
-contraseña inicial exige 12 caracteres mínimo, se entrega personalmente y el
+contraseña inicial exige 3 caracteres mínimo, se entrega personalmente y el
 cobrador puede cambiarla; cualquier cambio de contraseña o de estado cierra las
 sesiones abiertas de esa cuenta. Para cambiar la clave, el estado, el rol o los
 datos de inicio de otra cuenta hay que tener todos sus permisos, y la cuenta

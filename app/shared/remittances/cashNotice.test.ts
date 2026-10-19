@@ -9,7 +9,9 @@ test("the cash notice compares the operator's open boxes with the business date"
   const at = (...cashSessions: ReturnType<typeof box>[]) => ({ businessDate: "2026-10-18", cashSessions });
   assert.equal(remittanceCashNotice(at(box({})), "op-1", "DOP"), "ok");
   assert.equal(remittanceCashNotice(at(), "op-1", "DOP"), "missing");
-  assert.equal(remittanceCashNotice(at(box({ status: "closed" })), "op-1", "DOP"), "missing", "a closed box of today does not count");
+  // One box per operator, currency and day: a box of today already closed is not opened again (CASH_EXISTS).
+  assert.equal(remittanceCashNotice(at(box({ status: "closed" })), "op-1", "DOP"), "closedToday", "a closed box of today is not a missing one");
+  assert.equal(remittanceCashNotice(at(box({ status: "closed", currency: "USD" })), "op-1", "DOP"), "missing", "a box closed today in another currency does not count");
   assert.equal(remittanceCashNotice(at(box({ currency: "USD" })), "op-1", "DOP"), "missing", "another currency does not count");
   assert.equal(remittanceCashNotice(at(box({ operatorId: "op-2" })), "op-1", "DOP"), "missing", "another operator does not count");
   assert.equal(remittanceCashNotice(at(box({ date: "2026-10-17" })), "op-1", "DOP"), "previousOpen");

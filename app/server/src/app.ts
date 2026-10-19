@@ -65,7 +65,8 @@ import { boundedId, fourDecimalNumber, freeText, machineCounter, optionalEmail, 
 import { claimClientIdentity, reserveClientIdentity, SYSTEM_CLIENT_CODE } from "./client-identities.js";
 import { ACCOUNT_ROLES, isCollectorAccountRole, isOperationalRole } from "./account-roles.js";
 import { DEMO_PASSWORD } from "./demo-credentials.js";
-import { permissionCatalog, permissionsForAccount, updateAccountPermissions, userPermissionsBody } from "./user-permissions.js";
+import { DEMO_CASHIER_ID } from "./demo-cashier-scenarios.js";
+import { dropSavedRoleProfile, permissionCatalog, permissionsForAccount, updateAccountPermissions, userPermissionsBody } from "./user-permissions.js";
 import { assertBootstrapManagedBySelf, assertManagesAccount, authorizeRequest, currentAccessUser, filterOperationalSnapshot, guardCatalogChanges, requirePermission } from "./access.js";
 import { effectiveAccess, hasPermission, hasRemittanceAccess } from "../../shared/access.mjs";
 import { clientInput } from "./client-schema.js";
@@ -299,6 +300,8 @@ export async function buildApp(config: Config) {
     if (
       !account ||
       account.status !== "active" ||
+      // The practice Cajero saved by the demo keeps the published password: only demo mode accepts it.
+      (!config.demo && account.id === DEMO_CASHIER_ID) ||
       account.role !== u.role ||
       account.collectorId !== u.collectorId ||
       u.authVersion !== String(account.credentialVersion)
@@ -473,7 +476,8 @@ export async function buildApp(config: Config) {
       const stored = await config.store.read();
       const account = u ? stored.accounts.find((row) => row.id === u!.id) : findAccount(stored, email);
       if (account) {
-        if (account.status !== "active" || !verifyPassword(body.password, account.salt, account.passwordHash))
+        // A base or file that once started in demo mode keeps the practice Cajero with the published password.
+        if (account.status !== "active" || (!config.demo && account.id === DEMO_CASHIER_ID) || !verifyPassword(body.password, account.salt, account.passwordHash))
           throw new DomainError("INVALID_CREDENTIALS", "Usuario o contraseña incorrectos.", 401);
         u = { id: account.id, name: account.name, role: account.role, ...(account.collectorId ? { collectorId: account.collectorId } : {}) };
         version = String(account.credentialVersion);
@@ -636,6 +640,8 @@ export async function buildApp(config: Config) {
       account.role !== body.role || account.collectorId !== body.collectorId;
     // These changes revoke the account's sessions: only for accounts within the actor's own access.
     if (authChanged) assertManagesAccount(state, actor, account.id);
+    // A copy of the previous role profile saved with «Perfil del rol» would show up as an earlier selection.
+    if (body.role !== account.role) dropSavedRoleProfile(account);
     Object.assign(account, { name: body.name, email, role: body.role });
     if (body.nickname !== undefined) account.nickname = body.nickname;
     if (body.note !== undefined) account.note = body.note;

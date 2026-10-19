@@ -16,9 +16,21 @@ export const userPermissionsBody = z.object({
     .refine((keys) => new Set(keys).size === keys.length, "No se permiten permisos duplicados.").optional(),
 }).strict();
 
+// With «Perfil del rol» both saved lists are only a reference, shown so it can be adopted again: the role
+// profile is what applies. A reference of Envíos keys counts while it holds a key, because a PostgreSQL
+// account without one stores an empty list; otherwise the keys of the role profile are returned.
+const savedRemittanceKeys = (account: Account) => (account.permissionMode ?? "role") === "role" && !account.remittancePermissions?.length
+  ? roleRemittancePermissions(account.role) : account.remittancePermissions ?? [];
 export function accountPermissions(account: Account) {
   return { userId: account.id, permissionIds: [...(account.permissionIds ?? rolePermissionIds(account.role))],
-    mode: account.permissionMode ?? "role", remittancePermissions: [...((account.permissionMode ?? "role") === "role" ? roleRemittancePermissions(account.role) : account.remittancePermissions ?? [])], revision: account.permissionRevision ?? 0 };
+    mode: account.permissionMode ?? "role", remittancePermissions: [...savedRemittanceKeys(account)], revision: account.permissionRevision ?? 0 };
+}
+/** After a role change, a saved copy of the previous role profile is no earlier selection of the account. */
+export function dropSavedRoleProfile(account: Account) {
+  if ((account.permissionMode ?? "role") !== "role") return;
+  const same = (left: readonly (string | number)[], right: readonly (string | number)[]) => JSON.stringify([...left].sort()) === JSON.stringify([...right].sort());
+  if (account.permissionIds && same(account.permissionIds, rolePermissionIds(account.role))) delete account.permissionIds;
+  if (account.remittancePermissions?.length && same(account.remittancePermissions, roleRemittancePermissions(account.role))) account.remittancePermissions = [];
 }
 export function permissionsForAccount(state: State, userId: string) {
   const account = state.accounts.find(({ id }) => id === userId);
@@ -36,7 +48,8 @@ export function updateAccountPermissions(state: State, actor: User, userId: stri
   // Without `mode` (the previous contract) the account keeps its current mode: a stored list never
   // becomes effective silently. Only an explicit `mode: "custom"` applies it.
   const mode = body.mode ?? account.permissionMode ?? "role";
-  const remittancePermissions = [...(body.remittancePermissions ?? ((account.permissionMode ?? "role") === "role" ? roleRemittancePermissions(account.role) : account.remittancePermissions ?? []))].sort();
+  // Without the keys the saved ones stay, also the reference kept while the account uses its role profile.
+  const remittancePermissions = [...(body.remittancePermissions ?? savedRemittanceKeys(account))].sort();
   const access = effectiveAccess(account.role, { permissionMode: mode, permissionIds: next, remittancePermissions });
   if (actor.id === account.id && account.role === "admin" && ![1, 10, 101, 106].every((id) => access.legacy.includes(id)))
     throw new DomainError("OWN_ADMIN_ACCESS", "No puedes retirar tu propio acceso ni la administración de permisos. Otro administrador debe revisar ese cambio.", 409);

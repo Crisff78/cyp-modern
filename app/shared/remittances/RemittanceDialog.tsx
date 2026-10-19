@@ -1,16 +1,24 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
-export function RemittanceDialog({ title, children, onClose, locked = false }: { title: string; children: ReactNode; onClose: () => void; locked?: boolean }) {
+// returnFocus: cleared by the window that closes the dialog to go to another window, which takes the keyboard.
+export function RemittanceDialog({ title, children, onClose, locked = false, returnFocus }: { title: string; children: ReactNode; onClose: () => void; locked?: boolean; returnFocus?: { readonly current: boolean } }) {
   const element = useRef<HTMLDialogElement>(null);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [drag, setDrag] = useState<null | { x: number; y: number; left: number; top: number }>(null);
+  const focusBack = useRef(returnFocus);
+  focusBack.current = returnFocus;
   useEffect(() => {
     const dialog = element.current, opener = document.activeElement;
     dialog?.showModal();
     // React's autoFocus runs before the dialog opens; the field marked data-autofocus takes the focus once it is open.
     dialog?.querySelector<HTMLElement>("[data-autofocus]")?.focus();
-    // Closing gives the focus back to what opened the dialog while it is still on the page.
-    return () => { dialog?.close(); if (opener instanceof HTMLElement && opener.isConnected) opener.focus(); };
+    // Closing gives the focus back to what opened the dialog while it is still on the page. Going to another
+    // window leaves the keyboard free for it: neither the opener behind nor the browser takes it back.
+    return () => {
+      dialog?.close();
+      if (focusBack.current?.current !== false) { if (opener instanceof HTMLElement && opener.isConnected) opener.focus(); }
+      else if (document.activeElement instanceof HTMLElement && (document.activeElement === opener || dialog?.contains(document.activeElement))) document.activeElement.blur();
+    };
   }, []);
   useEffect(() => {
     if (!drag) return;

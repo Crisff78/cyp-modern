@@ -11,6 +11,17 @@ export function changedRecipientPhone(typed: string, known: string) {
   return phone && phoneDigits(phone) !== phoneDigits(known) ? phone : "";
 }
 
+/**
+ * Where the phone written for the recipient of one transfer is also kept, as the server saves it: a new record
+ * without its own phone keeps it whoever registers the transfer; an existing record without phone takes it only
+ * from administration, and never when it is the cellular of the record. Otherwise only the transfer carries it.
+ */
+export function recipientPhoneRecord(typed: string, contact: Pick<RemittanceContact, "phone" | "cellular">, newRecord: NewRemittanceClient | undefined, isAdmin: boolean): "newRecord" | "existingRecord" | "transferOnly" {
+  if (!typed.trim()) return "transferOnly";
+  if (newRecord) return newRecord.phone.trim() ? "transferOnly" : "newRecord";
+  return isAdmin && !contact.phone && phoneDigits(typed) !== phoneDigits(contact.cellular) ? "existingRecord" : "transferOnly";
+}
+
 /** Only offer the saved receipt after the API confirms the original operation. */
 export function confirmedCreatedTransfer(value: unknown, expected: Record<string, unknown>, actorId: string, quotation?: Quotation): Transfer {
   const row = value as Transfer | null;

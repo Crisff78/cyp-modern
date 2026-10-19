@@ -60,6 +60,12 @@ diálogo la muestra en el grupo «Selección anterior de permisos», sin efecto,
 los códigos que quedan fuera del alcance del rol. Guardar con el perfil del rol la
 conserva; «Aplicar selección anterior» la convierte en permisos personalizados
 (ver [DIONEL-REMESAS-PERMISOS.md](DIONEL-REMESAS-PERMISOS.md#migración-y-transición)).
+Lo mismo vale para las claves de Envíos: en modo `role`, `GET /usuarios/:id/permisos`
+devuelve en `remittancePermissions` las claves guardadas como referencia (las del
+perfil del rol si la cuenta no guardó ninguna), y un `POST` sin
+`remittancePermissions` las conserva. Lo que se aplica sigue siendo el perfil del
+rol (`/api/auth/me`). Al cambiar el rol de una cuenta en «Perfil del rol» se
+descarta la copia guardada del perfil del rol anterior.
 
 ## Persistencia
 

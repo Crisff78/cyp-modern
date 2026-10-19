@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { changedRecipientPhone, confirmedCreatedTransfer } from "./createdTransferResponse";
+import { changedRecipientPhone, confirmedCreatedTransfer, recipientPhoneRecord } from "./createdTransferResponse";
 import { StrictApiError } from "./strictApi";
 import type { NewRemittanceClient, Transfer } from "./types";
 
@@ -21,6 +21,19 @@ test("the recipient phone of one transfer is new only when its digits change, as
   assert.equal(changedRecipientPhone(" 809-555-0199 ", "8095550101"), "809-555-0199");
   assert.equal(changedRecipientPhone("809-555-0199", ""), "809-555-0199", "a record without phone takes the written one");
   assert.equal(changedRecipientPhone("", "8095550101"), "");
+});
+
+test("the review says where the written phone is kept, as the server saves it (S15)", () => {
+  const empty = { phone: "", cellular: "" };
+  // A new record without its own phone keeps the written one whoever registers the transfer (Cajero, Cobrador or Admin).
+  for (const isAdmin of [false, true]) assert.equal(recipientPhoneRecord("809-555-0177", empty, { ...draft, phone: "" }, isAdmin), "newRecord", `admin ${isAdmin}`);
+  assert.equal(recipientPhoneRecord("809-555-0177", { phone: draft.phone, cellular: "" }, draft, false), "transferOnly", "a new record with its own phone keeps it");
+  // An existing record without phone is completed only by administration, never with its own cellular.
+  assert.equal(recipientPhoneRecord("809-555-0177", empty, undefined, true), "existingRecord");
+  assert.equal(recipientPhoneRecord("809-555-0177", empty, undefined, false), "transferOnly");
+  assert.equal(recipientPhoneRecord("809-555-0177", { phone: "", cellular: "8095550177" }, undefined, true), "transferOnly");
+  assert.equal(recipientPhoneRecord("809-555-0177", { phone: "8095550101", cellular: "" }, undefined, true), "transferOnly", "a record with phone is never replaced");
+  assert.equal(recipientPhoneRecord("", empty, { ...draft, phone: "" }, false), "transferOnly", "nothing written, nothing saved");
 });
 
 test("a new recipient saved with its own phone is confirmed although the phone was rewritten with other separators", () => {

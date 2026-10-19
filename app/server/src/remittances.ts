@@ -403,9 +403,24 @@ export function cancelRemittance(state: State, user: User, id: string, reason: s
   addEvent(state, user, cash, "cancelled", transfer.totalAmount, now, transfer.id, reason.trim());
   return transferView(state, user, transfer);
 }
+// Names of the operators that appear in what the account sees: its operations, its boxes and the rows of its
+// reports, also of disabled accounts. A receipt, a box or a report shows a name, never an internal id. Only id
+// and name: no role, access or route, and no operator the account does not already see.
+function visibleOperatorNames(state: State, user: User, systemOperators: User[], transfers: Remittance[], cashSessions: CashSession[]) {
+  const reports = hasRemittancePermission(user, "remittances.reports");
+  const ids = new Set([
+    ...[...transfers, ...(reports ? state.remittances.transfers.filter((t) => canReportTransfer(state, user, t)) : [])]
+      .flatMap((t) => [t.sendingUserId, t.registeredBy, t.paidBy, t.cancelledBy]),
+    ...[...cashSessions, ...(reports ? state.remittances.cashSessions.filter((c) => readsAllOperations(user) || c.operatorId === user.id) : [])]
+      .map((c) => c.operatorId),
+  ]);
+  const names = new Map<string, string>([...systemOperators, ...state.accounts, user].map((row) => [row.id, row.name]));
+  return Object.fromEntries([...ids].flatMap((id) => id && names.has(id) ? [[id, names.get(id)!]] : []));
+}
 export function remittanceSnapshot(state: State, user: User, systemOperators: User[] = [], now = new Date()) {
   const date = businessDate(now);
   const transfers = state.remittances.transfers.filter((t) => canSeeOutgoing(state, user, t) || canSeeReceipt(state, user, t));
+  const cashSessions = hasRemittancePermission(user, "remittances.cash.view") ? state.remittances.cashSessions.filter((c) => readsAllOperations(user) || c.operatorId === user.id) : [];
   const operators = remittanceOperators(state, user, systemOperators);
   // Consultation only: just the clients of the visible operations, so rows saved before the frozen
   // contacts existed still show their names. Saved contacts are never rebuilt from the catalog.
@@ -423,12 +438,13 @@ export function remittanceSnapshot(state: State, user: User, systemOperators: Us
     // Only these operators can register remittances, so only they are valid for «Operador del envío».
     // The others stay in `operators` because administration may still open their cash box to pay receipts.
     sendingOperatorIds: operators.filter((operator) => hasRemittancePermission(operator, "remittances.create")).map(({ id }) => id),
+    operatorNames: visibleOperatorNames(state, user, systemOperators, transfers, cashSessions),
     rates: [state.remittances.rates.find((r) => r.currency === "DOP" && r.date === date) ?? { id: `DOP-${date}`, currency: "DOP" as Currency, rate: "1.000000", date }, ...state.remittances.rates.filter((r) => r.currency !== "DOP" && (hasRemittancePermission(user, "remittances.rates.view") || r.date === date))]
       .sort((a, b) => b.date.localeCompare(a.date) || (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "") || a.currency.localeCompare(b.currency))
       .map(({ updatedBy, ...row }) => ({ ...row, ...(user.role === "admin" && updatedBy ? { updatedBy } : {}) })),
     rateHistory: user.role === "admin" && hasRemittancePermission(user, "remittances.rates.view") ? [...(state.remittances.rateHistory ?? [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.date.localeCompare(a.date) || b.id.localeCompare(a.id)) : [],
     transfers: transfers.map((t) => transferView(state, user, t)),
-    cashSessions: hasRemittancePermission(user, "remittances.cash.view") ? state.remittances.cashSessions.filter((c) => readsAllOperations(user) || c.operatorId === user.id).map((c) => cashView(state, user, c)) : [],
+    cashSessions: cashSessions.map((c) => cashView(state, user, c)),
   };
 }
 export function remittanceReports(state: State, user: User, input: { from: string; to: string; grouping: "range" | "day" }) {

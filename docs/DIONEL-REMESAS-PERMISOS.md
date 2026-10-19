@@ -391,12 +391,20 @@ Las antiguas listas eran referenciales. Se conservan, con modo inicial `role`,
 para no bloquear cuentas al actualizar. Mientras la cuenta use **Perfil del rol**,
 el diálogo de permisos muestra el perfil del rol, que es lo que se aplica. Si la
 lista guardada difiere de ese perfil, encima aparece el grupo «Selección anterior
-de permisos» con los códigos guardados y los que quedan fuera del alcance del rol.
-Guardar con **Perfil del rol** conserva esa lista. Para hacerla efectiva, Administración pulsa **Aplicar selección anterior**:
-el diálogo pasa a **Permisos personalizados** con los códigos que el rol admite y
-las claves de Envíos del perfil del rol, y al guardar se aplican. Seleccionar otra
-vez **Perfil del rol** recupera ese perfil y guarda la lista personalizada como
-referencia, sin editar datos financieros.
+de permisos» con los códigos y las claves de Envíos guardados y los que quedan
+fuera del alcance del rol.
+Guardar con **Perfil del rol** conserva esas listas. Para hacerlas efectivas, Administración pulsa **Aplicar selección anterior**:
+el diálogo pasa a **Permisos personalizados** con los códigos y las claves de
+Envíos que el rol admite (sin claves guardadas, las del perfil del rol), y al
+guardar se aplican. Seleccionar otra vez **Perfil del rol** recupera ese perfil y
+guarda la selección personalizada, códigos y claves de Envíos, como referencia,
+sin editar datos financieros; volver a **Permisos personalizados** sin guardar
+muestra otra vez la selección con la que se abrió el diálogo. Para Cajero y
+Usuario, cuyo techo de códigos es 1 y 2, las claves de Envíos son casi toda su
+personalización: por eso se conservan igual que los códigos. Al cambiar el rol de
+una cuenta en **Perfil del rol**, la copia del perfil del rol anterior que guardó
+el diálogo se descarta, para que no aparezca como selección anterior; una lista
+distinta de ese perfil (por ejemplo, la de la migración 034) se conserva.
 
 ## Revisión funcional sugerida
 

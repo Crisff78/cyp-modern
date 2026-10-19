@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import RemittancesWorkspace from "../../shared/remittances/RemittancesWorkspace";
+import RemittancesWorkspace, { type RemittanceCashOpening } from "../../shared/remittances/RemittancesWorkspace";
 import { ConnectedSettlements } from "./ConnectedSettlements";
 import { remittancesApi } from "./remittancesApi";
 import type { Snapshot, User } from "./types";
@@ -14,7 +14,8 @@ let appliedSectionRequest = 0;
 export function DailySettlementsWindow({ snapshot, user, isAdmin, showCollectors, showRemittanceCash, canManage, onRefresh, sectionRequest }: Readonly<{
   snapshot: Snapshot; user: User; isAdmin: boolean; showCollectors: boolean; showRemittanceCash: boolean; canManage: boolean;
   onRefresh: () => void | boolean | Promise<void | boolean>;
-  sectionRequest?: { id: number; section: DailySettlementSection };
+  // opening: the box named by the notice that asked for Caja de envíos (operator and currency).
+  sectionRequest?: { id: number; section: DailySettlementSection; opening?: RemittanceCashOpening };
 }>) {
   const available: DailySettlementSection[] = [...(showCollectors ? ["collectors" as const] : []), ...(showRemittanceCash ? ["remittanceCash" as const] : [])];
   const requested = sectionRequest && sectionRequest.id > appliedSectionRequest && available.includes(sectionRequest.section) ? sectionRequest : undefined;
@@ -32,7 +33,8 @@ export function DailySettlementsWindow({ snapshot, user, isAdmin, showCollectors
     </div>}
     {shown === "collectors" && <ConnectedSettlements snapshot={snapshot} actorId={user.id} canManage={canManage} onRefresh={onRefresh} />}
     {shown === "remittanceCash" && <div className="settlement-remittance-cash">
-      <RemittancesWorkspace api={remittancesApi} user={user} isAdmin={isAdmin} sections={["caja"]} heading="Caja de envíos" />
+      <RemittancesWorkspace api={remittancesApi} user={user} isAdmin={isAdmin} sections={["caja"]} heading="Caja de envíos"
+        cashRequest={sectionRequest?.section === "remittanceCash" && sectionRequest.opening ? { id: sectionRequest.id, ...sectionRequest.opening } : undefined} />
     </div>}
     {!shown && <p className="connected-report-feedback" role="status">Tu cuenta no tiene permisos para Cuadres Diarios.</p>}
   </div>;
