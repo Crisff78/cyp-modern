@@ -40,7 +40,7 @@ export type RemittanceSnapshot = {
   receiptFooterNote?: string;
   commissionPolicy?: CommissionPolicy;
   clients: { id: string; code: string; name: string; routeId: string; active: boolean; preferredCurrency?: Currency; canSendFrom: boolean; canReceive: boolean }[];
-  operators: { id: string; name: string; role: "admin" | "collector" | "user"; collectorId?: string }[];
+  operators: { id: string; name: string; role: "admin" | "collector" | "user" | "cashier"; collectorId?: string }[];
   rates: Rate[]; rateHistory?: RateChange[]; transfers: Transfer[]; cashSessions: Cash[];
 };
 export type Report = {

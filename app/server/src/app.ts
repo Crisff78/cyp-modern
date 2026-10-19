@@ -63,7 +63,8 @@ import type { RraaValidator } from "./rraa.js";
 import { legacyFinancialFingerprintBody } from "./financial-currency-compat.js";
 import { boundedId, fourDecimalNumber, freeText, machineCounter, optionalEmail, phone, singleLine, systemConfigInput } from "./input-validation.js";
 import { claimClientIdentity, reserveClientIdentity, SYSTEM_CLIENT_CODE } from "./client-identities.js";
-import { ACCOUNT_ROLES, isOperationalRole } from "./account-roles.js";
+import { ACCOUNT_ROLES, isCollectorAccountRole, isOperationalRole } from "./account-roles.js";
+import { DEMO_PASSWORD } from "./demo-credentials.js";
 import { permissionCatalog, permissionsForAccount, updateAccountPermissions, userPermissionsBody } from "./user-permissions.js";
 import { authorizeRequest, currentAccessUser, filterOperationalSnapshot, guardCatalogChanges, requirePermission } from "./access.js";
 import { hasPermission, hasRemittanceAccess } from "../../shared/access.mjs";
@@ -173,7 +174,7 @@ export async function buildApp(config: Config) {
       JSON.stringify({
         demo: config.demo,
         email: config.adminEmail ?? "",
-        password: config.demo ? "Demo-CyP-2026!" : config.adminPassword,
+        password: config.demo ? DEMO_PASSWORD : config.adminPassword,
       }),
     )
     .digest("hex");
@@ -313,7 +314,7 @@ export async function buildApp(config: Config) {
     req.user = accessedUser;
     if (!isOperationalRole(u.role)) {
       const ownSession = path === "/api/auth/me" || path === "/api/auth/logout" || path === `/api/usuarios/${u.id}/clave`;
-      const remittanceOperator = u.role === "user" && hasRemittanceAccess(accessedUser) && (path.startsWith("/api/envios") || path === "/api/snapshot");
+      const remittanceOperator = (u.role === "user" || u.role === "cashier") && hasRemittanceAccess(accessedUser) && (path.startsWith("/api/envios") || path === "/api/snapshot");
       if (!ownSession && !remittanceOperator && !(u.role === "supervisor" && req.method === "GET"))
         throw new DomainError("FORBIDDEN", "Este rol no tiene permiso para realizar esta operación.", 403);
     }
@@ -437,7 +438,7 @@ export async function buildApp(config: Config) {
   describe("get", "/api/health", "Estado del servicio", undefined, true);
   const salt = randomUUID(),
     expectedPassword = scryptSync(
-      config.demo ? "Demo-CyP-2026!" : config.adminPassword!,
+      config.demo ? DEMO_PASSWORD : config.adminPassword!,
       salt,
       64,
     );
@@ -528,6 +529,8 @@ export async function buildApp(config: Config) {
   const accountStatusBody = z
     .object({ status: z.enum(["active", "disabled"]) })
     .strict();
+  const collectorNotAllowed = (role: string) => new DomainError("COLLECTOR_NOT_ALLOWED",
+    role === "admin" ? "Una cuenta de administración no se asocia a un cobrador." : "Una cuenta de Cajero no se asocia a un cobrador.", 422);
   const touch = (account: Account, now = new Date()) => {
     account.updatedAt = now.toISOString();
     account.credentialVersion += 1;
@@ -566,12 +569,8 @@ export async function buildApp(config: Config) {
           "Una cuenta de cobrador necesita un cobrador asignado.",
           422,
         );
-      if (body.role === "admin" && body.collectorId)
-        throw new DomainError(
-          "COLLECTOR_NOT_ALLOWED",
-          "Una cuenta de administración no se asocia a un cobrador.",
-          422,
-        );
+      if (!isCollectorAccountRole(body.role) && body.collectorId)
+        throw collectorNotAllowed(body.role);
       if (
         body.collectorId &&
         !state.collectors.some((c) => c.id === body.collectorId && c.active !== false)
@@ -614,10 +613,10 @@ export async function buildApp(config: Config) {
     if (!account) throw new DomainError("NOT_FOUND", "La cuenta no existe.", 404);
     if (body.role !== account.role && !["undefined", "user"].includes(body.role)) requirePermission(actor, 106);
     if (actor.id === account.id && body.role !== "admin") throw new DomainError("FORBIDDEN", "No puedes retirar tu propio acceso administrativo.", 403);
-    if (body.role === "admin" && account.role !== "admin" && state.collectors.some((collector) => collector.accountId === account.id))
-      throw new DomainError("ACCOUNT_LINKED_COLLECTOR", "Retira la cuenta del cobrador antes de cambiar su rol a Admin.", 409);
+    if (body.role !== account.role && !isCollectorAccountRole(body.role) && state.collectors.some((collector) => collector.accountId === account.id))
+      throw new DomainError("ACCOUNT_LINKED_COLLECTOR", `Retira la cuenta del cobrador antes de cambiar su rol a ${body.role === "admin" ? "Admin" : "Cajero"}.`, 409);
     if (body.role === "collector" && !body.collectorId) throw new DomainError("COLLECTOR_REQUIRED", "Una cuenta de cobrador necesita un cobrador asignado.", 422);
-    if (body.role === "admin" && body.collectorId) throw new DomainError("COLLECTOR_NOT_ALLOWED", "Una cuenta de administración no se asocia a un cobrador.", 422);
+    if (!isCollectorAccountRole(body.role) && body.collectorId) throw collectorNotAllowed(body.role);
     if (body.collectorId && !state.collectors.some((item) => item.id === body.collectorId && item.active !== false))
       throw new DomainError("COLLECTOR_INACTIVE", "Selecciona un cobrador activo.", 409);
     const email = body.email.trim().toLowerCase();

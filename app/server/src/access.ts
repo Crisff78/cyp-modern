@@ -11,7 +11,7 @@ export function requirePermission(actor: User, permission: number) {
   if (!hasPermission(actor, permission)) throw new DomainError("PERMISSION_REQUIRED", "Tu cuenta no tiene permiso para realizar esta acción.", 403);
 }
 export function requireRemittancePermission(actor: User, permission: RemittancePermission) {
-  if (!hasRemittancePermission(actor, permission)) throw new DomainError(actor.access?.mode === "custom" ? "PERMISSION_REQUIRED" : "FORBIDDEN", "Tu cuenta no tiene permiso para esta acción de remesas.", 403);
+  if (!hasRemittancePermission(actor, permission)) throw new DomainError(actor.access?.mode === "custom" ? "PERMISSION_REQUIRED" : "FORBIDDEN", "Tu cuenta no tiene permiso para esta acción de envíos de dinero.", 403);
 }
 const resourcePermissions: Record<string, readonly [number, number, number, number]> = {
   usuarios: [101, 102, 103, 104], cobradores: [150, 151, 152, 153], clientes: [140, 141, 142, 143],
@@ -114,8 +114,11 @@ export function guardCatalogChanges(state: State, actor: User, route: string): (
 }
 
 export function filterOperationalSnapshot<T extends ReturnType<typeof import("./domain.js").snapshot>>(data: T, actor: User): T {
-  if (actor.access?.mode !== "custom") return data;
+  // Remittance desks never receive the operational catalogs, whatever their permission mode.
+  const desk = actor.role === "user" || actor.role === "cashier";
+  if (actor.access?.mode !== "custom" && !desk) return data;
   const result = structuredClone(data);
+  if (desk) result.banks = [];
   const clientWork = [140, 300, 350, 360, 320, 370].some((id) => hasPermission(actor, id));
   if (!hasPermission(actor, 140)) result.clients = clientWork ? result.clients.map(({ id, code, name, routeId, preferredCurrency, active }) => ({ id, code, name, routeId, preferredCurrency, active, phone: "", address: "" })) : [];
   if (!hasPermission(actor, 130) && !clientWork) result.routes = [];

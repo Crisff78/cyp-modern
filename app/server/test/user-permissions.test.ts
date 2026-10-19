@@ -10,6 +10,7 @@ import { seed } from "../src/seed.js";
 import { FileStore, MemoryStore, PostgresStore, type Store } from "../src/store.js";
 import { permissionCatalog } from "../src/user-permissions.js";
 import type { AccountRole } from "../src/account-roles.js";
+import { rolePermissionIds, roleRemittancePermissions } from "../../shared/access.mjs";
 
 async function setup(t: TestContext, store: Store = new MemoryStore(seed())) {
   const app = await buildApp({ store, demo: true, secret: "synthetic-permissions-test-secret-at-least-32-characters", origins: [], collectorUrl: "http://localhost:5174" });
@@ -59,6 +60,9 @@ test("permission saves affect only the requested account and preserve credential
   const ownToken = await login(first.email, first.body.password);
   assert.deepEqual((await get(`/api/usuarios/${first.id}/permisos`)).json(), { userId: first.id, permissionIds: [], revision: 0, mode: "role", remittancePermissions: [] });
   assert.equal((await get(`/api/usuarios/${admin.id}/permisos`)).json().permissionIds.length, 119);
+  const cashier = await account("cashier");
+  assert.deepEqual((await get(`/api/usuarios/${cashier.id}/permisos`)).json(),
+    { userId: cashier.id, permissionIds: [1, 2], revision: 0, mode: "role", remittancePermissions: roleRemittancePermissions("cashier") });
   const before = await store.read(), target = before.accounts.find(({ id }) => id === first.id)!;
   const saved = await post(`/api/usuarios/${first.id}/permisos`, { permissionIds: [501, 140, 2], revision: 0 });
   assert.equal(saved.statusCode, 200, saved.body);
@@ -101,7 +105,7 @@ test("Zod rejects invalid IDs, duplicates, mixed strings and injected fields wit
 test("catalog assignments never elevate roles; only Admin can save and Supervisor remains read-only", async (t) => {
   const { store, account, login, get, post } = await setup(t);
   const all = permissionCatalog.permissions.map(({ id }) => id);
-  for (const role of ["undefined", "user", "collector", "supervisor"] as const) {
+  for (const role of ["undefined", "user", "collector", "supervisor", "cashier"] as const) {
     const target = await account(role), actor = await login(target.email, target.body.password);
     const assigned = await post(`/api/usuarios/${target.id}/permisos`, { permissionIds: all, revision: 0 });
     assert.equal(assigned.statusCode, 200);
@@ -110,7 +114,10 @@ test("catalog assignments never elevate roles; only Admin can save and Superviso
     assert.equal((await get(`/api/usuarios/${target.id}/permisos`, actor)).statusCode, role === "supervisor" ? 200 : 403);
     assert.equal((await post(`/api/usuarios/${target.id}/permisos`, { permissionIds: [], revision: 1 }, actor)).statusCode, 403);
     assert.equal((await post("/api/cobradores", { name: "No autorizado" }, actor)).statusCode, 403);
-    assert.equal((await get("/api/auth/me", actor)).json().role, role);
+    const me = (await get("/api/auth/me", actor)).json(), ceiling = role === "user" ? [1, 2] : rolePermissionIds(role);
+    assert.equal(me.role, role);
+    assert.ok(me.access.legacy.every((id: number) => ceiling.includes(id)), `${role} stays within its ceiling`);
+    if (role === "cashier") assert.deepEqual(me.access.legacy, [1, 2]);
     assert.deepEqual(await store.read(), before);
   }
 });

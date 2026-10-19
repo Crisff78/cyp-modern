@@ -3,5 +3,6 @@
   "admin": "Admin",
   "supervisor": "Supervisor",
   "collector": "Cobrador",
-  "user": "Usuario"
+  "user": "Usuario",
+  "cashier": "Cajero"
 }

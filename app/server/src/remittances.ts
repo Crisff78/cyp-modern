@@ -194,6 +194,8 @@ export function setDailyRate(state: State, user: User, input: Pick<ExchangeRate,
   state.remittances.rates.push(row);
   return row;
 }
+// Office desks (Usuario, Cajero) serve any client and see only their own business.
+const isRemittanceDesk = (role: string) => role === "user" || role === "cashier";
 export function remittanceOperators(state: State, user: User, systemOperators: User[] = []) {
   const account = state.accounts.find((a) => a.id === user.id);
   if (account && (account.status !== "active" || account.role !== user.role || account.collectorId !== user.collectorId))
@@ -201,8 +203,8 @@ export function remittanceOperators(state: State, user: User, systemOperators: U
   // Only the business identity: the token payload also carries session fields.
   const self: User = { id: user.id, name: user.name, role: user.role, ...(user.collectorId ? { collectorId: user.collectorId } : {}) };
   if (user.access) self.access = user.access;
-  if (user.role !== "admin") return user.role === "collector" || (user.role === "user" && hasRemittanceAccess(user)) ? [self] : [];
-  const accounts: User[] = state.accounts.filter((a) => a.status === "active" && (a.role === "admin" || a.role === "collector" || (a.role === "user" && hasRemittanceAccess({ role: a.role, access: effectiveAccess(a.role, a) })))).map((a) => ({
+  if (user.role !== "admin") return user.role === "collector" || (isRemittanceDesk(user.role) && hasRemittanceAccess(user)) ? [self] : [];
+  const accounts: User[] = state.accounts.filter((a) => a.status === "active" && (a.role === "admin" || a.role === "collector" || (isRemittanceDesk(a.role) && hasRemittanceAccess({ role: a.role, access: effectiveAccess(a.role, a) })))).map((a) => ({
     id: a.id, name: a.name, role: a.role, ...(a.collectorId ? { collectorId: a.collectorId } : {}),
     access: effectiveAccess(a.role, a),
   }));
@@ -217,22 +219,22 @@ function operator(state: State, user: User, id: string, systemOperators: User[])
 }
 function clientInRoute(state: State, user: User, clientId: string) {
   if (user.role === "admin") return true;
-  if (user.role === "user" && hasRemittanceAccess(user)) return true;
+  if (isRemittanceDesk(user.role) && hasRemittanceAccess(user)) return true;
   const client = state.clients.find((c) => c.id === clientId);
   return !!client && state.routes.some((r) => r.id === client.routeId && r.collectorId === user.collectorId);
 }
 export function canSeeOutgoing(state: State, user: User, transfer: Remittance) {
   if (!hasRemittancePermission(user, "remittances.view")) return false;
-  if (user.role === "user") return transfer.sendingUserId === user.id;
+  if (isRemittanceDesk(user.role)) return transfer.sendingUserId === user.id;
   return user.role === "admin" || transfer.sendingUserId === user.id || clientInRoute(state, user, transfer.senderClientId);
 }
 export function canSeeReceipt(state: State, user: User, transfer: Remittance) {
   if (!hasRemittancePermission(user, "remittances.receipts")) return false;
-  if (user.role === "user") return transfer.status === "pending" || transfer.paidBy === user.id;
+  if (isRemittanceDesk(user.role)) return transfer.status === "pending" || transfer.paidBy === user.id;
   return clientInRoute(state, user, transfer.recipientClientId);
 }
 export function canReportTransfer(state: State, user: User, transfer: Remittance) {
-  if (user.role === "user") return transfer.sendingUserId === user.id || transfer.paidBy === user.id;
+  if (isRemittanceDesk(user.role)) return transfer.sendingUserId === user.id || transfer.paidBy === user.id;
   return user.role === "admin" || transfer.sendingUserId === user.id || clientInRoute(state, user, transfer.senderClientId) || clientInRoute(state, user, transfer.recipientClientId);
 }
 export function transferView(state: State, user: User, transfer: Remittance) {
@@ -274,7 +276,11 @@ function currentCash(state: State, operatorId: string, currency: Currency, now: 
   return cash;
 }
 export function openRemittanceCash(state: State, user: User, input: { operatorId: string; currency: Currency; openingAmount: number }, systemOperators: User[] = [], now = new Date()) {
-  assertAdmin(user);
+  // Administration opens any cash box; a cashier with the permission opens only his own.
+  if (user.role === "cashier") {
+    if (input.operatorId !== user.id || !hasRemittancePermission(user, "remittances.cash.open"))
+      fail("FORBIDDEN", "Solo puedes abrir tu propia caja de envíos.", 403);
+  } else assertAdmin(user);
   operator(state, user, input.operatorId, systemOperators);
   assertCurrency(input.currency);
   integerMoney(input.openingAmount);
