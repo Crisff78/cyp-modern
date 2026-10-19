@@ -6,6 +6,9 @@ import path from "node:path";
  * CYP-QA-041 acceptance regression against the real mounted workspace.
  * The caller owns the visible Edge session and supplies an isolated loopback
  * app with a populated synthetic cash report. No real printer or mutation.
+ * The workspace must show its four sections (the collector terminal): in
+ * Administración «Envíos de Dinero» only sends, the reports open from
+ * Reportes & Monitoreo → Reportes and the box from Cuadres Diarios → Caja de envíos.
  */
 export async function verifyRemittanceOutput(page, { origin, outputDir, pauseMs = 3000 }) {
   const address = new URL(origin);
@@ -130,7 +133,9 @@ export async function verifyRemittanceOutput(page, { origin, outputDir, pauseMs 
       const secondDownload = await successfulDownload("cash-with-independent-api-error.csv");
       check("CSV success also retains the independent API error", (await alerts()).includes(apiMessage));
       await pause();
-      await workspace.getByRole("navigation", { name: "Secciones de Envíos" }).getByRole("button", { name: "Caja", exact: true }).click();
+      const sections = workspace.getByRole("navigation", { name: "Secciones de Envíos" });
+      check("The workspace shows its sections (collector terminal)", await sections.count() === 1);
+      await sections.getByRole("button", { name: "Caja", exact: true }).click();
       check("Navigation preserves the existing error-reset behavior", (await alerts()).length === 0);
       const printed = await page.evaluate(() => window.__qa041.printed);
       check("Printing uses text-safe output and never a physical printer", printed.length === 2 && printed.every((item) => item.boldDataNodes === 0));

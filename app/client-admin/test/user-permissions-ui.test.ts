@@ -50,6 +50,7 @@ test("user permission checkboxes, categories, cancel and backend saves work in t
       assert.equal(result.statusCode, 200, result.body); return result.json();
     };
     const first = await create("Usuario de prueba uno"), second = await create("Usuario de prueba dos"), supervisor = await create("Supervisor de prueba", "supervisor"), cashier = await create("Cajero de prueba", "user");
+    const cashierRole = await create("Cajero con perfil de rol", "cashier");
     await store.transaction((state) => { for (const account of state.accounts.filter(({ id }) => [first.id, second.id].includes(id))) { account.permissionMode = "custom"; account.permissionIds = []; account.remittancePermissions = []; } });
     const supervisorToken = (await login(supervisor.email, "Synthetic-Permissions-2026!")).json().token;
     const getProfile = async (id = first.id) => {
@@ -126,10 +127,10 @@ createRoot(document.getElementById("root")).render(<Fixture />);`, "utf8");
     await t.test("complete catalog, draggable title, blocked background and category-only bulk toggles", async () => {
       await open();
       assert.equal(await dialog().getByRole("checkbox", { name: /^Permiso / }).count(), 119);
-      assert.equal(await dialog().getByRole("checkbox", { name: /^Remesas: / }).count(), 14);
+      assert.equal(await dialog().getByRole("checkbox", { name: /^Envíos de Dinero: / }).count(), 14);
       const names = await dialog().locator("tbody tr").filter({ has: page.locator('input[aria-label^="Permiso "]') }).evaluateAll((rows: HTMLTableRowElement[]) => rows.map((row) => ({ id: Number(row.cells[1].textContent), name: row.cells[2].textContent, category: row.cells[3].textContent })));
       assert.deepEqual(names, catalog.permissions);
-      assert.deepEqual(await category().locator("option").allTextContents(), [...catalog.categories, "Remesas"]);
+      assert.deepEqual(await category().locator("option").allTextContents(), [...catalog.categories, "Envíos de Dinero"]);
       const title = dialog().locator(".legacy-dialog-titlebar"), before = await dialog().boundingBox(), bar = await title.boundingBox(); assert(bar && before);
       await page.mouse.move(bar.x + 110, bar.y + 12); await page.mouse.down(); await page.mouse.move(bar.x + 195, bar.y + 42); await page.mouse.up();
       const after = await dialog().boundingBox(); assert(after); assert.ok(after.x > before.x + 70); assert.ok(after.y > before.y + 20);
@@ -186,15 +187,39 @@ createRoot(document.getElementById("root")).render(<Fixture />);`, "utf8");
     await t.test("office cashier grants add their read dependency without granting catalog administration", async () => {
       await open(cashier.name);
       assert.equal(await checkbox(101).isDisabled(), true); assert.equal(await checkbox(141).isDisabled(), true);
-      await category().selectOption("Remesas");
-      await dialog().getByRole("checkbox", { name: "Remesas: Registrar envíos", exact: true }).check();
-      assert.equal(await dialog().getByRole("checkbox", { name: "Remesas: Consultar envíos", exact: true }).isChecked(), true);
-      assert.equal(await dialog().getByRole("checkbox", { name: "Remesas: Administrar tasas de remesas", exact: true }).isDisabled(), true);
+      await category().selectOption("Envíos de Dinero");
+      await dialog().getByRole("checkbox", { name: "Envíos de Dinero: Registrar envíos", exact: true }).check();
+      assert.equal(await dialog().getByRole("checkbox", { name: "Envíos de Dinero: Consultar envíos", exact: true }).isChecked(), true);
+      assert.equal(await dialog().getByRole("checkbox", { name: "Envíos de Dinero: Administrar tasas de envíos", exact: true }).isDisabled(), true);
       await dialog().getByRole("button", { name: "Guardar", exact: true }).click(); await dialog().waitFor({ state: "detached" });
       const profile = await getProfile(cashier.id);
       assert.deepEqual(profile.permissionIds, [1]); assert.equal(profile.mode, "custom");
       assert.deepEqual(profile.remittancePermissions, ["remittances.create", "remittances.view"]);
       assert.equal((await store.read()).accounts.find(({ id }) => id === cashier.id)?.role, "user");
+    });
+    await t.test("a Cajero in Perfil del rol shows its initial profile and can only add the reports of Envíos", async () => {
+      await open(cashierRole.name);
+      assert.equal(await dialog().getByRole("combobox", { name: "Modo de permisos", exact: true }).inputValue(), "role");
+      assert.match(await dialog().innerText(), /Se aplica el perfil inicial del rol\./);
+      for (const id of [1, 2]) assert.equal(await checkbox(id).isChecked(), true, `legacy ${id}`);
+      for (const id of [101, 140, 200, 401]) assert.equal(await checkbox(id).isDisabled(), true, `legacy ${id} stays out of reach`);
+      await category().selectOption("Envíos de Dinero");
+      const remittance = (name: string) => dialog().getByRole("checkbox", { name: `Envíos de Dinero: ${name}`, exact: true });
+      for (const name of ["Consultar envíos", "Registrar envíos", "Consultar recibos pendientes", "Entregar dinero al destinatario", "Cancelar envíos pendientes",
+        "Registrar clientes durante un envío", "Consultar caja de envíos", "Abrir cajas de envíos", "Cerrar la caja propia de envíos"])
+        assert.equal(await remittance(name).isChecked(), true, name);
+      const reports = remittance("Consultar e imprimir reportes de envíos");
+      assert.equal(await reports.isChecked(), false); assert.equal(await reports.isDisabled(), false);
+      for (const name of ["Consultar tasas de envíos", "Administrar tasas de envíos", "Consultar la configuración de comisiones", "Administrar comisiones de envíos"])
+        assert.equal(await remittance(name).isDisabled(), true, `${name} is administrative`);
+      await reports.check();
+      assert.equal(await dialog().getByRole("combobox", { name: "Modo de permisos", exact: true }).inputValue(), "custom");
+      await dialog().getByRole("button", { name: "Guardar", exact: true }).click(); await dialog().waitFor({ state: "detached" });
+      const profile = await getProfile(cashierRole.id);
+      assert.equal(profile.mode, "custom"); assert.deepEqual(profile.permissionIds, [1, 2]);
+      assert.deepEqual(profile.remittancePermissions, ["remittances.cancel", "remittances.cash.close", "remittances.cash.open", "remittances.cash.view", "remittances.clients.create",
+        "remittances.create", "remittances.pay", "remittances.receipts", "remittances.reports", "remittances.view"]);
+      assert.equal((await store.read()).accounts.find(({ id }) => id === cashierRole.id)?.role, "cashier");
     });
     await t.test("Supervisor can inspect but cannot toggle, bulk-select or submit permissions", async () => {
       await page.evaluate(() => (window as any).__qaSupervisor()); await open(); const count = writes.length;

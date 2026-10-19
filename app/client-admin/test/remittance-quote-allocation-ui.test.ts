@@ -96,9 +96,13 @@ createRoot(document.getElementById("root")).render(<App />);`);
         await context.addInitScript((token: string) => localStorage.setItem("cyp-admin-token", token), tokens.admin);
         await context.route("**/*", routeLocalOnly);
         const page = await context.newPage(); page.setDefaultTimeout(15000); page.on("pageerror", (error: Error) => errors.push(error.message));
-        const openWorkspace = async () => { await page.goto(`${origin}/admin/`); await page.getByRole("button", { name: "Admin.", exact: true }).click(); await page.getByRole("button", { name: "Comisiones de remesas", exact: true }).click(); };
+        const workspace = page.getByRole("region", { name: "Configuración de comisiones de envíos", exact: true });
+        // The fields fill in once the saved policy arrives; reading them before would see the empty draft.
+        const openWorkspace = async () => {
+          await page.goto(`${origin}/admin/`); await page.getByRole("button", { name: "Admin.", exact: true }).click(); await page.getByRole("button", { name: "Comisiones de envíos", exact: true }).click();
+          await workspace.waitFor(); await workspace.getByText("Cargando configuración…", { exact: true }).waitFor({ state: "detached" });
+        };
         await openWorkspace();
-        const workspace = page.getByRole("region", { name: "Configuración de comisiones de remesas", exact: true });
         const savePolicy = async (transaction: string, manager: string) => {
           await workspace.getByLabel("Comisión total de la transacción (%)", { exact: true }).fill(transaction);
           await workspace.getByLabel("Comisión del gestor (%)", { exact: true }).fill(manager);
@@ -130,7 +134,20 @@ createRoot(document.getElementById("root")).render(<App />);`);
         await page.goto(`${origin}/${surface}/?view=remittances`);
         if (surface === "admin") await page.getByRole("button", { name: "ENVÍO DE DINERO", exact: true }).click();
         const workspace = page.getByRole("region", { name: "Envíos de Dinero", exact: true });
-        await workspace.getByRole("button", { name: "Nuevo envío", exact: true }).click();
+        const senderInput = workspace.getByRole("combobox", { name: "Remitente", exact: true });
+        if (surface === "admin") {
+          // Administración: only the sending section, its form already open and the cursor in the sender.
+          await senderInput.waitFor(); await page.waitForFunction(() => document.activeElement?.getAttribute("role") === "combobox");
+          assert.equal(await senderInput.evaluate((element: Element) => element === document.activeElement), true, "the cursor starts in the sender");
+          assert.equal(await workspace.getByRole("navigation", { name: "Secciones de Envíos", exact: true }).count(), 0);
+          assert.equal(await workspace.getByRole("button", { name: "Nuevo envío", exact: true }).count(), 0);
+        } else {
+          // The collector terminal keeps its four sections and its «Nuevo envío».
+          const sections = workspace.getByRole("navigation", { name: "Secciones de Envíos", exact: true });
+          await sections.getByRole("button").first().waitFor();
+          assert.deepEqual(await sections.getByRole("button").allTextContents(), ["Envíos", "Recibos", "Caja", "Reportes"]);
+          await workspace.getByRole("button", { name: "Nuevo envío", exact: true }).click();
+        }
         const choose = async (label: string, code: string) => { const input = workspace.getByRole("combobox", { name: label, exact: true }); await input.fill(code); await workspace.getByRole("option").filter({ hasText: code }).first().click(); };
         const state = await store.read(), sender = state.clients.find((row) => row.id === "cli-1")!, recipient = state.clients.find((row) => row.id === "cli-5")!;
         await choose("Remitente", sender.code); await choose("Destinatario", recipient.code);
@@ -174,6 +191,9 @@ createRoot(document.getElementById("root")).render(<App />);`);
         assert.equal(saved.sendingUserId, surface === "admin" ? admin.id : collector.id);
         await workspace.getByRole("button", { name: saved.envioReference, exact: true }).click();
         const detail = page.getByRole("dialog", { name: `${saved.envioReference} · ${saved.reciboReference}`, exact: true });
+        await detail.getByLabel("Motivo de cancelación", { exact: true }).waitFor();
+        // Administración pays only in «Pagos de Envíos»: its sending window just cancels.
+        if (surface === "admin") assert.equal(await detail.getByRole("button", { name: "Registrar pago completo", exact: true }).count(), 0);
         await detail.getByLabel("Motivo de cancelación", { exact: true }).fill("Cancelación sintética QA");
         await detail.getByRole("button", { name: "Revisar cancelación", exact: true }).click();
         const cancelledReply = page.waitForResponse((reply: any) => reply.request().method() === "POST" &&
@@ -190,7 +210,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
         assert.equal(afterCancel.remittances.transfers.find((row) => row.id === saved.id)!.status, "cancelled");
         assert.equal(afterCancel.remittances.events.filter((event) => event.type === "cancelled" && event.transferId === saved.id).length, 1);
         await detail.getByRole("button", { name: `Cerrar ${saved.envioReference} · ${saved.reciboReference}`, exact: true }).click();
-        await workspace.getByRole("button", { name: "Nuevo envío", exact: true }).click();
+        await workspace.getByRole("button", { name: surface === "admin" ? "Limpiar formulario" : "Nuevo envío", exact: true }).click();
         await choose("Remitente", sender.code); await choose("Destinatario", recipient.code);
         await workspace.getByLabel("Moneda del remitente").selectOption("USD");
         await workspace.getByLabel("Moneda del destinatario").selectOption("DOP");
@@ -221,44 +241,56 @@ createRoot(document.getElementById("root")).render(<App />);`);
         await context.route("**/*", routeLocalOnly);
         const page = await context.newPage(); page.setDefaultTimeout(15000); page.on("pageerror", (error: Error) => errors.push(error.message));
         await page.goto(`${origin}/admin/`); await page.getByRole("button", { name: "ENVÍO DE DINERO", exact: true }).click();
-        const workspace = page.getByRole("region", { name: "Envíos de Dinero", exact: true });
-        await workspace.getByRole("button", { name: "Reportes", exact: true }).click();
-        await workspace.getByLabel("Reporte", { exact: false }).selectOption("allocations");
-        const consult = async () => { await workspace.getByRole("button", { name: "Consultar", exact: true }).click(); await workspace.getByRole("table", { name: "Totales del periodo por Moneda", exact: true }).waitFor(); };
+        const sending = page.getByRole("region", { name: "Envíos de Dinero", exact: true });
+        await sending.getByRole("combobox", { name: "Remitente", exact: true }).waitFor();
+        assert.equal(await sending.getByRole("button", { name: "Reportes", exact: true }).count(), 0, "the sending window has no reports section");
+        // The consolidated report lives in Reportes & Monitoreo → Reportes, in its own window.
+        await page.locator(".sidebar").getByRole("button", { name: "Reportes", exact: true }).click();
+        await page.getByRole("dialog", { name: "Reportes", exact: true }).getByRole("button", { name: "Reporte consolidado de comisiones", exact: true }).click();
+        const report = page.getByRole("dialog", { name: "Reporte consolidado de comisiones", exact: true });
+        const toolbar = report.locator(".legacy-mdi-toolbar");
+        // A select inside its label also exposes its options as text: those labels are matched by their start.
+        for (const label of ["Fecha inicial:", "Fecha final:"]) assert.equal(await report.getByLabel(label, { exact: true }).count(), 1, label);
+        for (const label of ["Agrupar por:", "Estado de la operación:", "Gestor:", "Moneda de destino:"]) assert.equal(await report.locator("label").filter({ hasText: new RegExp(`^${label}`) }).count(), 1, label);
+        const totals = report.getByRole("table", { name: "Totales del periodo por Moneda", exact: true });
+        const consult = async () => {
+          await report.getByRole("button", { name: "Consultar", exact: true }).click();
+          await report.getByText("Consultando el reporte…", { exact: true }).waitFor({ state: "hidden" }); await totals.waitFor();
+        };
         await consult();
-        const totals = workspace.getByRole("table", { name: "Totales del periodo por Moneda", exact: true });
         const columns = await totals.getByRole("columnheader").allTextContents();
         for (const column of ["Comisión Total de la Transacción", "Comisión de la Empresa", "Comisión del Gestor"]) assert.ok(columns.includes(column));
         const expectedTotals = await totals.locator("tbody tr").evaluateAll((rows: HTMLTableRowElement[]) => rows.map((row) => Array.from(row.cells).map((cell) => cell.textContent)));
         assert.deepEqual(expectedTotals.map((row: string[]) => row.slice(1, 7)), [["DOP", "1", "0", "DOP 300.00", "DOP 180.00", "DOP 120.00"], ["EUR", "2", "3", "EUR 8.00", "EUR 4.80", "EUR 3.20"]]);
-        const groups = workspace.getByRole("table", { name: "Comisiones agrupadas por Gestor y Moneda", exact: true });
+        const groups = report.getByRole("table", { name: "Comisiones agrupadas por Gestor y Moneda", exact: true });
         assert.equal(await groups.locator("tbody tr").count(), 3, "Homonymous gestor IDs and currencies stay separate");
-        const downloadPromise = page.waitForEvent("download"); await workspace.getByRole("button", { name: "Exportar CSV", exact: true }).click();
+        const downloadPromise = page.waitForEvent("download"); await toolbar.getByRole("button", { name: "Exportar CSV", exact: true }).click();
         const download = await downloadPromise, csvPath = path.join(output, "consolidated.csv"); await download.saveAs(csvPath);
         const csv = fs.readFileSync(csvPath, "utf8");
         for (const row of expectedTotals) assert.ok(csv.includes(row.map((cell: string) => `"${cell}"`).join(";")), "CSV contains the exact onscreen totals");
         assert.match(csv, /"'=Gestor QA homónimo"/, "Formula injection neutralization remains active");
-        const popupPromise = page.waitForEvent("popup"); await workspace.getByRole("button", { name: "Imprimir", exact: true }).click(); const popup = await popupPromise;
+        const popupPromise = page.waitForEvent("popup"); await toolbar.getByRole("button", { name: "Imprimir", exact: true }).click(); const popup = await popupPromise;
         await popup.waitForFunction(() => (window as any).__qaPrinted === true);
         const printRows = await popup.locator("table").filter({ has: popup.getByRole("columnheader", { name: "Total", exact: true }) }).locator("tbody tr").evaluateAll((rows: HTMLTableRowElement[]) => rows.map((row) => Array.from(row.cells).map((cell) => cell.textContent)));
         assert.deepEqual(printRows, expectedTotals); assert.equal(await popup.locator("nav,aside,button,input,select").count(), 0, "Print isolates report content"); await popup.close();
         await groups.scrollIntoViewIfNeeded(); await page.screenshot({ path: path.join(output, "consolidated-report.png") });
-        await workspace.getByLabel("Estado de la operación", { exact: true }).selectOption("paid");
-        assert.equal(await workspace.getByRole("button", { name: "Exportar CSV", exact: true }).count(), 0, "Filters invalidate the old printable/exportable result");
+        await report.getByLabel("Estado de la operación:").selectOption("paid");
+        assert.equal(await toolbar.getByRole("button", { name: "Exportar CSV", exact: true }).isDisabled(), true, "Filters invalidate the old printable/exportable result");
+        assert.equal(await toolbar.getByRole("button", { name: "Imprimir", exact: true }).isDisabled(), true);
         await consult(); assert.match(await totals.locator("tbody").innerText(), /EUR 4\.00.*EUR 2\.40.*EUR 1\.60/s);
-        await workspace.getByLabel("Gestor", { exact: true }).selectOption(admin.id); await consult();
+        await report.getByLabel("Gestor:").selectOption(admin.id); await consult();
         assert.match(await totals.innerText(), /No hay resultados/);
-        await workspace.getByLabel("Gestor", { exact: true }).selectOption("");
-        await workspace.getByLabel("Estado de la operación", { exact: true }).selectOption("cancelled"); await consult();
+        await report.getByLabel("Gestor:").selectOption("");
+        await report.getByLabel("Estado de la operación:").selectOption("cancelled"); await consult();
         const cancelledAmounts = await totals.locator("tbody tr").evaluateAll((rows: HTMLTableRowElement[]) => rows.map((row) => Array.from(row.cells).slice(4, 7).map((cell) => cell.textContent)));
         assert.deepEqual(cancelledAmounts, [["EUR 0.00", "EUR 0.00", "EUR 0.00"]]);
-        await workspace.getByLabel("Estado de la operación", { exact: true }).selectOption("active");
-        await workspace.getByLabel("Moneda de destino", { exact: true }).selectOption("EUR");
-        await workspace.getByLabel("Agrupar por", { exact: true }).selectOption("currency"); await consult();
-        assert.equal(await workspace.getByRole("table", { name: "Comisiones agrupadas por Moneda", exact: true }).locator("tbody tr").count(), 1);
+        await report.getByLabel("Estado de la operación:").selectOption("active");
+        await report.getByLabel("Moneda de destino:").selectOption("EUR");
+        await report.getByLabel("Agrupar por:").selectOption("currency"); await consult();
+        assert.equal(await report.getByRole("table", { name: "Comisiones agrupadas por Moneda", exact: true }).locator("tbody tr").count(), 1);
         assert.equal(await totals.locator("tbody tr").count(), 1); assert.match(await totals.locator("tbody").innerText(), /EUR 8\.00.*EUR 4\.80.*EUR 3\.20/s);
         const today = businessDate(now), nextDay = new Date(`${today}T12:00:00Z`); nextDay.setUTCDate(nextDay.getUTCDate() + 1);
-        await workspace.getByLabel("Desde", { exact: true }).fill(nextDay.toISOString().slice(0, 10)); await workspace.getByLabel("Hasta", { exact: true }).fill(nextDay.toISOString().slice(0, 10)); await consult();
+        await report.getByLabel("Fecha inicial:", { exact: true }).fill(nextDay.toISOString().slice(0, 10)); await report.getByLabel("Fecha final:", { exact: true }).fill(nextDay.toISOString().slice(0, 10)); await consult();
         assert.match(await totals.innerText(), /No hay resultados/);
       } finally { await context.close(); }
     });
@@ -316,10 +348,15 @@ createRoot(document.getElementById("root")).render(<App />);`);
         const after = await store.read(); assert.equal(after.clients.length, before.clients.length + 2);
         assert.equal(after.remittances.transfers.length, before.remittances.transfers.length + 1);
         assert.equal(await sender.inputValue(), ""); assert.equal(await sender.evaluate((element: Element) => element === document.activeElement), true);
-        await workspace.getByRole("button", { name: "Recibos", exact: true }).click();
-        assert.equal(await workspace.getByLabel("Buscar", { exact: true }).evaluate((element: Element) => element === document.activeElement), true);
+        // Paying is done in its own window, «Pagos de Envíos», with the cursor in Buscar.
+        assert.equal(await workspace.getByRole("button", { name: "Recibos", exact: true }).count(), 0);
+        await page.locator(".sidebar").getByRole("button", { name: "Pagos de Envíos", exact: true }).click();
+        const payouts = page.getByRole("region", { name: "Pagos de Envíos", exact: true });
+        const search = payouts.getByLabel("Buscar", { exact: true }); await search.waitFor();
+        await page.waitForFunction(() => document.activeElement?.hasAttribute("data-receipt-search") === true);
+        assert.equal(await search.evaluate((element: Element) => element === document.activeElement), true);
         const transfer = after.remittances.transfers.find(({ sendingUserId }) => sendingUserId === cashier.id)!;
-        await workspace.getByRole("button", { name: transfer.reciboReference, exact: true }).click();
+        await payouts.getByRole("button", { name: transfer.reciboReference, exact: true }).click();
         const detail = page.getByRole("dialog", { name: `${transfer.envioReference} · ${transfer.reciboReference}`, exact: true });
         await detail.getByRole("button", { name: "Registrar pago completo", exact: true }).click();
         assert.equal((await store.read()).remittances.transfers.find(({ id }) => id === transfer.id)?.status, "pending", "reviewing a payout does not move money");
@@ -329,11 +366,14 @@ createRoot(document.getElementById("root")).render(<App />);`);
         assert.equal(paid.status, "paid"); assert.equal(paid.paidBy, cashier.id);
         assert.equal((await store.read()).remittances.events.filter((event) => event.transferId === paid.id && event.type === "paid").length, 1);
         await detail.getByRole("button", { name: `Cerrar ${transfer.envioReference} · ${transfer.reciboReference}`, exact: true }).click();
-        assert.equal(await workspace.getByLabel("Buscar", { exact: true }).evaluate((element: Element) => element === document.activeElement), true);
-        await workspace.getByRole("button", { name: "Envíos", exact: true }).click();
+        await page.waitForFunction(() => document.activeElement?.hasAttribute("data-receipt-search") === true);
+        assert.equal(await search.evaluate((element: Element) => element === document.activeElement), true);
+        // Back to the sending window, which is still open.
+        await page.locator(".desktop-launchers").getByRole("button", { name: "ENVÍO DE DINERO", exact: true }).click();
         assert.equal((await post(`/api/usuarios/${cashier.id}/permisos`, { mode: "custom", permissionIds: [1, 2], remittancePermissions: ["remittances.view"], revision: 1 })).statusCode, 200);
         await workspace.getByRole("button", { name: "Actualizar", exact: true }).click();
-        await sender.waitFor({ state: "detached" }); assert.equal(await workspace.getByRole("button", { name: "Nuevo envío", exact: true }).count(), 0);
+        await sender.waitFor({ state: "detached" });
+        for (const name of ["Nuevo envío", "Limpiar formulario", "Calcular cotización"]) assert.equal(await workspace.getByRole("button", { name, exact: true }).count(), 0, name);
         await page.screenshot({ path: path.join(output, "cashier-after-permission-revocation.png") });
       } finally { await context.close(); }
     });

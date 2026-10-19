@@ -10,6 +10,7 @@ export const ROLE_DEFINITIONS = {
   ADMIN: { code: "ROLE_ADMIN", id: "UUID-AAA", label: "Administrador" },
   SUPERVISOR: { code: "ROLE_SUPERVISOR", id: "UUID-333", label: "Supervisor" },
   COLLECTOR: { code: "ROLE_COLLECTOR", id: "UUID-111", label: "Cobrador" },
+  CASHIER: { code: "ROLE_CASHIER", id: "UUID-222", label: "Cajero" },
   CLIENT: { code: "ROLE_CLIENT", id: "UUID-001", label: "Cliente" },
 } as const;
 export type RoleName = keyof typeof ROLE_DEFINITIONS | "USER" | "UNDEFINED";
@@ -39,6 +40,13 @@ export const normalizeRole = (role: User["role"]): RoleName => {
   )
     return "COLLECTOR";
   if (
+    normalized === "CASHIER" ||
+    normalized === "CAJERO" ||
+    normalized === "ROLE_CASHIER" ||
+    normalized === "ROLE_CAJERO"
+  )
+    return "CASHIER";
+  if (
     normalized === "CLIENT" ||
     normalized === "CLIENTE" ||
     normalized === "ROLE_CLIENT"
@@ -60,7 +68,7 @@ export const enrichUserRole = <T extends User>(user: T): T => {
 };
 export const canAccessAdmin = (user: User) =>
   ["SUPERADMIN", "ADMIN", "SUPERVISOR"].includes(normalizeRole(user.role)) ||
-  (normalizeRole(user.role) === "USER" && hasRemittanceAccess(user));
+  (["USER", "CASHIER"].includes(normalizeRole(user.role)) && hasRemittanceAccess(user));
 export const canAccessCollector = (user: User) =>
   ["COLLECTOR", "SUPERADMIN"].includes(normalizeRole(user.role));
 export const isSuspendedUser = (user: User) =>
@@ -298,6 +306,7 @@ export type Page =
   | "exchangeRates"
   | "banks"
   | "remittances"
+  | "remittancePayouts"
   | "remittanceCommissions"
   | "sessions"
   | "traces"

@@ -8,6 +8,10 @@ import { PERMISSION_CATALOG, PERMISSION_CATEGORIES, isUserPermissions, type Perm
 import "./connected-user-permissions.css";
 import { effectiveAccess, rolePermissionIds, roleRemittancePermissions, REMITTANCE_PERMISSIONS, REMITTANCE_PERMISSION_KEYS, REMITTANCE_PERMISSION_DEPENDENCIES, type PermissionMode, type RemittancePermission } from "../../shared/access.mjs";
 
+// The keys stay "remittances.*"; the dialog shows the name of the module.
+const REMITTANCE_CATEGORY = "Envíos de Dinero";
+type DialogCategory = PermissionCategory | typeof REMITTANCE_CATEGORY;
+
 export function ConnectedUserPermissionsDialog({ userId, userName, userRole, actorId, canEdit = true, onClose }: Readonly<{
   userId: string;
   userName: string;
@@ -24,7 +28,7 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
   const [mode, setMode] = useState<PermissionMode>(pending?.mode ?? "role");
   const [remittanceKeys, setRemittanceKeys] = useState<readonly RemittancePermission[]>(pending?.remittancePermissions ?? []);
   const [revision, setRevision] = useState(pending?.revision ?? 0);
-  const [category, setCategory] = useState<PermissionCategory | "Remesas">("No definido");
+  const [category, setCategory] = useState<DialogCategory>("No definido");
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [ready, setReady] = useState(false);
@@ -55,8 +59,8 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
     return () => controller.abort();
   }, [userId, userRole, actorId, scope, reload]);
 
-  const visible = category === "No definido" ? PERMISSION_CATALOG : category === "Remesas" ? [] : PERMISSION_CATALOG.filter((permission) => permission.category === category);
-  const visibleRemittances = category === "No definido" || category === "Remesas" ? REMITTANCE_PERMISSIONS : [];
+  const visible = category === "No definido" ? PERMISSION_CATALOG : category === REMITTANCE_CATEGORY ? [] : PERMISSION_CATALOG.filter((permission) => permission.category === category);
+  const visibleRemittances = category === "No definido" || category === REMITTANCE_CATEGORY ? REMITTANCE_PERMISSIONS : [];
   const ceiling = effectiveAccess(userRole, { permissionMode: "custom", permissionIds: PERMISSION_CATALOG.map(({ id }) => id), remittancePermissions: REMITTANCE_PERMISSION_KEYS });
   const requiredOwn = userId === actorId ? [1, 10, 101, 106] : [];
   const assigned = new Set(assignedIds);
@@ -117,8 +121,8 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
       }}><option value="role">Perfil del rol</option><option value="custom">Permisos personalizados</option></select></label>
       <div className="connected-permissions-controls">
         <label className="connected-permission-category">Categoría:
-          <select aria-label="Categoría" value={category} disabled={request.busy} onChange={(event) => { setCategory(event.target.value as PermissionCategory | "Remesas"); setSelectedId(null); }}>
-            {[...PERMISSION_CATEGORIES, "Remesas"].map((item) => <option key={item} value={item}>{item}</option>)}
+          <select aria-label="Categoría" value={category} disabled={request.busy} onChange={(event) => { setCategory(event.target.value as DialogCategory); setSelectedId(null); }}>
+            {[...PERMISSION_CATEGORIES, REMITTANCE_CATEGORY].map((item) => <option key={item} value={item}>{item}</option>)}
           </select>
         </label>
         <button type="button" disabled={locked || visible.length + visibleRemittances.length === 0} onClick={() => selectCategory(true)}>Seleccionar Todos</button>
@@ -136,12 +140,12 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
               <td><input id={`${controlId}-${permission.id}`} type="checkbox" aria-label={`Permiso ${permission.id}: ${permission.name}`} checked={assigned.has(permission.id)} disabled={locked || !ceiling.legacy.includes(permission.id) || requiredOwn.includes(permission.id)} onChange={() => toggle(permission.id)} /></td>
               <td>{permission.id}</td><td><label htmlFor={`${controlId}-${permission.id}`} className="connected-permissions-name">{permission.name}</label></td><td>{permission.category}</td>
             </tr>)}
-            {visibleRemittances.map((permission) => <tr key={permission.key}><td><input id={`${controlId}-${permission.key}`} type="checkbox" aria-label={`Remesas: ${permission.name}`} checked={remittanceKeys.includes(permission.key)} disabled={locked || !ceiling.remittances.includes(permission.key)} onChange={() => toggleRemittance(permission.key)} /></td><td>Remesas</td><td><label htmlFor={`${controlId}-${permission.key}`}>{permission.name}</label></td><td>Remesas</td></tr>)}
+            {visibleRemittances.map((permission) => <tr key={permission.key}><td><input id={`${controlId}-${permission.key}`} type="checkbox" aria-label={`${REMITTANCE_CATEGORY}: ${permission.name}`} checked={remittanceKeys.includes(permission.key)} disabled={locked || !ceiling.remittances.includes(permission.key)} onChange={() => toggleRemittance(permission.key)} /></td><td>Envíos</td><td><label htmlFor={`${controlId}-${permission.key}`}>{permission.name}</label></td><td>{REMITTANCE_CATEGORY}</td></tr>)}
             {visible.length + visibleRemittances.length === 0 && <tr><td colSpan={4}>No hay permisos en esta categoría.</td></tr>}
           </tbody>
         </table>
       </div>
-      <p className="connected-user-permissions-note">{mode === "role" ? "Se aplica el perfil inicial del rol. Al marcar o desmarcar una acción pasarás a permisos personalizados." : "Al guardar se aplicarán estos permisos en las pantallas y en cada operación. El rol no cambia: Supervisor conserva solo consulta y Cobrador conserva su ruta."}</p>
+      <p className="connected-user-permissions-note">{mode === "role" ? "Se aplica el perfil inicial del rol. Al marcar o desmarcar una acción pasarás a permisos personalizados." : "Al guardar se aplicarán estos permisos en las pantallas y en cada operación. El rol no cambia: Supervisor conserva solo consulta, Cobrador conserva su ruta y Cajero atiende solo Envíos de Dinero y su propia caja, sin catálogos, tasas ni comisiones."}</p>
       {mode === "custom" && !assigned.has(1) && <p role="status" className="connected-permission-error">Sin «Entrar al sistema» esta cuenta no podrá iniciar sesión ni realizar operaciones.</p>}
       {!canEdit && <p className="connected-permissions-feedback">Acción restringida para Supervisores.</p>}
       {request.error && <p className="connected-permission-error" role="alert">{request.error}</p>}

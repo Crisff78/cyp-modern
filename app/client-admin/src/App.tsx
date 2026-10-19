@@ -31,6 +31,7 @@ import {
   FileCheck2,
   Gamepad2,
   Globe,
+  HandCoins,
   History,
   Printer,
   FolderOpen,
@@ -95,6 +96,7 @@ import OperationModal, { type Operation } from "./Operations";
 import AccountModal, { type AccountOperation } from "./Users";
 import RemittancesWorkspace from "../../shared/remittances/RemittancesWorkspace";
 import { hasPermission, hasRemittancePermission, canOpenPage } from "../../shared/access.mjs";
+import { accountRoleLabel as accountRoleName } from "../../shared/accountRoles";
 import { PageAccessContext, usePageAccess } from "./PageAccess";
 import { ConnectedRemittanceCommissions } from "./ConnectedRemittanceCommissions";
 import { isRemittanceReportPage, remittanceReportDefinitions, remittanceReportForPage, type RemittanceReportPage } from "../../shared/remittances/reporting";
@@ -111,7 +113,7 @@ import { encodeCsvCell } from "../../shared/csv";
 import { GeoMap, type GeoPoint } from "./GeoMap";
 import { MonitorGeoMap } from "./MonitorGeoMap";
 import { ConnectedCatalog, isConnectedCatalog } from "./ConnectedCatalog";
-import { ConnectedSettlements } from "./ConnectedSettlements";
+import { DailySettlementsWindow, type DailySettlementSection } from "./DailySettlementsWindow";
 import { ConnectedLegacyReports } from "./ConnectedLegacyReports";
 import { ConnectedAdminTools, isConnectedAdminTool } from "./ConnectedAdminTools";
 import { DESKTOP_MARGIN, RESIZE_EDGES, fitWindowSize, readWindowSizes, rememberWindowSize, resizeWindowRect, type ResizeEdge, type WindowRect } from "./windowGeometry";
@@ -154,6 +156,9 @@ const groupOrder = [
   "REPORTES & MONITOREO",
 ] as const;
 type NavGroup = (typeof groupOrder)[number];
+// The key REMESAS stays internal; the menu shows the name of the module.
+const groupLabel = (group: NavGroup) => group === "REMESAS" ? "ENVÍOS" : group;
+const groupShortLabel = (group: NavGroup) => group === "ARCHIVOS" ? "AR" : group === "COBROS" ? "CO" : group === "PAGOS" ? "PA" : group === "REMESAS" ? "EN" : "RE";
 // Temporary UI switch: keep the module and stored templates available for later reactivation.
 const SHOW_RECURRING_PAYOUTS = false;
 const isUiPageVisible = (page: string) => SHOW_RECURRING_PAYOUTS || page !== "recurringPayouts";
@@ -227,6 +232,13 @@ const navigation: {
     group: "REMESAS",
   },
   {
+    key: "remittance-payouts",
+    page: "remittancePayouts",
+    label: "Pagos de Envíos",
+    icon: HandCoins,
+    group: "REMESAS",
+  },
+  {
     key: "cash-delivery",
     page: "cashDeliveries",
     label: "Entregas de Dinero",
@@ -266,7 +278,8 @@ const pageTitles: Record<Page, string> = {
   exchangeRates: "Tasas de Cambio",
   banks: "Bancos",
   remittances: "Envíos de Dinero",
-  remittanceCommissions: "Comisiones de Remesas",
+  remittancePayouts: "Pagos de Envíos",
+  remittanceCommissions: "Comisiones de Envíos",
   sessions: "Listado de Sesiones",
   traces: "Trazas del Sistema",
   users: "Usuarios",
@@ -433,7 +446,6 @@ const mdiTitle = (page: MdiPage) => {
 type MdiWindowState = {
   id: string;
   page: MdiPage;
-  remittanceReportRequest?: number;
   title: string;
   x: number;
   y: number;
@@ -455,7 +467,7 @@ const focusWindowCollection = (windows: MdiWindowState[], focusedId: string, zIn
 
 const mdiWindowSize = (page: MdiPage): MdiWindowSize => {
   if (isRemittanceReportPage(page)) return { width: 980, height: 640 };
-  if (page === "remittances") return { width: 980, height: 640 };
+  if (page === "remittances" || page === "remittancePayouts") return { width: 980, height: 640 };
   if (page === "controlPanel") return { width: 600, height: 390 };
   if (page === "reports") return { width: 720, height: 430 };
   if (page === "recurringCharges") return { width: 860, height: 520 };
@@ -516,7 +528,7 @@ const codifierTiles: ControlPanelTile[] = [
   { label: "Servicios y Prods.", page: "servicesProducts", navKey: "control-services", icon: ListFilter },
   { label: "Sesiones", page: "sessions", navKey: "control-sessions", icon: Activity },
   { label: "Tasas de cambio", page: "exchangeRates", navKey: "control-exchange", icon: RefreshCw },
-  { label: "Comisiones de remesas", page: "remittanceCommissions", navKey: "control-remittance-commissions", icon: ReceiptText },
+  { label: "Comisiones de envíos", page: "remittanceCommissions", navKey: "control-remittance-commissions", icon: ReceiptText },
   { label: "Bancos", page: "banks", navKey: "control-banks", icon: Building2 },
   { label: "Trazas", page: "traces", navKey: "control-traces", icon: ClipboardCheck },
   { label: "Usuarios", page: "users", navKey: "control-users", icon: ShieldCheck },
@@ -546,38 +558,43 @@ function ControlPanelContent({ onLaunch }: Readonly<{ onLaunch: (page: Page, nav
 
 function ReportesLauncher({ onLaunch }: Readonly<{ onLaunch: (page: ReportPageId | RemittanceReportPage, navKey: string) => void }>) {
   const { actor } = usePageAccess();
-  const renderGroup = (category: ReportDefinition["category"]) => (
-    <section className="reports-launcher-section" key={category}>
-      <div className="control-panel-section-heading"><span>{category}</span><small>Seleccione un reporte</small></div>
-      <div className="reports-launcher-grid">
-        {reportDefinitions.filter((report) => report.category === category && canOpenPage(actor, report.id)).map((report) => (
-          <button
-            type="button"
-            className="report-launcher-tile"
-            key={report.id}
-            onClick={() => onLaunch(report.id, `reports-${report.id}`)}
-          >
-            <ChartNoAxesCombined size={18} aria-hidden="true" />
-            <span>{report.label}</span>
-          </button>
-        ))}
-      </div>
-    </section>
-  );
+  // A heading is drawn only when the account can open at least one of its reports.
+  const remittanceReports = remittanceReportDefinitions.filter((report) => canOpenPage(actor, report.page));
+  const renderGroup = (category: ReportDefinition["category"]) => {
+    const reports = reportDefinitions.filter((report) => report.category === category && canOpenPage(actor, report.id));
+    return reports.length > 0 && (
+      <section className="reports-launcher-section" key={category}>
+        <div className="control-panel-section-heading"><span>{category}</span><small>Seleccione un reporte</small></div>
+        <div className="reports-launcher-grid">
+          {reports.map((report) => (
+            <button
+              type="button"
+              className="report-launcher-tile"
+              key={report.id}
+              onClick={() => onLaunch(report.id, `reports-${report.id}`)}
+            >
+              <ChartNoAxesCombined size={18} aria-hidden="true" />
+              <span>{report.label}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+    );
+  };
   return (
     <div className="reports-launcher">
       {renderGroup("-- Cargos --")}
       {renderGroup("-- Cobros --")}
       {renderGroup("-- Pagos --")}
-      <section className="reports-launcher-section" aria-label="Reportes de Envíos de Dinero">
+      {remittanceReports.length > 0 && <section className="reports-launcher-section" aria-label="Reportes de Envíos de Dinero">
         <div className="control-panel-section-heading"><span>-- Envíos de Dinero --</span><small>Seleccione un reporte</small></div>
         <div className="reports-launcher-grid">
-          {remittanceReportDefinitions.filter((report) => canOpenPage(actor, report.page)).map((report) => <button type="button" key={report.page} className="report-launcher-tile" title={report.scope} onClick={() => onLaunch(report.page, `reports-${report.page}`)}>
+          {remittanceReports.map((report) => <button type="button" key={report.page} className="report-launcher-tile" title={report.scope} onClick={() => onLaunch(report.page, `reports-${report.page}`)}>
             <ChartNoAxesCombined size={18} aria-hidden="true" />
             <span>{report.label}{report.type === "managerCommissions" ? " (histórico)" : ""}</span>
           </button>)}
         </div>
-      </section>
+      </section>}
       {renderGroup("-- Servicios --")}
     </div>
   );
@@ -783,7 +800,7 @@ function MdiWindow({ windowState, onClose, onFocus, onMove, onResize, onToggleMa
   };
   const sizeAction = maximized ? "Restaurar tamaño de" : "Maximizar";
   return (
-    <section ref={frame} className={`mdi-window ${windowState.isFocused ? "focused" : ""} ${windowState.page === "remittances" ? "remittances-mdi-window" : ""}${maximized ? " maximized" : ""}${resizing ? " resizing" : ""}`} style={{ left: windowState.x, top: windowState.y, width: windowState.width, height: windowState.height, zIndex: windowState.zIndex }} onPointerDownCapture={focusIfNeeded} role="dialog" aria-label={windowState.title}>
+    <section ref={frame} className={`mdi-window ${windowState.isFocused ? "focused" : ""} ${windowState.page === "remittances" || windowState.page === "remittancePayouts" ? "remittances-mdi-window" : ""}${maximized ? " maximized" : ""}${resizing ? " resizing" : ""}`} style={{ left: windowState.x, top: windowState.y, width: windowState.width, height: windowState.height, zIndex: windowState.zIndex }} onPointerDownCapture={focusIfNeeded} role="dialog" aria-label={windowState.title}>
       <div className="mdi-window-titlebar" onMouseDown={startDrag} onDoubleClick={(event) => { if (!(event.target as HTMLElement).closest("button")) onToggleMaximize(windowState.id); }}><span>{windowState.title}</span><div className="mdi-window-controls"><button type="button" className="mdi-window-maximize" aria-label={`${sizeAction} ${windowState.title}`} onMouseDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onToggleMaximize(windowState.id); }} title={`${sizeAction} ${windowState.title}`}>{maximized ? <Minimize2 size={13} /> : <Maximize2 size={13} />}</button><button type="button" aria-label={`Cerrar ${windowState.title}`} onMouseDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onClose(windowState.id); }} title={`Cerrar ${windowState.title}`}><X size={15} /></button></div></div>
       <div className="mdi-window-content">{children}</div><span className="mdi-resize-cue" aria-hidden="true" />
       {!maximized && RESIZE_EDGES.map((edge) => <span key={edge} className={`mdi-resize-handle mdi-resize-${edge}`} data-edge={edge} aria-hidden="true" onPointerDown={(event) => startResize(event, edge)} onPointerMove={moveResize} onPointerUp={endResize} onPointerCancel={endResize} onLostPointerCapture={endResize} />)}
@@ -3074,7 +3091,7 @@ type LegacyUserRecord = {
   id: string;
   name: string;
   username: string;
-  role: "No definido" | "Cliente" | "Usuario" | "Supervisor" | "Admin";
+  role: "No definido" | "Cliente" | "Usuario" | "Supervisor" | "Admin" | "Cajero";
   alias: string;
   active: boolean;
 };
@@ -3089,7 +3106,7 @@ type UserPermissionRecord = {
   permission: string;
 };
 
-const userRoleOptions: LegacyUserRecord["role"][] = ["No definido", "Cliente", "Usuario", "Supervisor", "Admin"];
+const userRoleOptions: LegacyUserRecord["role"][] = ["No definido", "Cliente", "Usuario", "Supervisor", "Admin", "Cajero"];
 const permissionCategoryOptions = ["No definido", "Sistema", "Archivos", "Edición", "Reportes y Procesamiento", "Monitoreo y Otros"];
 const permissionCatalogByCategory: Record<string, string[]> = {
   "No definido": ["No definido"],
@@ -3100,7 +3117,7 @@ const permissionCatalogByCategory: Record<string, string[]> = {
   "Monitoreo y Otros": ["Monitor de cobradores", "Monitor de zonas", "Ver trazas del sistema"],
 };
 
-const accountRoleLabel = (role: PublicAccount["role"]): LegacyUserRecord["role"] => role === "admin" ? "Admin" : "Usuario";
+const accountRoleLabel = (role: PublicAccount["role"]): LegacyUserRecord["role"] => role === "admin" ? "Admin" : role === "cashier" ? "Cajero" : "Usuario";
 
 const defaultLegacyUsers = (accounts: PublicAccount[]): LegacyUserRecord[] => {
   const source = accounts.length ? accounts : [
@@ -4808,6 +4825,9 @@ export default function App() {
   useEffect(() => {
     if (user && normalizeRole(user.role) === "SUPERVISOR")
       setExpandedGroups(["REPORTES & MONITOREO"]);
+    // The cashier works in Envíos and its box in Cuadres Diarios: both groups start unfolded.
+    if (user && normalizeRole(user.role) === "CASHIER")
+      setExpandedGroups(["REMESAS", "REPORTES & MONITOREO"]);
   }, [user]);
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -4841,14 +4861,10 @@ export default function App() {
   const openMdiWindow = useCallback((next: MdiPage, navKey = "") => {
     if (!isUiPageVisible(next) || !user || !canOpenPage(user, next)) return;
     setActiveNavKey(navKey);
-    const requestRemittanceReport = next === "remittances" && navKey === "reports-remittances";
     setMdiWindows((windows) => {
       const existing = windows.find((item) => item.page === next);
       const zIndex = nextZIndex();
-      if (existing) return focusWindowCollection(windows, existing.id, zIndex).map((item) =>
-        requestRemittanceReport && item.id === existing.id
-          ? { ...item, remittanceReportRequest: (item.remittanceReportRequest ?? 0) + 1 }
-          : item);
+      if (existing) return focusWindowCollection(windows, existing.id, zIndex);
 
       const offset = windows.length * 26;
       const compact = next === "controlPanel";
@@ -4862,7 +4878,6 @@ export default function App() {
         {
           id: `${next}-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`,
           page: next,
-          remittanceReportRequest: requestRemittanceReport ? 1 : undefined,
           title: mdiTitle(next),
           x: place(compact ? 180 : 118 + offset, width, desktop?.width),
           y: place(compact ? 78 : 78 + offset, height, desktop?.height),
@@ -4874,16 +4889,22 @@ export default function App() {
       ];
     });
   }, [nextZIndex, user]);
-  // "Entregas de Dinero" asks to open the remittances to deliver, filtered by a search.
+  // "Entregas de Dinero" asks to open Pagos de Envíos with the transfers to deliver, filtered by a search.
   const [remittancePayoutRequest, setRemittancePayoutRequest] = useState<{ id: number; search: string }>();
   useEffect(() => {
     const handler = (event: Event) => {
       const search = String((event as CustomEvent<{ search?: string }>).detail?.search ?? "").slice(0, INPUT_LIMITS.name);
       setRemittancePayoutRequest((current) => ({ id: (current?.id ?? 0) + 1, search }));
-      openMdiWindow("remittances", "remittances");
+      openMdiWindow("remittancePayouts", "remittance-payouts");
     };
     window.addEventListener("cyp-open-remittance-payout", handler);
     return () => window.removeEventListener("cyp-open-remittance-payout", handler);
+  }, [openMdiWindow]);
+  // "Ir a Caja de envíos" opens Cuadres Diarios on its Caja de envíos section.
+  const [settlementSectionRequest, setSettlementSectionRequest] = useState<{ id: number; section: DailySettlementSection }>();
+  const openRemittanceCash = useCallback(() => {
+    setSettlementSectionRequest((current) => ({ id: (current?.id ?? 0) + 1, section: "remittanceCash" }));
+    openMdiWindow("dailySettlements", "daily-settlements");
   }, [openMdiWindow]);
   const focusMdiWindow = useCallback((id: string) => {
     setMdiWindows((windows) => focusWindowCollection(windows, id, nextZIndex()));
@@ -4957,6 +4978,10 @@ export default function App() {
       )
       .slice(0, 3) ?? [];
   const effectiveUser = user ?? enrichUserRole({ id: "", name: "", role: "UNDEFINED" });
+  const isAdminRole = ["ADMIN", "SUPERADMIN"].includes(normalizeRole(effectiveUser.role));
+  const canViewRemittanceCash = hasRemittancePermission(effectiveUser, "remittances.cash.view");
+  // The search looks for clients and routes only: an account that can open neither has nothing to search.
+  const canSearchOperation = canOpenPage(effectiveUser, "clients") || canOpenPage(effectiveUser, "routes");
   return (
     <>
       {createPortal(<Toaster position="top-right" richColors closeButton style={{ zIndex: 2147483647 }} />, document.body)}
@@ -5024,9 +5049,9 @@ export default function App() {
                     <button
                       type="button"
                       className={`nav-group-trigger ${groupActive ? "active" : ""}`}
-                      aria-label={group}
-                      title={group}
-                      data-short-label={group === "ARCHIVOS" ? "AR" : group === "COBROS" ? "CO" : group === "PAGOS" ? "PA" : group === "REMESAS" ? "RM" : "RE"}
+                      aria-label={groupLabel(group)}
+                      title={groupLabel(group)}
+                      data-short-label={groupShortLabel(group)}
                       onClick={() => {
                         if (collapsed) {
                           setCollapsed(false);
@@ -5041,7 +5066,7 @@ export default function App() {
                       }}
                       aria-expanded={open}
                     >
-                      <span>{group}</span>
+                      <span>{groupLabel(group)}</span>
                       <ChevronDown size={14} />
                     </button>
                     <div className="nav-group-items" hidden={!open}>
@@ -5092,7 +5117,7 @@ export default function App() {
               })}
             </nav>
             <div className="sidebar-bottom">
-              <div className="daily-note">
+              {canOpenPage(effectiveUser, "dailySettlements") && <div className="daily-note">
                 <span className="daily-note-icon">
                   <ShieldCheck size={22} />
                 </span>
@@ -5110,7 +5135,7 @@ export default function App() {
                   Ir al cuadre
                   <ArrowRight size={14} />
                 </button>
-              </div>
+              </div>}
               <button
                 className="nav-item help-button"
                 aria-label="Soporte Técnico"
@@ -5166,10 +5191,11 @@ export default function App() {
                   </div>
                 </div>
                 <div className="topbar-actions">
-                <span className="status-badge">
+                {hasPermission(effectiveUser, 501) && <span className="status-badge">
                   {snapshot?.totals.activeCollectors ?? 0} cobradores en calle
-                </span>
-                {canOpenPage(effectiveUser, "dailySettlements") && <button type="button" onClick={() => openMdiWindow("dailySettlements", "daily-settlements")} title="Abrir Cuadres Diarios"
+                </span>}
+                {/* The state of the collector settlements (401), not the box of envíos. */}
+                {hasPermission(effectiveUser, 401) && <button type="button" onClick={() => openMdiWindow("dailySettlements", "daily-settlements")} title="Abrir Cuadres Diarios"
                   className={`status-badge ${
                     snapshot?.totals.difference ? "warning" : "ok"
                   }`}
@@ -5178,7 +5204,7 @@ export default function App() {
                     ? "Cuadre en progreso"
                     : "Cuadre al día"}
                 </button>}
-                <button
+                {canSearchOperation && <button
                   className="command-trigger"
                   aria-label="Buscar en tu operación"
                   title="Buscar en tu operación"
@@ -5187,7 +5213,7 @@ export default function App() {
                   <Search size={16} />
                   <span>Buscar en tu operación…</span>
                   <kbd>⌘ K</kbd>
-                </button>
+                </button>}
                 <span className="header-divider" />
                 <button
                   className={`icon-button notification-trigger ${pendingCollectionFunds.length ? "collections-pending" : ""}`}
@@ -5358,7 +5384,9 @@ export default function App() {
               ) : windowState.page === "exchangeRates" ? (
                 <ConnectedExchangeRates actorId={effectiveUser.id} isAdmin={["ADMIN", "SUPERADMIN"].includes(normalizeRole(effectiveUser.role)) && hasPermission(effectiveUser, 201) && hasRemittancePermission(effectiveUser, "remittances.rates.manage")} />
               ) : windowState.page === "remittances" ? (
-                <RemittancesWorkspace api={remittancesApi} user={effectiveUser} isAdmin={["ADMIN", "SUPERADMIN"].includes(normalizeRole(effectiveUser.role))} reportRequest={windowState.remittanceReportRequest} payoutRequest={remittancePayoutRequest} />
+                <RemittancesWorkspace api={remittancesApi} user={effectiveUser} isAdmin={isAdminRole} sections={["envios"]} fixedForm onOpenCash={canViewRemittanceCash ? openRemittanceCash : undefined} />
+              ) : windowState.page === "remittancePayouts" ? (
+                <RemittancesWorkspace api={remittancesApi} user={effectiveUser} isAdmin={isAdminRole} sections={["recibos"]} heading="Pagos de Envíos" payoutRequest={remittancePayoutRequest} onOpenCash={canViewRemittanceCash ? openRemittanceCash : undefined} />
               ) : windowState.page === "remittanceCommissions" ? (
                 <ConnectedRemittanceCommissions actor={effectiveUser} />
               ) : isConnectedCatalog(windowState.page) ? (
@@ -5388,7 +5416,8 @@ export default function App() {
                 })()
               ) : isMdiMonitoringPage(windowState.page) ? (
                 windowState.page === "dailySettlements" ? (
-                  <ConnectedSettlements snapshot={snapshot} actorId={effectiveUser.id} canManage={["ADMIN", "SUPERADMIN"].includes(normalizeRole(effectiveUser.role)) && hasPermission(effectiveUser, 402) && hasPermission(effectiveUser, 403)} onRefresh={refresh} />
+                  <DailySettlementsWindow snapshot={snapshot} user={effectiveUser} isAdmin={isAdminRole} showCollectors={hasPermission(effectiveUser, 401)} showRemittanceCash={canViewRemittanceCash}
+                    canManage={isAdminRole && hasPermission(effectiveUser, 402) && hasPermission(effectiveUser, 403)} onRefresh={refresh} sectionRequest={settlementSectionRequest} />
                 ) : (
                   <MonitorView
                     page={windowState.page}
@@ -5412,7 +5441,7 @@ export default function App() {
             </main>
           </div>
           <Modal
-            open={commandOpen}
+            open={commandOpen && canSearchOperation}
             onClose={() => setCommandOpen(false)}
             title="Encuentra lo que necesitas"
             description="Busca clientes o rutas. Atajo de teclado: Control o Comando + K."
@@ -8333,12 +8362,13 @@ function CashDeliveriesOperationalView({ snapshot, currentUser, onRefresh }: Rea
         deleteIcon="x"
         deleteTitle="Cancelar entrega"
       />
-      <form className="cash-delivery-remittance-search" role="search" aria-label="Buscar remesa para entregar" onSubmit={(event) => { event.preventDefault(); window.dispatchEvent(new CustomEvent("cyp-open-remittance-payout", { detail: { search: remittanceSearch.trim() } })); }}>
-        <strong>Entregar una remesa a su beneficiario</strong>
+      {/* Paying a transfer happens in Pagos de Envíos: without its permission there is nowhere to go. */}
+      {hasRemittancePermission(currentUser, "remittances.receipts") && <form className="cash-delivery-remittance-search" role="search" aria-label="Buscar envío para entregar" onSubmit={(event) => { event.preventDefault(); window.dispatchEvent(new CustomEvent("cyp-open-remittance-payout", { detail: { search: remittanceSearch.trim() } })); }}>
+        <strong>Entregar un envío a su beneficiario</strong>
         <label>Beneficiario o remitente:<input type="search" aria-label="Buscar beneficiario o remitente" maxLength={INPUT_LIMITS.name} value={remittanceSearch} onChange={(event) => setRemittanceSearch(event.target.value)} placeholder="Serie, teléfono, nombres, identificación o nota" /></label>
-        <button type="submit">Buscar remesa</button>
-        <small>Abre Envíos de Dinero → Recibos con las remesas pendientes que coinciden; allí se registra la entrega. La lista de abajo son las entregas de la oficina a los cobradores.</small>
-      </form>
+        <button type="submit">Buscar envío</button>
+        <small>Abre Pagos de Envíos con los envíos pendientes que coinciden; allí se registra la entrega. La lista de abajo son las entregas de la oficina a los cobradores.</small>
+      </form>}
       <div className={`cash-deliveries-layout ${filtersVisible ? "" : "filters-collapsed"}`}>
         {filtersVisible && <aside className="legacy-filter-panel cash-deliveries-filter-panel" aria-label="Panel de filtro de entregas">
           <h2>Panel de Filtro</h2>
@@ -10403,7 +10433,7 @@ function masterSpec(
   if (page === "exchangeRates")
     return {
       title: "Tasas de Cambio",
-      subtitle: "Tabla independiente para remesas y operaciones multimoneda.",
+      subtitle: "Tabla independiente para envíos de dinero y operaciones multimoneda.",
       columns: [
         { key: "date", label: "Fecha" },
         { key: "currency", label: "Moneda" },
@@ -10453,7 +10483,9 @@ function masterSpec(
         role:
           account.role === "admin"
             ? "Administración"
-            : `Cobrador · ${routeNameForCollector(account.collectorId)}`,
+            : account.role === "collector"
+              ? `Cobrador · ${routeNameForCollector(account.collectorId)}`
+              : accountRoleName(account.role),
         state: (
           <Badge status={account.status === "active" ? "active" : "offline"}>
             {account.status === "active" ? "Activo" : "Desactivado"}

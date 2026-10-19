@@ -57,8 +57,8 @@ export function ConnectedRemittanceCommissions({ actor }: { actor: AccessActor &
       window.dispatchEvent(new Event("cyp-remittance-commissions-updated"));
     } catch { /* The mutation lifecycle retains an uncertain intent for the same retry. */ }
   };
-  return <section className="legacy-mdi-view remittances" aria-label="Configuración de comisiones de remesas">
-    <div className="remittance-heading"><h2>Comisiones de remesas</h2><button type="button" disabled={loading || request.locked} onClick={() => setReload((value) => value + 1)}>Refrescar</button></div>
+  return <section className="legacy-mdi-view remittances" aria-label="Configuración de comisiones de envíos">
+    <div className="remittance-heading"><h2>Comisiones de envíos</h2><button type="button" disabled={loading || request.locked} onClick={() => setReload((value) => value + 1)}>Refrescar</button></div>
     <p className="remittance-help">Administración configura aquí los porcentajes aprobados por Gerencia. El cajero los recibe automáticamente. Los cambios no modifican envíos anteriores.</p>
     {loading && <p role="status">Cargando configuración…</p>}{error && <p role="alert" className="remittance-error">{error}</p>}{notice && <p role="status" className="remittance-notice">{notice}</p>}
     <form className="remittance-panel" onSubmit={prepare}>
@@ -70,7 +70,7 @@ export function ConnectedRemittanceCommissions({ actor }: { actor: AccessActor &
       <button className="remittance-primary" disabled={loading || !policy || !canManage || request.locked}>Revisar reparto</button>
     </form>
     {review && <LegacyDialog title="Confirmar configuración de comisiones" onClose={() => { if (!request.locked) setReview(null); }}>
-      <p>Comisión total: <strong>{review.transactionCommissionBps / 100}%</strong>. Gestor: <strong>{review.managerCommissionBps / 100}%</strong>.</p><p>Se aplicará únicamente a remesas nuevas.</p>
+      <p>Comisión total: <strong>{review.transactionCommissionBps / 100}%</strong>. Gestor: <strong>{review.managerCommissionBps / 100}%</strong>.</p><p>Se aplicará únicamente a envíos nuevos.</p>
       {request.error && <p className="remittance-error" role="alert">{request.error}</p>}
       {request.uncertain && <p>Conservamos la misma configuración para reintentar el guardado sin duplicarlo.</p>}
       <div className="legacy-dialog-actions"><button type="button" disabled={request.locked} onClick={() => setReview(null)}>Cancelar</button><button type="button" disabled={request.busy} onClick={() => void save()}>{request.busy ? "Guardando…" : request.uncertain ? "Reintentar guardado" : "Confirmar"}</button></div>

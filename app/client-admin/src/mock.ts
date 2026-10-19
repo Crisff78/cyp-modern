@@ -75,6 +75,15 @@ const users: Record<string, User & { password: string }> = {
     hasWorkPermission: false,
   },
 };
+// The practice cashier signs in with the same demo password as the other accounts.
+users["cajero@cyp.local"] = {
+  id: "UUID-222",
+  name: "Cajero de práctica",
+  role: "CASHIER",
+  password: users.admin.password,
+  isActive: true,
+  hasWorkPermission: true,
+};
 
 const initialSnapshot = (): Snapshot => ({
   businessDate: today(),
