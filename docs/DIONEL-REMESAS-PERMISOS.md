@@ -191,23 +191,38 @@ comprobados en el código y con pruebas:
 ### Ajustes de consulta y ventanas
 
 - En la ventana **Envíos de Dinero** de Administración la captura queda fija arriba
-  y el listado debajo, así que **Buscar** solo filtra el listado. En la PWA del
-  cobrador, enfocar o escribir en **Buscar** oculta la captura y deja el listado
-  disponible; no guarda ni borra el borrador, y **Nuevo envío** limpia los filtros
-  y prepara otra captura con foco en el remitente.
+  y el listado debajo, así que **Buscar** y **Estado** solo filtran el listado:
+  «Limpiar formulario» y un envío confirmado vacían la captura, devuelven el cursor
+  al remitente y conservan esos filtros. En la PWA del cobrador, enfocar o escribir
+  en **Buscar** oculta la captura y deja el listado disponible sin tocar el
+  borrador: si había algo capturado, **Volver a la captura** lo muestra tal como
+  quedó, y **Nuevo envío** limpia los filtros y el borrador y prepara otra captura
+  con foco en el remitente.
 - El detalle de un envío (en Envíos) o de un recibo (en **Pagos de Envíos**) es una
   ventana independiente: se mueve por su
-  título, se maximiza, se minimiza y se restaura desde el botón inferior. Al tocar
-  otra ventana se intercambia el primer plano. Cerrar el detalle no cierra Envíos.
+  título, se maximiza, se minimiza y se restaura desde el botón inferior. Los
+  recibos minimizados de las dos ventanas se colocan uno encima de otro, sin
+  taparse, y volver a pulsar la referencia de un recibo abierto o minimizado lo
+  restaura en primer plano. Al tocar otra ventana se intercambia el primer plano.
+  Cerrar el detalle (×, Escape) no cierra Envíos y devuelve el teclado a la
+  referencia que lo abrió; en Pagos de Envíos el cursor vuelve a **Buscar**, y
+  «Ir a Caja de envíos» deja el teclado en la caja. Con un detalle abierto la
+  captura sigue disponible y recibe el cursor como siempre, salvo mientras se
+  trabaja dentro del detalle.
 - Los importes principales y participantes quedan visibles; contactos completos
   y desglose de tasas/comisiones se consultan en secciones desplegables.
 - La revisión de pago/cancelación sigue siendo modal y bloqueante. Mover,
-  minimizar o cerrar el visor nunca registra una operación financiera.
+  minimizar o cerrar el visor nunca registra una operación financiera. El recibo
+  desde el que se pide esa revisión queda delante de su ventana mientras se revisa
+  y después de confirmarla, con el ratón o con el teclado.
 - Los reportes ya no son una pestaña de la captura. En Administración están en
   **Reportes y Monitoreo → Reportes → Envíos de Dinero**; en la PWA, en el acceso
   **Reportes** de su navegación principal. Se conservan filtros, CSV e impresión.
+  Una cuenta de la PWA que solo tiene `remittances.reports` ve **Reportes** y no
+  la vista **Envíos**, que necesita Envíos, Recibos o Caja.
 
-Verificación de estos ajustes: 14 pruebas específicas de navegador aprobadas,
+Verificación del PR 37 antes de integrarlo en esta rama (no corresponde al código
+integrado; su resultado está más abajo): 14 pruebas específicas de navegador aprobadas,
 incluyendo búsqueda, foco, arrastre, minimizar/restaurar, maximizar, cambio de
 recibo minimizado, revisión bloqueante de pago, reportes del menú, CSV e impresión
 aislada. La revisión completa ejecutó 558 pruebas sin fallos; 15 integraciones
@@ -220,6 +235,13 @@ desde `app/shared`, donde pnpm no los resuelve; `pnpm -r build` fallaba y los
 despliegues de Render de 331b59d y 7e7913b terminaron en error. Ahora usa iconos
 SVG propios y las dos aplicaciones resuelven los tipos de `react-dom` como los
 de `react`.
+
+Verificación del código integrado (rama `claude/envios-solo-envios-cajero`, encima
+de dbca188, con las correcciones de la revisión de la integración, 19 de octubre
+de 2026): `pnpm -r typecheck` 3/3 y las tres partes de `pnpm test` sin fallos:
+servidor 381 pruebas (366 aprobadas y 15 integraciones PostgreSQL omitidas por
+requerir sus entornos dedicados), PWA 15 y Administración 281 (todos los archivos
+de `app/client-admin/test` y `app/client-admin/tests`, con Edge, en serie).
 
 ## Mantenimiento administrativo único
 

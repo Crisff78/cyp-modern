@@ -1,5 +1,6 @@
 import {
   isValidElement,
+  type FocusEvent as ReactFocusEvent,
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
@@ -774,7 +775,9 @@ const desktopSize = (): { width: number; height: number } | undefined => {
   return canvas && canvas.clientWidth > 0 && canvas.clientHeight > 0 ? { width: canvas.clientWidth, height: canvas.clientHeight } : undefined;
 };
 
-function MdiWindow({ windowState, onClose, onFocus, onMove, onResize, onToggleMaximize, children }: Readonly<{ windowState: MdiWindowState; onClose: (id: string) => void; onFocus: (id: string) => void; onMove: (id: string, x: number, y: number) => void; onResize: (id: string, rect: WindowRect) => void; onToggleMaximize: (id: string) => void; children: ReactNode }>) {
+// activateOnFocus: no window of the desktop is active (a receipt window took the front); the keyboard coming back into
+// this one, as when that receipt closes, makes it the active window again.
+function MdiWindow({ windowState, onClose, onFocus, onMove, onResize, onToggleMaximize, activateOnFocus = false, children }: Readonly<{ windowState: MdiWindowState; onClose: (id: string) => void; onFocus: (id: string) => void; onMove: (id: string, x: number, y: number) => void; onResize: (id: string, rect: WindowRect) => void; onToggleMaximize: (id: string) => void; activateOnFocus?: boolean; children: ReactNode }>) {
   const [drag, setDrag] = useState<null | { startX: number; startY: number; x: number; y: number }>(null);
   const frame = useRef<HTMLElement>(null);
   // A border or corner being dragged: where the pointer and the window were when it started.
@@ -791,9 +794,18 @@ function MdiWindow({ windowState, onClose, onFocus, onMove, onResize, onToggleMa
   }, [drag, onMove, windowState.id]);
   const focusIfNeeded = (event: ReactPointerEvent<HTMLElement>) => {
     // A portal is a React child but an independent desktop window. Do not
-    // raise this parent over a click that belongs to the portaled receipt.
-    if (!frame.current?.contains(event.target as Node)) return;
+    // raise this parent over a click that belongs to the portaled receipt,
+    // nor over one in a native modal dialog (the review of a payment or a
+    // cancellation asked from that receipt, drawn above every window).
+    const target = event.target as Element;
+    if (!frame.current?.contains(target) || target.closest("dialog")) return;
     if (!windowState.isFocused) onFocus(windowState.id);
+  };
+  // The same rule for the keyboard: a focus inside the portaled receipt belongs to the receipt, and one inside a
+  // native dialog asked from it does not raise this window over it.
+  const activateIfNeeded = (event: ReactFocusEvent<HTMLElement>) => {
+    const target = event.target as Element;
+    if (activateOnFocus && !windowState.isFocused && frame.current?.contains(target) && !target.closest("dialog")) onFocus(windowState.id);
   };
   const startDrag = (event: ReactMouseEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
@@ -838,7 +850,7 @@ function MdiWindow({ windowState, onClose, onFocus, onMove, onResize, onToggleMa
   };
   const sizeAction = maximized ? "Restaurar tamaño de" : "Maximizar";
   return (
-    <section ref={frame} className={`mdi-window ${windowState.isFocused ? "focused" : ""} ${windowState.page === "remittances" || windowState.page === "remittancePayouts" ? "remittances-mdi-window" : ""}${maximized ? " maximized" : ""}${resizing ? " resizing" : ""}`} style={{ left: windowState.x, top: windowState.y, width: windowState.width, height: windowState.height, zIndex: windowState.zIndex }} onPointerDownCapture={focusIfNeeded} role="dialog" aria-label={windowState.title}>
+    <section ref={frame} className={`mdi-window ${windowState.isFocused ? "focused" : ""} ${windowState.page === "remittances" || windowState.page === "remittancePayouts" ? "remittances-mdi-window" : ""}${maximized ? " maximized" : ""}${resizing ? " resizing" : ""}`} style={{ left: windowState.x, top: windowState.y, width: windowState.width, height: windowState.height, zIndex: windowState.zIndex }} onPointerDownCapture={focusIfNeeded} onFocusCapture={activateIfNeeded} role="dialog" aria-label={windowState.title}>
       <div className="mdi-window-titlebar" onMouseDown={startDrag} onDoubleClick={(event) => { if (!(event.target as HTMLElement).closest("button")) onToggleMaximize(windowState.id); }}><span>{windowState.title}</span><div className="mdi-window-controls"><button type="button" className="mdi-window-maximize" aria-label={`${sizeAction} ${windowState.title}`} onMouseDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onToggleMaximize(windowState.id); }} title={`${sizeAction} ${windowState.title}`}>{maximized ? <Minimize2 size={13} /> : <Maximize2 size={13} />}</button><button type="button" aria-label={`Cerrar ${windowState.title}`} onMouseDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onClose(windowState.id); }} title={`Cerrar ${windowState.title}`}><X size={15} /></button></div></div>
       <div className="mdi-window-content">{children}</div><span className="mdi-resize-cue" aria-hidden="true" />
       {!maximized && RESIZE_EDGES.map((edge) => <span key={edge} className={`mdi-resize-handle mdi-resize-${edge}`} data-edge={edge} aria-hidden="true" onPointerDown={(event) => startResize(event, edge)} onPointerMove={moveResize} onPointerUp={endResize} onPointerCancel={endResize} onLostPointerCapture={endResize} />)}
@@ -5430,6 +5442,7 @@ export default function App() {
               onMove={moveMdiWindow}
               onResize={resizeMdiWindow}
               onToggleMaximize={toggleMaximizeMdiWindow}
+              activateOnFocus={!mdiWindows.some((item) => item.isFocused)}
             >
               <PageAccessContext.Provider value={{ actor: effectiveUser, page: windowState.page }}>
               {windowState.page === "controlPanel" ? (

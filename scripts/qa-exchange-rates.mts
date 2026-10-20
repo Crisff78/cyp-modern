@@ -1,4 +1,6 @@
 // Manual browser fixture: actual rate screens + actual API; every write stays in MemoryStore.
+// "?view=workspace" opens the sending window of Administración (Envíos only, form fixed above its list): the capture
+// has no rate maintenance; it quotes with the rate of the day saved in Tasas de Cambio.
 // No .env files, database, shared browser credentials or remote services are loaded.
 import fs from "node:fs";
 import os from "node:os";
@@ -31,7 +33,7 @@ import RemittancesWorkspace from ${source("app/shared/remittances/RemittancesWor
 import {remittancesApi} from ${source("app/client-admin/src/remittancesApi.ts")};
 const user=${JSON.stringify(user)};
 const workspace=new URLSearchParams(location.search).get("view")==="workspace";
-createRoot(document.getElementById("root")).render(workspace?<RemittancesWorkspace api={remittancesApi} user={user} isAdmin={true} initialTab="tasas"/>:<ConnectedExchangeRates actorId={user.id} isAdmin={true}/>);
+createRoot(document.getElementById("root")).render(workspace?<RemittancesWorkspace api={remittancesApi} user={user} isAdmin={true} sections={["envios"]} fixedForm/>:<ConnectedExchangeRates actorId={user.id} isAdmin={true}/>);
 `, "utf8");
 const [{ build }, { default: react }] = await Promise.all([
   import(pathToFileURL(localRequire.resolve("vite")).href),
@@ -42,7 +44,7 @@ const writes: Array<{ path: string; status: number; key: string; body: unknown; 
 let loseNextResponse = false;
 let rejectNextSave = false;
 let invalidNextResponse = false;
-const html = `<!doctype html><html lang="es"><meta charset="utf-8"><link rel="stylesheet" href="/fixture.css"><style>body{font:14px Arial;background:#eef2f4}button,input,select{margin:4px}table{border-collapse:collapse}th,td{padding:6px;border:1px solid #bbb}.legacy-dialog-overlay{position:fixed;inset:0;display:grid;place-items:center;background:#0003;z-index:100}.legacy-dialog{padding:15px;background:white;min-width:500px;max-height:90vh;overflow:auto}.legacy-dialog-titlebar,.legacy-dialog-actions{display:flex;justify-content:space-between;gap:8px}.legacy-dialog-form{display:grid;gap:10px}.qa-controls{background:#fff8d0;padding:12px}</style><div class="qa-controls"><strong>QA aislada: datos ficticios en memoria</strong> <a href="/">Tasas de Cambio</a> · <a href="/?view=workspace">Envíos/Tasas</a><button onclick="fetch('/qa/lose-next',{method:'POST'}).then(()=>this.textContent='Respuesta perdida preparada')">Perder próxima respuesta</button><button onclick="fetch('/qa/reject-next',{method:'POST'}).then(()=>this.textContent='Rechazo preparado')">Rechazar próximo guardado</button><button onclick="fetch('/qa/invalid-next',{method:'POST'}).then(()=>this.textContent='Respuesta incompleta preparada')">Devolver respuesta incompleta</button><a href="/qa/status" target="_blank">Estado de QA</a></div><div id="root"></div><script>localStorage.setItem('cyp-admin-token',${JSON.stringify(token)});</script><script type="module" src="/fixture.js"></script></html>`;
+const html = `<!doctype html><html lang="es"><meta charset="utf-8"><link rel="stylesheet" href="/fixture.css"><style>body{font:14px Arial;background:#eef2f4}button,input,select{margin:4px}table{border-collapse:collapse}th,td{padding:6px;border:1px solid #bbb}.legacy-dialog-overlay{position:fixed;inset:0;display:grid;place-items:center;background:#0003;z-index:100}.legacy-dialog{padding:15px;background:white;min-width:500px;max-height:90vh;overflow:auto}.legacy-dialog-titlebar,.legacy-dialog-actions{display:flex;justify-content:space-between;gap:8px}.legacy-dialog-form{display:grid;gap:10px}.qa-controls{background:#fff8d0;padding:12px}</style><div class="qa-controls"><strong>QA aislada: datos ficticios en memoria</strong> <a href="/">Tasas de Cambio</a> · <a href="/?view=workspace">Envíos de Dinero (cotización con la tasa del día)</a><button onclick="fetch('/qa/lose-next',{method:'POST'}).then(()=>this.textContent='Respuesta perdida preparada')">Perder próxima respuesta</button><button onclick="fetch('/qa/reject-next',{method:'POST'}).then(()=>this.textContent='Rechazo preparado')">Rechazar próximo guardado</button><button onclick="fetch('/qa/invalid-next',{method:'POST'}).then(()=>this.textContent='Respuesta incompleta preparada')">Devolver respuesta incompleta</button><a href="/qa/status" target="_blank">Estado de QA</a></div><div id="root"></div><script>localStorage.setItem('cyp-admin-token',${JSON.stringify(token)});</script><script type="module" src="/fixture.js"></script></html>`;
 const server = createServer(async (request, response) => {
   try {
     const pathname = new URL(request.url ?? "/", "http://127.0.0.1").pathname;

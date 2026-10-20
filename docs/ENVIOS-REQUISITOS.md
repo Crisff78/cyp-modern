@@ -189,5 +189,8 @@ envíos»; el conmutador aparece solo si la cuenta tiene ambas. Admin abre la ca
 de cualquier operador; el Cajero, solo la suya; Cobrador, Usuario y Supervisor no
 abren cajas.
 
-En la terminal del cobrador la vista de envíos conserva sus pestañas Envíos,
-Recibos, Caja y Reportes, según los permisos de la cuenta, y el botón «Nuevo envío».
+En la terminal del cobrador la vista Envíos conserva sus pestañas Envíos, Recibos
+y Caja, según los permisos de la cuenta, y el botón «Nuevo envío». Los reportes de
+envíos se abren desde su propio acceso **Reportes** de la barra inferior
+(`remittances.reports`); una cuenta que solo tiene esos reportes ve Reportes y no
+la vista Envíos.

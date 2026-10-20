@@ -439,6 +439,155 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
       } finally { await context.close(); }
     });
 
+    // Corrections of the review of the merge with PR 37 (modeless receipt windows, filters and focus).
+    const receiptOf = (page: any, transfer: { envioReference: string; reciboReference: string }) => {
+      const title = `${transfer.envioReference} · ${transfer.reciboReference}`;
+      return { title, detail: page.getByRole("dialog", { name: title, exact: true }) };
+    };
+    const receiptShown = (detail: any) => detail.getByRole("heading", { name: "Registro del recibo", exact: true }).waitFor();
+    const activeWindow = (page: any, name: string) => page.locator(`section.mdi-window[aria-label="${name}"]`).evaluate((element: Element) => element.classList.contains("focused"));
+    await t.test("Admin, sending window: Buscar and Estado survive «Limpiar formulario» and a confirmed send, and the cursor returns to Remitente with a receipt open", async () => {
+      const shown = await adminTransfer(4_000);
+      const { context, page } = await open(adminToken);
+      try {
+        const envios = await sendingWindow(page);
+        const search = envios.getByLabel("Buscar", { exact: true }), status = envios.locator(".remittance-toolbar select");
+        await search.fill(shown.envioReference); await status.selectOption("pending");
+        // The receipt of an earlier send stays open, set aside behind the window while the next one is captured.
+        await envios.getByRole("button", { name: shown.envioReference, exact: true }).click();
+        const { detail } = receiptOf(page, shown); await receiptShown(detail);
+        await page.getByRole("dialog", { name: "Envíos de Dinero", exact: true }).locator(".mdi-window-titlebar > span").click({ position: { x: 5, y: 8 } });
+        await envios.getByRole("button", { name: "Limpiar formulario", exact: true }).click();
+        await waitForFocus(page, '[data-client-side="sender"] input');
+        assert.deepEqual([await search.inputValue(), await status.inputValue()], [shown.envioReference, "pending"], "«Limpiar formulario» empties only the capture");
+        await choose(envios, "Remitente", sender.code); await choose(envios, "Destinatario", recipient.code);
+        await envios.getByLabel("Moneda del remitente").selectOption("DOP"); await envios.getByLabel("Moneda del destinatario").selectOption("DOP");
+        await envios.getByLabel("Monto a enviar (DOP)", { exact: true }).fill("150");
+        await envios.getByRole("button", { name: "Calcular cotización", exact: true }).click();
+        await envios.getByRole("button", { name: "Revisar y confirmar envío", exact: true }).click();
+        await confirmIn(page, "Confirmar envío");
+        const print = page.getByRole("dialog", { name: "¿Quieres imprimir el recibo?", exact: true });
+        await print.getByRole("button", { name: "No imprimir", exact: true }).click(); await print.waitFor({ state: "detached" });
+        await waitForFocus(page, '[data-client-side="sender"] input');
+        assert.equal(await envios.getByRole("listbox", { name: "Clientes para remitente", exact: true }).count(), 0, "the cursor waits in the sender without unfolding its catalog");
+        assert.equal(await envios.getByRole("combobox", { name: "Remitente", exact: true }).inputValue(), "", "the confirmed send emptied the capture");
+        assert.equal(await detail.isVisible(), true, "the earlier receipt is still open");
+        assert.deepEqual([await search.inputValue(), await status.inputValue()], [shown.envioReference, "pending"], "a confirmed send keeps the filters of the list below");
+      } finally { await context.close(); }
+    });
+
+    await t.test("Admin: closing a receipt with Escape or × gives the keyboard back to its reference and makes its window the active one again", async () => {
+      const shown = await adminTransfer(4_500);
+      const { context, page } = await open(adminToken);
+      try {
+        const envios = await sendingWindow(page);
+        const reference = envios.getByRole("button", { name: shown.envioReference, exact: true });
+        const { title, detail } = receiptOf(page, shown);
+        for (const close of ["Escape", "×"] as const) {
+          await reference.focus(); await page.keyboard.press("Enter");
+          await receiptShown(detail); await waitForFocus(page, ".remittance-receipt-window");
+          assert.equal(await activeWindow(page, "Envíos de Dinero"), false, "the receipt is the active window");
+          if (close === "Escape") await page.keyboard.press("Escape");
+          else await detail.getByRole("button", { name: `Cerrar ${title}`, exact: true }).click();
+          await detail.waitFor({ state: "detached" });
+          assert.equal(await reference.evaluate((element: Element) => element === document.activeElement), true, `${close} gives the keyboard back to ${shown.envioReference}`);
+          await page.waitForFunction(() => document.querySelector('section.mdi-window[aria-label="Envíos de Dinero"]')?.classList.contains("focused") === true, undefined, { timeout: 5000 }).catch(() => undefined);
+          assert.equal(await activeWindow(page, "Envíos de Dinero"), true, `after ${close} the sending window is the active one`);
+        }
+      } finally { await context.close(); }
+    });
+
+    await t.test("Admin: the minimized receipts of Envíos and Pagos de Envíos do not cover each other, and choosing a reference again restores its receipt", async () => {
+      const sent = await adminTransfer(4_600), paid = await adminTransfer(4_700);
+      const { context, page } = await open(adminToken);
+      try {
+        const envios = await sendingWindow(page);
+        const sentReference = envios.getByRole("button", { name: sent.envioReference, exact: true });
+        const first = receiptOf(page, sent), second = receiptOf(page, paid);
+        await sentReference.click(); await receiptShown(first.detail);
+        await first.detail.getByRole("button", { name: `Minimizar ${first.title}`, exact: true }).click(); await first.detail.waitFor({ state: "hidden" });
+        await page.locator(".sidebar").getByRole("button", { name: "Pagos de Envíos", exact: true }).click();
+        const payouts = page.getByRole("region", { name: "Pagos de Envíos", exact: true });
+        await payouts.getByRole("button", { name: paid.reciboReference, exact: true }).click(); await receiptShown(second.detail);
+        await second.detail.getByRole("button", { name: `Minimizar ${second.title}`, exact: true }).click(); await second.detail.waitFor({ state: "hidden" });
+        const restoreFirst = page.getByRole("button", { name: `Restaurar ${first.title}`, exact: true }), restoreSecond = page.getByRole("button", { name: `Restaurar ${second.title}`, exact: true });
+        const [a, b] = [await box(restoreFirst), await box(restoreSecond)];
+        assert.ok(a.y + a.height <= b.y || b.y + b.height <= a.y || a.x + a.width <= b.x || b.x + b.width <= a.x, `the restore buttons do not overlap: ${JSON.stringify([a, b])}`);
+        for (const [title, part] of [[first.title, a], [second.title, b]] as const)
+          assert.equal(await page.evaluate(({ x, y }: { x: number; y: number }) => document.elementFromPoint(x, y)?.closest("button")?.getAttribute("aria-label"), { x: part.x + part.width / 2, y: part.y + part.height / 2 }), `Restaurar ${title}`, "each restore button is the one under the pointer");
+        await page.screenshot({ path: path.join(output, "minimized-receipts.png") });
+        // Choosing the reference of the minimized receipt again brings it back on top, with the keyboard.
+        await page.locator(".desktop-launchers").getByRole("button", { name: "ENVÍO DE DINERO", exact: true }).click();
+        await sentReference.click();
+        await first.detail.waitFor({ state: "visible", timeout: 5000 });
+        await waitForFocus(page, ".remittance-receipt-window");
+        assert.equal(await restoreFirst.count(), 0, "its restore button is gone");
+        assert.equal(await restoreSecond.count(), 1, "the other minimized receipt waits in its place");
+        const zIndex = (locator: any) => locator.evaluate((element: Element) => Number(getComputedStyle(element).zIndex));
+        assert.ok(await zIndex(first.detail) > await zIndex(page.getByRole("dialog", { name: "Envíos de Dinero", exact: true })), "the receipt is on top of its window");
+      } finally { await context.close(); }
+    });
+
+    await t.test("the collector terminal: Buscar hides the capture without losing it; «Volver a la captura» shows the draft and «Nuevo envío» starts another", async () => {
+      const context = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: "es-DO", timezoneId: "America/Santo_Domingo", serviceWorkers: "block" });
+      try {
+        await context.addInitScript((token: string) => sessionStorage.setItem("cyp-collector-token", token), collectorToken);
+        await block(context);
+        const page = await context.newPage(); page.setDefaultTimeout(15000); page.on("pageerror", (error: Error) => pageErrors.push(error.message));
+        await page.goto(`${origin}/collector/?view=remittances`);
+        const own = (await ok("GET", "/api/envios/snapshot", undefined, collectorToken)).clients.find((client: { canSendFrom: boolean; active: boolean }) => client.canSendFrom && client.active);
+        const workspace = page.getByRole("region", { name: "Envíos de Dinero", exact: true });
+        const form = workspace.getByRole("form", { name: "Nuevo envío", exact: true });
+        await choose(workspace, "Remitente", own.code);
+        const amount = workspace.getByLabel(/^Monto a enviar \(/); await amount.fill("1500");
+        const selection = workspace.locator('[data-client-side="sender"] .remittance-client-selection');
+        const chosen = await selection.innerText(); assert.match(chosen, /^Seleccionado: /);
+        const search = workspace.getByLabel("Buscar", { exact: true }); await search.fill("ENV");
+        await form.waitFor({ state: "detached" });
+        await workspace.getByRole("button", { name: "Volver a la captura", exact: true }).click();
+        await form.waitFor();
+        assert.deepEqual([await amount.inputValue(), await selection.innerText(), await search.inputValue()], ["1500", chosen, "ENV"], "the draft comes back as it was, and the search stays");
+        await waitForFocus(page, '[data-client-side="sender"] input');
+        assert.equal(await workspace.getByRole("listbox", { name: "Clientes para remitente", exact: true }).count(), 0, "the cursor waits in the sender without unfolding its catalog over the draft");
+        await search.focus(); await form.waitFor({ state: "detached" });
+        await workspace.getByRole("button", { name: "Nuevo envío", exact: true }).click(); await form.waitFor();
+        assert.deepEqual([await amount.inputValue(), await search.inputValue()], ["", ""], "«Nuevo envío» clears the draft and the filters");
+        assert.equal(await workspace.getByRole("button", { name: "Volver a la captura", exact: true }).count(), 0);
+      } finally { await context.close(); }
+    });
+
+    await t.test("Admin: the review of a cancellation or a payment asked from a receipt does not bring its window over the receipt", async () => {
+      const toCancel = await adminTransfer(4_800), toPay = await adminTransfer(4_900);
+      const { context, page } = await open(adminToken);
+      try {
+        const zIndex = (locator: any) => locator.evaluate((element: Element) => Number(getComputedStyle(element).zIndex));
+        const onTop = async (receipt: any, name: string, moment: string) => {
+          assert.ok(await zIndex(receipt) > await zIndex(page.getByRole("dialog", { name, exact: true })), `${moment}: the receipt stays above ${name}`);
+          assert.equal(await activeWindow(page, name), false, `${moment}: ${name} is not the active window`);
+        };
+        const envios = await sendingWindow(page);
+        const cancel = receiptOf(page, toCancel);
+        await envios.getByRole("button", { name: toCancel.envioReference, exact: true }).click(); await receiptShown(cancel.detail);
+        await cancel.detail.getByLabel("Motivo de cancelación", { exact: true }).fill("Revisión del orden de las ventanas");
+        await cancel.detail.getByRole("button", { name: "Revisar cancelación", exact: true }).click();
+        await page.getByRole("dialog", { name: "Cancelar envío pendiente", exact: true }).waitFor();
+        await onTop(cancel.detail, "Envíos de Dinero", "reviewing the cancellation");
+        await confirmIn(page, "Cancelar envío pendiente");
+        await cancel.detail.locator(".remittance-status.cancelled").waitFor();
+        await onTop(cancel.detail, "Envíos de Dinero", "after the cancellation");
+        await page.locator(".sidebar").getByRole("button", { name: "Pagos de Envíos", exact: true }).click();
+        const payouts = page.getByRole("region", { name: "Pagos de Envíos", exact: true });
+        const pay = receiptOf(page, toPay);
+        await payouts.getByRole("button", { name: toPay.reciboReference, exact: true }).click(); await receiptShown(pay.detail);
+        await pay.detail.getByRole("button", { name: "Registrar pago completo", exact: true }).click();
+        await page.getByRole("dialog", { name: "Confirmar entrega al destinatario", exact: true }).waitFor();
+        await onTop(pay.detail, "Pagos de Envíos", "reviewing the payment");
+        await confirmIn(page, "Confirmar entrega al destinatario");
+        await pay.detail.locator(".remittance-status.paid").waitFor();
+        await onTop(pay.detail, "Pagos de Envíos", "after the payment");
+      } finally { await context.close(); }
+    });
+
 
     await t.test("no page errors and no external requests", async () => {
       assert.deepEqual(pageErrors, []);

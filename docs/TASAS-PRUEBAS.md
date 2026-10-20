@@ -62,7 +62,9 @@ pnpm exec tsx ../../scripts/qa-exchange-rates.mts
 
 El script construye los dos componentes y una API real con MemoryStore,
 sin leer `.env`, sin base de datos y escuchando solo en loopback. Abre la
-dirección que imprime. Los controles amarillos simulan una respuesta perdida,
+dirección que imprime: la página principal es **Tasas de Cambio** y el enlace
+«Envíos de Dinero» abre la ventana de envíos de Administración, que no mantiene
+tasas y cotiza con la tasa del día registrada. Los controles amarillos simulan una respuesta perdida,
 un rechazo de jornada o una respuesta incompleta; deben prepararse antes de
 abrir la confirmación. `/qa/status` permite cotejar claves, respuestas e historial
 del estado ficticio. Ctrl+C cierra el fixture y elimina su salida temporal.

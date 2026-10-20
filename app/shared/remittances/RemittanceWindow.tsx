@@ -10,11 +10,17 @@ const ReceiptText = ({ size }: { size?: number }) => <Icon size={size}><path d="
 
 type Area = { width: number; height: number };
 let fallbackZ = 200;
+// The minimized receipts of every window of the desktop wait stacked in one tray, so none covers another.
+const trayOf = (parent: HTMLElement) => parent.querySelector<HTMLElement>(":scope > .remittance-window-tray") ??
+  parent.appendChild(Object.assign(document.createElement("div"), { className: "remittance-window-tray" }));
 
+// returnFocus: cleared by the window that closes the receipt to go to another window, which takes the keyboard.
+// revealVersion: raised when the reference of this receipt is chosen again; a minimized or covered receipt comes back on top.
 /** Modeless receipt viewer. Financial confirmations still use native modal dialogs. */
-export function RemittanceWindow({ title, children, onClose, desktopId, nextZIndex }: {
+export function RemittanceWindow({ title, children, onClose, desktopId, nextZIndex, returnFocus, revealVersion = 0 }: {
   title: string; children: ReactNode; onClose: () => void;
   desktopId?: string; nextZIndex?: () => number;
+  returnFocus?: { readonly current: boolean }; revealVersion?: number;
 }) {
   const host = desktopId ? document.getElementById(desktopId) : null;
   const measure = (): Area => ({ width: host?.clientWidth ?? window.innerWidth, height: host?.clientHeight ?? window.innerHeight });
@@ -23,12 +29,29 @@ export function RemittanceWindow({ title, children, onClose, desktopId, nextZInd
   const [maximized, setMaximized] = useState(false);
   const [minimized, setMinimized] = useState(false);
   const [zIndex, setZIndex] = useState(() => ++fallbackZ);
+  const [tray, setTray] = useState<HTMLElement | null>(null);
   const frame = useRef<HTMLElement>(null);
+  const opener = useRef<Element | null>(null);
+  const focusBack = useRef(returnFocus);
+  focusBack.current = returnFocus;
+  const revealed = useRef(revealVersion);
   const drag = useRef<{ pointer: number; x: number; y: number; left: number; top: number } | null>(null);
   const raise = () => setZIndex(nextZIndex?.() ?? ++fallbackZ);
   useEffect(() => {
+    const node = frame.current;
+    opener.current = document.activeElement;
     raise();
-    frame.current?.focus();
+    node?.focus();
+    // Closing with ×, Escape or «Cerrar» gives the keyboard back to what opened the receipt while it is still on the
+    // page, as the modal detail did. A focus already taken elsewhere stays there, and going to another window leaves it there.
+    return () => {
+      const target = opener.current, active = document.activeElement;
+      if (focusBack.current?.current === false || !(target instanceof HTMLElement) || !target.isConnected) return;
+      if (!active || active === document.body || node?.contains(active)) target.focus();
+    };
+  }, []);
+  useEffect(() => {
+    setTray(trayOf(host ?? document.body));
     const update = () => setArea(measure());
     const observer = host ? new ResizeObserver(update) : null;
     if (host) observer?.observe(host);
@@ -38,7 +61,18 @@ export function RemittanceWindow({ title, children, onClose, desktopId, nextZInd
   const width = Math.min(820, area.width - 16), height = Math.min(660, area.height - 32);
   const left = Math.max(8, Math.min(position.x, area.width - width - 8));
   const top = Math.max(8, Math.min(position.y, area.height - height - 8));
-  const restore = () => { setMinimized(false); raise(); window.requestAnimationFrame(() => frame.current?.focus()); };
+  // The receipt takes the keyboard once it is drawn again (a hidden window cannot be focused).
+  const [focusRequest, setFocusRequest] = useState(0);
+  useEffect(() => { if (focusRequest) frame.current?.focus(); }, [focusRequest]);
+  const restore = () => { setMinimized(false); raise(); setFocusRequest((value) => value + 1); };
+  useEffect(() => {
+    if (revealVersion === revealed.current) return;
+    revealed.current = revealVersion;
+    // The reference chosen again is what the keyboard goes back to when the receipt closes.
+    const active = document.activeElement;
+    if (active && active !== document.body && !frame.current?.contains(active)) opener.current = active;
+    restore();
+  }, [revealVersion]);
   return createPortal(<>
     <section ref={frame} role="dialog" aria-label={title} aria-modal="false" tabIndex={-1}
       className="remittances-dialog remittance-receipt-window" onPointerDownCapture={raise}
@@ -65,6 +99,6 @@ export function RemittanceWindow({ title, children, onClose, desktopId, nextZInd
       </header>
       <div className="remittances-dialog-body remittance-receipt-body">{children}</div>
     </section>
-    {minimized && <button className="remittance-window-restore" type="button" onClick={restore} title={`Restaurar ${title}`} aria-label={`Restaurar ${title}`}><ReceiptText size={16} />{title}</button>}
+    {minimized && tray && createPortal(<button className="remittance-window-restore" type="button" onClick={restore} title={`Restaurar ${title}`} aria-label={`Restaurar ${title}`}><ReceiptText size={16} />{title}</button>, tray)}
   </>, host ?? document.body);
 }

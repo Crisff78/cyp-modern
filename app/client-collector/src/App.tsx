@@ -52,7 +52,8 @@ import {
 import { CollectionSheet } from "./CollectionSheet";
 import { ReceiptView } from "./ReceiptView";
 import RemittancesWorkspace from "../../shared/remittances/RemittancesWorkspace";
-import { hasPermission, hasRemittanceAccess, hasRemittancePermission } from "../../shared/access.mjs";
+import { hasPermission, hasRemittancePermission } from "../../shared/access.mjs";
+import { collectorViewAllowed, type CollectorView } from "./services/views";
 import { remittancesApi } from "./remittancesApi";
 import { isMockToken } from "./mock";
 import { GeoMap } from "../../client-admin/src/GeoMap";
@@ -74,7 +75,7 @@ import type {
 import { canAccessCollector, enrichUserRole, isSuspendedUser } from "./types";
 
 const APP_BASE_URL = import.meta.env.BASE_URL;
-type View = "route" | "payouts" | "receipts" | "pocket" | "remittances" | "reports";
+type View = CollectorView;
 type Filter = "Todos" | "Pendientes" | "Cobrados" | "Con atraso";
 type RouteMode = "Por rutas" | "Por zonas" | "Rutas y zonas";
 type InstallEvent = Event & {
@@ -395,7 +396,7 @@ export function App() {
     (collector?.collectionLimit ?? 0) + (collector?.payoutLimit ?? 0);
   // Views this account may open; "Mi bolsillo" is always one of them. A view without permission
   // (the default "Mi ruta", or a ?view link) shows the first allowed one instead of a blank page.
-  const allowedTabs = tabs.filter(({ id }) => id === "pocket" || (id === "reports" ? hasRemittancePermission(user, "remittances.reports") : id === "remittances" ? hasRemittanceAccess(user) : hasPermission(user, id === "route" ? 300 : id === "payouts" ? 370 : 320)));
+  const allowedTabs = tabs.filter(({ id }) => collectorViewAllowed(user, id));
   const shownView: View = allowedTabs.some(({ id }) => id === view) ? view : allowedTabs[0].id;
   return (
     <div className="app-shell">
@@ -531,7 +532,7 @@ export function App() {
             {shownView === "receipts" && user && hasPermission(user, 320) && (
               <ReceiptsView snapshot={snapshot} onOpen={openReceipt} />
             )}
-            {shownView === "remittances" && user && hasRemittanceAccess(user) && <RemittancesWorkspace api={remittancesApi} user={user} isAdmin={String(user.role).toUpperCase().replace("ROLE_", "") === "SUPERADMIN"} />}
+            {shownView === "remittances" && user && collectorViewAllowed(user, "remittances") && <RemittancesWorkspace api={remittancesApi} user={user} isAdmin={String(user.role).toUpperCase().replace("ROLE_", "") === "SUPERADMIN"} />}
             {shownView === "reports" && user && hasRemittancePermission(user, "remittances.reports") && <RemittancesWorkspace api={remittancesApi} user={user} isAdmin={false} reportsOnly />}
             {shownView === "pocket" && (
               <PocketView
