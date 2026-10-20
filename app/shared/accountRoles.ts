@@ -11,17 +11,17 @@ export function isCollectorAccountRole(role: unknown) {
 }
 /** What each role can actually do today; shown wherever a role is chosen. */
 const access: Record<string, string> = {
-  admin: "Perfil administrativo. Sus permisos pueden limitarse por usuario.",
-  supervisor: "Solo consulta en Administración; no puede registrar ni modificar.",
-  collector: "Trabaja únicamente en la terminal del cobrador, con su ruta.",
-  user: "Puede trabajar en Envíos de Dinero cuando Administración le asigne sus permisos. No administra catálogos.",
-  cashier: "Atiende Envíos de Dinero para cualquier cliente: envía, paga recibos, cancela sus envíos, da de alta clientes durante un envío y abre y cierra su propia caja. No administra catálogos, tasas ni comisiones.",
-  undefined: "Todavía no tiene acceso a ningún módulo. Elige un rol para que la cuenta pueda trabajar.",
+  admin: "Puede usar todo el sistema. Se le pueden quitar permisos uno por uno.",
+  supervisor: "Solo mira: ve la información, pero no puede registrar ni cambiar nada.",
+  collector: "Trabaja solo en la app del cobrador, con su ruta.",
+  user: "Puede atender remesas cuando la oficina le asigne permisos. No cambia los datos del negocio.",
+  cashier: "Atiende remesas de cualquier cliente: envía y entrega dinero, cancela sus envíos, registra clientes nuevos y abre y cierra su propia caja. No cambia tasas ni comisiones.",
+  undefined: "Todavía no puede entrar a nada. Elige un rol para que la cuenta pueda trabajar.",
 };
 export function accountRoleAccess(role: string) {
   return access[role] ?? "";
 }
-export const ACCOUNT_ROLE_SUMMARY = "El rol define el perfil inicial y los permisos personalizados limitan sus acciones. Supervisor conserva solo consulta; Cobrador trabaja con su ruta; Cajero atiende Envíos de Dinero y su propia caja. Usuario puede habilitarse como operador de envíos, sin administración general.";
+export const ACCOUNT_ROLE_SUMMARY = "El rol dice qué puede hacer cada cuenta. Los permisos personalizados quitan o añaden acciones dentro de lo que el rol permite. Supervisor solo mira; Cobrador trabaja su ruta; Cajero atiende remesas y su propia caja; Usuario puede atender remesas si se le dan permisos.";
 export function isOperationalRole(role: string) {
   return role === "admin" || role === "collector";
 }

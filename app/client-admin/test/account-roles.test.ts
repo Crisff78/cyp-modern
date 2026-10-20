@@ -14,12 +14,12 @@ import { MemoryStore } from "../../server/src/store.js";
 import { randomUUID } from "node:crypto";
 
 test("role options and portal guards distinguish eligible accounts without granting Admin", () => {
-  assert.deepEqual(ACCOUNT_ROLE_OPTIONS.map((row) => row.label), ["No definido", "Admin", "Supervisor", "Cobrador", "Usuario", "Cajero"]);
+  assert.deepEqual(ACCOUNT_ROLE_OPTIONS.map((row) => row.label), ["No definido", "Administrador", "Supervisor", "Cobrador", "Usuario", "Cajero"]);
   for (const role of ["undefined", "user"]) {
     const actor = enrichUserRole({ id: "QA", name: "QA", role });
     assert.equal(canAccessAdmin(actor), false); assert.equal(canAccessCollector(actor), false);
   }
-  // The cashier enters Administración with the profile of its role (Envíos de Dinero), never the collector terminal.
+  // The cashier enters Administración with the profile of its role (Envíos de dinero), never the collector terminal.
   for (const role of ["cashier", "CAJERO", "ROLE_CASHIER"]) {
     const actor = enrichUserRole({ id: "QA", name: "QA", role });
     assert.equal(actor.role, "CASHIER"); assert.equal(actor.roleCode, "ROLE_CASHIER");
@@ -126,13 +126,13 @@ remittancesApi("/snapshot").then(initial=>createRoot(document.getElementById("ro
       assert.equal(await username.evaluate((input: HTMLInputElement) => input.checkValidity()), true);
       const password = dialog.getByLabel("Contraseña inicial (mínimo 3 caracteres)", { exact: true });
       assert.equal(await password.getAttribute("maxlength"), "200"); assert.equal(await password.getAttribute("minlength"), "3");
-      await password.fill("Qa3+#'"); await dialog.getByRole("button", { name: "oK", exact: true }).click();
+      await password.fill("Qa3+#'"); await dialog.getByRole("button", { name: "Aceptar", exact: true }).click();
       await dialog.waitFor({ state: "detached" });
       const created = (await store.read()).accounts.find((row) => row.email === "qa.new")!; assert.equal(created.role, "undefined");
       await page.getByRole("row").filter({ hasText: created.email }).click(); await page.getByTitle("Editar", { exact: true }).click();
       assert.equal(await role.inputValue(), "undefined"); await role.selectOption("supervisor");
       await username.fill("qa.edited");
-      await dialog.getByRole("button", { name: "oK", exact: true }).click(); await dialog.waitFor({ state: "detached" });
+      await dialog.getByRole("button", { name: "Aceptar", exact: true }).click(); await dialog.waitFor({ state: "detached" });
       const edited = (await store.read()).accounts.find((row) => row.id === created.id)!;
       assert.equal(edited.role, "supervisor"); assert.equal(edited.email, "qa.edited");
       const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { email: "qa.edited", password: "Qa3+#'" } });
@@ -167,7 +167,7 @@ remittancesApi("/snapshot").then(initial=>createRoot(document.getElementById("ro
       await picker.getByRole("button", { name: "OK", exact: true }).click(); await picker.waitFor({ state: "detached" });
       assert.equal(await field.inputValue(), samples.supervisor.name); assert.equal(await field.getAttribute("title"), samples.supervisor.id);
       assert.equal((await store.read()).collectors[0].accountId, samples.user.id); assert.equal(writes.length, before);
-      await parent.getByRole("button", { name: "oK", exact: true }).click(); await parent.waitFor({ state: "detached" });
+      await parent.getByRole("button", { name: "Aceptar", exact: true }).click(); await parent.waitFor({ state: "detached" });
       assert.equal((await store.read()).collectors[0].accountId, samples.supervisor.id);
       await page.getByRole("row").filter({ hasText: "Cobrador QA" }).click(); await page.getByTitle("Editar", { exact: true }).click();
       await launch(); await picker.getByText(samples.collector.email, { exact: true }).waitFor();

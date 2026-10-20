@@ -3076,7 +3076,7 @@
     },
     "/api/envios": {
       "get": {
-        "summary": "Consultar envíos o recibos autorizados",
+        "summary": "Ver envíos de dinero o recibos autorizados",
         "security": [
           {
             "bearerAuth": []
@@ -3309,7 +3309,7 @@
     },
     "/api/envios/recibos": {
       "get": {
-        "summary": "Consultar envíos o recibos autorizados",
+        "summary": "Ver envíos de dinero o recibos autorizados",
         "security": [
           {
             "bearerAuth": []
@@ -3584,7 +3584,7 @@
     },
     "/api/envios/cajas/abrir": {
       "post": {
-        "summary": "Abrir caja de envíos por operador y moneda",
+        "summary": "Abrir caja de remesas por operador y moneda",
         "security": [
           {
             "bearerAuth": []

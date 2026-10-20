@@ -57,7 +57,7 @@ test("the snapshot names every operator of the operations, boxes and reports eac
   // Beto starts with cash to pay out.
   for (const [desk, cash] of [[ana, 0], [beto, 100_000]] as const) assert.equal((await openCash(desk.id, desk.token, cash)).statusCode, 200);
   const transfer = await send(ana.token, "cli-1", "cli-2");
-  // Beto pays a receipt of Ana from «Pagos de Envíos»: its detail and its printed receipt name both operators.
+  // Beto pays a receipt of Ana from «Entregas de dinero»: its detail and its printed receipt name both operators.
   assert.equal((await post(`/api/envios/${transfer.id}/pagar`, {}, beto.token)).statusCode, 200);
   const desk = (await get("/api/envios/snapshot", beto.token)).json();
   const paid = desk.transfers.find((row: { id: string }) => row.id === transfer.id);

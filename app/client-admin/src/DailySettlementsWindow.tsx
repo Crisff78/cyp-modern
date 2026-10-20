@@ -14,7 +14,7 @@ let appliedSectionRequest = 0;
 export function DailySettlementsWindow({ snapshot, user, isAdmin, showCollectors, showRemittanceCash, canManage, onRefresh, sectionRequest }: Readonly<{
   snapshot: Snapshot; user: User; isAdmin: boolean; showCollectors: boolean; showRemittanceCash: boolean; canManage: boolean;
   onRefresh: () => void | boolean | Promise<void | boolean>;
-  // opening: the box named by the notice that asked for Caja de envíos (operator and currency).
+  // opening: the box named by the notice that asked for Caja de remesas (operator and currency).
   sectionRequest?: { id: number; section: DailySettlementSection; opening?: RemittanceCashOpening };
 }>) {
   const available: DailySettlementSection[] = [...(showCollectors ? ["collectors" as const] : []), ...(showRemittanceCash ? ["remittanceCash" as const] : [])];
@@ -27,15 +27,15 @@ export function DailySettlementsWindow({ snapshot, user, isAdmin, showCollectors
   }, [requested?.id, requested?.section]);
   const shown = section && available.includes(section) ? section : available[0];
   return <div className="daily-settlements-window">
-    {available.length > 1 && <div className="legacy-mdi-toolbar settlement-sections" role="group" aria-label="Secciones de Cuadres Diarios">
+    {available.length > 1 && <div className="legacy-mdi-toolbar settlement-sections" role="group" aria-label="Secciones de Cuadres diarios">
       <button type="button" aria-pressed={shown === "collectors"} onClick={() => setSection("collectors")}>Cuadres de cobradores</button>
-      <button type="button" aria-pressed={shown === "remittanceCash"} onClick={() => setSection("remittanceCash")}>Caja de envíos</button>
+      <button type="button" aria-pressed={shown === "remittanceCash"} onClick={() => setSection("remittanceCash")}>Caja de remesas</button>
     </div>}
     {shown === "collectors" && <ConnectedSettlements snapshot={snapshot} actorId={user.id} canManage={canManage} onRefresh={onRefresh} />}
     {shown === "remittanceCash" && <div className="settlement-remittance-cash">
-      <RemittancesWorkspace api={remittancesApi} user={user} isAdmin={isAdmin} sections={["caja"]} heading="Caja de envíos"
+      <RemittancesWorkspace api={remittancesApi} user={user} isAdmin={isAdmin} sections={["caja"]} heading="Caja de remesas"
         cashRequest={sectionRequest?.section === "remittanceCash" && sectionRequest.opening ? { id: sectionRequest.id, ...sectionRequest.opening } : undefined} />
     </div>}
-    {!shown && <p className="connected-report-feedback" role="status">Tu cuenta no tiene permisos para Cuadres Diarios.</p>}
+    {!shown && <p className="connected-report-feedback" role="status">Tu cuenta no tiene permisos para Cuadres diarios.</p>}
   </div>;
 }

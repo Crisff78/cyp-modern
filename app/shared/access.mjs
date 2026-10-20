@@ -2,20 +2,20 @@ import catalog from "./permission-catalog.json" with { type: "json" };
 
 // New modules use namespaced keys; the sparse legacy codes and names stay intact.
 export const REMITTANCE_PERMISSIONS = [
-  { key: "remittances.view", name: "Consultar envíos" },
-  { key: "remittances.create", name: "Registrar envíos" },
-  { key: "remittances.receipts", name: "Consultar recibos pendientes" },
+  { key: "remittances.view", name: "Ver envíos de dinero" },
+  { key: "remittances.create", name: "Registrar envíos de dinero" },
+  { key: "remittances.receipts", name: "Ver remesas por entregar" },
   { key: "remittances.pay", name: "Entregar dinero al destinatario" },
   { key: "remittances.cancel", name: "Cancelar envíos pendientes" },
   { key: "remittances.clients.create", name: "Registrar clientes durante un envío" },
-  { key: "remittances.cash.view", name: "Consultar caja de envíos" },
-  { key: "remittances.cash.open", name: "Abrir cajas de envíos" },
-  { key: "remittances.cash.close", name: "Cerrar la caja propia de envíos" },
-  { key: "remittances.reports", name: "Consultar e imprimir reportes de envíos" },
-  { key: "remittances.rates.view", name: "Consultar tasas de envíos" },
-  { key: "remittances.rates.manage", name: "Administrar tasas de envíos" },
-  { key: "remittances.commissions.view", name: "Consultar la configuración de comisiones" },
-  { key: "remittances.commissions.manage", name: "Administrar comisiones de envíos" },
+  { key: "remittances.cash.view", name: "Ver caja de remesas" },
+  { key: "remittances.cash.open", name: "Abrir cajas de remesas" },
+  { key: "remittances.cash.close", name: "Cerrar su propia caja de remesas" },
+  { key: "remittances.reports", name: "Ver e imprimir reportes de remesas" },
+  { key: "remittances.rates.view", name: "Ver tasas de remesas" },
+  { key: "remittances.rates.manage", name: "Cambiar tasas de remesas" },
+  { key: "remittances.commissions.view", name: "Ver comisiones de remesas" },
+  { key: "remittances.commissions.manage", name: "Cambiar comisiones de remesas" },
 ];
 export const REMITTANCE_PERMISSION_KEYS = REMITTANCE_PERMISSIONS.map(({ key }) => key);
 export const REMITTANCE_PERMISSION_DEPENDENCIES = {

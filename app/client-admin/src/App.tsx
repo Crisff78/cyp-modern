@@ -126,6 +126,7 @@ import { ConnectedBanks, type Bank } from "./ConnectedBanks";
 import { ThemeToggle } from "./ThemeToggle";
 import { LoginPasswordInput, PasswordManagerHint } from "../../shared/LoginPasswordInput";
 import { loginCredentials } from "../../shared/loginCredentials";
+import { openCollectorPortal } from "../../shared/sessionHandoff";
 import { ReceiptPaperSelect, type ReceiptPaper } from "../../shared/ReceiptPaperSelect";
 import { matchesClientSearch, copyPhoneIntoEmptyFields, clientCodeFromPhone } from "./clientSearch";
 import { canReviewCollectionFunds, unconfirmedCollectionBalances, recentMovementReceipts } from "./collectionAlerts";
@@ -152,36 +153,66 @@ import {
   type User,
 } from "./types";
 
+// Each section is named after what it holds, so someone new finds a screen without knowing the
+// program. A section with one screen is a single button that opens it straight away.
 const groupOrder = [
-  "ARCHIVOS",
+  "CLIENTES",
   "COBROS",
   "PAGOS",
   "REMESAS",
-  "REPORTES & MONITOREO",
+  "CUADRES Y REPORTES",
+  "MONITOREO",
+  "ADMINISTRACIÓN",
 ] as const;
 type NavGroup = (typeof groupOrder)[number];
-// The key REMESAS stays internal; the menu shows the name of the module.
-const groupLabel = (group: NavGroup) => group === "REMESAS" ? "ENVÍOS" : group;
-const groupShortLabel = (group: NavGroup) => group === "ARCHIVOS" ? "AR" : group === "COBROS" ? "CO" : group === "PAGOS" ? "PA" : group === "REMESAS" ? "EN" : "RE";
+const directGroups: readonly NavGroup[] = ["CLIENTES", "ADMINISTRACIÓN"];
+const groupShortLabel: Record<NavGroup, string> = {
+  CLIENTES: "CL",
+  COBROS: "CO",
+  PAGOS: "PA",
+  REMESAS: "RE",
+  "CUADRES Y REPORTES": "CR",
+  MONITOREO: "MO",
+  ADMINISTRACIÓN: "AD",
+};
+// The menu each account left on this computer: the sections it had open and whether it was narrow.
+// The first time, every section starts closed.
+type MenuMemory = { groups: NavGroup[]; collapsed: boolean };
+const menuMemoryKey = (userId: string) => `cyp-admin-menu:${userId}`;
+function readMenuMemory(userId: string): MenuMemory {
+  try {
+    const saved = JSON.parse(localStorage.getItem(menuMemoryKey(userId)) ?? "null") as Partial<MenuMemory> | null;
+    const groups = Array.isArray(saved?.groups) ? saved.groups : [];
+    return { groups: groupOrder.filter((group) => groups.includes(group)), collapsed: saved?.collapsed === true };
+  } catch {
+    return { groups: [], collapsed: false };
+  }
+}
+function rememberMenu(userId: string, memory: MenuMemory) {
+  // Without storage (private window) the menu still works; it starts closed the next time.
+  try { localStorage.setItem(menuMemoryKey(userId), JSON.stringify(memory)); } catch { /* not kept */ }
+}
 // Temporary UI switch: keep the module and stored templates available for later reactivation.
 const SHOW_RECURRING_PAYOUTS = false;
 const isUiPageVisible = (page: string) => SHOW_RECURRING_PAYOUTS || page !== "recurringPayouts";
+// hint: what the screen is for, shown when the pointer rests on the option.
 const navigation: {
   key: string;
   page?: Page;
   action?: "controlPanel";
   label: string;
+  hint: string;
   icon: typeof LayoutDashboard;
   group: NavGroup;
   primary?: boolean;
   badge?: "pendingCharges";
 }[] = [
-  { key: "admin-panel", action: "controlPanel", label: "Admin.", icon: ServerCog, group: "ARCHIVOS" },
-  { key: "clients", page: "clients", label: "Clientes", icon: FolderOpen, group: "ARCHIVOS" },
+  { key: "clients", page: "clients", label: "Clientes", hint: "Buscar, registrar y editar clientes.", icon: FolderOpen, group: "CLIENTES" },
   {
     key: "direct-charges",
     page: "charges",
-    label: "Cargos",
+    label: "Cargos por cobrar",
+    hint: "Lo que cada cliente debe pagar. El número indica cuántos están pendientes.",
     icon: ReceiptText,
     group: "COBROS",
     badge: "pendingCharges",
@@ -189,78 +220,89 @@ const navigation: {
   {
     key: "recurring-charges",
     page: "recurringCharges",
-    label: "Cargos Recurrentes",
+    label: "Cargos que se repiten",
+    hint: "Cargos que se crean solos cada semana o cada mes (antes «Cargos Recurrentes»).",
     icon: RefreshCw,
     group: "COBROS",
   },
   {
     key: "collections",
     page: "collections",
-    label: "Cobros",
+    label: "Cobros realizados",
+    hint: "El dinero ya cobrado a los clientes, en la calle o en la oficina.",
     icon: ArrowDownLeft,
     group: "COBROS",
   },
   {
     key: "deposits",
     page: "deposits",
-    label: "Depósitos por Cobradores",
+    label: "Depósitos de cobradores",
+    hint: "El dinero cobrado que cada cobrador entrega en la oficina.",
     icon: Wallet,
     group: "COBROS",
   },
   {
     key: "payouts",
     page: "payouts",
-    label: "Descargos",
+    label: "Órdenes de pago",
+    hint: "Lo que hay que pagarle a cada cliente (antes «Descargos»).",
     icon: ArrowUpRight,
     group: "PAGOS",
   },
   ...(SHOW_RECURRING_PAYOUTS ? [{
     key: "recurring-payouts",
     page: "recurringPayouts" as const,
-    label: "Descargos Rec.",
+    label: "Órdenes que se repiten",
+    hint: "Órdenes de pago que se crean solas (antes «Descargos Recurrentes»).",
     icon: RefreshCw,
     group: "PAGOS" as const,
   }] : []),
   {
     key: "payments",
     page: "payments",
-    label: "Pagos",
+    label: "Pagos realizados",
+    hint: "Los pagos ya hechos a los clientes.",
     icon: ArrowUpRight,
+    group: "PAGOS",
+  },
+  {
+    key: "cash-delivery",
+    page: "cashDeliveries",
+    label: "Efectivo a cobradores",
+    hint: "El efectivo que la oficina le da al cobrador para pagar en la calle.",
+    icon: Wallet,
     group: "PAGOS",
   },
   {
     key: "remittances",
     page: "remittances",
-    label: "Envíos de Dinero",
+    label: "Envíos de dinero",
+    hint: "Registrar una remesa: quién envía, quién recibe y cuánto.",
     icon: ArrowRight,
     group: "REMESAS",
   },
   {
     key: "remittance-payouts",
     page: "remittancePayouts",
-    label: "Pagos de Envíos",
+    label: "Entregas de dinero",
+    hint: "Entregar a la persona que recibe el dinero de una remesa (antes «Pagos de Envíos»).",
     icon: HandCoins,
     group: "REMESAS",
   },
-  {
-    key: "cash-delivery",
-    page: "cashDeliveries",
-    label: "Entregas de Dinero",
-    icon: Wallet,
-    group: "REMESAS",
-  },
+  { key: "daily-settlements", page: "dailySettlements", label: "Cuadres diarios", hint: "Cuadrar el dinero del día: de los cobradores y de la caja de remesas.", icon: FileCheck2, group: "CUADRES Y REPORTES" },
+  { key: "general-reports", page: "reports", label: "Reportes", hint: "Listados para revisar o imprimir: cargos, cobros, pagos y remesas.", icon: ChartNoAxesCombined, group: "CUADRES Y REPORTES" },
   {
     key: "monitor-collectors",
     page: "monitorCollectors",
-    label: "Monitor C",
+    label: "Monitor de cobradores",
+    hint: "Cómo va cada cobrador hoy: lo cobrado, lo pagado y su efectivo.",
     icon: LayoutDashboard,
-    group: "REPORTES & MONITOREO",
+    group: "MONITOREO",
     primary: true,
   },
-  { key: "monitor-zones", page: "monitorZones", label: "Monitor Z", icon: MapPinned, group: "REPORTES & MONITOREO" },
-  { key: "monitor-routes", page: "monitorRoutes", label: "Monitor R", icon: MapPinned, group: "REPORTES & MONITOREO" },
-  { key: "daily-settlements", page: "dailySettlements", label: "Cuadres Diarios", icon: FileCheck2, group: "REPORTES & MONITOREO" },
-  { key: "general-reports", page: "reports", label: "Reportes", icon: ChartNoAxesCombined, group: "REPORTES & MONITOREO" },
+  { key: "monitor-zones", page: "monitorZones", label: "Monitor de zonas", hint: "Cómo va cada zona hoy.", icon: MapPinned, group: "MONITOREO" },
+  { key: "monitor-routes", page: "monitorRoutes", label: "Monitor de rutas", hint: "Cómo va cada ruta hoy.", icon: MapPinned, group: "MONITOREO" },
+  { key: "admin-panel", action: "controlPanel", label: "Administración", hint: "Usuarios, cobradores, rutas, zonas, tasas, comisiones y configuración.", icon: ServerCog, group: "ADMINISTRACIÓN" },
 ];
 const pageFromHash = (): Page => {
   const requested = location.hash.slice(1);
@@ -271,36 +313,36 @@ const pageFromHash = (): Page => {
 const pageTitles: Record<Page, string> = {
   collectors: "Cobradores",
   clients: "Clientes",
-  routesZones: "Rutas y Zonas",
-  stations: "Estaciones de PCP",
-  groups: "Grupos de PCPs",
-  pcps: "Puntos de Cobros y Pagos",
+  routesZones: "Rutas y zonas",
+  stations: "Estaciones (equipos)",
+  groups: "Grupos de puntos de cobro",
+  pcps: "Puntos de cobro y pago",
   routes: "Rutas",
   zones: "Zonas",
-  servicesProducts: "Servicios y Productos",
-  delayReasons: "Motivos de Atraso",
-  exchangeRates: "Tasas de Cambio",
+  servicesProducts: "Servicios y productos",
+  delayReasons: "Motivos de atraso",
+  exchangeRates: "Tasas de cambio",
   banks: "Bancos",
-  remittances: "Envíos de Dinero",
-  remittancePayouts: "Pagos de Envíos",
-  remittanceCommissions: "Comisiones de Envíos",
-  sessions: "Listado de Sesiones",
-  traces: "Trazas del Sistema",
+  remittances: "Envíos de dinero",
+  remittancePayouts: "Entregas de dinero",
+  remittanceCommissions: "Comisiones de remesas",
+  sessions: "Sesiones abiertas",
+  traces: "Historial del sistema",
   users: "Usuarios",
-  generalConfig: "Configuración General",
-  authorizationRequests: "Solicitudes de Autorización",
-  charges: "Cargos",
-  recurringCharges: "Cargos Recurrentes",
-  recurringPayouts: "Descargos Recurrentes",
-  collections: "Cobros",
-  deposits: "Depósitos por Cobradores",
-  payouts: "Descargos",
-  payments: "Pagos",
-  cashDeliveries: "Entregas de Dinero",
-  monitorCollectors: "Monitor de Cobradores",
-  monitorZones: "Monitor de Zonas",
-  monitorRoutes: "Monitor de Rutas",
-  dailySettlements: "Cuadres Diarios",
+  generalConfig: "Configuración general",
+  authorizationRequests: "Solicitudes de autorización",
+  charges: "Cargos por cobrar",
+  recurringCharges: "Cargos que se repiten",
+  recurringPayouts: "Órdenes de pago que se repiten",
+  collections: "Cobros realizados",
+  deposits: "Depósitos de cobradores",
+  payouts: "Órdenes de pago",
+  payments: "Pagos realizados",
+  cashDeliveries: "Efectivo a cobradores",
+  monitorCollectors: "Monitor de cobradores",
+  monitorZones: "Monitor de zonas",
+  monitorRoutes: "Monitor de rutas",
+  dailySettlements: "Cuadres diarios",
   reports: "Reportes",
 };
 type Station = {
@@ -330,11 +372,16 @@ function useOperationalPermissions(user: User): AdminPermissions {
   const access = usePageAccess();
   return { ...permissionsFor(user), canCreate: access.canCreate, canEdit: access.canEdit, canDelete: access.canDelete, canImport: access.canImport };
 }
+// The role in plain Spanish ("Cajero", not CASHIER), for the account card and the menu.
+const roleName = (user: User | null) => {
+  const role = user ? normalizeRole(user.role) : "";
+  return role in ROLE_DEFINITIONS ? ROLE_DEFINITIONS[role as keyof typeof ROLE_DEFINITIONS].label : role === "USER" ? "Usuario" : "Mi cuenta";
+};
 // Why an account cannot use this panel: checked at sign-in and on every refresh of the session.
 function adminSessionRejection(user: User) {
   if (isSuspendedUser(user)) return "Cuenta o empresa suspendida.";
   if (!canAccessAdmin(user)) return normalizeRole(user.role) === "COLLECTOR"
-    ? "Acceso no autorizado al panel administrativo. Ingrese desde la terminal móvil de cobrador."
+    ? "Esta cuenta es de cobrador: entra con ella en la app del cobrador."
     : "Usa una cuenta autorizada para acceder a este portal. Si tu acceso cambió, solicita a Administración que revise tus permisos.";
   if (user.access?.mode === "custom" && !hasPermission(user, 1)) return "Tu cuenta no tiene permiso para entrar al sistema. Solicita una revisión a Administración.";
   return "";
@@ -395,40 +442,31 @@ type ReportPageId =
 type ReportDefinition = {
   id: ReportPageId;
   label: string;
-  category: "-- Cargos --" | "-- Cobros --" | "-- Pagos --" | "-- Servicios --";
+  category: "Cargos" | "Cobros" | "Pagos" | "Servicios";
   filters: ("route" | "zone" | "service" | "collectorCheck")[];
 };
 type MdiPage = Page | "controlPanel" | ReportPageId | RemittanceReportPage;
 const reportDefinitions: ReportDefinition[] = [
-  { id: "reportClientPendingCharges", label: "Cargos pendientes de cobros de los clientes", category: "-- Cargos --", filters: [] },
-  { id: "reportClientPendingChargesByRoutes", label: "Cargos pendientes de clientes por rutas.", category: "-- Cargos --", filters: ["route"] },
-  { id: "reportClientPendingChargesByZones", label: "Cargos pendientes de clientes por zonas.", category: "-- Cargos --", filters: ["zone"] },
-  { id: "reportPendingChargesByRoutes", label: "Cargos pendientes por rutas.", category: "-- Cargos --", filters: [] },
-  { id: "reportPendingChargesByZones", label: "Cargos pendientes por zonas.", category: "-- Cargos --", filters: [] },
-  { id: "reportClientChargesByZoneService", label: "Cargos de clientes por zona por servicio.", category: "-- Cargos --", filters: ["zone", "service"] },
-  { id: "reportCollectionsSummary", label: "Cobros Res.", category: "-- Cobros --", filters: ["collectorCheck"] },
-  { id: "reportCollectionsGeneralSummary", label: "Cobros Gen. Resumido", category: "-- Cobros --", filters: ["collectorCheck"] },
-  { id: "reportCollectionsByService", label: "Cobros x Servicio", category: "-- Cobros --", filters: ["zone", "service"] },
-  { id: "reportPaymentsDetailed", label: "Pagos detallado.", category: "-- Pagos --", filters: ["collectorCheck"] },
-  { id: "reportClientPendingPayouts", label: "Pagos pendientes de clientes.", category: "-- Pagos --", filters: [] },
-  { id: "reportPendingPayoutsByRoutes", label: "Pagos pendientes por rutas.", category: "-- Pagos --", filters: ["route"] },
-  { id: "reportPendingPayoutsByZones", label: "Pagos pendientes por zonas.", category: "-- Pagos --", filters: ["zone"] },
-  { id: "reportPaymentsByServiceDetailed", label: "Pagos x servicio detallado.", category: "-- Pagos --", filters: ["zone", "service"] },
-  { id: "reportPaymentsByServiceSummary", label: "Pagos x servicio resumido.", category: "-- Pagos --", filters: ["zone", "service"] },
-  { id: "reportServicesByZone", label: "Servicios por zona.", category: "-- Servicios --", filters: ["zone"] },
+  { id: "reportClientPendingCharges", label: "Cargos pendientes por cliente", category: "Cargos", filters: [] },
+  { id: "reportClientPendingChargesByRoutes", label: "Cargos pendientes por cliente y ruta", category: "Cargos", filters: ["route"] },
+  { id: "reportClientPendingChargesByZones", label: "Cargos pendientes por cliente y zona", category: "Cargos", filters: ["zone"] },
+  { id: "reportPendingChargesByRoutes", label: "Total de cargos pendientes por ruta", category: "Cargos", filters: [] },
+  { id: "reportPendingChargesByZones", label: "Total de cargos pendientes por zona", category: "Cargos", filters: [] },
+  { id: "reportClientChargesByZoneService", label: "Cargos por zona y servicio", category: "Cargos", filters: ["zone", "service"] },
+  { id: "reportCollectionsSummary", label: "Resumen de cobros", category: "Cobros", filters: ["collectorCheck"] },
+  { id: "reportCollectionsGeneralSummary", label: "Resumen general de cobros", category: "Cobros", filters: ["collectorCheck"] },
+  { id: "reportCollectionsByService", label: "Cobros por servicio", category: "Cobros", filters: ["zone", "service"] },
+  { id: "reportPaymentsDetailed", label: "Pagos realizados (detalle)", category: "Pagos", filters: ["collectorCheck"] },
+  { id: "reportClientPendingPayouts", label: "Pagos pendientes por cliente", category: "Pagos", filters: [] },
+  { id: "reportPendingPayoutsByRoutes", label: "Pagos pendientes por ruta", category: "Pagos", filters: ["route"] },
+  { id: "reportPendingPayoutsByZones", label: "Pagos pendientes por zona", category: "Pagos", filters: ["zone"] },
+  { id: "reportPaymentsByServiceDetailed", label: "Pagos por servicio (detalle)", category: "Pagos", filters: ["zone", "service"] },
+  { id: "reportPaymentsByServiceSummary", label: "Pagos por servicio (resumen)", category: "Pagos", filters: ["zone", "service"] },
+  { id: "reportServicesByZone", label: "Servicios por zona", category: "Servicios", filters: ["zone"] },
 ];
-const reportWindowTitles: Partial<Record<ReportPageId, string>> = {
-  reportClientPendingChargesByRoutes: "Reporte de Cobros Pendientes de Clientes por Ruta",
-  reportClientPendingChargesByZones: "Reporte de Cobros Pendientes de Clientes por Zona",
-  reportPendingChargesByRoutes: "Reporte de Cobros Pendientes por Rutas",
-  reportPendingChargesByZones: "Reporte de Cobros Pendientes por Zonas",
-  reportClientChargesByZoneService: "Cargos de clientes por zona por servicio",
-  reportCollectionsSummary: "Reporte de Cobros Resumido",
-  reportCollectionsGeneralSummary: "Reporte Resumido General",
-  reportCollectionsByService: "Reporte de Cobros por Servicios",
-};
+// The window carries the same name as the button that opened it.
 const reportTitle = (page: ReportPageId) =>
-  reportWindowTitles[page] ?? reportDefinitions.find((report) => report.id === page)?.label.replace(/\.$/, "") ?? "Reporte";
+  reportDefinitions.find((report) => report.id === page)?.label ?? "Reporte";
 const isReportPage = (page: MdiPage): page is ReportPageId =>
   reportDefinitions.some((report) => report.id === page);
 const mdiOperationPages: Page[] = [
@@ -451,7 +489,7 @@ const isMdiOperationPage = (page: MdiPage): page is Page =>
 const isMdiMonitoringPage = (page: MdiPage): page is Page =>
   page !== "controlPanel" && !isReportPage(page) && !isRemittanceReportPage(page) && mdiMonitoringPages.includes(page);
 const mdiTitle = (page: MdiPage) => {
-  if (page === "controlPanel") return "Panel de Control";
+  if (page === "controlPanel") return "Administración";
   if (isReportPage(page)) return reportTitle(page);
   if (isRemittanceReportPage(page)) return remittanceReportForPage(page).label;
   return pageTitles[page];
@@ -519,11 +557,7 @@ const operationTypeForPage = (targetPage: Page): Operation["type"] => {
   return "charge";
 };
 
-const monitorTitleForPage = (page: Page) => {
-  if (page === "monitorCollectors") return "Monitor de Cobradores";
-  if (page === "monitorZones") return "Monitor de Zonas";
-  return "Monitor de Rutas";
-};
+const monitorTitleForPage = (page: Page) => pageTitles[page === "monitorCollectors" || page === "monitorZones" ? page : "monitorRoutes"];
 
 const adaptedMapForEntity = (entityType: MonitorEntity, title: string, data: MapData): AdaptedMap => {
   if (entityType === "zone") return transformZoneToMap(title, data.stops);
@@ -534,24 +568,24 @@ const adaptedMapForEntity = (entityType: MonitorEntity, title: string, data: Map
 
 const codifierTiles: ControlPanelTile[] = [
   { label: "Cobradores", page: "collectors", navKey: "control-collectors", icon: Users },
-  { label: "Estaciones", page: "stations", navKey: "control-stations", icon: Building2 },
-  { label: "Grupos", page: "groups", navKey: "control-groups", icon: Users },
-  { label: "Motivos Atraso", page: "delayReasons", navKey: "control-delay-reasons", icon: CircleAlert },
-  { label: "PCPs", page: "pcps", navKey: "control-pcps", icon: MapPinned },
+  { label: "Estaciones (equipos)", page: "stations", navKey: "control-stations", icon: Building2 },
+  { label: "Grupos de puntos", page: "groups", navKey: "control-groups", icon: Users },
+  { label: "Motivos de atraso", page: "delayReasons", navKey: "control-delay-reasons", icon: CircleAlert },
+  { label: "Puntos de cobro", page: "pcps", navKey: "control-pcps", icon: MapPinned },
   { label: "Rutas", page: "routes", navKey: "control-routes", icon: MapPinned },
-  { label: "Servicios y Prods.", page: "servicesProducts", navKey: "control-services", icon: ListFilter },
-  { label: "Sesiones", page: "sessions", navKey: "control-sessions", icon: Activity },
+  { label: "Servicios y productos", page: "servicesProducts", navKey: "control-services", icon: ListFilter },
+  { label: "Sesiones abiertas", page: "sessions", navKey: "control-sessions", icon: Activity },
   { label: "Tasas de cambio", page: "exchangeRates", navKey: "control-exchange", icon: RefreshCw },
-  { label: "Comisiones de envíos", page: "remittanceCommissions", navKey: "control-remittance-commissions", icon: ReceiptText },
+  { label: "Comisiones de remesas", page: "remittanceCommissions", navKey: "control-remittance-commissions", icon: ReceiptText },
   { label: "Bancos", page: "banks", navKey: "control-banks", icon: Building2 },
-  { label: "Trazas", page: "traces", navKey: "control-traces", icon: ClipboardCheck },
+  { label: "Historial", page: "traces", navKey: "control-traces", icon: ClipboardCheck },
   { label: "Usuarios", page: "users", navKey: "control-users", icon: ShieldCheck },
   { label: "Zonas", page: "zones", navKey: "control-zones", icon: MapPinned },
 ];
 
 const toolTiles: ControlPanelTile[] = [
-  { label: "Configuracion General", page: "generalConfig", navKey: "control-general-config", icon: Settings },
-  { label: "Solicitudes de Autoriz.", page: "authorizationRequests", navKey: "control-authorizations", icon: FileCheck2 },
+  { label: "Configuración general", page: "generalConfig", navKey: "control-general-config", icon: Settings },
+  { label: "Solicitudes de autorización", page: "authorizationRequests", navKey: "control-authorizations", icon: FileCheck2 },
 ];
 
 function ControlPanelContent({ onLaunch }: Readonly<{ onLaunch: (page: Page, navKey: string) => void }>) {
@@ -564,8 +598,8 @@ function ControlPanelContent({ onLaunch }: Readonly<{ onLaunch: (page: Page, nav
   );
   return (
     <div className="control-panel-body in-mdi">
-      <section className="control-panel-section"><div className="control-panel-section-heading"><span>Codificadores</span><small>Accesos rápidos</small></div><div className="control-panel-grid">{codifierTiles.filter((tile) => canOpenPage(actor, tile.page)).map(renderTile)}</div></section>
-      <section className="control-panel-section tools-section"><div className="control-panel-section-heading"><span>Herramientas</span><small>Control interno</small></div><div className="control-panel-grid tools-grid">{toolTiles.filter((tile) => canOpenPage(actor, tile.page)).map(renderTile)}</div></section>
+      <section className="control-panel-section"><div className="control-panel-section-heading"><span>Datos del negocio</span><small>Personas, lugares y precios que usa el sistema</small></div><div className="control-panel-grid">{codifierTiles.filter((tile) => canOpenPage(actor, tile.page)).map(renderTile)}</div></section>
+      <section className="control-panel-section tools-section"><div className="control-panel-section-heading"><span>Herramientas</span><small>Configuración y permisos</small></div><div className="control-panel-grid tools-grid">{toolTiles.filter((tile) => canOpenPage(actor, tile.page)).map(renderTile)}</div></section>
     </div>
   );
 }
@@ -578,7 +612,7 @@ function ReportesLauncher({ onLaunch }: Readonly<{ onLaunch: (page: ReportPageId
     const reports = reportDefinitions.filter((report) => report.category === category && canOpenPage(actor, report.id));
     return reports.length > 0 && (
       <section className="reports-launcher-section" key={category}>
-        <div className="control-panel-section-heading"><span>{category}</span><small>Seleccione un reporte</small></div>
+        <div className="control-panel-section-heading"><span>{category}</span><small>Elige un reporte</small></div>
         <div className="reports-launcher-grid">
           {reports.map((report) => (
             <button
@@ -597,11 +631,11 @@ function ReportesLauncher({ onLaunch }: Readonly<{ onLaunch: (page: ReportPageId
   };
   return (
     <div className="reports-launcher">
-      {renderGroup("-- Cargos --")}
-      {renderGroup("-- Cobros --")}
-      {renderGroup("-- Pagos --")}
-      {remittanceReports.length > 0 && <section className="reports-launcher-section" aria-label="Reportes de Envíos de Dinero">
-        <div className="control-panel-section-heading"><span>-- Envíos de Dinero --</span><small>Seleccione un reporte</small></div>
+      {renderGroup("Cargos")}
+      {renderGroup("Cobros")}
+      {renderGroup("Pagos")}
+      {remittanceReports.length > 0 && <section className="reports-launcher-section" aria-label="Reportes de remesas">
+        <div className="control-panel-section-heading"><span>Remesas</span><small>Elige un reporte</small></div>
         <div className="reports-launcher-grid">
           {remittanceReports.map((report) => <button type="button" key={report.page} className="report-launcher-tile" title={report.scope} onClick={() => onLaunch(report.page, `reports-${report.page}`)}>
             <ChartNoAxesCombined size={18} aria-hidden="true" />
@@ -609,7 +643,7 @@ function ReportesLauncher({ onLaunch }: Readonly<{ onLaunch: (page: ReportPageId
           </button>)}
         </div>
       </section>}
-      {renderGroup("-- Servicios --")}
+      {renderGroup("Servicios")}
     </div>
   );
 }
@@ -1339,7 +1373,7 @@ function ReportOutputActions({ title, table }: Readonly<{ title: string; table: 
         <LegacyDialog title="Seleccione un valor..." onClose={() => setExportOpen(false)} className="pending-charges-export-dialog">
           <form className="pending-charges-export-form" onSubmit={handleExport}>
             <label htmlFor={`report-export-${title}`}><span>Valor:</span><select id={`report-export-${title}`} value={format} onChange={(event) => setFormat(event.target.value)}>{pendingChargeExportFormats.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
-            <div className="pending-charges-export-actions"><button type="submit">oK</button><button type="button" onClick={() => setExportOpen(false)}>Cancelar</button></div>
+            <div className="pending-charges-export-actions"><button type="submit">Aceptar</button><button type="button" onClick={() => setExportOpen(false)}>Cancelar</button></div>
           </form>
         </LegacyDialog>
       )}
@@ -1513,7 +1547,7 @@ function CollectorFormLegacyDialog({ collector, onClose, onSave }: Readonly<{ co
           <label>Celular:<input value={draft.cellular} onChange={(event) => update("cellular", event.target.value)} /></label>
         </div>
         <label>Cuenta:<span className="legacy-lookup-field"><input value={draft.accountId} disabled readOnly /><button type="button" aria-label="Buscar cuenta">...</button></span></label>
-        <div className="legacy-dialog-actions centered"><button type="submit">oK</button><button type="button" onClick={onClose}>Cancelar</button></div>
+        <div className="legacy-dialog-actions centered"><button type="submit">Aceptar</button><button type="button" onClick={onClose}>Cancelar</button></div>
       </form>
     </LegacyDialog>
   );
@@ -1609,7 +1643,7 @@ function ZoneSelectDialog({ onClose, onSelect }: Readonly<{ onClose: () => void;
     <LegacyDialog title="Seleccionar..." onClose={onClose} className="legacy-select-dialog">
       <div className="legacy-dialog-form">
         <label>Seleccione:<select autoFocus value={selected} onChange={(event) => setSelected(event.target.value)}><option>Zona Centro</option><option>Zona Norte</option><option>Zona Sur</option><option>Zona Este</option><option>Mercado</option></select></label>
-        <div className="legacy-dialog-actions centered"><button type="button" onClick={() => onSelect(selected)}>oK</button><button type="button" onClick={onClose}>Cancelar</button></div>
+        <div className="legacy-dialog-actions centered"><button type="button" onClick={() => onSelect(selected)}>Aceptar</button><button type="button" onClick={onClose}>Cancelar</button></div>
       </div>
     </LegacyDialog>
   );
@@ -1627,7 +1661,7 @@ function LineSelectDialog({ onClose, onSelect }: Readonly<{ onClose: () => void;
     <LegacyDialog title="Seleccionar..." onClose={onClose} className="legacy-select-dialog">
       <div className="legacy-dialog-form">
         <label>Seleccione:<select autoFocus value={selectedAbbr} onChange={(event) => setSelectedAbbr(event.target.value)}>{options.map((option) => <option key={option.abbr} value={option.abbr}>{option.currency}</option>)}</select></label>
-        <div className="legacy-dialog-actions centered"><button type="button" onClick={() => onSelect(selected)}>oK</button><button type="button" onClick={onClose}>Cancelar</button></div>
+        <div className="legacy-dialog-actions centered"><button type="button" onClick={() => onSelect(selected)}>Aceptar</button><button type="button" onClick={onClose}>Cancelar</button></div>
       </div>
     </LegacyDialog>
   );
@@ -1640,7 +1674,7 @@ function RouteSelectDialog({ routes, assignedRouteIds, onClose, onSelect }: Read
     <LegacyDialog title="Seleccionar..." onClose={onClose} className="legacy-select-dialog">
       <div className="legacy-dialog-form">
         <label>Seleccione:<select autoFocus value={selectedRouteId} onChange={(event) => setSelectedRouteId(event.target.value)}>{availableRoutes.map((route) => <option key={route.id} value={route.id}>{route.name}</option>)}</select></label>
-        <div className="legacy-dialog-actions centered"><button type="button" disabled={!selectedRouteId} onClick={() => onSelect(selectedRouteId)}>oK</button><button type="button" onClick={onClose}>Cancelar</button></div>
+        <div className="legacy-dialog-actions centered"><button type="button" disabled={!selectedRouteId} onClick={() => onSelect(selectedRouteId)}>Aceptar</button><button type="button" onClick={onClose}>Cancelar</button></div>
       </div>
     </LegacyDialog>
   );
@@ -1933,7 +1967,7 @@ function PcpStationDialog({ station, onClose, onSave }: Readonly<{ station?: Pcp
             <label>Tipo:<select value={draft.type} onChange={(event) => update("type", event.target.value)}><option>Cobros y Pagos</option><option>Cobros</option><option>Pagos</option><option>Administración</option></select></label>
           </div>
         </fieldset>
-        <div className="legacy-dialog-actions centered"><button type="submit">oK</button><button type="button" onClick={onClose}>Cancelar</button></div>
+        <div className="legacy-dialog-actions centered"><button type="submit">Aceptar</button><button type="button" onClick={onClose}>Cancelar</button></div>
       </form>
       {validationMessage && <LegacyAlertDialog message={validationMessage} onClose={() => setValidationMessage("")} />}
     </LegacyDialog>
@@ -1957,14 +1991,14 @@ function DelayReasonValueDialog({ reason, onClose, onSave }: Readonly<{ reason?:
   const [value, setValue] = useState(reason?.reason ?? "");
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (!value.trim()) return toast.error("El valor es requerido.");
+    if (!value.trim()) return toast.error("Escribe el motivo.");
     onSave(value.trim());
   };
   return (
-    <LegacyDialog title="Entre un valor..." onClose={onClose} className="legacy-select-dialog">
+    <LegacyDialog title="Motivo de atraso" onClose={onClose} className="legacy-select-dialog">
       <form className="legacy-dialog-form" onSubmit={submit}>
-        <label>Valor:<input type="text" autoFocus value={value} onChange={(event) => setValue(event.target.value)} /></label>
-        <div className="legacy-dialog-actions centered"><button type="submit">oK</button><button type="button" onClick={onClose}>Cancelar</button></div>
+        <label>Motivo:<input type="text" autoFocus value={value} onChange={(event) => setValue(event.target.value)} /></label>
+        <div className="legacy-dialog-actions centered"><button type="submit">Aceptar</button><button type="button" onClick={onClose}>Cancelar</button></div>
       </form>
     </LegacyDialog>
   );
@@ -2097,7 +2131,7 @@ function RouteDataDialog({ route, onClose, onSave }: Readonly<{ route?: RouteRec
         </div>
         <label className="route-form-row"><span className="route-form-label">Desde:</span><input type="text" value={draft.from} onChange={(event) => update("from", event.target.value)} /></label>
         <label className="route-form-row"><span className="route-form-label">Hasta:</span><input type="text" value={draft.to} onChange={(event) => update("to", event.target.value)} /></label>
-        <div className="legacy-dialog-actions centered route-form-actions"><button type="submit">oK</button><button type="button" onClick={onClose}>Cancelar</button></div>
+        <div className="legacy-dialog-actions centered route-form-actions"><button type="submit">Aceptar</button><button type="button" onClick={onClose}>Cancelar</button></div>
       </form>
       {validationMessage && <LegacyAlertDialog message={validationMessage} onClose={() => setValidationMessage("")} />}
     </LegacyDialog>
@@ -2344,9 +2378,9 @@ type ClientLegacyRecord = {
 type ClientLegacyDraft = Omit<ClientLegacyRecord, "id" | "active"> & { active: boolean; reservationId?: string };
 
 type ClientFilterMode = "all" | "identification" | "name" | "zone" | "route" | "search";
-type ClientFinanceTab = "Cargos" | "Cargos Rec." | "Cobros" | "Descargos" | "Descargos Rec." | "Pagos";
+type ClientFinanceTab = "Cargos" | "Cargos que se repiten" | "Cobros" | "Órdenes de pago" | "Órdenes que se repiten" | "Pagos";
 
-const clientFinanceTabs: ClientFinanceTab[] = ["Cargos", "Cargos Rec.", "Cobros", "Descargos", ...(SHOW_RECURRING_PAYOUTS ? ["Descargos Rec." as const] : []), "Pagos"];
+const clientFinanceTabs: ClientFinanceTab[] = ["Cargos", "Cargos que se repiten", "Cobros", "Órdenes de pago", ...(SHOW_RECURRING_PAYOUTS ? ["Órdenes que se repiten" as const] : []), "Pagos"];
 
 const clientRecordFromSnapshot = (client: Client): ClientLegacyRecord => ({
   preferredCurrency: client.preferredCurrency ?? "DOP",
@@ -2479,7 +2513,7 @@ export function ClientDataDialog({ client, readOnly = false, zones, routes, defa
         // Editing: the earlier attempt already gave the client its identification. Without the reservation the next save goes through.
         reservation.current = null;
         setDraft((current) => ({ ...current, reservationId: undefined }));
-        setError("Es posible que el cambio anterior ya se haya guardado. Revisa los datos y vuelve a pulsar oK.");
+        setError("Es posible que el cambio anterior ya se haya guardado. Revisa los datos y vuelve a pulsar Aceptar.");
       }
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "Revisa los datos del cliente.");
@@ -2510,7 +2544,7 @@ export function ClientDataDialog({ client, readOnly = false, zones, routes, defa
         {!readOnly && <button type="button" title="Completa celular y nota únicamente si están vacíos." disabled={!draft.phone.trim()} onClick={() => setDraft(copyPhoneIntoEmptyFields)}>Copiar teléfono a campos vacíos</button>}
         {!client && <button type="button" disabled={!draft.phone.trim()} onClick={usePhoneAsCode}>Usar teléfono como código</button>}
         {readOnly ? <><p className="client-form-hint">Solo consulta: tu cuenta no tiene permiso para modificar clientes.</p><div className="legacy-dialog-actions"><button type="button" autoFocus onClick={onClose}>Cerrar</button></div></>
-          : <div className="legacy-dialog-actions"><button type="submit" disabled={generating}>oK</button><button type="button" disabled={generating} onClick={onClose}>Cancelar</button></div>}
+          : <div className="legacy-dialog-actions"><button type="submit" disabled={generating}>Aceptar</button><button type="button" disabled={generating} onClick={onClose}>Cancelar</button></div>}
       </form>
       {error && <LegacyAlertDialog message={error} onClose={() => setError("")} />}
     </LegacyDialog>
@@ -2546,14 +2580,14 @@ function ClientFinancialDialog({ client, snapshot, onClose, onRefresh }: Readonl
     <LegacyDialog title="Datos de Cobros y Pagos del Cliente..." onClose={onClose} className="client-finance-dialog">
       <div className="client-finance-view">{[...clientCharges, ...clientPayouts].some((item) => item.currencyConflict) && <p role="alert">Hay registros antiguos cuya moneda no coincide con su libro original. Sus recibos conservan la moneda registrada; revisa el saldo antes de operar.</p>}
         <div className="client-finance-header"><span>Código: <strong>{client.code}</strong></span><span>Cliente: <strong>{client.name}</strong></span><label>Moneda:<select value={currency} onChange={(event) => setCurrency(event.target.value)}><option>No definido</option><option>Peso Dominicano</option><option>Dólar Americano</option><option>Euro</option></select></label></div>
-        <div className="legacy-tabs client-finance-tabs" role="tablist" aria-label="Cobros y Pagos del Cliente">{clientFinanceTabs.filter((item) => SHOW_RECURRING_PAYOUTS || item !== "Descargos Rec.").map((item) => <button type="button" key={item} className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{item}</button>)}</div>
-        {(tab === "Cargos" || tab === "Cobros" || tab === "Descargos" || tab === "Pagos") && <div className="client-finance-filters"><label>Fecha Inicial:<input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} /></label><label>Fecha Final:<input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} /></label>{refreshButton}</div>}
-        {(tab === "Cargos Rec." || (SHOW_RECURRING_PAYOUTS && tab === "Descargos Rec.")) && <div className="client-finance-filters compact-only">{refreshButton}</div>}
+        <div className="legacy-tabs client-finance-tabs" role="tablist" aria-label="Cobros y Pagos del Cliente">{clientFinanceTabs.filter((item) => SHOW_RECURRING_PAYOUTS || item !== "Órdenes que se repiten").map((item) => <button type="button" key={item} className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{item}</button>)}</div>
+        {(tab === "Cargos" || tab === "Cobros" || tab === "Órdenes de pago" || tab === "Pagos") && <div className="client-finance-filters"><label>Fecha Inicial:<input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} /></label><label>Fecha Final:<input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} /></label>{refreshButton}</div>}
+        {(tab === "Cargos que se repiten" || (SHOW_RECURRING_PAYOUTS && tab === "Órdenes que se repiten")) && <div className="client-finance-filters compact-only">{refreshButton}</div>}
         {tab === "Cargos" && <ClientFinanceTable key={`${tab}-${fromDate}-${toDate}-${currency}`} columns={["Nro.", "Fecha", "Servicio", "Concepto", "Importe", "Recibos", "Pendiente", "Activo"]} rows={clientCharges.map((charge, index) => [index + 1, safeDateLabel(charge.dueDate), charge.service, charge.concept ?? charge.service, nativeMoney(charge.amount, charge.currency), nativeTotals(obligationReceived(charge), charge.currency), charge.currencyConflict ? "Revisar moneda" : nativeMoney(Math.max(0, charge.amount - charge.collected), charge.currency), <LegacyCheck checked={charge.status !== "cancelled"} />])} />}
-        {tab === "Cargos Rec." && <ClientFinanceTable columns={["Nro.", "Fecha", "Servicio", "Concepto", "Importe", "Activo"]} rows={clientRecurringCharges.map((item, index) => [index + 1, safeDateLabel(item.startDate), item.service, item.concept, nativeMoney(item.amount, (item as typeof item & { currency?: string }).currency), <LegacyCheck checked={item.active} />])} />}
+        {tab === "Cargos que se repiten" && <ClientFinanceTable columns={["Nro.", "Fecha", "Servicio", "Concepto", "Importe", "Activo"]} rows={clientRecurringCharges.map((item, index) => [index + 1, safeDateLabel(item.startDate), item.service, item.concept, nativeMoney(item.amount, (item as typeof item & { currency?: string }).currency), <LegacyCheck checked={item.active} />])} />}
         {tab === "Cobros" && <ClientFinanceTable key={`${tab}-${fromDate}-${toDate}-${currency}`} columns={["Nro.", "Fecha", "En Linea", "En Cen.", "Importe", "Activo", "Cobrador"]} rows={clientCollections.map((movement, index) => [index + 1, safeDateLabel(businessDate(movement.createdAt)), "Sí", "No", nativeMoney(movement.amount, (movement as Movement & { currency?: string }).currency), <LegacyCheck checked={!movement.cancelledAt} />, snapshot.collectors.find((collector) => collector.id === movement.collectorId)?.name ?? ""]) } />}
-        {tab === "Descargos" && <ClientFinanceTable key={`${tab}-${fromDate}-${toDate}-${currency}`} columns={["Nro.", "Fecha", "Servicio", "Concepto", "Importe", "Activo"]} rows={clientPayouts.map((payout, index) => [index + 1, safeDateLabel((payout as Payout & { dueDate?: string }).dueDate ?? ""), (payout as Payout & { service?: string }).service ?? "Descargo", payout.concept, nativeMoney(payout.amount, (payout as Payout & { currency?: string }).currency), <LegacyCheck checked={payout.status !== "cancelled"} />])} />}
-        {SHOW_RECURRING_PAYOUTS && tab === "Descargos Rec." && <ClientFinanceTable columns={["Nro.", "Fecha", "Servicio", "Concepto", "Importe", "Activo"]} rows={snapshot.payoutRecurring.filter((item) => item.clientId === client.id).map((item, index) => [index + 1, safeDateLabel(item.nextRunDate), "Descargo", item.concept, nativeMoney(item.amount, (item as typeof item & { currency?: string }).currency), <LegacyCheck checked={item.status === "active"} />])} />}
+        {tab === "Órdenes de pago" && <ClientFinanceTable key={`${tab}-${fromDate}-${toDate}-${currency}`} columns={["Nro.", "Fecha", "Servicio", "Concepto", "Importe", "Activo"]} rows={clientPayouts.map((payout, index) => [index + 1, safeDateLabel((payout as Payout & { dueDate?: string }).dueDate ?? ""), (payout as Payout & { service?: string }).service ?? "Descargo", payout.concept, nativeMoney(payout.amount, (payout as Payout & { currency?: string }).currency), <LegacyCheck checked={payout.status !== "cancelled"} />])} />}
+        {SHOW_RECURRING_PAYOUTS && tab === "Órdenes que se repiten" && <ClientFinanceTable columns={["Nro.", "Fecha", "Servicio", "Concepto", "Importe", "Activo"]} rows={snapshot.payoutRecurring.filter((item) => item.clientId === client.id).map((item, index) => [index + 1, safeDateLabel(item.nextRunDate), "Descargo", item.concept, nativeMoney(item.amount, (item as typeof item & { currency?: string }).currency), <LegacyCheck checked={item.status === "active"} />])} />}
         {tab === "Pagos" && <ClientFinanceTable key={`${tab}-${fromDate}-${toDate}-${currency}`} columns={["Nro.", "Fecha", "EnLinea", "En Cen.", "Importe", "Activo", "Cobrador"]} rows={clientPayments.map((movement, index) => [index + 1, safeDateLabel(businessDate(movement.createdAt)), "Sí", "No", nativeMoney(movement.amount, (movement as Movement & { currency?: string }).currency), <LegacyCheck checked={!movement.cancelledAt} />, snapshot.collectors.find((collector) => collector.id === movement.collectorId)?.name ?? ""]) } />}
       </div>
     </LegacyDialog>
@@ -2646,7 +2680,7 @@ function ClientMachineFormDialog({ actorId, clientId, machine, defaultNumber, on
     try { if (await onSave({ ...draft, number, value, percentage })) onClose(); } finally { setSaving(false); }
   };
   const close = () => { if (!request.busy) onClose(); };
-  return <LegacyDialog title="Tragamonedas..." onClose={close} className="client-machine-form-dialog"><form className="client-machine-form" onSubmit={(event) => void submit(event)}><fieldset disabled={request.locked} style={{ border: 0, padding: 0, margin: 0, display: "contents" }}><label>Nro.:<input type="number" min="1" max="2147483647" step="1" value={draft.number} onChange={(event) => update("number", event.target.value)} /></label><label>Entrada:<input inputMode="decimal" maxLength={100} value={draft.entry} onChange={(event) => update("entry", event.target.value)} /></label><label>Salida:<input inputMode="decimal" maxLength={100} value={draft.exit} onChange={(event) => update("exit", event.target.value)} /></label><label>Valor Mon.:<input type="number" min="0" max="1000000000" step="0.0001" value={draft.value} onChange={(event) => update("value", event.target.value)} /></label><label>Porciento:<input type="number" min="0" max="100" step="0.0001" value={draft.percentage} onChange={(event) => update("percentage", event.target.value)} /></label></fieldset>{request.error && <p role="alert">{request.error}</p>}{request.uncertain && <p role="status">Reintenta el mismo registro para recuperar su confirmación.</p>}<div className="legacy-dialog-actions centered"><button type="submit" disabled={saving || request.busy}>{saving ? "Guardando…" : request.uncertain ? "Reintentar" : "oK"}</button><button type="button" disabled={request.busy} onClick={close}>Cancelar</button></div></form></LegacyDialog>;
+  return <LegacyDialog title="Tragamonedas..." onClose={close} className="client-machine-form-dialog"><form className="client-machine-form" onSubmit={(event) => void submit(event)}><fieldset disabled={request.locked} style={{ border: 0, padding: 0, margin: 0, display: "contents" }}><label>Nro.:<input type="number" min="1" max="2147483647" step="1" value={draft.number} onChange={(event) => update("number", event.target.value)} /></label><label>Entrada:<input inputMode="decimal" maxLength={100} value={draft.entry} onChange={(event) => update("entry", event.target.value)} /></label><label>Salida:<input inputMode="decimal" maxLength={100} value={draft.exit} onChange={(event) => update("exit", event.target.value)} /></label><label>Valor Mon.:<input type="number" min="0" max="1000000000" step="0.0001" value={draft.value} onChange={(event) => update("value", event.target.value)} /></label><label>Porciento:<input type="number" min="0" max="100" step="0.0001" value={draft.percentage} onChange={(event) => update("percentage", event.target.value)} /></label></fieldset>{request.error && <p role="alert">{request.error}</p>}{request.uncertain && <p role="status">Reintenta el mismo registro para recuperar su confirmación.</p>}<div className="legacy-dialog-actions centered"><button type="submit" disabled={saving || request.busy}>{saving ? "Guardando…" : request.uncertain ? "Reintentar" : "Aceptar"}</button><button type="button" disabled={request.busy} onClick={close}>Cancelar</button></div></form></LegacyDialog>;
 }
 
 function ClientMachineLogsDialog({ client, machines, logs, onClose, onRefresh }: Readonly<{ client: ClientLegacyRecord; machines: readonly ClientMachine[]; logs: readonly ClientMachineLog[]; onClose: () => void; onRefresh: () => Promise<void> }>) {
@@ -2917,7 +2951,7 @@ function AuthorizationRequestDialog({ request, onClose, onSave }: Readonly<{ req
         <label>Cobrador:<input value={draft.collector} onChange={(event) => update("collector", event.target.value)} /></label>
         <div className="legacy-config-row"><label>Código:<input value={draft.code} onChange={(event) => update("code", event.target.value)} /></label><label>Cliente:<input autoFocus value={draft.client} onChange={(event) => update("client", event.target.value)} /></label></div>
         <div className="legacy-config-row"><label>Telefono:<input value={draft.phone} onChange={(event) => update("phone", event.target.value)} /></label><label>Celular:<input value={draft.cellular} onChange={(event) => update("cellular", event.target.value)} /></label></div>
-        <div className="legacy-dialog-actions"><button type="submit">oK</button><button type="button" onClick={onClose}>Cancelar</button></div>
+        <div className="legacy-dialog-actions"><button type="submit">Aceptar</button><button type="button" onClick={onClose}>Cancelar</button></div>
       </form>
     </LegacyDialog>
   );
@@ -3073,7 +3107,7 @@ function ZoneDataDialog({ zone, defaultNumber = "", onClose, onSave }: Readonly<
         <div className="zone-form-row zone-code-row"><span>Zona:</span><input autoFocus value={draft.number} onChange={(event) => update("number", event.target.value)} /><input value={draft.name} onChange={(event) => update("name", event.target.value)} /></div>
         <label className="zone-form-row"><span>Desde:</span><input type="text" value={draft.from} onChange={(event) => update("from", event.target.value)} /></label>
         <label className="zone-form-row"><span>Hasta:</span><input type="text" value={draft.to} onChange={(event) => update("to", event.target.value)} /></label>
-        <div className="legacy-dialog-actions"><button type="submit">oK</button><button type="button" onClick={onClose}>Cancelar</button></div>
+        <div className="legacy-dialog-actions"><button type="submit">Aceptar</button><button type="button" onClick={onClose}>Cancelar</button></div>
       </form>
       {error && <LegacyAlertDialog message={error} onClose={() => setError("")} />}
     </LegacyDialog>
@@ -3226,7 +3260,7 @@ function UserDataDialog({ user, onClose, onSave }: Readonly<{ user?: LegacyUserR
           <label><span>Rol:</span><select value={draft.role} onChange={(event) => update("role", event.target.value as LegacyUserRecord["role"])}>{userRoleOptions.map((role) => <option key={role}>{role}</option>)}</select></label>
         </div>
         <label className="legacy-form-row"><span>Alias:</span><input className="short-input" value={draft.alias} onChange={(event) => update("alias", event.target.value)} /></label>
-        <div className="legacy-dialog-actions"><button type="submit">oK</button><button type="button" onClick={onClose}>Cancelar</button></div>
+        <div className="legacy-dialog-actions"><button type="submit">Aceptar</button><button type="button" onClick={onClose}>Cancelar</button></div>
       </form>
       {error && <LegacyAlertDialog message={error} onClose={() => setError("")} />}
     </LegacyDialog>
@@ -3254,7 +3288,7 @@ function ChangePasswordDialog({ onClose, onSave }: Readonly<{ onClose: () => voi
       <form className="legacy-user-form" onSubmit={submit}>
         <label className="legacy-form-row"><span>Clave:</span><input autoFocus type="password" maxLength={INPUT_LIMITS.password} value={password} onChange={(event) => setPassword(event.target.value)} /></label>
         <label className="legacy-form-row"><span>Confirmación:</span><input type="password" maxLength={INPUT_LIMITS.password} value={confirmation} onChange={(event) => setConfirmation(event.target.value)} /></label>
-        <div className="legacy-dialog-actions"><button type="submit">oK</button><button type="button" onClick={onClose}>Cancelar</button></div>
+        <div className="legacy-dialog-actions"><button type="submit">Aceptar</button><button type="button" onClick={onClose}>Cancelar</button></div>
       </form>
       {error && <LegacyAlertDialog message={error} onClose={() => setError("")} />}
     </LegacyDialog>
@@ -3304,7 +3338,7 @@ function PermissionCategoryDialog({ onClose, onSave }: Readonly<{ onClose: () =>
             </table>
           </div>
         </div>
-        <div className="legacy-dialog-actions"><button type="submit">oK</button><button type="button" onClick={onClose}>Cancelar</button></div>
+        <div className="legacy-dialog-actions"><button type="submit">Aceptar</button><button type="button" onClick={onClose}>Cancelar</button></div>
       </form>
     </LegacyDialog>
   );
@@ -3576,7 +3610,7 @@ function ExchangeRateDataDialog({ rate, onClose, onSave }: Readonly<{ rate?: Exc
         <label className="exchange-rate-row"><span className="exchange-rate-label">Moneda:</span><select value={draft.currency} onChange={(event) => update("currency", event.target.value)}><option>No Definida</option><option>Peso Dominicano</option><option>Dólar Americano</option><option>Euro</option></select></label>
         <div className="exchange-rate-row exchange-date-row"><span className="exchange-rate-label">Fecha:</span><input type="date" value={draft.date} onChange={(event) => update("date", event.target.value)} /><input type="time" step="1" value={draft.time} onChange={(event) => update("time", event.target.value)} /></div>
         <div className="exchange-rate-row exchange-money-row"><label><span>Compra:</span><input type="text" value={draft.buy} onChange={(event) => update("buy", event.target.value)} /></label><label><span>Venta:</span><input type="text" value={draft.sell} onChange={(event) => update("sell", event.target.value)} /></label></div>
-        <div className="legacy-dialog-actions centered exchange-rate-actions"><button type="submit">oK</button><button type="button" onClick={onClose}>Cancelar</button></div>
+        <div className="legacy-dialog-actions centered exchange-rate-actions"><button type="submit">Aceptar</button><button type="button" onClick={onClose}>Cancelar</button></div>
       </form>
       {validationMessage && <LegacyAlertDialog message={validationMessage} onClose={() => setValidationMessage("")} />}
     </LegacyDialog>
@@ -3697,7 +3731,7 @@ function ServiceProductDataDialog({ service, onClose, onSave }: Readonly<{ servi
           <label><span>Abrev:</span><input value={draft.abbr} onChange={(event) => update("abbr", event.target.value)} /></label>
         </div>
         <label className="legacy-check-line service-obligated-line"><input type="checkbox" checked={draft.obligated} onChange={(event) => update("obligated", event.target.checked)} /><span>Obligado cobrar</span></label>
-        <div className="legacy-dialog-actions centered service-form-actions"><button type="submit">oK</button><button type="button" onClick={onClose}>Cancelar</button></div>
+        <div className="legacy-dialog-actions centered service-form-actions"><button type="submit">Aceptar</button><button type="button" onClick={onClose}>Cancelar</button></div>
       </form>
       {validationMessage && <LegacyAlertDialog message={validationMessage} onClose={() => setValidationMessage("")} />}
     </LegacyDialog>
@@ -3833,7 +3867,7 @@ function PcpDataDialog({ pcp, onClose, onSave }: Readonly<{ pcp?: PcpRecord; rou
           <span className="pcp-form-label">Telef.:</span>
           <input type="text" value={draft.phone} onChange={(event) => update("phone", event.target.value)} />
         </label>
-        <div className="legacy-dialog-actions centered pcp-form-actions"><button type="submit">oK</button><button type="button" onClick={onClose}>Cancelar</button></div>
+        <div className="legacy-dialog-actions centered pcp-form-actions"><button type="submit">Aceptar</button><button type="button" onClick={onClose}>Cancelar</button></div>
       </form>
       {validationMessage && <LegacyAlertDialog message={validationMessage} onClose={() => setValidationMessage("")} />}
     </LegacyDialog>
@@ -3848,7 +3882,7 @@ function PcpStationSelectDialog({ assignedStationIds, onClose, onSelect }: Reado
     <LegacyDialog title="Seleccionar..." onClose={onClose} className="legacy-select-dialog">
       <div className="legacy-dialog-form">
         <label>Seleccione:<select autoFocus value={selectedStationId} onChange={(event) => setSelectedStationId(event.target.value)}>{availableStations.map((station) => <option key={station.id} value={station.id}>{station.station}</option>)}</select></label>
-        <div className="legacy-dialog-actions centered"><button type="button" disabled={!selectedStation} onClick={() => selectedStation && onSelect(selectedStation)}>oK</button><button type="button" onClick={onClose}>Cancelar</button></div>
+        <div className="legacy-dialog-actions centered"><button type="button" disabled={!selectedStation} onClick={() => selectedStation && onSelect(selectedStation)}>Aceptar</button><button type="button" onClick={onClose}>Cancelar</button></div>
       </div>
     </LegacyDialog>
   );
@@ -4009,7 +4043,7 @@ function PcpGroupDialog({ group, onClose, onSave }: Readonly<{ group?: PcpGroupR
     <LegacyDialog title="Nombre del Grupo..." onClose={onClose} className="legacy-select-dialog">
       <form className="legacy-dialog-form" onSubmit={submit}>
         <label>Nombre:<input autoFocus value={name} onChange={(event) => setName(event.target.value)} /></label>
-        <div className="legacy-dialog-actions centered"><button type="submit">oK</button><button type="button" onClick={onClose}>Cancelar</button></div>
+        <div className="legacy-dialog-actions centered"><button type="submit">Aceptar</button><button type="button" onClick={onClose}>Cancelar</button></div>
       </form>
     </LegacyDialog>
   );
@@ -4411,7 +4445,7 @@ function LegacyCodifierView({ page, snapshot, onRefresh, onAccount }: Readonly<{
           {configTab === "Soporte técnico" && (
             <fieldset className="legacy-config-fieldset support-config-fieldset">
               <legend>Soporte técnico</legend>
-              <p className="support-config-hint">Estos datos se muestran en la ventana «Soporte Técnico» del panel izquierdo.</p>
+              <p className="support-config-hint">Estos datos se muestran en la ventana «Ayuda» del menú de la izquierda.</p>
               <label>Soporte a cargo de:<input {...fld("soporte.nombre")} /></label>
               <div className="legacy-config-row">
                 <label>Teléfono de soporte:<input {...fld("soporte.telefono")} /></label>
@@ -4491,7 +4525,7 @@ function LegacyCodifierView({ page, snapshot, onRefresh, onAccount }: Readonly<{
                       <label>Puerto:<input {...fld("impresion.puerto")} /></label>
                     </div>
                     <label>Nombre:<input {...fld("impresion.nombre")} /></label>
-                    <label>Nota al pie del recibo:<textarea rows={3} placeholder="Ejemplo: *** REVISE SU RECIBO ***" {...fld("receiptFooterNote")} /></label><p className="support-config-hint">Lo que escribas aquí sale impreso al pie de los recibos después de pulsar oK. Si lo dejas vacío, los recibos salen sin nota.</p>
+                    <label>Nota al pie del recibo:<textarea rows={3} placeholder="Ejemplo: *** REVISE SU RECIBO ***" {...fld("receiptFooterNote")} /></label><p className="support-config-hint">Lo que escribas aquí sale impreso al pie de los recibos después de pulsar Aceptar. Si lo dejas vacío, los recibos salen sin nota.</p>
                   </div>
                 )}
               </fieldset>
@@ -4516,7 +4550,7 @@ function LegacyCodifierView({ page, snapshot, onRefresh, onAccount }: Readonly<{
         <aside className="legacy-config-actions">
           {cfgLoadState === "loading" && <p role="status">Cargando configuración...</p>}
           {cfgLoadState === "error" && <><p role="alert">{cfgLoadError}</p><button type="button" onClick={() => setCfgLoadAttempt((attempt) => attempt + 1)}>Reintentar carga</button></>}
-          <button type="button" className="ok-button" disabled={cfgLocked} onClick={() => void saveSystemCfg()}>{cfgBusy ? "Guardando..." : "oK"}</button>
+          <button type="button" className="ok-button" disabled={cfgLocked} onClick={() => void saveSystemCfg()}>{cfgBusy ? "Guardando..." : "Aceptar"}</button>
           <button type="button" disabled={cfgBusy} onClick={() => setSystemCfg(savedCfg)}>Cancelar</button>
         </aside>
       </div>
@@ -4525,6 +4559,7 @@ function LegacyCodifierView({ page, snapshot, onRefresh, onAccount }: Readonly<{
   return <div className="legacy-mdi-view">{baseToolbar()}<LegacyDenseTable columns={["Nro.", "Opcion", "Estado"]} rows={[[1, pageTitles[page], "Disponible"]]} /></div>;
 }
 
+// The only sign-in page: every account enters here and goes to the portal of its role.
 function Login({
   onLogin,
 }: Readonly<{
@@ -4532,9 +4567,8 @@ function Login({
 }>) {
   const [email, setEmail] = useState(""),
     [password, setPassword] = useState(""),
-    [showCredentials, setShowCredentials] = useState(false),
     [busy, setBusy] = useState(false),
-    [blockedCollector, setBlockedCollector] = useState(false),
+    [toCollector, setToCollector] = useState(false),
     [error, setError] = useState("");
   async function login(credentials: Readonly<{ email: string; password: string }>) {
     setBusy(true);
@@ -4546,14 +4580,16 @@ function Login({
       });
       const next = enrichUserRole(result.user);
       if (isSuspendedUser(next))
-        throw new Error("Cuenta o empresa suspendida.");
+        throw new Error("Tu cuenta o tu empresa está suspendida. Habla con la oficina.");
+      // A collector works from the collector app: the session goes there without asking again.
       if (normalizeRole(next.role) === "COLLECTOR") {
-        setBlockedCollector(true);
+        setToCollector(true);
+        openCollectorPortal(result.token, collectorUrl);
         return;
       }
       if (!canAccessAdmin(next))
         throw new Error(
-          "No tienes permisos para acceder al panel administrativo.",
+          "Tu cuenta todavía no tiene permisos para entrar. Pide a la oficina que te los asigne.",
         );
       setToken(result.token);
       onLogin(next, stations[0]);
@@ -4565,35 +4601,6 @@ function Login({
       setBusy(false);
     }
   }
-  if (blockedCollector)
-    return (
-      <div className="login-layout">
-        <section className="login-form-side">
-          <div className="login-form-inner blocked-access-card">
-            <div className="login-card-brand">
-              <Logo />
-            </div>
-            <h2>Acceso no autorizado</h2>
-            <p className="inline-error" role="alert">
-              Acceso no autorizado al panel administrativo. Ingrese desde la
-              terminal móvil de cobrador.
-            </p>
-            <a
-              className="btn primary full login-submit"
-              href={collectorUrl}
-            >
-              Ir a la PWA del Cobrador <ArrowRight size={18} />
-            </a>
-            <button
-              className="btn full"
-              onClick={() => setBlockedCollector(false)}
-            >
-              Volver al login administrativo
-            </button>
-          </div>
-        </section>
-      </div>
-    );
   return (
     <div className="login-layout">
       <section className="login-form-side">
@@ -4601,107 +4608,64 @@ function Login({
           <div className="login-card-brand">
             <Logo />
           </div>
-          <h2>Cobros y Pagos</h2>
+          <h2>Iniciar sesión</h2>
           <strong className="login-subtitle">
-            Control Operativo y Cuadres
+            Cobros y Pagos
           </strong>
-          {showCredentials ? (
-            <>
-              <p className="login-instructions">Ingrese sus credenciales para continuar.</p>
-              <form
-                name="admin-login"
-                autoComplete="on"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void login(loginCredentials(event.currentTarget));
-                }}
-              >
-                <label className="field">
-                  Usuario / Correo
-                  <input
-                    id="admin-login-username"
-                    name="username"
-                    type="text"
-                    inputMode="email"
-                    autoCapitalize="none"
-                    spellCheck={false}
-                    disabled={busy}
-                    autoComplete="username"
-                    maxLength={INPUT_LIMITS.email}
-                    autoFocus
-                    required
-                    placeholder="admin@cyp.local"
-                    defaultValue={email}
-                    onChange={(event) => setEmail(event.target.value)}
-                  />
-                </label>
-                <label className="field">
-                  Contraseña
-                  <LoginPasswordInput id="admin-login-password" value={password} onChange={setPassword} minLength={3} disabled={busy} />
-                </label>
-                <PasswordManagerHint />
-                {error && (
-                  <div className="inline-error" role="alert">
-                    <CircleAlert size={17} />
-                    {error}
-                  </div>
-                )}
-                <button className="btn primary full login-submit" disabled={busy}>
-                  {busy ? (
-                    <LoaderCircle className="spin" size={18} />
-                  ) : (
-                    <>
-                      Iniciar Sesión
-                      <ArrowRight size={18} />
-                    </>
-                  )}
-                </button>
-                <button
-                  type="button"
-                  className="text-button login-back"
-                  disabled={busy}
-                  onClick={() => {
-                    setShowCredentials(false);
-                    setEmail("");
-                    setPassword("");
-                    setError("");
-                  }}
-                >
-                  <ChevronLeft size={15} /> Volver
-                </button>
-              </form>
-              <p className="demo-disclaimer">
-                Accede con las credenciales que te facilitó el administrador.
-              </p>
-            </>
-          ) : (
-            <div className="login-access-options">
-              <button
-                type="button"
-                className="demo-role-action"
-                onClick={() => setShowCredentials(true)}
-              >
-                <ShieldCheck size={15} />
-                <span>
-                  <strong>Administrador</strong>
-                  <small>
-                    Este formulario abre el panel administrativo: clientes, cargos, pagos y
-                    reportes.
-                  </small>
-                </span>
-              </button>
-              <a className="demo-role-action" href={collectorUrl}>
-                <Users size={15} />
-                <span>
-                  <strong>Terminal del cobrador</strong>
-                  <small>
-                    Abre la terminal de ruta para consultar clientes, cobrar y pagar con tu
-                    cuenta habilitada.
-                  </small>
-                </span>
-              </a>
-            </div>
-          )}
+          <p className="login-instructions">Escribe tu usuario y tu contraseña para entrar.</p>
+          <form
+            name="login"
+            autoComplete="on"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void login(loginCredentials(event.currentTarget));
+            }}
+          >
+            <label className="field">
+              Usuario o correo
+              <input
+                id="admin-login-username"
+                name="username"
+                type="text"
+                inputMode="email"
+                autoCapitalize="none"
+                spellCheck={false}
+                disabled={busy || toCollector}
+                autoComplete="username"
+                maxLength={INPUT_LIMITS.email}
+                autoFocus
+                required
+                placeholder="Tu usuario o correo"
+                defaultValue={email}
+                onChange={(event) => setEmail(event.target.value)}
+              />
+            </label>
+            <label className="field">
+              Contraseña
+              <LoginPasswordInput id="admin-login-password" value={password} onChange={setPassword} minLength={3} disabled={busy || toCollector} />
+            </label>
+            <PasswordManagerHint />
+            {error && (
+              <div className="inline-error" role="alert">
+                <CircleAlert size={17} />
+                {error}
+              </div>
+            )}
+            {toCollector && <p className="login-instructions" role="status">Entrando a tu ruta…</p>}
+            <button className="btn primary full login-submit" disabled={busy || toCollector}>
+              {busy || toCollector ? (
+                <LoaderCircle className="spin" size={18} />
+              ) : (
+                <>
+                  Iniciar sesión
+                  <ArrowRight size={18} />
+                </>
+              )}
+            </button>
+          </form>
+          <p className="demo-disclaimer">
+            ¿No tienes usuario? Pídeselo a la oficina de tu empresa.
+          </p>
         </div>
         <div className="login-bottom">
           <ShieldCheck size={14} /> Cobros y Pagos Móviles
@@ -4758,13 +4722,9 @@ export default function App() {
     [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [page, setPage] = useState<Page>(pageFromHash),
     [collapsed, setCollapsed] = useState(false),
-    [expandedGroups, setExpandedGroups] = useState<NavGroup[]>([
-      "ARCHIVOS",
-      "COBROS",
-      "PAGOS",
-      "REMESAS",
-      "REPORTES & MONITOREO",
-    ]),
+    [expandedGroups, setExpandedGroups] = useState<NavGroup[]>([]),
+    // The account whose saved menu is on screen: nothing is saved until it has been read.
+    [menuOwner, setMenuOwner] = useState(""),
     [mobileMenu, setMobileMenu] = useState(false),
     [commandOpen, setCommandOpen] = useState(false),
     [commandQuery, setCommandQuery] = useState(""),
@@ -4882,20 +4842,19 @@ export default function App() {
     const interval = setInterval(() => setClock(new Date()), 1000);
     return () => clearInterval(interval);
   }, []);
-  // Applied when the account or its role changes, not on every refresh: each periodic read of
-  // /auth/me replaces the user object and would fold the groups the user opened.
-  const menuProfile = user ? `${normalizeRole(user.role)}\n${user.id}` : "";
-  // Before paint: the menu never flashes every group unfolded for a profile that starts folded.
+  // Read when the account changes, not on every refresh: each periodic read of /auth/me replaces
+  // the user object. Before paint, so the menu never flashes in another state.
+  const menuUserId = user?.id ?? "";
   useLayoutEffect(() => {
-    const role = menuProfile.split("\n")[0];
-    if (role === "SUPERVISOR")
-      setExpandedGroups(["REPORTES & MONITOREO"]);
-    // The cashier works in Envíos and its box in Cuadres Diarios: both groups start unfolded.
-    else if (role === "CASHIER")
-      setExpandedGroups(["REMESAS", "REPORTES & MONITOREO"]);
-    // Any other account, also one that signs in after another on this page, starts with every group unfolded.
-    else setExpandedGroups([...groupOrder]);
-  }, [menuProfile]);
+    if (!menuUserId) return;
+    const saved = readMenuMemory(menuUserId);
+    setExpandedGroups(saved.groups);
+    setCollapsed(saved.collapsed);
+    setMenuOwner(menuUserId);
+  }, [menuUserId]);
+  useEffect(() => {
+    if (menuOwner && menuOwner === menuUserId) rememberMenu(menuOwner, { groups: expandedGroups, collapsed });
+  }, [menuOwner, menuUserId, expandedGroups, collapsed]);
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
@@ -4956,17 +4915,6 @@ export default function App() {
       ];
     });
   }, [nextZIndex, user]);
-  // "Entregas de Dinero" asks to open Pagos de Envíos with the transfers to deliver, filtered by a search.
-  const [remittancePayoutRequest, setRemittancePayoutRequest] = useState<{ id: number; search: string }>();
-  useEffect(() => {
-    const handler = (event: Event) => {
-      const search = String((event as CustomEvent<{ search?: string }>).detail?.search ?? "").slice(0, INPUT_LIMITS.name);
-      setRemittancePayoutRequest((current) => ({ id: (current?.id ?? 0) + 1, search }));
-      openMdiWindow("remittancePayouts", "remittance-payouts");
-    };
-    window.addEventListener("cyp-open-remittance-payout", handler);
-    return () => window.removeEventListener("cyp-open-remittance-payout", handler);
-  }, [openMdiWindow]);
   // "Ir a Caja de envíos" opens Cuadres Diarios on its Caja de envíos section, ready to open the box the
   // notice named; the entries about collector settlements (401) open it on those, whatever was shown before.
   const [settlementSectionRequest, setSettlementSectionRequest] = useState<{ id: number; section: DailySettlementSection; opening?: RemittanceCashOpening }>();
@@ -5100,7 +5048,7 @@ export default function App() {
               </span>
               <span>
                 <strong>Mi organización</strong>
-                <small>Panel de administración</small>
+                <small>{roleName(user)}</small>
               </span>
               <ChevronsUpDown size={15} />
             </button>
@@ -5114,6 +5062,31 @@ export default function App() {
                 const groupActive = groupItems.some((item) =>
                   activeNavKey ? activeNavKey === item.key : false,
                 );
+                const launch = (item: (typeof navigation)[number]) => {
+                  if (item.action === "controlPanel") openMdiWindow("controlPanel", item.key);
+                  else if (item.page) openMdiWindow(item.page, item.key);
+                  setMobileMenu(false);
+                };
+                // One screen: the section button itself opens it.
+                if (directGroups.includes(group) && groupItems.length === 1) {
+                  const item = groupItems[0];
+                  return (
+                    <div className="nav-group nav-group-direct" key={group}>
+                      <button
+                        type="button"
+                        className={`nav-group-trigger ${groupActive ? "active" : ""}`}
+                        aria-label={item.label}
+                        title={item.hint}
+                        data-short-label={groupShortLabel[group]}
+                        aria-current={groupActive ? "page" : undefined}
+                        onClick={() => launch(item)}
+                      >
+                        <span>{group}</span>
+                        <item.icon size={15} aria-hidden="true" />
+                      </button>
+                    </div>
+                  );
+                }
                 return (
                   <div
                     className={`nav-group ${open ? "open" : ""}`}
@@ -5122,9 +5095,9 @@ export default function App() {
                     <button
                       type="button"
                       className={`nav-group-trigger ${groupActive ? "active" : ""}`}
-                      aria-label={groupLabel(group)}
-                      title={groupLabel(group)}
-                      data-short-label={groupShortLabel(group)}
+                      aria-label={group}
+                      title={open ? `Cerrar ${group.toLocaleLowerCase("es-DO")}` : `Abrir ${group.toLocaleLowerCase("es-DO")}`}
+                      data-short-label={groupShortLabel[group]}
                       onClick={() => {
                         if (collapsed) {
                           setCollapsed(false);
@@ -5139,7 +5112,7 @@ export default function App() {
                       }}
                       aria-expanded={open}
                     >
-                      <span>{groupLabel(group)}</span>
+                      <span>{group}</span>
                       <ChevronDown size={14} />
                     </button>
                     <div className="nav-group-items" hidden={!open}>
@@ -5153,18 +5126,8 @@ export default function App() {
                               : ""
                           }`}
                           key={item.key}
-                          onClick={() => {
-                            if (item.action === "controlPanel") {
-                              openMdiWindow("controlPanel", item.key);
-                              setMobileMenu(false);
-                              return;
-                            }
-                            if (item.page) {
-                              openMdiWindow(item.page, item.key);
-                              setMobileMenu(false);
-                            }
-                          }}
-                          title={item.label}
+                          onClick={() => launch(item)}
+                          title={item.hint}
                           aria-label={item.label}
                           aria-current={
                             activeNavKey === item.key ? "page" : undefined
@@ -5211,12 +5174,12 @@ export default function App() {
               </div>}
               <button
                 className="nav-item help-button"
-                aria-label="Soporte Técnico"
-                title="Soporte Técnico"
+                aria-label="Ayuda"
+                title="Dónde está cada cosa y a quién llamar"
                 onClick={() => setHelpOpen(true)}
               >
                 <CircleHelp size={19} />
-                <span>Soporte Técnico</span>
+                <span>Ayuda</span>
                 <ArrowUpRight size={15} />
               </button>
               <div className="system-status">
@@ -5268,7 +5231,7 @@ export default function App() {
                   {snapshot?.totals.activeCollectors ?? 0} cobradores en calle
                 </span>}
                 {/* The state of the collector settlements (401), not the box of envíos. */}
-                {hasPermission(effectiveUser, 401) && <button type="button" onClick={openCollectorSettlements} title="Abrir Cuadres Diarios"
+                {hasPermission(effectiveUser, 401) && <button type="button" onClick={openCollectorSettlements} title="Abrir Cuadres diarios"
                   className={`status-badge ${
                     snapshot?.totals.difference ? "warning" : "ok"
                   }`}
@@ -5416,7 +5379,7 @@ export default function App() {
                   <span className="user-chip-copy">
                     <strong>{user?.name ?? "Administración"}</strong>
                     <small>
-                      {user ? normalizeRole(user.role) : "ADMIN"} · v1.0
+                      {roleName(user)}
                     </small>
                   </span>
                   <ChevronDown size={13} />
@@ -5427,9 +5390,10 @@ export default function App() {
             <nav className="desktop-launchers" aria-label="Operaciones principales">
               {canOpenPage(effectiveUser, "charges") && <button type="button" className="btn launcher-collections" onClick={() => openMdiWindow("charges", "charges")}><FolderOpen size={17} />CARGOS</button>}
               {canOpenPage(effectiveUser, "collections") && <button type="button" className="btn launcher-collections" onClick={() => openMdiWindow("collections", "collections")}><ReceiptText size={17} />COBROS</button>}
-              {canOpenPage(effectiveUser, "payouts") && <button type="button" className="btn launcher-payments" onClick={() => openMdiWindow("payouts", "payouts")}><ArrowDownLeft size={17} />DESCARGOS</button>}
+              {canOpenPage(effectiveUser, "payouts") && <button type="button" className="btn launcher-payments" onClick={() => openMdiWindow("payouts", "payouts")}><ArrowDownLeft size={17} />ÓRDENES DE PAGO</button>}
               {canOpenPage(effectiveUser, "payments") && <button type="button" className="btn launcher-payments" onClick={() => openMdiWindow("payments", "payments")}><Wallet size={17} />PAGOS</button>}
-              {canOpenPage(effectiveUser, "remittances") && <button type="button" className="btn launcher-remittances" onClick={() => openMdiWindow("remittances", "remittances")}><Globe size={17} />ENVÍO DE DINERO</button>}
+              {canOpenPage(effectiveUser, "remittances") && <button type="button" className="btn launcher-remittances" onClick={() => openMdiWindow("remittances", "remittances")}><Globe size={17} />ENVÍOS DE DINERO</button>}
+              {canOpenPage(effectiveUser, "remittancePayouts") && <button type="button" className="btn launcher-remittances" onClick={() => openMdiWindow("remittancePayouts", "remittance-payouts")}><HandCoins size={17} />ENTREGAS DE DINERO</button>}
               {canOpenPage(effectiveUser, "dailySettlements") && <button type="button" className="btn launcher-settlements" onClick={() => openMdiWindow("dailySettlements", "daily-settlements")}><FileCheck2 size={17} />CUADRES</button>}
             </nav>
             <main id="main-content" className="main-content desktop-canvas" tabIndex={-1}>
@@ -5460,7 +5424,7 @@ export default function App() {
               ) : windowState.page === "remittances" ? (
                 <RemittancesWorkspace api={remittancesApi} user={effectiveUser} isAdmin={isAdminRole} sections={["envios"]} fixedForm onOpenCash={canViewRemittanceCash ? openRemittanceCash : undefined} desktopId="main-content" nextWindowZIndex={nextReceiptZIndex} />
               ) : windowState.page === "remittancePayouts" ? (
-                <RemittancesWorkspace api={remittancesApi} user={effectiveUser} isAdmin={isAdminRole} sections={["recibos"]} heading="Pagos de Envíos" payoutRequest={remittancePayoutRequest} onOpenCash={canViewRemittanceCash ? openRemittanceCash : undefined} desktopId="main-content" nextWindowZIndex={nextReceiptZIndex} />
+                <RemittancesWorkspace api={remittancesApi} user={effectiveUser} isAdmin={isAdminRole} sections={["recibos"]} heading="Entregas de dinero" onOpenCash={canViewRemittanceCash ? openRemittanceCash : undefined} desktopId="main-content" nextWindowZIndex={nextReceiptZIndex} />
               ) : windowState.page === "remittanceCommissions" ? (
                 <ConnectedRemittanceCommissions actor={effectiveUser} />
               ) : isConnectedCatalog(windowState.page) ? (
@@ -5739,27 +5703,20 @@ export default function App() {
           <Modal
             open={helpOpen}
             onClose={() => setHelpOpen(false)}
-            title="Soporte Técnico"
-            description="Contacto de soporte y guía rápida de los procesos."
+            title="Ayuda"
+            description="Dónde está cada cosa y a quién llamar si necesitas ayuda."
           >
             <div className="help-content">
               <SupportContact open={helpOpen} />
+              {/* Where each thing is: the same names as the menu, in the same order. */}
               {[
-                {
-                  icon: ReceiptText,
-                  title: "Cargos y cargos recurrentes",
-                  text: "Registra cargos simples o genera cargos recurrentes mensuales por servicio, marcando si son obligados a cobrar y si el monto es fijo o editable.",
-                },
-                {
-                  icon: Wallet,
-                  title: "Descargos, remesas y entrega de dinero",
-                  text: "Autoriza tickets de pago al beneficiario y registra el efectivo entregado al cobrador para realizar pagos en calle.",
-                },
-                {
-                  icon: FileCheck2,
-                  title: "Cuadre Diario (Arqueo)",
-                  text: "Cobrado − Depositado + Entregado − Pagado = Dinero en Mano. La diferencia debe cerrar en cero y respeta LimiteCobro y LimitePago.",
-                },
+                { icon: FolderOpen, title: "CLIENTES", text: "Buscar, registrar y cambiar los datos de los clientes." },
+                { icon: ReceiptText, title: "COBROS", text: "Cargos por cobrar: lo que cada cliente debe. Cobros realizados: el dinero ya cobrado. Depósitos de cobradores: lo que el cobrador entrega en la oficina." },
+                { icon: ArrowUpRight, title: "PAGOS", text: "Órdenes de pago: lo que hay que pagarle a un cliente. Pagos realizados: lo que ya se pagó. Efectivo a cobradores: el dinero que se le da al cobrador para pagar en la calle." },
+                { icon: HandCoins, title: "REMESAS", text: "Envíos de dinero: registrar una remesa. Entregas de dinero: darle el dinero a la persona que lo recibe. Para las dos hace falta tener abierta tu caja de remesas del día." },
+                { icon: FileCheck2, title: "CUADRES Y REPORTES", text: "Cuadres diarios: cuadrar el dinero del día de cada cobrador y de cada caja de remesas. Cobrado − depositado + entregado − pagado = dinero en mano; la diferencia debe dar cero. Reportes: listados para revisar o imprimir." },
+                { icon: LayoutDashboard, title: "MONITOREO", text: "Ver en el momento cómo va cada cobrador, cada zona y cada ruta." },
+                { icon: ServerCog, title: "ADMINISTRACIÓN", text: "Usuarios y permisos, cobradores, rutas, zonas, tasas de cambio, comisiones y configuración." },
               ].map((item) => (
                 <div key={item.title}>
                   <item.icon size={23} />
@@ -5770,7 +5727,7 @@ export default function App() {
                 </div>
               ))}
               <p className="help-demo">
-                Gamera Software · Guía de uso y consulta de los procesos del sistema.
+                Pasa el puntero sobre cualquier opción del menú para ver para qué sirve.
               </p>
               <p className="help-demo">
                 Cada operación se guarda en el servidor: necesitas conexión
@@ -6360,7 +6317,7 @@ function SupportContact({ open }: Readonly<{ open: boolean }>) {
           {email && <li><span>Correo:</span> <a href={`mailto:${email}`}>{email}</a></li>}
         </ul>
       ) : (
-        <p className="support-contact-empty">Todavía no se ha escrito el teléfono ni el correo de soporte. Un administrador puede ponerlos en Archivos → Admin. → Configuración General → pestaña General → «Soporte técnico».</p>
+        <p className="support-contact-empty">Todavía no se ha escrito el teléfono ni el correo de soporte. Un administrador puede ponerlos en Administración → Configuración general → pestaña General → «Soporte técnico».</p>
       )}
       <p>Al llamar o escribir, indica tu usuario, la ventana donde ocurrió el problema y la hora aproximada.</p>
       {demo && <p className="support-contact-demo">Esta es una demostración: los datos que ves son ficticios, salvo las estaciones validadas con RRAA (su código, su ID de dispositivo y su licencia).</p>}
@@ -6548,7 +6505,7 @@ function CargoDialog({
           {request.error && <p role="alert">{request.error}</p>}
           {request.uncertain && <p role="status">Reintenta esta misma operación para confirmar el resultado antes de cambiar los datos.</p>}
           <div className="legacy-dialog-actions centered">
-            <button type="submit" disabled={saving || request.busy}>{saving || request.busy ? "Guardando…" : request.uncertain ? "Reintentar" : "oK"}</button>
+            <button type="submit" disabled={saving || request.busy}>{saving || request.busy ? "Guardando…" : request.uncertain ? "Reintentar" : "Aceptar"}</button>
             <button type="button" disabled={request.busy} onClick={close}>Cancelar</button>
           </div>
         </form>
@@ -6606,10 +6563,10 @@ function ChargeCancelReasonDialog({ onClose, onConfirm, busy }: Readonly<{ onClo
     void onConfirm(reason.trim());
   };
   return (
-    <LegacyDialog title="Entre un valor..." onClose={onClose} className="charge-cancel-reason-dialog">
+    <LegacyDialog title="¿Por qué se cancela?" onClose={onClose} className="charge-cancel-reason-dialog">
       <form className="legacy-dialog-form" onSubmit={submit}>
-        <label className="charge-cancel-reason-field">Valor:<input autoFocus value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Digitado por error" maxLength={500} /></label>
-        <div className="legacy-dialog-actions centered"><button type="submit" disabled={busy}>{busy ? "Guardando…" : "oK"}</button><button type="button" disabled={busy} onClick={onClose}>Cancelar</button></div>
+        <label className="charge-cancel-reason-field">Motivo:<input autoFocus value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Digitado por error" maxLength={500} /></label>
+        <div className="legacy-dialog-actions centered"><button type="submit" disabled={busy}>{busy ? "Guardando…" : "Aceptar"}</button><button type="button" disabled={busy} onClick={onClose}>Cancelar</button></div>
       </form>
     </LegacyDialog>
   );
@@ -6811,7 +6768,7 @@ function ChargesOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{
         <section className="legacy-grid-panel charges-grid-panel" aria-label="Grilla de cargos">{visibleCharges.some((item) => item.currencyConflict) && <p role="alert">Los saldos con moneda pendiente de revisión se excluyen del total pendiente. Se conserva el libro de cada recibo.</p>}
           <div className="legacy-mdi-table-wrap">
             <table className="legacy-mdi-table charges-table">
-              <thead><tr><th>Nro.</th><th>Fecha</th><th>Cód.</th><th>Identif.</th><th>Cliente</th><th>Abrev</th><th>Servicio</th><th>Importe</th><th>Recibido</th><th>Pendiente</th><th>Act.</th></tr></thead>
+              <thead><tr><th>Nro.</th><th>Fecha</th><th>Cód.</th><th>Identificación</th><th>Cliente</th><th>Abrev</th><th>Servicio</th><th>Importe</th><th>Recibido</th><th>Pendiente</th><th>Act.</th></tr></thead>
               <tbody>
                 {visibleCharges.map((charge, index) => {
                   const client = clientById(charge.clientId);
@@ -7049,7 +7006,7 @@ function RecurringChargeDialog({
           <span>Nota:</span>
           <input id="recurring-charge-note" value={note} onChange={(event) => setNote(event.target.value)} />
         </label>
-        <div className="legacy-dialog-actions centered"><button type="submit">oK</button><button type="button" onClick={onClose}>Cancelar</button></div>
+        <div className="legacy-dialog-actions centered"><button type="submit">Aceptar</button><button type="button" onClick={onClose}>Cancelar</button></div>
       </form>
       {clientSearchOpen && <ClientSearchSubmodal clients={clients} onClose={() => setClientSearchOpen(false)} onSelect={(client) => { setClientId(client.id); setClientCode(client.code); setClientSearchOpen(false); }} />}
       {validationMessage && <LegacyAlertDialog message={validationMessage} onClose={() => setValidationMessage("")} />}
@@ -7199,7 +7156,7 @@ function RecurringChargesOperationalView({ snapshot, currentUser, onRefresh }: R
                   <th>Nro.</th>
                   <th>Fecha</th>
                   <th>Frecuencia</th>
-                  <th>Identif.</th>
+                  <th>Identificación</th>
                   <th>Cliente</th>
                   <th>Servicio</th>
                   <th>Importe</th>
@@ -7565,7 +7522,7 @@ function LegacyOperationView({
             <section className="legacy-grid-panel charges-grid-panel collections-grid-panel" aria-label="Grilla de cobros">
               <div className="legacy-mdi-table-wrap">
                 <table className="legacy-mdi-table collections-table">
-                  <thead><tr><th>Nro.</th><th>Identif.</th><th>Cliente</th><th>Fecha</th><th>Cobrador</th><th>Central</th><th>Recibo</th><th>Importe</th><th>Activo</th><th>Registro</th></tr></thead>
+                  <thead><tr><th>Nro.</th><th>Identificación</th><th>Cliente</th><th>Fecha</th><th>Cobrador</th><th>Central</th><th>Recibo</th><th>Importe</th><th>Activo</th><th>Registro</th></tr></thead>
                   <tbody>{orderedCollectionRows.length ? orderedCollectionRows.map((row, index) => {
                     const movement = row.__raw as unknown as Snapshot["movements"][number];
                     const client = movement.clientId ? snapshot.clients.find((item) => item.id === movement.clientId) : undefined;
@@ -8144,7 +8101,7 @@ function DepositsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
           </aside>}
           <section className="legacy-grid-panel deposits-grid-panel" aria-label="Grilla de depósitos por cobradores">
             <div className="legacy-mdi-table-wrap"><table className="legacy-mdi-table deposits-table">
-              <thead><tr><th>Nro.</th><th>Fecha</th><th>Cobrador</th><th>Moneda</th><th>Importe</th><th>Forma</th><th>Cheq.</th><th>Imp. Cheques</th><th>Activo</th><th>Acep.</th></tr></thead>
+              <thead><tr><th>Nro.</th><th>Fecha</th><th>Cobrador</th><th>Moneda</th><th>Importe</th><th>Forma</th><th>Cheques</th><th>Monto en cheques</th><th>Activo</th><th>Aceptado</th></tr></thead>
               <tbody>{orderedRows.length ? orderedRows.map((row, index) => {
                 const movement = row.__raw as unknown as Movement;
                 const active = currentSelection?.__id === row.__id;
@@ -8166,7 +8123,7 @@ function DepositsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
       {formTarget && <DepositDataDialog actorId={currentUser.id} snapshot={snapshot} movement={formMovement} initialDraft={formInitial} onClose={() => setFormTarget(null)} onSave={saveDeposit} />}
       {acceptConfirmOpen && <LegacyConfirmDialog message="¿Está seguro que desea aceptar el depósito?" onYes={beginAccept} onNo={() => setAcceptConfirmOpen(false)} />}
       {cancelConfirmOpen && <LegacyConfirmDialog message="¿Realmente desea cancelar el registro actual?" onYes={beginCancel} onNo={() => setCancelConfirmOpen(false)} />}
-      {cancelReasonOpen && <LegacyDialog title="Entre un valor..." onClose={() => { if (!lifecycleRequest.busy) { setCancelReasonOpen(false); setCancelReason("Digitado por error"); } }} className="deposit-cancel-reason-dialog" overlayClassName="collection-receipt-suboverlay"><label className="deposit-dialog-row"><span>Valor:</span><input autoFocus disabled={lifecycleRequest.locked} value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} /></label><div className="legacy-dialog-actions centered"><button type="button" disabled={lifecycleRequest.busy} onClick={confirmCancel}>{lifecycleRequest.uncertain ? "Reintentar" : "oK"}</button><button type="button" disabled={lifecycleRequest.busy} onClick={() => { setCancelReasonOpen(false); setCancelReason("Digitado por error"); }}>Cancelar</button></div></LegacyDialog>}
+      {cancelReasonOpen && <LegacyDialog title="¿Por qué se cancela?" onClose={() => { if (!lifecycleRequest.busy) { setCancelReasonOpen(false); setCancelReason("Digitado por error"); } }} className="deposit-cancel-reason-dialog" overlayClassName="collection-receipt-suboverlay"><label className="deposit-dialog-row"><span>Valor:</span><input autoFocus disabled={lifecycleRequest.locked} value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} /></label><div className="legacy-dialog-actions centered"><button type="button" disabled={lifecycleRequest.busy} onClick={confirmCancel}>{lifecycleRequest.uncertain ? "Reintentar" : "Aceptar"}</button><button type="button" disabled={lifecycleRequest.busy} onClick={() => { setCancelReasonOpen(false); setCancelReason("Digitado por error"); }}>Cancelar</button></div></LegacyDialog>}
       {acceptTarget && <LegacyDialog title="Desglose de denominaciones" onClose={() => { if (!lifecycleRequest.busy) setAcceptTarget(null); }} className="deposits-accept-dialog"><p>Depósito total: {nativeMoney(Number(acceptTarget.__amount ?? 0), acceptCurrency)}. Efectivo: {nativeMoney(acceptAmount, acceptCurrency)}; indique solo sus billetes y monedas:</p><div className="deposit-accept-denoms">{acceptRows.map((denomination) => <label key={denomination}>{denominationName(denomination, acceptCurrency)}<input aria-label={`Aceptar cantidad ${denomination / 100}`} disabled={lifecycleRequest.locked || acceptAmount === 0} type="number" min="0" step="1" value={acceptQuantities[denomination] ?? ""} onChange={(event) => setAcceptQuantities((current) => ({ ...current, [denomination]: event.target.value }))} /></label>)}</div><div className="legacy-footerbar"><span>Efectivo desglosado: <strong>{Number.isSafeInteger(acceptTotal) ? nativeMoney(acceptTotal, acceptCurrency) : "Desglose no válido"}</strong> de <strong>{nativeMoney(acceptAmount, acceptCurrency)}</strong></span></div>{!validAcceptTotal && <div className="inline-error" role="alert">El desglose debe cuadrar exactamente con el efectivo del depósito.</div>}<div className="legacy-dialog-actions centered"><button type="button" disabled={lifecycleRequest.busy} onClick={() => setAcceptTarget(null)}>Cancelar</button><button type="button" disabled={!validAcceptTotal || lifecycleRequest.busy} onClick={() => void runDepositAction(acceptTarget, "aceptar", depositDenominations(acceptQuantities))}>{lifecycleRequest.uncertain ? "Reintentar aceptación" : "Aceptar depósito"}</button></div></LegacyDialog>}
       {printChoiceOpen && <CollectionScopeSelectorDialog title="Seleccione..." allLabel="Listado de registros" currentLabel="Registro actual" hasCurrent={Boolean(currentSelection)} onClose={() => setPrintChoiceOpen(false)} onConfirm={openPrint} />}
       {printTickets && <CollectionReceiptPrintDialog receipts={printTickets} title="Imprimir Comprobante de Depósito..." onClose={() => setPrintTickets(null)} />}
@@ -8252,7 +8209,7 @@ function DepositDataDialog({ actorId, snapshot, movement, initialDraft, onClose,
         : bankCatalog.length
         ? <select aria-label={`Banco componente ${index + 1}`} value={line.bank} onChange={(event) => setNonCash((lines) => lines.map((item) => item.id === line.id ? { ...item, bank: event.target.value } : item))}><option value="">Seleccione el banco…</option>{line.bank && !bankCatalog.some((bank) => bank.name === line.bank) ? <option value={line.bank}>{line.bank}</option> : null}{bankCatalog.map((bank) => <option key={bank.id} value={bank.name}>{bank.name}</option>)}</select>
         : <input aria-label={`Banco componente ${index + 1}`} maxLength={160} placeholder="Nombre del banco" value={line.bank} onChange={(event) => setNonCash((lines) => lines.map((item) => item.id === line.id ? { ...item, bank: event.target.value } : item))} />}</td><td><input aria-label={`Referencia componente ${index + 1}`} maxLength={160} value={line.reference} onChange={(event) => setNonCash((lines) => lines.map((item) => item.id === line.id ? { ...item, reference: event.target.value } : item))} /></td><td><button type="button" aria-label={`Eliminar componente ${index + 1}`} onClick={() => setNonCash((lines) => lines.filter((item) => item.id !== line.id))}>Eliminar</button></td></tr>)}</tbody></table></div>}
-      {nonCash.length > 0 && <p className="deposit-bank-hint">{bankStatus === "loading" ? "Cargando el catálogo de bancos…" : bankStatus === "error" ? "No se pudo leer el catálogo de bancos. Puedes escribir el nombre del banco; revísalo luego en Archivos → Admin. → Bancos." : bankCatalog.length ? "Los bancos salen del catálogo: Archivos → Admin. → Bancos." : "Aún no hay bancos en el catálogo. Créalos en Archivos → Admin. → Bancos para elegirlos de una lista; mientras tanto puedes escribir el nombre."}</p>}
+      {nonCash.length > 0 && <p className="deposit-bank-hint">{bankStatus === "loading" ? "Cargando el catálogo de bancos…" : bankStatus === "error" ? "No se pudo leer el catálogo de bancos. Puedes escribir el nombre del banco; revísalo luego en Administración → Bancos." : bankCatalog.length ? "Los bancos salen del catálogo: Administración → Bancos." : "Aún no hay bancos en el catálogo. Créalos en Administración → Bancos para elegirlos de una lista; mientras tanto puedes escribir el nombre."}</p>}
       <p className="deposit-form-kind">Forma de depósito: <strong>{depositFormLabel([...(cashAmount > 0 ? ["cash" as const] : []), ...(movement?.depositComponents ? movement.depositComponents.filter((line) => line.method !== "cash").map((line) => line.method) : nonCash.map((line) => line.method))])}</strong> · Efectivo: {Number.isSafeInteger(cashAmount) ? depositMoney(cashAmount, currency) : "Desglose no válido"}. Los componentes forman un solo depósito en esta moneda.</p>
       {movement?.depositComponents && cashAmount > 0 && !movement.denominations?.length && <p>Las denominaciones del efectivo no fueron registradas.</p>}
     </section>
@@ -8286,7 +8243,6 @@ function cashDeliveryTicketFromDraft(draft: DepositDraft, id: string, snapshot: 
 
 function CashDeliveriesOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{ snapshot: Snapshot; currentUser: User; onRefresh: () => void }>) {
   const deliveryRequest = useMovementRequest(currentUser.id, "manual-delivery");
-  const [remittanceSearch, setRemittanceSearch] = useState("");
   const pendingDelivery = pendingMovementDraft<{ draft: DepositDraft; print: boolean }>(currentUser.id, "manual-delivery");
   const permissions = useOperationalPermissions(currentUser);
   const [mode, setMode] = useState("Todos");
@@ -8436,13 +8392,6 @@ function CashDeliveriesOperationalView({ snapshot, currentUser, onRefresh }: Rea
         deleteIcon="x"
         deleteTitle="Cancelar entrega"
       />
-      {/* Paying a transfer happens in Pagos de Envíos: without its permission there is nowhere to go. */}
-      {hasRemittancePermission(currentUser, "remittances.receipts") && <form className="cash-delivery-remittance-search" role="search" aria-label="Buscar envío para entregar" onSubmit={(event) => { event.preventDefault(); window.dispatchEvent(new CustomEvent("cyp-open-remittance-payout", { detail: { search: remittanceSearch.trim() } })); }}>
-        <strong>Entregar un envío a su beneficiario</strong>
-        <label>Beneficiario o remitente:<input type="search" aria-label="Buscar beneficiario o remitente" maxLength={INPUT_LIMITS.name} value={remittanceSearch} onChange={(event) => setRemittanceSearch(event.target.value)} placeholder="Serie, teléfono, nombres, identificación o nota" /></label>
-        <button type="submit">Buscar envío</button>
-        <small>Abre Pagos de Envíos con los envíos pendientes que coinciden; allí se registra la entrega. La lista de abajo son las entregas de la oficina a los cobradores.</small>
-      </form>}
       <div className={`cash-deliveries-layout ${filtersVisible ? "" : "filters-collapsed"}`}>
         {filtersVisible && <aside className="legacy-filter-panel cash-deliveries-filter-panel" aria-label="Panel de filtro de entregas">
           <h2>Panel de Filtro</h2>
@@ -8458,7 +8407,7 @@ function CashDeliveriesOperationalView({ snapshot, currentUser, onRefresh }: Rea
         </aside>}
         <section className="legacy-grid-panel cash-deliveries-grid-panel" aria-label="Grilla de entregas de dinero">
           <div className="legacy-mdi-table-wrap"><table className="legacy-mdi-table cash-deliveries-table">
-            <thead><tr><th>Nro.</th><th>Fecha</th><th>Cobrador</th><th>Moneda</th><th>Importe</th><th>Cheques</th><th>Imp. Ch...</th><th>Activo</th><th>Acep.</th></tr></thead>
+            <thead><tr><th>Nro.</th><th>Fecha</th><th>Cobrador</th><th>Moneda</th><th>Importe</th><th>Cheques</th><th>Monto en cheques</th><th>Activo</th><th>Aceptado</th></tr></thead>
             <tbody>{orderedRows.length ? orderedRows.map((row, index) => {
               const movement = row.__raw as unknown as Movement;
               const isSelected = String(row.__id ?? "") === selectedId;
@@ -8472,7 +8421,7 @@ function CashDeliveriesOperationalView({ snapshot, currentUser, onRefresh }: Rea
       </div>
     </div>
     {formOpen && <CashDeliveryDataDialog actorId={currentUser.id} snapshot={snapshot} onClose={() => setFormOpen(false)} onSave={saveDelivery} />}
-    {detail && <LegacyDialog title="Detalle de la Entrega de Dinero..." className="cash-delivery-detail-dialog" onClose={() => setDetailId("")}><div className="legacy-dialog-form"><dl className="cash-delivery-detail"><dt>Referencia</dt><dd>{detail.reference || detail.receiptToken || detail.id}</dd><dt>Fecha</dt><dd>{businessTimestamp(detail.createdAt)}</dd><dt>Registrado por</dt><dd>{deliveryActor(detail) || "No registrado"}</dd><dt>Cobrador</dt><dd>{detailCollector?.name ?? "No disponible"}</dd><dt>Identificación del cobrador</dt><dd>{detailCollector?.ident || "No registrada"}</dd><dt>Celular</dt><dd>{detailCollector?.cellular || "No registrado"}</dd><dt>Moneda</dt><dd>{currencyCode(detail.currency)}</dd><dt>Importe</dt><dd>{nativeMoney(detail.amount, detail.currency)}</dd><dt>Estado</dt><dd>{detail.cancelledAt ? "Cancelada" : "Activa"}</dd><dt>Nota</dt><dd>{detail.note || "Sin nota"}</dd>{detail.cancelledAt && <><dt>Cancelación</dt><dd>{detail.cancellationNote || "Sin motivo registrado"}</dd></>}</dl><table className="legacy-mdi-table"><thead><tr><th>Denominación</th><th>Cantidad</th><th>Importe</th></tr></thead><tbody>{[...(detail.denominations ?? [])].sort((a, b) => a.denominacion - b.denominacion).map((line) => <tr key={line.denominacion}><td>{nativeMoney(line.denominacion, detail.currency)}</td><td>{line.cantidad}</td><td>{nativeMoney(line.denominacion * line.cantidad, detail.currency)}</td></tr>)}{!detail.denominations?.length && <tr><td colSpan={3}>Sin desglose registrado.</td></tr>}</tbody></table><div className="legacy-dialog-actions centered"><button type="button" onClick={() => setDetailId("")}>oK</button></div></div></LegacyDialog>}
+    {detail && <LegacyDialog title="Detalle de la Entrega de Dinero..." className="cash-delivery-detail-dialog" onClose={() => setDetailId("")}><div className="legacy-dialog-form"><dl className="cash-delivery-detail"><dt>Referencia</dt><dd>{detail.reference || detail.receiptToken || detail.id}</dd><dt>Fecha</dt><dd>{businessTimestamp(detail.createdAt)}</dd><dt>Registrado por</dt><dd>{deliveryActor(detail) || "No registrado"}</dd><dt>Cobrador</dt><dd>{detailCollector?.name ?? "No disponible"}</dd><dt>Identificación del cobrador</dt><dd>{detailCollector?.ident || "No registrada"}</dd><dt>Celular</dt><dd>{detailCollector?.cellular || "No registrado"}</dd><dt>Moneda</dt><dd>{currencyCode(detail.currency)}</dd><dt>Importe</dt><dd>{nativeMoney(detail.amount, detail.currency)}</dd><dt>Estado</dt><dd>{detail.cancelledAt ? "Cancelada" : "Activa"}</dd><dt>Nota</dt><dd>{detail.note || "Sin nota"}</dd>{detail.cancelledAt && <><dt>Cancelación</dt><dd>{detail.cancellationNote || "Sin motivo registrado"}</dd></>}</dl><table className="legacy-mdi-table"><thead><tr><th>Denominación</th><th>Cantidad</th><th>Importe</th></tr></thead><tbody>{[...(detail.denominations ?? [])].sort((a, b) => a.denominacion - b.denominacion).map((line) => <tr key={line.denominacion}><td>{nativeMoney(line.denominacion, detail.currency)}</td><td>{line.cantidad}</td><td>{nativeMoney(line.denominacion * line.cantidad, detail.currency)}</td></tr>)}{!detail.denominations?.length && <tr><td colSpan={3}>Sin desglose registrado.</td></tr>}</tbody></table><div className="legacy-dialog-actions centered"><button type="button" onClick={() => setDetailId("")}>Aceptar</button></div></div></LegacyDialog>}
     {deliveryToCancel && <MovementCancellationDialog actorId={currentUser.id} movement={deliveryToCancel} kind="entregas" onClose={() => setDeliveryToCancel(null)} onSaved={() => { setDeliveryToCancel(null); setSelectedId(""); onRefresh(); }} />}
     {printTicket && <CollectionReceiptPrintDialog receipts={[printTicket]} title="Imprimir Recibo de Entrega..." onClose={() => setPrintTicket(null)} />}
   </>;
@@ -8962,7 +8911,7 @@ function PaymentsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
             <label className="field compact-field">Estado:<select value={status} onChange={(event) => setStatus(event.target.value)}><option>Activo</option><option>Todos</option><option>Cancelado</option></select></label>
           </aside>}
           <section className="legacy-grid-panel charges-grid-panel payments-grid-panel" aria-label="Grilla de pagos">
-            <div className="legacy-mdi-table-wrap"><table className="legacy-mdi-table payments-table"><thead><tr><th>Nro.</th><th>Identif.</th><th>Cliente</th><th>Fecha</th><th>EnL...</th><th>En...</th><th>Importe</th><th>Nota</th></tr></thead><tbody>
+            <div className="legacy-mdi-table-wrap"><table className="legacy-mdi-table payments-table"><thead><tr><th>Nro.</th><th>Identificación</th><th>Cliente</th><th>Fecha</th><th>En línea</th><th>En oficina</th><th>Importe</th><th>Nota</th></tr></thead><tbody>
               {orderedPayments.length ? orderedPayments.map((movement, index) => {
                 const client = snapshot.clients.find((item) => item.id === movement.clientId);
                 const active = selectedId === movement.id;
@@ -9110,7 +9059,7 @@ function PaymentDataDialog({ actorId, snapshot, onClose, onSaved }: Readonly<{ a
 function PaymentPayoutPickerDialog({ payouts, onClose, onSelect }: Readonly<{ payouts: Payout[]; onClose: () => void; onSelect: (payout: Payout) => void }>) {
   const [selectedId, setSelectedId] = useState(payouts[0]?.id ?? "");
   const selected = payouts.find((payout) => payout.id === selectedId);
-  return <LegacyDialog title="Seleccionar..." onClose={onClose} className="collection-charge-picker-dialog" overlayClassName="collection-receipt-suboverlay"><div className="collection-charge-picker-table-wrap"><table className="collection-receipt-table"><thead><tr><th>Servicio</th><th>Concepto</th><th>Importe</th></tr></thead><tbody>{payouts.length ? payouts.map((payout) => { const pending = Math.max(0, payout.amount - payout.paid); const active = selectedId === payout.id; return <tr key={payout.id} className={active ? "selected-row" : undefined} aria-selected={active} role="button" tabIndex={0} onClick={() => setSelectedId(payout.id)} onDoubleClick={() => onSelect(payout)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedId(payout.id))}><td>Pago autorizado</td><td>{payout.concept}</td><td className="numeric-cell">{nativeMoney(pending, payout.currency)}</td></tr>; }) : <tr><td colSpan={3} className="collection-receipt-empty">No hay pagos pendientes para seleccionar.</td></tr>}</tbody></table></div><div className="legacy-dialog-actions centered"><button type="button" onClick={onClose}>Cancelar</button><button type="button" disabled={!selected} onClick={() => selected && onSelect(selected)}>oK</button></div></LegacyDialog>;
+  return <LegacyDialog title="Seleccionar..." onClose={onClose} className="collection-charge-picker-dialog" overlayClassName="collection-receipt-suboverlay"><div className="collection-charge-picker-table-wrap"><table className="collection-receipt-table"><thead><tr><th>Servicio</th><th>Concepto</th><th>Importe</th></tr></thead><tbody>{payouts.length ? payouts.map((payout) => { const pending = Math.max(0, payout.amount - payout.paid); const active = selectedId === payout.id; return <tr key={payout.id} className={active ? "selected-row" : undefined} aria-selected={active} role="button" tabIndex={0} onClick={() => setSelectedId(payout.id)} onDoubleClick={() => onSelect(payout)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedId(payout.id))}><td>Pago autorizado</td><td>{payout.concept}</td><td className="numeric-cell">{nativeMoney(pending, payout.currency)}</td></tr>; }) : <tr><td colSpan={3} className="collection-receipt-empty">No hay pagos pendientes para seleccionar.</td></tr>}</tbody></table></div><div className="legacy-dialog-actions centered"><button type="button" onClick={onClose}>Cancelar</button><button type="button" disabled={!selected} onClick={() => selected && onSelect(selected)}>Aceptar</button></div></LegacyDialog>;
 }
 
 function PaymentAmountDialog({ line, maxAmount, onClose, onSave }: Readonly<{ line: PaymentDetailLine; maxAmount: number; onClose: () => void; onSave: (amount: number) => void }>) {
@@ -9124,11 +9073,11 @@ function PaymentAmountDialog({ line, maxAmount, onClose, onSave }: Readonly<{ li
       onSave(cents);
     } catch (failure) { setError(failure instanceof Error ? failure.message : "Importe no válido."); }
   };
-  return <LegacyDialog title="Modificar Importe..." onClose={onClose} className="collection-receipt-modify-dialog" overlayClassName="collection-receipt-suboverlay"><form className="collection-receipt-modify-form" onSubmit={submit}><label>Importe:<input autoFocus type="number" min="0.01" max="10000000" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} /></label>{error && <div className="collection-receipt-error" role="alert">{error}</div>}<div className="legacy-dialog-actions centered"><button type="button" onClick={onClose}>Cancelar</button><button type="submit">oK</button></div></form></LegacyDialog>;
+  return <LegacyDialog title="Modificar Importe..." onClose={onClose} className="collection-receipt-modify-dialog" overlayClassName="collection-receipt-suboverlay"><form className="collection-receipt-modify-form" onSubmit={submit}><label>Importe:<input autoFocus type="number" min="0.01" max="10000000" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} /></label>{error && <div className="collection-receipt-error" role="alert">{error}</div>}<div className="legacy-dialog-actions centered"><button type="button" onClick={onClose}>Cancelar</button><button type="submit">Aceptar</button></div></form></LegacyDialog>;
 }
 
 function PaymentCancelNoteDialog({ note, onChange, onClose, onConfirm }: Readonly<{ note: string; onChange: (value: string) => void; onClose: () => void; onConfirm: () => void }>) {
-  return <LegacyDialog title="Entre un valor..." onClose={onClose} className="collection-flow-dialog collection-cancel-reason-dialog" overlayClassName="collection-receipt-suboverlay"><label className="collection-flow-field">Nota:<input autoFocus maxLength={500} value={note} onChange={(event) => onChange(event.target.value)} /></label><div className="legacy-dialog-actions centered"><button type="button" onClick={onConfirm}>oK</button><button type="button" onClick={onClose}>Cancelar</button></div></LegacyDialog>;
+  return <LegacyDialog title="¿Por qué se cancela?" onClose={onClose} className="collection-flow-dialog collection-cancel-reason-dialog" overlayClassName="collection-receipt-suboverlay"><label className="collection-flow-field">Nota:<input autoFocus maxLength={500} value={note} onChange={(event) => onChange(event.target.value)} /></label><div className="legacy-dialog-actions centered"><button type="button" onClick={onConfirm}>Aceptar</button><button type="button" onClick={onClose}>Cancelar</button></div></LegacyDialog>;
 }
 
 function PayoutDataDialog({ actorId, snapshot, payout, concepts, onClose, onSave }: Readonly<{ actorId: string; snapshot: Snapshot; payout?: PayoutViewRecord; concepts: string[]; onClose: () => void; onSave: (draft: PayoutFormDraft) => Promise<boolean> }>) {
@@ -9203,7 +9152,7 @@ function PayoutDataDialog({ actorId, snapshot, payout, concepts, onClose, onSave
           </fieldset>
           {errorMessage && <div className="inline-error" role="alert">{errorMessage}</div>}
           {request.error && <p role="alert">{request.error}</p>}{request.uncertain && <p role="status">Reintenta este mismo descargo antes de cambiar los datos.</p>}
-          <div className="legacy-dialog-actions centered"><button type="submit" disabled={saving || request.busy}>{saving || request.busy ? "Guardando…" : request.uncertain ? "Reintentar" : "oK"}</button><button type="button" disabled={saving || request.busy} onClick={close}>Cancelar</button></div>
+          <div className="legacy-dialog-actions centered"><button type="submit" disabled={saving || request.busy}>{saving || request.busy ? "Guardando…" : request.uncertain ? "Reintentar" : "Aceptar"}</button><button type="button" disabled={saving || request.busy} onClick={close}>Cancelar</button></div>
         </form>
       </LegacyDialog>
       {clientSearchOpen && <ClientSearchSubmodal clients={snapshot.clients} onClose={() => setClientSearchOpen(false)} onSelect={(selected) => { setDraft((current) => ({ ...current, clientId: selected.id, clientCode: selected.code })); setClientSearchOpen(false); }} />}
@@ -9371,7 +9320,7 @@ function RecurringPayoutModal({
             Cancelar
           </button>
           <button className="btn primary" disabled={busy}>
-            {busy ? "Guardando..." : "Guardar (oK)"}
+            {busy ? "Guardando..." : "Guardar"}
           </button>
         </div>
       </form>
@@ -9488,7 +9437,7 @@ function CollectorSubflowModal({
           {flow === "limits" && <table className="data-table legacy-data-table dense"><thead><tr><th>Moneda</th><th>Abrev</th><th>Lím. de Cobro</th><th>Lím. de Pago</th></tr></thead><tbody>{(collector.limits ?? []).map((limit) => <tr key={limit.abbr} className={selectedRow === limit.abbr ? "selected-row" : undefined} role="button" tabIndex={0} onClick={() => setSelectedRow(limit.abbr)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedRow(limit.abbr))}><td>{limit.currency}</td><td>{limit.abbr}</td><td>{money(limit.collectionLimit)}</td><td>{money(limit.payoutLimit)}</td></tr>)}</tbody></table>}
           {flow === "routes" && <table className="data-table legacy-data-table dense"><thead><tr><th>Nro_Ruta</th><th>Ruta</th></tr></thead><tbody>{(collector.assignedRoutes ?? []).map((routeId, index) => <tr key={routeId} className={selectedRow === routeId ? "selected-row" : undefined} role="button" tabIndex={0} onClick={() => setSelectedRow(routeId)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedRow(routeId))}><td>{index + 1}</td><td>{snapshot.routes.find((route) => route.id === routeId)?.name ?? routeId}</td></tr>)}</tbody></table>}
         </div>
-        <div className="dialog-actions"><button className="btn" onClick={onClose}>Cancelar</button><button className="btn primary" onClick={onClose}>oK</button></div>
+        <div className="dialog-actions"><button className="btn" onClick={onClose}>Cancelar</button><button className="btn primary" onClick={onClose}>Aceptar</button></div>
       </div>
     </Modal>
   );
@@ -9575,7 +9524,7 @@ function ChargeDataModal({
         </div>
         <label className="field">Nota<textarea maxLength={INPUT_LIMITS.note} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Nota libre del cargo" /></label>
         {error && <div className="inline-error" role="alert">{error}</div>}
-        <div className="dialog-actions"><button type="button" className="btn" disabled={busy} onClick={onClose}>Cancelar</button><button className="btn primary" disabled={busy}>{busy ? "Guardando..." : "Guardar (oK)"}</button></div>
+        <div className="dialog-actions"><button type="button" className="btn" disabled={busy} onClick={onClose}>Cancelar</button><button className="btn primary" disabled={busy}>{busy ? "Guardando..." : "Guardar"}</button></div>
       </form>
       {clientSearchOpen && (
         <ClientSearchSubmodal
@@ -9678,7 +9627,7 @@ function CollectionScopeSelectorDialog({
         <label><input type="radio" name={`scope-${title}`} checked={scope === "all"} onChange={() => setScope("all")} />{allLabel}</label>
         <label className={!hasCurrent ? "is-disabled" : undefined}><input type="radio" name={`scope-${title}`} checked={scope === "current"} disabled={!hasCurrent} onChange={() => setScope("current")} />{currentLabel}</label>
       </div>
-      <div className="legacy-dialog-actions centered"><button type="button" onClick={onClose}>Cancelar</button><button type="button" onClick={() => onConfirm(scope)}>oK</button></div>
+      <div className="legacy-dialog-actions centered"><button type="button" onClick={onClose}>Cancelar</button><button type="button" onClick={() => onConfirm(scope)}>Aceptar</button></div>
     </LegacyDialog>
   );
 }
@@ -9779,7 +9728,7 @@ function CollectionReceiptPrintDialog({ receipts, onClose, title = "Imprimir Rec
             ].join("\n")}</pre>
           ))}
         </div>
-        <div className="legacy-dialog-actions collection-ticket-actions"><button type="button" onClick={onClose}>oK</button><button type="button" className="primary" disabled={!printConfig} onClick={() => window.print()}>Imprimir / Guardar PDF</button></div>
+        <div className="legacy-dialog-actions collection-ticket-actions"><button type="button" onClick={onClose}>Aceptar</button><button type="button" className="primary" disabled={!printConfig} onClick={() => window.print()}>Imprimir / Guardar PDF</button></div>
       </div>
     </LegacyDialog>
   );
@@ -9922,7 +9871,7 @@ function CollectionChargePickerDialog({
           }) : <tr><td colSpan={3} className="collection-receipt-empty">El cliente no tiene cargos pendientes.</td></tr>}</tbody>
         </table>
       </div>
-      <div className="legacy-dialog-actions centered"><button type="button" onClick={onClose}>Cancelar</button><button type="button" disabled={!selectedCharge} onClick={() => selectedCharge && onSelect(selectedCharge)}>oK</button></div>
+      <div className="legacy-dialog-actions centered"><button type="button" onClick={onClose}>Cancelar</button><button type="button" disabled={!selectedCharge} onClick={() => selectedCharge && onSelect(selectedCharge)}>Aceptar</button></div>
     </LegacyDialog>
   );
 }
@@ -9948,7 +9897,7 @@ function ModifyReceiptAmountDialog({
       <form className="collection-receipt-modify-form" onSubmit={submit}>
         <label>Importe:<input autoFocus type="number" min="0.01" max="10000000" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} /></label>
         {error && <div className="collection-receipt-error" role="alert">{error}</div>}
-        <div className="legacy-dialog-actions centered"><button type="button" onClick={onClose}>Cancelar</button><button type="submit">oK</button></div>
+        <div className="legacy-dialog-actions centered"><button type="button" onClick={onClose}>Cancelar</button><button type="submit">Aceptar</button></div>
       </form>
     </LegacyDialog>
   );
@@ -9963,9 +9912,9 @@ function ClientSearchSubmodal({ clients, onSelect, onClose }: Readonly<{ clients
     <LegacyDialog title="Seleccionar cliente..." onClose={onClose} className="client-search-dialog" overlayClassName="client-search-overlay">
         <label className="legacy-toolbar-search wide">Digite:<input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} /></label>
         <div className="table-scroll legacy-table-scroll">
-          <table className="data-table legacy-data-table dense"><thead><tr><th>Cód.</th><th>Identif.</th><th>Cliente</th><th>Teléfono</th></tr></thead><tbody>{rows.map((client) => <tr key={client.id} className={selectedClient?.id === client.id ? "selected-row" : undefined} role="button" tabIndex={0} onClick={() => setSelected(client.id)} onDoubleClick={() => onSelect(client)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelected(client.id))}><td>{client.code}</td><td>{client.identification}</td><td>{client.name}</td><td>{client.phone || client.cellular}</td></tr>)}</tbody></table>
+          <table className="data-table legacy-data-table dense"><thead><tr><th>Cód.</th><th>Identificación</th><th>Cliente</th><th>Teléfono</th></tr></thead><tbody>{rows.map((client) => <tr key={client.id} className={selectedClient?.id === client.id ? "selected-row" : undefined} role="button" tabIndex={0} onClick={() => setSelected(client.id)} onDoubleClick={() => onSelect(client)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelected(client.id))}><td>{client.code}</td><td>{client.identification}</td><td>{client.name}</td><td>{client.phone || client.cellular}</td></tr>)}</tbody></table>
         </div>
-        <div className="legacy-dialog-actions centered"><button type="button" onClick={onClose}>Cancelar</button><button type="button" disabled={!selectedClient} onClick={() => selectedClient && onSelect(selectedClient)}>oK</button></div>
+        <div className="legacy-dialog-actions centered"><button type="button" onClick={onClose}>Cancelar</button><button type="button" disabled={!selectedClient} onClick={() => selectedClient && onSelect(selectedClient)}>Aceptar</button></div>
     </LegacyDialog>
   );
 }
@@ -10915,7 +10864,7 @@ function operationSpec(page: Page, snapshot: Snapshot): OperationSpec {
       { key: "currency", label: "Moneda" },
       { key: "amount", label: "Importe", align: "right" },
       { key: "checks", label: "Cheques", align: "right" },
-      { key: "checkAmount", label: "Imp. Ch...", align: "right" },
+      { key: "checkAmount", label: "Monto en cheques", align: "right" },
       { key: "active", label: "Activo" },
     ],
     rows: rows.map((movement, index) => ({
@@ -11013,7 +10962,7 @@ function FinancialMonitorView({ page, snapshot, refreshing, onRefresh }: Readonl
       <div className="collector-monitor-grid-content">
         <table className="collector-monitor-table">
           <colgroup><col className="monitor-collector-name-column" /><col span={7} /></colgroup>
-          <thead><tr><th>{entityLabel}</th><th>Lim. de C...</th><th>Lim. de P...</th><th>Cobrado</th><th>Depositado</th><th>Entregado</th><th>Pagado</th><th>Diferencia</th></tr></thead>
+          <thead><tr><th>{entityLabel}</th><th>Límite de cobro</th><th>Límite de pago</th><th>Cobrado</th><th>Depositado</th><th>Entregado</th><th>Pagado</th><th>Diferencia</th></tr></thead>
           <tbody>{rows.map((row) => {
             const selected = selectedRow?.entityId === row.entityId;
             return <tr key={row.entityId} className={selected ? "selected-row" : undefined} aria-selected={selected} role="button" tabIndex={0} onClick={() => setSelectedRow(row)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedRow(row))}>
@@ -11743,7 +11692,7 @@ function DailySettlementsView({ snapshot, onRefresh }: Readonly<{ snapshot: Snap
         <div className="daily-settlements-grid-scroll">
           <table className="daily-settlements-grid">
             <colgroup><col className="settlement-date-column" /><col className="settlement-total-column" /><col className="settlement-cash-column" /><col className="settlement-check-column" /><col className="settlement-balance-column" /></colgroup>
-            <thead><tr><th>Fecha</th><th>Total</th><th>Efectivo</th><th>Cheque</th><th>Balance...</th></tr></thead>
+            <thead><tr><th>Fecha</th><th>Total</th><th>Efectivo</th><th>Cheque</th><th>Balance</th></tr></thead>
             <tbody>{visibleRows.map((row) => {
               const selected = selectedRow?.id === row.id;
               return <tr key={row.id} className={selected ? "selected-row" : undefined} aria-selected={selected} role="button" tabIndex={0} onClick={() => setSelectedRow(row)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedRow(row))}>
@@ -11764,7 +11713,7 @@ function DailySettlementsView({ snapshot, onRefresh }: Readonly<{ snapshot: Snap
     {dateDialogOpen && <LegacyDialog title="Entre una fecha..." onClose={() => setDateDialogOpen(false)} className="settlement-date-dialog">
       <form className="settlement-date-form" onSubmit={createDailyBalance}>
         <label>Valor:<input type="date" value={dateDraft} onChange={(event) => setDateDraft(event.target.value)} /></label>
-        <div className="legacy-dialog-actions centered"><button type="submit">oK</button><button type="button" onClick={() => setDateDialogOpen(false)}>Cancelar</button></div>
+        <div className="legacy-dialog-actions centered"><button type="submit">Aceptar</button><button type="button" onClick={() => setDateDialogOpen(false)}>Cancelar</button></div>
       </form>
     </LegacyDialog>}
 
@@ -11779,12 +11728,12 @@ function DailySettlementsView({ snapshot, onRefresh }: Readonly<{ snapshot: Snap
         <label className="settlement-balance-row"><span>Monto al Final:</span><span className="settlement-money-entry"><input type="number" step="0.01" value={balanceDraft.cashFinal} onChange={(event) => updateDraft("cashFinal", event.target.value)} /><button type="button" onClick={() => openDenominationDialog({ section: "cash", field: "Final" })}>[...]</button></span><span className="settlement-money-entry"><input type="number" step="0.01" value={balanceDraft.checkFinal} onChange={(event) => updateDraft("checkFinal", event.target.value)} /><button type="button" onClick={() => openDenominationDialog({ section: "check", field: "Final" })}>[...]</button></span></label>
         <div className="settlement-balance-row"><span>Balance:</span><input value={settlementMoney(draftSectionBalance("cash"), balanceDraft.currency)} readOnly /><input value={settlementMoney(draftSectionBalance("check"), balanceDraft.currency)} readOnly /></div>
         <label className="settlement-balance-note">Nota:<input value={balanceDraft.note} onChange={(event) => updateDraft("note", event.target.value)} /></label>
-        <div className="legacy-dialog-actions centered"><button type="submit">oK</button><button type="button" onClick={() => { setEditingRow(null); setBalanceDraft(null); }}>Cancelar</button></div>
+        <div className="legacy-dialog-actions centered"><button type="submit">Aceptar</button><button type="button" onClick={() => { setEditingRow(null); setBalanceDraft(null); }}>Cancelar</button></div>
       </form>
     </LegacyDialog>}
 
     {denominationTarget && balanceDraft && <LegacyDialog title="Desglose del Dinero..." onClose={() => setDenominationTarget(null)} className="settlement-denomination-dialog">
-      <div className="settlement-denomination-content"><div className="settlement-denomination-scroll"><table><thead><tr><th>Denom.</th><th>Cantidad</th><th>Importe</th></tr></thead><tbody>{[...cashDenominations(balanceDraft.currency)].reverse().map((denomination) => <tr key={denomination}><td>{settlementMoney(denomination, balanceDraft.currency)}</td><td><input type="number" min="0" step="1" value={denominationCounts[denomination] ?? ""} onChange={(event) => setDenominationCounts((current) => ({ ...current, [denomination]: event.target.value }))} /></td><td>{settlementMoney(denomination * (Number(denominationCounts[denomination]) || 0), balanceDraft.currency)}</td></tr>)}</tbody></table></div><label className="settlement-denomination-total">Total:<input value={settlementMoney(denominationTotal, balanceDraft.currency)} readOnly /></label><div className="legacy-dialog-actions centered"><button type="button" onClick={saveDenominations}>oK</button><button type="button" onClick={() => setDenominationTarget(null)}>Cancelar</button></div></div>
+      <div className="settlement-denomination-content"><div className="settlement-denomination-scroll"><table><thead><tr><th>Denom.</th><th>Cantidad</th><th>Importe</th></tr></thead><tbody>{[...cashDenominations(balanceDraft.currency)].reverse().map((denomination) => <tr key={denomination}><td>{settlementMoney(denomination, balanceDraft.currency)}</td><td><input type="number" min="0" step="1" value={denominationCounts[denomination] ?? ""} onChange={(event) => setDenominationCounts((current) => ({ ...current, [denomination]: event.target.value }))} /></td><td>{settlementMoney(denomination * (Number(denominationCounts[denomination]) || 0), balanceDraft.currency)}</td></tr>)}</tbody></table></div><label className="settlement-denomination-total">Total:<input value={settlementMoney(denominationTotal, balanceDraft.currency)} readOnly /></label><div className="legacy-dialog-actions centered"><button type="button" onClick={saveDenominations}>Aceptar</button><button type="button" onClick={() => setDenominationTarget(null)}>Cancelar</button></div></div>
     </LegacyDialog>}
 
     {confirmCloseOpen && selectedRow && <LegacyDialog title="Confirm" onClose={() => setConfirmCloseOpen(false)} className="settlement-confirm-dialog"><div className="settlement-confirm-content"><CircleHelp size={28} /><p>¿Está seguro que desea cerrar/reversar el día?</p><div className="legacy-dialog-actions centered"><button type="button" onClick={confirmCloseOrReverse}>Sí</button><button type="button" onClick={() => setConfirmCloseOpen(false)}>No</button></div></div></LegacyDialog>}

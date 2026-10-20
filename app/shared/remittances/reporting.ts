@@ -9,8 +9,8 @@ export const remittanceReportDefinitions = [
   { type: "commissions", page: "reportRemittanceCommissions", label: "Comisión total cobrada en origen", scope: "Por fecha de emisión y estado actual de cada envío. Comisiones del negocio separadas por moneda; las canceladas se muestran aparte y no se suman al total vigente. La información manual del gestor se consulta por separado." },
   { type: "managerCommissions", page: "reportRemittanceManagerCommissions", label: "Información de comisiones de gestores", scope: "Información histórica declarada manualmente, por fecha de emisión y estado actual. Cada gestor y moneda se presenta por separado. Las canceladas se excluyen del vigente; este reporte no calcula ni registra pagos al gestor." },
   { type: "times", page: "reportRemittanceTimes", label: "Tiempos de entrega", scope: "Por fecha de pago. Muestra el mínimo, máximo y promedio, junto con el detalle de emisión y pago." },
-  { type: "delivered", page: "reportRemittanceDelivered", label: "Envíos pagados", scope: "Por fecha de pago. Cada moneda conserva sus propios importes." },
-  { type: "cash", page: "reportRemittanceCash", label: "Caja de envíos", scope: "Por fecha de caja. Aperturas y saldos finales no se suman entre días." },
+  { type: "delivered", page: "reportRemittanceDelivered", label: "Remesas entregadas", scope: "Por fecha de pago. Cada moneda conserva sus propios importes." },
+  { type: "cash", page: "reportRemittanceCash", label: "Caja de remesas", scope: "Por fecha de caja. Aperturas y saldos finales no se suman entre días." },
 ] as const;
 export type RemittanceReportType = (typeof remittanceReportDefinitions)[number]["type"];
 export type RemittanceReportPage = (typeof remittanceReportDefinitions)[number]["page"];
@@ -49,7 +49,7 @@ export function remittanceReportSections(type: RemittanceReportType, report: Rep
     case "delivered": return [{ title: "Entregados por fecha de pago y moneda", columns: ["Fecha", "Moneda", "Pagados", "Importe entregado"], rows: report.delivered.map((row) => [row.date, row.currency, row.count, money(row.amount, row.currency)]) }];
     case "commissions": return commissionSections(report.commissions ?? { details: [], totals: [] }, operatorName);
     case "managerCommissions": return managerCommissionSections(report.managerCommissions ?? { details: [], totals: [] });
-    case "cash": return [{ title: "Caja de envíos por operador y moneda", columns: ["Fecha", "Operador", "Moneda", "Cajas", "Primera apertura", "Ingresos envíos", "Devoluciones", "Pagos", "Último esperado"], rows: (report.cashSummary ?? []).map((row) => [row.date, operatorName(row.operatorId), row.currency, row.sessionCount, money(row.firstOpening, row.currency), money(row.sentTotal, row.currency), money(row.cancelRefund, row.currency), money(row.paid, row.currency), money(row.lastExpected, row.currency)]) }];
+    case "cash": return [{ title: "Caja de remesas por operador y moneda", columns: ["Fecha", "Operador", "Moneda", "Cajas", "Primera apertura", "Ingresos envíos", "Devoluciones", "Pagos", "Último esperado"], rows: (report.cashSummary ?? []).map((row) => [row.date, operatorName(row.operatorId), row.currency, row.sessionCount, money(row.firstOpening, row.currency), money(row.sentTotal, row.currency), money(row.cancelRefund, row.currency), money(row.paid, row.currency), money(row.lastExpected, row.currency)]) }];
     case "allocations": return [];
   }
 }

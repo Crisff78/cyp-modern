@@ -73,18 +73,16 @@ createRoot(document.getElementById("root")).render(<App />);
     page.on("pageerror", (error: Error) => pageErrors.push(error.message));
     const signIn = async () => {
       await page.goto(origin);
-      await page.getByRole("button", { name: /^Administrador/ }).click();
-      await page.getByLabel("Usuario / Correo", { exact: true }).fill("admin@cyp.local");
+      await page.getByLabel("Usuario o correo", { exact: true }).fill("admin@cyp.local");
       await page.getByLabel("Contraseña", { exact: true }).fill("Demo-CyP-2026!");
-      await page.getByRole("button", { name: "Iniciar Sesión", exact: true }).click();
+      await page.getByRole("button", { name: "Iniciar sesión", exact: true }).click();
       await page.getByRole("button", { name: /^Notificaciones,/ }).waitFor();
     };
     const openClients = async () => {
       const clients = page.locator(".sidebar").getByRole("button", { name: "Clientes", exact: true });
-      // A reload first restores the authenticated user's permissions. Do not
-      // mistake that pending state for a collapsed navigation group.
+      // A reload first restores the authenticated user's permissions; Clientes is a single
+      // button of the menu, always on view once they are back.
       await clients.waitFor({ state: "attached" });
-      if (!await clients.isVisible()) await page.locator(".sidebar").getByRole("button", { name: "ARCHIVOS", exact: true }).click();
       await clients.click();
       const frame = page.getByRole("dialog", { name: "Clientes", exact: true });
       await frame.waitFor();
@@ -178,10 +176,10 @@ createRoot(document.getElementById("root")).render(<App />);
       now = await box(reopened);
       near(now.width, left.width, "width after reload"); near(now.height, left.height, "height after reload");
       // Another screen keeps its own default size.
-      await page.locator(".sidebar").getByRole("button", { name: "Admin.", exact: true }).click();
-      const panel = await box(page.getByRole("dialog", { name: "Panel de Control", exact: true }));
+      await page.locator(".sidebar").getByRole("button", { name: "Administración", exact: true }).click();
+      const panel = await box(page.getByRole("dialog", { name: "Administración", exact: true }));
       near(panel.width, 600, "control panel width"); near(panel.height, 390, "control panel height");
-      await page.getByRole("button", { name: "Cerrar Panel de Control", exact: true }).click();
+      await page.getByRole("button", { name: "Cerrar Administración", exact: true }).click();
     });
 
     await t.test("a window is maximized and restored with its button or a double click on its title", async () => {

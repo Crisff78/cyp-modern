@@ -92,7 +92,7 @@ createRoot(document.getElementById("root")).render(<ClientDataDialog client={cli
       await dialog().getByRole("button", { name: "Copiar teléfono a campos vacíos", exact: true }).click();
       assert.equal(await field("Celular:").inputValue(), "+509 (41)23-4567");
       assert.equal(await field("Nota:").inputValue(), "+509 (41)23-4567");
-      await dialog().getByRole("button", { name: "oK", exact: true }).click();
+      await dialog().getByRole("button", { name: "Aceptar", exact: true }).click();
       const draft = await saved();
       assert.deepEqual(draft, { preferredCurrency: "USD", code: "+50941234567", identification: "SYN-DOC-CREATE", name: "Cliente QA nuevo", alias: "", address: "", location: "", zone: "No Definida", routeId: "qa-route", phone: "+509 (41)23-4567", cellular: "+509 (41)23-4567", email: "", note: "+509 (41)23-4567", active: true });
       assert.equal(Object.hasOwn(draft, "id"), false, "The code is not the actual server identity.");
@@ -106,7 +106,7 @@ createRoot(document.getElementById("root")).render(<ClientDataDialog client={cli
       await usePhone().click(); assert.equal(await field("Código:").inputValue(), "+50941234567");
       await field("Código:").fill("MANUAL-02"); await field("Teléfono:").fill("+1 (809) 555-1234");
       assert.equal(await field("Código:").inputValue(), "MANUAL-02");
-      await dialog().getByRole("button", { name: "oK", exact: true }).click();
+      await dialog().getByRole("button", { name: "Aceptar", exact: true }).click();
       const draft = await saved(); assert.equal(draft.code, "MANUAL-02"); assert.equal(draft.phone, "+1 (809) 555-1234");
       assert.equal(draft.identification, "SYN-DOC-MANUAL"); assert.equal(draft.name, "Cliente QA manual"); assert.equal(draft.preferredCurrency, "DOP");
     });
@@ -128,7 +128,7 @@ createRoot(document.getElementById("root")).render(<ClientDataDialog client={cli
       await dialog().getByRole("button", { name: "Copiar teléfono a campos vacíos", exact: true }).click();
       assert.equal(await field("Celular:").inputValue(), "000-000-0000"); assert.equal(await field("Nota:").inputValue(), "Nota QA conservada");
       assert.equal(await field("Código:").inputValue(), "EXISTING-01"); assert.equal(await field("Cédula / pasaporte:").inputValue(), "SYN-DOC-EDIT");
-      await dialog().getByRole("button", { name: "oK", exact: true }).click();
+      await dialog().getByRole("button", { name: "Aceptar", exact: true }).click();
       const draft = await saved(); assert.equal(draft.code, "EXISTING-01"); assert.equal(draft.identification, "SYN-DOC-EDIT");
       assert.equal(draft.name, "Cliente QA existente"); assert.equal(draft.preferredCurrency, "EUR"); assert.equal(Object.hasOwn(draft, "id"), false);
       assert.equal(await page.evaluate(() => (window as any).__qaClient.id), "synthetic-real-id");

@@ -90,16 +90,25 @@ createRoot(document.getElementById("root")).render(<App />);`);
       return route.abort("blockedbyclient");
     };
     browser = await chromium.launch({ executablePath: edge, headless: true });
+    // Sections of the menu start closed: the option is reached by opening its section.
+    const menuOption = async (page: any, name: string) => {
+      const option = page.locator(".sidebar").getByRole("button", { name, exact: true });
+      const folded = page.locator(`.sidebar .nav-item[aria-label="${name}"]`);
+      // Wait until the menu of the account is drawn: the option on view or folded in its section.
+      await option.or(folded).first().waitFor({ state: "attached" });
+      if (!await option.isVisible()) await page.locator(".sidebar .nav-group").filter({ has: page.locator(`.nav-item[aria-label="${name}"]`) }).locator(".nav-group-trigger").click();
+      return option;
+    };
     await t.test("Admin registers both central rates once and future remittances display them readonly", async () => {
       const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: "es-DO", serviceWorkers: "block" });
       try {
         await context.addInitScript((token: string) => localStorage.setItem("cyp-admin-token", token), tokens.admin);
         await context.route("**/*", routeLocalOnly);
         const page = await context.newPage(); page.setDefaultTimeout(15000); page.on("pageerror", (error: Error) => errors.push(error.message));
-        const workspace = page.getByRole("region", { name: "Configuración de comisiones de envíos", exact: true });
+        const workspace = page.getByRole("region", { name: "Configuración de comisiones de remesas", exact: true });
         // The fields fill in once the saved policy arrives; reading them before would see the empty draft.
         const openWorkspace = async () => {
-          await page.goto(`${origin}/admin/`); await page.getByRole("button", { name: "Admin.", exact: true }).click(); await page.getByRole("button", { name: "Comisiones de envíos", exact: true }).click();
+          await page.goto(`${origin}/admin/`); await page.getByRole("button", { name: "Administración", exact: true }).click(); await page.getByRole("button", { name: "Comisiones de remesas", exact: true }).click();
           await workspace.waitFor(); await workspace.getByText("Cargando configuración…", { exact: true }).waitFor({ state: "detached" });
         };
         await openWorkspace();
@@ -133,8 +142,8 @@ createRoot(document.getElementById("root")).render(<App />);`);
         await context.route("**/*", routeLocalOnly);
         const page = await context.newPage(); page.setDefaultTimeout(15000); page.on("pageerror", (error: Error) => errors.push(error.message));
         await page.goto(`${origin}/${surface}/?view=remittances`);
-        if (surface === "admin") await page.getByRole("button", { name: "ENVÍO DE DINERO", exact: true }).click();
-        const workspace = page.getByRole("region", { name: "Envíos de Dinero", exact: true });
+        if (surface === "admin") await page.getByRole("button", { name: "ENVÍOS DE DINERO", exact: true }).click();
+        const workspace = page.getByRole("region", { name: "Envíos de dinero", exact: true });
         if (surface === "collector") await workspace.getByRole("button", { name: "Nuevo envío", exact: true }).click();
         else await workspace.getByRole("combobox", { name: "Remitente", exact: true }).waitFor();
         const pasteRejected = (input: any, value: string) => input.evaluate((node: HTMLInputElement, pasted: string) => {
@@ -180,10 +189,10 @@ createRoot(document.getElementById("root")).render(<App />);`);
         await workspace.getByLabel("Nota (opcional)", { exact: true }).fill(note);
         assert.equal(await workspace.getByLabel("Nota (opcional)", { exact: true }).inputValue(), note);
         if (surface === "admin") {
-          await page.locator(".sidebar").getByRole("button", { name: "Cuadres Diarios", exact: true }).click();
-          const settlements = page.getByRole("dialog", { name: "Cuadres Diarios", exact: true });
-          await settlements.getByRole("group", { name: "Secciones de Cuadres Diarios", exact: true }).getByRole("button", { name: "Caja de envíos", exact: true }).click();
-          const cash = settlements.getByRole("region", { name: "Caja de envíos", exact: true });
+          await (await menuOption(page, "Cuadres diarios")).click();
+          const settlements = page.getByRole("dialog", { name: "Cuadres diarios", exact: true });
+          await settlements.getByRole("group", { name: "Secciones de Cuadres diarios", exact: true }).getByRole("button", { name: "Caja de remesas", exact: true }).click();
+          const cash = settlements.getByRole("region", { name: "Caja de remesas", exact: true });
           const opening = cash.getByLabel("Efectivo inicial", { exact: true });
           await opening.fill("15.50"); await opening.fill("abc"); assert.equal(await opening.inputValue(), "15.50");
           assert.equal(await pasteRejected(opening, "123456789012345678"), true);
@@ -206,20 +215,20 @@ createRoot(document.getElementById("root")).render(<App />);`);
         await context.route("**/*", routeLocalOnly);
         const page = await context.newPage(); page.setDefaultTimeout(15000); page.on("pageerror", (error: Error) => errors.push(error.message));
         await page.goto(`${origin}/${surface}/?view=remittances`);
-        if (surface === "admin") await page.getByRole("button", { name: "ENVÍO DE DINERO", exact: true }).click();
-        const workspace = page.getByRole("region", { name: "Envíos de Dinero", exact: true });
+        if (surface === "admin") await page.getByRole("button", { name: "ENVÍOS DE DINERO", exact: true }).click();
+        const workspace = page.getByRole("region", { name: "Envíos de dinero", exact: true });
         const senderInput = workspace.getByRole("combobox", { name: "Remitente", exact: true });
         if (surface === "admin") {
           // Administración: only the sending section, its form already open and the cursor in the sender.
           await senderInput.waitFor(); await page.waitForFunction(() => document.activeElement?.getAttribute("role") === "combobox");
           assert.equal(await senderInput.evaluate((element: Element) => element === document.activeElement), true, "the cursor starts in the sender");
-          assert.equal(await workspace.getByRole("navigation", { name: "Secciones de Envíos", exact: true }).count(), 0);
+          assert.equal(await workspace.getByRole("navigation", { name: "Secciones de remesas", exact: true }).count(), 0);
           assert.equal(await workspace.getByRole("button", { name: "Nuevo envío", exact: true }).count(), 0);
         } else {
           // The collector terminal keeps Envíos, Recibos and Caja (its reports open from its Reportes view) and its «Nuevo envío».
-          const sections = workspace.getByRole("navigation", { name: "Secciones de Envíos", exact: true });
+          const sections = workspace.getByRole("navigation", { name: "Secciones de remesas", exact: true });
           await sections.getByRole("button").first().waitFor();
-          assert.deepEqual(await sections.getByRole("button").allTextContents(), ["Envíos", "Recibos", "Caja"]);
+          assert.deepEqual(await sections.getByRole("button").allTextContents(), ["Envíos", "Entregas", "Caja"]);
           await workspace.getByRole("button", { name: "Nuevo envío", exact: true }).click();
           // Searching hands the screen to the list; «Nuevo envío» brings the capture back with the filters cleared.
           const search = workspace.getByLabel("Buscar", { exact: true });
@@ -275,8 +284,8 @@ createRoot(document.getElementById("root")).render(<App />);`);
         await workspace.getByRole("button", { name: saved.envioReference, exact: true }).click();
         const detail = page.getByRole("dialog", { name: `${saved.envioReference} · ${saved.reciboReference}`, exact: true });
         await detail.getByLabel("Motivo de cancelación", { exact: true }).waitFor();
-        // Administración pays only in «Pagos de Envíos»: its sending window just cancels.
-        if (surface === "admin") assert.equal(await detail.getByRole("button", { name: "Registrar pago completo", exact: true }).count(), 0);
+        // Administración pays only in «Entregas de dinero»: its sending window just cancels.
+        if (surface === "admin") assert.equal(await detail.getByRole("button", { name: "Registrar entrega", exact: true }).count(), 0);
         await detail.getByLabel("Motivo de cancelación", { exact: true }).fill("Cancelación sintética QA");
         await detail.getByRole("button", { name: "Revisar cancelación", exact: true }).click();
         const cancelledReply = page.waitForResponse((reply: any) => reply.request().method() === "POST" &&
@@ -307,7 +316,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
           assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
           assert.equal(await workspace.getByRole("button", { name: "Reportes", exact: true }).count(), 0);
           await page.getByRole("navigation", { name: "Navegación principal" }).getByRole("button", { name: "Reportes", exact: true }).click();
-          const reports = page.getByRole("region", { name: "Reportes de envíos", exact: true });
+          const reports = page.getByRole("region", { name: "Reportes de remesas", exact: true });
           await reports.getByRole("button", { name: "Consultar", exact: true }).click();
           await reports.getByRole("table", { name: "Montos de envíos por moneda de origen y destino", exact: true }).waitFor();
           assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
@@ -331,12 +340,12 @@ createRoot(document.getElementById("root")).render(<App />);`);
         await context.addInitScript(({ token }: { token: string }) => { localStorage.setItem("cyp-admin-token", token); (window as any).__qaPrinted = false; window.print = () => { (window as any).__qaPrinted = true; }; }, { token: tokens.admin });
         await context.route("**/*", routeLocalOnly);
         const page = await context.newPage(); page.setDefaultTimeout(15000); page.on("pageerror", (error: Error) => errors.push(error.message));
-        await page.goto(`${origin}/admin/`); await page.getByRole("button", { name: "ENVÍO DE DINERO", exact: true }).click();
-        const sending = page.getByRole("region", { name: "Envíos de Dinero", exact: true });
+        await page.goto(`${origin}/admin/`); await page.getByRole("button", { name: "ENVÍOS DE DINERO", exact: true }).click();
+        const sending = page.getByRole("region", { name: "Envíos de dinero", exact: true });
         await sending.getByRole("combobox", { name: "Remitente", exact: true }).waitFor();
         assert.equal(await sending.getByRole("button", { name: "Reportes", exact: true }).count(), 0, "the sending window has no reports section");
         // The consolidated report lives in Reportes & Monitoreo → Reportes, in its own window.
-        await page.locator(".sidebar").getByRole("button", { name: "Reportes", exact: true }).click();
+        await (await menuOption(page, "Reportes")).click();
         await page.getByRole("dialog", { name: "Reportes", exact: true }).getByRole("button", { name: "Reporte consolidado de comisiones", exact: true }).click();
         const report = page.getByRole("dialog", { name: "Reporte consolidado de comisiones", exact: true });
         const toolbar = report.locator(".legacy-mdi-toolbar");
@@ -400,14 +409,14 @@ createRoot(document.getElementById("root")).render(<App />);`);
         await context.addInitScript((token: string) => localStorage.setItem("cyp-admin-token", token), token);
         await context.route("**/*", routeLocalOnly);
         const page = await context.newPage(); page.setDefaultTimeout(15000); page.on("pageerror", (error: Error) => errors.push(error.message));
-        await page.goto(`${origin}/admin/`); await page.getByRole("button", { name: "ENVÍO DE DINERO", exact: true }).click();
-        const workspace = page.getByRole("region", { name: "Envíos de Dinero", exact: true });
+        await page.goto(`${origin}/admin/`); await page.getByRole("button", { name: "ENVÍOS DE DINERO", exact: true }).click();
+        const workspace = page.getByRole("region", { name: "Envíos de dinero", exact: true });
         const sender = workspace.getByRole("combobox", { name: "Remitente", exact: true }); await sender.waitFor();
         assert.equal(await sender.evaluate((element: Element) => element === document.activeElement), true);
-        assert.equal(await page.getByRole("button", { name: "Admin.", exact: true }).count(), 0);
+        assert.equal(await page.getByRole("button", { name: "Administración", exact: true }).count(), 0);
         for (const name of ["Facturas", "Ventana de Pagos", "Hacer copia de respaldo"])
           assert.equal(await page.getByRole("button", { name, exact: true }).count(), 0, `${name} is not a cashier shortcut`);
-        assert.equal(await page.getByTitle("Abrir Cuadres Diarios", { exact: true }).count(), 0);
+        assert.equal(await page.getByTitle("Abrir Cuadres diarios", { exact: true }).count(), 0);
         for (const label of ["Tasas", "Comisiones"]) assert.equal(await workspace.getByRole("button", { name: label, exact: true }).count(), 0);
         const before = await store.read(); const routeId = before.routes[0].id;
         const capture = async (side: "remitente" | "destinatario", name: string, identification: string) => {
@@ -441,10 +450,10 @@ createRoot(document.getElementById("root")).render(<App />);`);
         assert.equal(await sender.inputValue(), "");
         await page.waitForFunction(() => !document.querySelector("dialog[open]") && document.activeElement?.closest('[data-client-side="sender"]') !== null, undefined, { timeout: 5000 }).catch(() => undefined);
         assert.equal(await sender.evaluate((element: Element) => element === document.activeElement), true, "after a confirmed send the cursor returns to the sender");
-        // Paying is done in its own window, «Pagos de Envíos», with the cursor in Buscar.
-        assert.equal(await workspace.getByRole("button", { name: "Recibos", exact: true }).count(), 0);
-        await page.locator(".sidebar").getByRole("button", { name: "Pagos de Envíos", exact: true }).click();
-        const payouts = page.getByRole("region", { name: "Pagos de Envíos", exact: true });
+        // Paying is done in its own window, «Entregas de dinero», with the cursor in Buscar.
+        assert.equal(await workspace.getByRole("button", { name: "Entregas", exact: true }).count(), 0);
+        await (await menuOption(page, "Entregas de dinero")).click();
+        const payouts = page.getByRole("region", { name: "Entregas de dinero", exact: true });
         const search = payouts.getByLabel("Buscar", { exact: true }); await search.waitFor();
         await page.waitForFunction(() => document.activeElement?.hasAttribute("data-receipt-search") === true);
         assert.equal(await search.evaluate((element: Element) => element === document.activeElement), true);
@@ -461,13 +470,13 @@ createRoot(document.getElementById("root")).render(<App />);`);
         await detail.getByRole("button", { name: /^Minimizar / }).click(); await detail.waitFor({ state: "hidden" });
         await page.getByRole("button", { name: `Restaurar ${transfer.envioReference} · ${transfer.reciboReference}`, exact: true }).click();
         await detail.waitFor({ state: "visible" });
-        const parentWindow = page.getByRole("dialog", { name: "Envíos de Dinero", exact: true });
+        const parentWindow = page.getByRole("dialog", { name: "Envíos de dinero", exact: true });
         await parentWindow.locator(".mdi-window-titlebar > span").click({ position: { x: 5, y: 8 } });
         assert.ok(Number(await parentWindow.evaluate((node: Element) => getComputedStyle(node).zIndex)) > Number(await detail.evaluate((node: Element) => getComputedStyle(node).zIndex)));
         await detailTitle.click();
         assert.ok(Number(await detail.evaluate((node: Element) => getComputedStyle(node).zIndex)) > Number(await parentWindow.evaluate((node: Element) => getComputedStyle(node).zIndex)));
         await page.screenshot({ path: path.join(output, "receipt-window.png") });
-        await detail.getByRole("button", { name: "Registrar pago completo", exact: true }).click();
+        await detail.getByRole("button", { name: "Registrar entrega", exact: true }).click();
         const paymentReview = page.getByRole("dialog", { name: "Confirmar entrega al destinatario", exact: true });
         await paymentReview.waitFor();
         assert.equal(await paymentReview.evaluate((node: Element) => node.matches(":modal")), true, "financial review still blocks the desktop");
@@ -482,7 +491,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
         await page.waitForFunction(() => document.activeElement?.hasAttribute("data-receipt-search") === true);
         assert.equal(await search.evaluate((element: Element) => element === document.activeElement), true);
         // Back to the sending window, which is still open.
-        await page.locator(".desktop-launchers").getByRole("button", { name: "ENVÍO DE DINERO", exact: true }).click();
+        await page.locator(".desktop-launchers").getByRole("button", { name: "ENVÍOS DE DINERO", exact: true }).click();
         assert.equal((await post(`/api/usuarios/${cashier.id}/permisos`, { mode: "custom", permissionIds: [1, 2], remittancePermissions: ["remittances.view"], revision: 1 })).statusCode, 200);
         await workspace.getByRole("button", { name: "Actualizar", exact: true }).click();
         await sender.waitFor({ state: "detached" });

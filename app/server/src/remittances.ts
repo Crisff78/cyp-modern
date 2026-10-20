@@ -282,7 +282,7 @@ export function openRemittanceCash(state: State, user: User, input: { operatorId
   // Administration opens any cash box; a cashier with the permission opens only his own.
   if (user.role === "cashier") {
     if (input.operatorId !== user.id || !hasRemittancePermission(user, "remittances.cash.open"))
-      fail("FORBIDDEN", "Solo puedes abrir tu propia caja de envíos.", 403);
+      fail("FORBIDDEN", "Solo puedes abrir tu propia caja de remesas.", 403);
   } else assertAdmin(user);
   operator(state, user, input.operatorId, systemOperators);
   assertCurrency(input.currency);

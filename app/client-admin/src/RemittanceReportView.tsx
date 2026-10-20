@@ -73,7 +73,7 @@ export function RemittanceReportView({ page, api, actorId }: { page: RemittanceR
     setSelectedKey(selectionKeys[next]);
   }
   return <div className="connected-report-mdi remittance-report-view" aria-label={definition.label}>
-    <div className="legacy-mdi-toolbar" aria-label="Herramientas del reporte de envíos" onClick={(event) => event.stopPropagation()}>
+    <div className="legacy-mdi-toolbar" aria-label="Herramientas del reporte de remesas" onClick={(event) => event.stopPropagation()}>
       <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" aria-label="Mostrar/Ocultar filtros" aria-pressed={filtersVisible} onClick={() => setFiltersVisible((value) => !value)}><KeyRound size={15} /></button>
       {([["first", "Primer registro", "|<"], ["previous", "Registro anterior", "<"], ["next", "Registro siguiente", ">"], ["last", "Último registro", ">|"]] as const).map(([direction, label, text]) => <button type="button" key={direction} className="nav-tool" title={label} aria-label={label} disabled={!selectionKeys.length} onClick={() => moveSelection(direction)}>{text}</button>)}
       <span className="mdi-toolbar-separator" />
@@ -114,7 +114,7 @@ export function RemittanceReportView({ page, api, actorId }: { page: RemittanceR
           </section>)}
           {!displayed && !busy && metadata && <div className="daily-settlements-empty">Consulte el reporte para ver los resultados.</div>}
         </div>
-        <footer className="legacy-footerbar connected-report-footer"><span>Envíos de Dinero</span><span>Importes separados por moneda</span></footer>
+        <footer className="legacy-footerbar connected-report-footer"><span>Remesas</span><span>Importes separados por moneda</span></footer>
       </section>
     </div>
   </div>;

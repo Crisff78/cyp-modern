@@ -123,7 +123,7 @@ remittancesApi("/snapshot").then(snapshot => createRoot(document.getElementById(
       await dialog.getByRole("button", { name: "Obtener Licencia", exact: true }).click(); await dialog.getByText(/Validación recibida:/).waitFor();
       assert.equal(await dialog.getByLabel("Descripción", { exact: true }).inputValue(), description, "lookup preserves local description");
       await dialog.getByLabel("Activa", { exact: true }).check();
-      const previewCalls = calls; await dialog.getByRole("button", { name: "oK", exact: true }).click();
+      const previewCalls = calls; await dialog.getByRole("button", { name: "Aceptar", exact: true }).click();
       await page.getByText("Datos guardados correctamente.", { exact: true }).waitFor(); assert.equal(calls, previewCalls + 1);
       const station = (await store.read()).adminTools.stations[0]; assert.equal(station.active, true); assert.equal(station.license, "QA-LICENSE");
       assert.equal(station.number, "1"); assert.equal(station.operatingSystem, "7");
@@ -135,7 +135,7 @@ remittancesApi("/snapshot").then(snapshot => createRoot(document.getElementById(
       await dialog.getByLabel("Descripción", { exact: true }).fill(editedDescription);
       assert.equal(await dialog.getByLabel("Activa", { exact: true }).isDisabled(), false, "editing local metadata preserves the validation preview");
       const beforeEditCalls = calls;
-      await dialog.getByRole("button", { name: "oK", exact: true }).click();
+      await dialog.getByRole("button", { name: "Aceptar", exact: true }).click();
       await dialog.waitFor({ state: "hidden" });
       const editedStation = (await store.read()).adminTools.stations[0];
       assert.equal(editedStation.description, editedDescription);
@@ -150,7 +150,7 @@ remittancesApi("/snapshot").then(snapshot => createRoot(document.getElementById(
       assert.equal(await dialog.getByLabel("Descripción", { exact: true }).inputValue(), editedDescription);
       rejectStation = true; await dialog.getByLabel("Estación", { exact: true }).fill("QA-NOT-FOUND");
       await dialog.getByRole("button", { name: "Obtener Licencia", exact: true }).click(); await dialog.getByRole("alert").filter({ hasText: "Estación no encontrada." }).waitFor();
-      await dialog.getByRole("button", { name: "oK", exact: true }).click();
+      await dialog.getByRole("button", { name: "Aceptar", exact: true }).click();
       const review = page.getByRole("dialog", { name: "Confirmación", exact: true });
       await review.getByRole("button", { name: "Confirmar", exact: true }).click();
       await review.getByRole("alert").filter({ hasText: "Estación no encontrada." }).waitFor();
@@ -188,7 +188,7 @@ remittancesApi("/snapshot").then(snapshot => createRoot(document.getElementById(
       await manager.getByRole("button", { name: "Agregar", exact: true }).click();
       const selector = page.getByRole("dialog", { name: "Seleccionar...", exact: true });
       assert.match(await selector.getByRole("combobox").innerText(), /QA-STATION/);
-      await selector.getByRole("button", { name: "oK", exact: true }).click();
+      await selector.getByRole("button", { name: "Aceptar", exact: true }).click();
       await manager.getByRole("button", { name: "Guardar", exact: true }).click(); await page.getByText("Estaciones del PCP guardadas.", { exact: true }).waitFor();
       assert.equal((await store.read()).adminTools.pcpStations.length, 1);
     });
