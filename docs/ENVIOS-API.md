@@ -25,6 +25,25 @@ con máximo seguro de JavaScript; un principal debe ser positivo. Monedas: DOP,
 USD, EUR, todas a dos decimales. Fechas de negocio: America/Santo_Domingo.
 Este módulo tiene caja propia y no altera el ledger DOP de cobros/entregas.
 
+### Formatos de captura y validación
+
+- Los importes de captura admiten dígitos y un punto con hasta dos decimales.
+  La cotización recibe `amount` en centavos como cadena de dígitos ASCII (máximo
+  16 y dentro del entero seguro); rechaza signos, exponentes, hexadecimal,
+  espacios y decimales. Los POST mantienen importes numéricos enteros en centavos.
+- Teléfonos: 8 a 15 dígitos, `+` al inicio y separadores de espacio, guion o
+  paréntesis; no letras, puntos ni extensiones. Se permite vacío donde es opcional.
+- Cédula/pasaporte de una ficha nueva de remesa: hasta 80 caracteres, con letras,
+  números, espacios, guiones, puntos o barras, y al menos una letra o número.
+  Se conserva como texto, incluidos sus ceros iniciales.
+- El nombre de una ficha nueva debe incluir letras. Conserva Unicode, acentos,
+  apóstrofes y puntuación legítima, incluidos números en nombres comerciales.
+  Direcciones y notas admiten texto normal; no se bloquean palabras por parecer SQL.
+- El pegado se comprueba antes de que `maxLength` pueda recortar un importe,
+  teléfono o documento. La API valida de nuevo, incluso al omitir la interfaz.
+  Los valores de remesas siguen enviándose a PostgreSQL mediante parámetros,
+  nunca concatenados dentro de la sentencia SQL.
+
 ## Tipos compartidos
 
 ```ts

@@ -119,6 +119,76 @@ createRoot(document.getElementById("root")).render(<App />);`);
         await page.screenshot({ path: path.join(output, "admin-central-commission-config.png") });
       } finally { await context.close(); }
     });
+    for (const surface of ["admin", "collector"]) await t.test(`${surface} rejects invalid typing and whole pastes without creating clients or remittances`, async () => {
+      const context = await browser.newContext({ viewport: surface === "admin" ? { width: 1440, height: 1000 } : { width: 390, height: 844 }, locale: "es-DO", serviceWorkers: "block" });
+      const before = await store.read();
+      try {
+        await context.addInitScript(({ token, surface }: { token: string; surface: string }) => {
+          if (surface === "admin") localStorage.setItem("cyp-admin-token", token); else sessionStorage.setItem("cyp-collector-token", token);
+        }, { token: tokens[surface], surface });
+        await context.route("**/*", routeLocalOnly);
+        const page = await context.newPage(); page.setDefaultTimeout(15000); page.on("pageerror", (error: Error) => errors.push(error.message));
+        await page.goto(`${origin}/${surface}/?view=remittances`);
+        if (surface === "admin") await page.getByRole("button", { name: "ENVÍO DE DINERO", exact: true }).click();
+        const workspace = page.getByRole("region", { name: "Envíos de Dinero", exact: true });
+        await workspace.getByRole("button", { name: "Nuevo envío", exact: true }).click();
+        const pasteRejected = (input: any, value: string) => input.evaluate((node: HTMLInputElement, pasted: string) => {
+          node.setSelectionRange(0, node.value.length);
+          const data = new DataTransfer(); data.setData("text/plain", pasted);
+          return !node.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
+        }, value);
+        const amount = workspace.getByLabel("Monto a enviar (DOP)", { exact: true });
+        await amount.fill("12.34");
+        for (const invalid of ["1e3", "12a", "12.345", "-2", "12,34", "１２"]) {
+          await amount.fill(invalid); assert.equal(await amount.inputValue(), "12.34", invalid);
+        }
+        assert.equal(await pasteRejected(amount, "123456789012345678"), true, "an oversized amount cannot be truncated into a different amount");
+        assert.equal(await amount.inputValue(), "12.34");
+        assert.equal(await pasteRejected(amount, "125.50"), false); await amount.fill("125.50");
+        await workspace.getByRole("button", { name: "Registrar cliente nuevo", exact: true }).first().click();
+        const client = page.getByRole("dialog", { name: "Nuevo remitente", exact: true });
+        const name = client.getByLabel("Cliente:", { exact: true }), document = client.getByLabel("Cédula o pasaporte:", { exact: true }), phone = client.getByLabel("Teléfono:", { exact: true });
+        await name.fill("José O'Connor & Hijos #2");
+        await document.fill("001-0001234-5"); await document.fill("001';DROP TABLE users");
+        assert.equal(await document.inputValue(), "001-0001234-5");
+        assert.equal(await pasteRejected(document, "A".repeat(81)), true);
+        await phone.fill("+1 (809) 555-0101"); await phone.press("End"); await phone.pressSequentially("Ab<>");
+        assert.equal(await phone.inputValue(), "+1 (809) 555-0101");
+        await phone.fill("1234567890123456"); assert.equal(await phone.inputValue(), "+1 (809) 555-0101");
+        assert.equal(await pasteRejected(phone, "8095550101 ext 2"), true);
+        assert.equal(await phone.inputValue(), "+1 (809) 555-0101");
+        await client.getByLabel("Dirección:", { exact: true }).fill("Av. Núñez #12 / local (B)");
+        await client.getByLabel("Ruta:", { exact: true }).selectOption(before.routes[0].id);
+        await name.fill("12345"); await client.getByRole("button", { name: "Usar estos datos", exact: true }).click();
+        await client.getByRole("alert").filter({ hasText: "El nombre del cliente debe incluir letras" }).waitFor();
+        await name.fill("José O'Connor & Hijos #2"); await client.getByRole("button", { name: "Usar estos datos", exact: true }).click();
+        await client.waitFor({ state: "hidden" });
+        assert.match(await workspace.innerText(), /José O'Connor & Hijos #2/);
+        const recipient = before.clients.find(({ id }) => id === "cli-5")!;
+        await workspace.getByRole("combobox", { name: "Destinatario", exact: true }).fill(recipient.code);
+        await workspace.getByRole("option").filter({ hasText: recipient.code }).first().click();
+        await workspace.getByText("Cargando teléfono y dirección…", { exact: true }).waitFor({ state: "hidden" });
+        const recipientPhone = workspace.getByLabel("Teléfono del destinatario", { exact: true });
+        await recipientPhone.fill("8095550101"); await recipientPhone.fill("abc");
+        assert.equal(await recipientPhone.inputValue(), "8095550101"); assert.equal(await pasteRejected(recipientPhone, "8095550101;DROP"), true);
+        const note = "Compra #2; O'Connor & Hijos.\nSaldo < 100";
+        await workspace.getByLabel("Nota (opcional)", { exact: true }).fill(note);
+        assert.equal(await workspace.getByLabel("Nota (opcional)", { exact: true }).inputValue(), note);
+        if (surface === "admin") {
+          await workspace.getByRole("button", { name: "Caja", exact: true }).click();
+          const opening = workspace.getByLabel("Efectivo inicial", { exact: true });
+          await opening.fill("15.50"); await opening.fill("abc"); assert.equal(await opening.inputValue(), "15.50");
+          assert.equal(await pasteRejected(opening, "123456789012345678"), true);
+          await workspace.getByRole("button", { name: "Contar y cerrar", exact: true }).first().click();
+          const closing = page.getByRole("dialog", { name: /^Contar caja / });
+          const counted = closing.getByLabel("Efectivo contado", { exact: true });
+          await counted.fill("0.00"); await counted.fill("0x10"); assert.equal(await counted.inputValue(), "0.00");
+          assert.equal(await pasteRejected(counted, "0.001"), true);
+          await closing.getByRole("button", { name: /^Cerrar Contar caja / }).click();
+        }
+        assert.deepEqual(await store.read(), before, "drafting and rejecting fields does not mutate persisted data");
+      } finally { await context.close(); }
+    });
     for (const surface of ["admin", "collector"]) await t.test(`${surface} active render: readonly DOP, inverse rounding, save and cancellation`, async () => {
       const context = await browser.newContext({ viewport: surface === "admin" ? { width: 1440, height: 1000 } : { width: 390, height: 844 }, locale: "es-DO", serviceWorkers: "block" });
       try {

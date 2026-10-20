@@ -18,6 +18,7 @@ export const INPUT_LIMITS = {
 const singleLineControls = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
 const multilineControls = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/;
 const contactPhonePattern = new RegExp(contracts.phone.pattern);
+const remittanceDocumentPattern = new RegExp(contracts.remittanceDocument.pattern, "u");
 // Match z.email() in the server's installed Zod version.
 const emailPattern = /^(?:[A-Za-z0-9_'+\-]+\.)*[A-Za-z0-9_'+\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}$/;
 
@@ -35,6 +36,34 @@ export function validatePhone(value: string, label = "Teléfono", options: { req
   const digits = phone.replace(/[^0-9]/g, "").length;
   if (!contactPhonePattern.test(phone) || digits < contracts.phone.minDigits || digits > contracts.phone.maxDigits)
     throw new Error(`${label}: ${contracts.phone.message}`);
+}
+
+/** Drafts may be incomplete; submitting still requires the complete field format. */
+export function isTextDraft(value: string, maximum: number, multiline = false) {
+  return value.length <= maximum && !(multiline ? multilineControls : singleLineControls).test(value);
+}
+
+export function isPhoneDraft(value: string) {
+  const phone = value.trim();
+  return isTextDraft(value, INPUT_LIMITS.phone) && (phone === "" || phone === "+" || contactPhonePattern.test(phone)) &&
+    value.replace(/[^0-9]/g, "").length <= contracts.phone.maxDigits;
+}
+
+export const PHONE_INPUT_MESSAGE = contracts.phone.message;
+export const REMITTANCE_DOCUMENT_MESSAGE = contracts.remittanceDocument.message;
+
+export function isRemittanceDocumentDraft(value: string) {
+  return value.length <= contracts.remittanceDocument.maxLength && remittanceDocumentPattern.test(value);
+}
+
+export function validateRemittanceClientName(value: string) {
+  validateText(value, "Nombre", INPUT_LIMITS.name, { required: true });
+  if (!/\p{L}/u.test(value)) throw new Error("El nombre del cliente debe incluir letras.");
+}
+
+export function validateRemittanceDocument(value: string) {
+  validateText(value, "Identificación", contracts.remittanceDocument.maxLength, { required: true });
+  if (!isRemittanceDocumentDraft(value) || !/[\p{L}\p{N}]/u.test(value)) throw new Error(REMITTANCE_DOCUMENT_MESSAGE);
 }
 
 // General configuration keeps its existing phone and fax contract.

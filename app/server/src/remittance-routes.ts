@@ -51,7 +51,7 @@ export function registerRemittanceRoutes(
     });
   get("/api/envios/cotizacion", "Cotizar envío con la tasa del día", async (req) => {
     const input = z.object({ ...quoteFields,
-      amount: z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+      amount: z.string().max(16).regex(/^[0-9]+$/, "El importe en centavos debe contener solo dígitos.").transform(Number).pipe(amount.positive()),
       commissionBps: z.string().regex(/^\d{1,5}$/).transform(Number).pipe(bps).optional(),
       amountMode: z.enum(["source", "destination"]).default("source"),
     }).strict().parse(req.query);
