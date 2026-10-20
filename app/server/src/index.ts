@@ -3,6 +3,7 @@ import { buildApp } from "./app.js";
 import { normalizeDemoCollectorLabel, seed, seedPublicDemo } from "./seed.js";
 import { enrichPublicDemo } from "./demo-scenarios.js";
 import { enrichCollectorDemo } from "./demo-collector-scenarios.js";
+import { enrichCashierDemo } from "./demo-cashier-scenarios.js";
 import { FileStore, PostgresStore, type Store } from "./store.js";
 import { registerPublicWeb } from "./public-web.js";
 import { createDemoStationControl, createRraaValidator, limitRraaCalls, type RraaValidator } from "./rraa.js";
@@ -45,6 +46,8 @@ async function openStore(): Promise<{
         await postgres.transaction((s) => {
           if (s.collectors.length === 0) Object.assign(s, demoInitial);
           normalizeDemoCollectorLabel(s, requestedDemo);
+          // Requires migration 035, which allows the cashier role in users and sessions.
+          enrichCashierDemo(s);
           if (publicWeb) {
             enrichPublicDemo(s);
             enrichCollectorDemo(s);
@@ -69,7 +72,10 @@ async function openStore(): Promise<{
     resolve(process.env.DATA_FILE ?? "../../.local/demo-state.json"),
     demoInitial,
   );
-  await store.transaction((state) => normalizeDemoCollectorLabel(state, requestedDemo));
+  await store.transaction((state) => {
+    normalizeDemoCollectorLabel(state, requestedDemo);
+    enrichCashierDemo(state);
+  });
   return {
     store,
     demo: true,

@@ -4,7 +4,7 @@ import { z } from "zod";
 import { phoneOrEmpty } from "./contact-schemas.js";
 import { assertAdmin, assertAdminRead, businessDate, DomainError, type State, type User } from "./domain.js";
 import type { Store } from "./store.js";
-import { requirePermission } from "./access.js";
+import { assertManagesAccount, requirePermission } from "./access.js";
 import {
   createAuthorizationRequest, endOwnAuthSession, getAdminTools, requireAdminRow, resolveAuthorizationRequest,
   revokeAuthSession, sessionStatus, uniqueAdminValue,
@@ -18,11 +18,12 @@ type Describe = (method: string, path: string, summary: string, schema?: z.ZodTy
 const id = singleLine(80, 1);
 const name = singleLine(160, 1);
 const short = singleLine(160).default("");
+// `active` defaults only on creation (station inactive, PCP active): an edit that omits it keeps the current state.
 const stationBody = z.object({ name, number: singleLine(80, 1).optional(), deviceId: short, description: freeText(1000).default(""),
-  group: short, type: short, active: z.boolean().default(false) }).strict();
+  group: short, type: short, active: z.boolean().optional() }).strict();
 const stationValidationBody = z.object({ stationCode: name, deviceId: name }).strict();
 const stationLookupBody = z.object({ stationCode: name }).strict();
-const pcpBody = z.object({ name, number: singleLine(80, 1), groupId: id, address: singleLine(500).default(""), phone: phone.pipe(phoneOrEmpty).default(""), active: z.boolean().default(true) }).strict();
+const pcpBody = z.object({ name, number: singleLine(80, 1), groupId: id, address: singleLine(500).default(""), phone: phone.pipe(phoneOrEmpty).default(""), active: z.boolean().optional() }).strict();
 const groupBody = z.object({ name }).strict();
 const requestBody = z.object({ clientId: id, collectorId: id, delayReasonId: id.optional(), forCollection: z.boolean(), note: freeText(2000, 1) }).strict();
 const resolutionBody = z.object({ status: z.enum(["approved", "rejected", "cancelled"]), note: freeText(2000, 1) }).strict();
@@ -104,8 +105,8 @@ export function registerAdminToolsRoutes(app: FastifyInstance, store: Store, use
       if (body.deviceId) uniqueAdminValue(data.stations, "deviceId", body.deviceId, current?.id);
       const validation = await resolveRraaStation(service, body.name, body.deviceId);
       uniqueAdminValue(data.stations, "deviceId", validation.deviceId, current?.id);
-      const station = current ?? { id: randomUUID(), ...body, number, license: "", version: "" };
-      Object.assign(station, body, { number }); applyRraaValidation(station, validation, actor.id);
+      const station = current ?? { id: randomUUID(), ...body, active: body.active ?? false, number, license: "", version: "" };
+      Object.assign(station, body, { number, active: body.active ?? station.active }); applyRraaValidation(station, validation, actor.id);
       if (!current) data.stations.push(station);
       return stationView(station);
     });
@@ -121,8 +122,8 @@ export function registerAdminToolsRoutes(app: FastifyInstance, store: Store, use
       const current = editing ? requireAdminRow(data.pcps, params.id, "PCP") : undefined;
       requireAdminRow(data.pcpGroups, body.groupId, "Grupo");
       uniqueAdminValue(data.pcps, "number", body.number, current?.id);
-      if (current) { Object.assign(current, body); return current; }
-      const row = { id: randomUUID(), ...body }; data.pcps.push(row); return row;
+      if (current) { Object.assign(current, body, { active: body.active ?? current.active }); return current; }
+      const row = { id: randomUUID(), ...body, active: body.active ?? true }; data.pcps.push(row); return row;
     });
   }
   mutate("/api/grupos-pcp/:id/eliminar", "Eliminar grupo sin PCPs asociados", z.object({}).strict(), (state, actor, _body, params) => {
@@ -160,7 +161,12 @@ export function registerAdminToolsRoutes(app: FastifyInstance, store: Store, use
     return { items: items.slice(input.offset, input.offset + input.limit), total: items.length, limit: input.limit, offset: input.offset };
   });
   describe("get", "/api/sesiones", "Sesiones reales de acceso, filtradas por usuario, fecha y estado");
-  mutate("/api/sesiones/:id/cerrar", "Revocar una sesión activa", z.object({}).strict(), (state, actor, _body, params) => revokeAuthSession(state, actor, params.id));
+  mutate("/api/sesiones/:id/cerrar", "Revocar una sesión activa", z.object({}).strict(), (state, actor, _body, params) => {
+    // Closing another account's session needs all of that account's effective access.
+    const session = getAdminTools(state).sessions.find((row) => row.id === params.id);
+    if (session) assertManagesAccount(state, actor, session.userId, session.role);
+    return revokeAuthSession(state, actor, params.id);
+  });
   mutate("/api/auth/logout", "Cerrar la sesión propia", z.object({}).strict(), (state, actor) => endOwnAuthSession(state, actor));
   app.get("/api/trazas", async (req) => {
     assertAdminRead(user(req)); const input = filters.parse(req.query);

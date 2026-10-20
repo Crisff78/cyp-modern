@@ -214,6 +214,8 @@ test("PostgreSQL 018 preserves legacy unknowns and persists rate revisions/conta
     const legacy = (await second.read()).remittances.rates.find((row) => row.id === legacyId)!;
     assert.equal(legacy.changeId, undefined); assert.equal(legacy.updatedAt, undefined); assert.equal(legacy.updatedBy, undefined);
     const transfer = await store.transaction((state) => {
+      // Same central commission rule as fixture(): quotes must match the saved policy.
+      setCommissionPolicy(state, admin, { transactionCommissionBps: 100, managerCommissionBps: 0 }, at);
       setDailyRate(state, admin, { currency: "USD", rate: "0.5", date: businessDate(at) }, at);
       openRemittanceCash(state, admin, { operatorId: admin.id, currency: "USD", openingAmount: 0 }, [], at);
       const input = { ...moneyInput, destinationCurrency: "DOP" as const };

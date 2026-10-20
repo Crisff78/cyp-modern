@@ -35,6 +35,17 @@ test("role profiles retain old referential selections until personalized; ceilin
   const supervisor = { role: "supervisor", access: effectiveAccess("supervisor", { permissionMode: "custom", permissionIds: [1, 140, 141], remittancePermissions: ["remittances.create", "remittances.view"] }) };
   assert.equal(hasPermission(supervisor, 140), true); assert.equal(hasPermission(supervisor, 141), false);
   assert.equal(hasRemittancePermission(supervisor, "remittances.view"), true); assert.equal(hasRemittancePermission(supervisor, "remittances.create"), false);
+  // The Cajero opens his cash box from the role profile; personalized, he may add reports but never rates or commissions.
+  const cashier = { role: "cashier", access: effectiveAccess("cashier") };
+  assert.equal(hasRemittancePermission(cashier, "remittances.cash.open"), true); assert.equal(hasRemittancePermission(cashier, "remittances.reports"), false);
+  assert.equal(hasPermission(cashier, 1), true); assert.equal(hasPermission(cashier, 140), false);
+  const personalized = { role: "cashier", access: effectiveAccess("cashier", { permissionMode: "custom", permissionIds: [1, 2, 140, 401],
+    remittancePermissions: ["remittances.view", "remittances.reports", "remittances.rates.view", "remittances.commissions.view", "remittances.rates.manage"] }) };
+  assert.deepEqual(personalized.access.legacy, [1, 2]); assert.deepEqual(personalized.access.remittances, ["remittances.view", "remittances.reports"]);
+  // Collector and Usuario still never open a cash box.
+  assert.equal(hasRemittancePermission({ role: "collector", access: effectiveAccess("collector") }, "remittances.cash.open"), false);
+  const user = { role: "user", access: effectiveAccess("user", { permissionMode: "custom", permissionIds: [1, 2], remittancePermissions: ["remittances.cash.view", "remittances.cash.open"] }) };
+  assert.equal(hasRemittancePermission(user, "remittances.cash.open"), false);
 });
 
 test("custom Admin permissions protect API routes and remove unauthorized snapshot data", async (t) => {
@@ -152,8 +163,11 @@ test("limited account administration cannot bypass individual restrictions by cr
   assert.equal((await grant(limited.id, [1, 101, 102], [])).statusCode, 200);
   const token = await login(limited.email, "Ficticia-segura-2026!");
   const before = await store.read();
-  const forbidden = await post("/api/usuarios", { role: "admin", name: "No autorizado", email: "blocked-admin@example.invalid", password: "Ficticia-2026!" }, token);
-  assert.equal(forbidden.statusCode, 403); assert.deepEqual(await store.read(), before);
+  // A Cajero starts with its role profile, so creating one also needs permission 106.
+  for (const role of ["admin", "cashier"]) {
+    const forbidden = await post("/api/usuarios", { role, name: "No autorizado", email: `blocked-${role}@example.invalid`, password: "Ficticia-2026!" }, token);
+    assert.equal(forbidden.statusCode, 403, role); assert.deepEqual(await store.read(), before);
+  }
   const allowed = await post("/api/usuarios", { role: "user", name: "Sin permisos iniciales", email: "unprivileged-user@example.invalid", password: "Ficticia-2026!" }, token);
   assert.equal(allowed.statusCode, 200, allowed.body); assert.equal(allowed.json().role, "user");
 });
@@ -170,4 +184,14 @@ test("editing a catalog record cannot hide an unauthorized activation change ins
   assert.equal(denied.statusCode, 403); assert.deepEqual(await store.read(), before);
   assert.equal((await post(`/api/zonas/${zone.id}`, { name: `${zone.name} QA`, active: true }, token)).statusCode, 200,
     "saving an existing active legacy row does not require inactivation permission");
+});
+
+test("an Admin cannot remove his own access or the permission administration from himself", async (t) => {
+  const { store, post, login, account } = await setup(t);
+  const own = await account("admin"), token = await login(own.email, "Ficticia-segura-2026!");
+  const before = (await store.read()).accounts.find(({ id }) => id === own.id)!;
+  const refused = await post(`/api/usuarios/${own.id}/permisos`, { mode: "custom", permissionIds: [1, 10, 101], remittancePermissions: [], revision: before.permissionRevision ?? 0 }, token);
+  assert.equal(refused.statusCode, 409, refused.body); assert.equal(refused.json().error.code, "OWN_ADMIN_ACCESS");
+  const after = (await store.read()).accounts.find(({ id }) => id === own.id)!;
+  assert.equal(after.permissionRevision ?? 0, before.permissionRevision ?? 0); assert.equal(after.permissionMode ?? "role", before.permissionMode ?? "role");
 });

@@ -32,7 +32,7 @@ async function setup(t: TestContext) {
   return { initial, store, app, login, post, get, account };
 }
 
-test("five explicit roles create/edit with unchanged legacy codes and safe OpenAPI contracts", async (t) => {
+test("six explicit roles create/edit with unchanged legacy codes and safe OpenAPI contracts", async (t) => {
   const { app, store, account, post, get } = await setup(t);
   const identities = [];
   for (const role of ACCOUNT_ROLES) {
@@ -78,11 +78,14 @@ test("new roles cannot acquire financial writes; Supervisor has administrative r
     assert.deepEqual(remittanceOperators(before, { id: row.id, name: row.name, role }), []);
     assert.equal((await post("/api/auth/logout", {}, token)).statusCode, 200);
   }
+  // Only operating roles become remittance operators; the Cajero does from its role profile.
+  const cashier = await account("cashier");
   const operators = remittanceOperators(await store.read(), { id: "demo-admin", name: "QA", role: "admin" });
-  assert.ok(operators.every((row) => row.role === "admin" || row.role === "collector"));
+  assert.ok(operators.every((row) => row.role === "admin" || row.role === "collector" || row.role === "cashier"));
+  assert.ok(operators.some((row) => row.id === cashier.id));
 });
 
-test("collector accounts persist eligible IDs and reject new Admin/unknown/mismatched links", async (t) => {
+test("collector accounts persist eligible IDs and reject new Admin/Cajero/unknown/mismatched links", async (t) => {
   const { initial, store, account, post } = await setup(t);
   const collector = initial.collectors[0];
   const legacy = await post(`/api/cobradores/${collector.id}`, { name: "Nombre legítimo editado", accountId: collector.accountId });
@@ -94,12 +97,13 @@ test("collector accounts persist eligible IDs and reject new Admin/unknown/misma
     assert.equal(result.statusCode, 200, result.body);
     assert.equal((await store.read()).collectors.find((item) => item.id === collector.id)?.accountId, row.id);
   }
-  const admin = await account("admin"), assignedCollector = await account("collector");
+  const admin = await account("admin"), cashier = await account("cashier"), assignedCollector = await account("collector");
   const before = await store.read();
-  for (const accountId of [admin.id, "UNKNOWN'; SELECT 1--"]) {
+  for (const accountId of [admin.id, cashier.id, "UNKNOWN'; SELECT 1--"]) {
     const result = await post(`/api/cobradores/${collector.id}`, { name: collector.name, accountId });
     assert.equal(result.statusCode, 422, result.body);
   }
+  assert.equal((await post("/api/cobradores", { name: "Cobrador con cuenta de caja", accountId: cashier.id })).statusCode, 422);
   assert.equal((await post("/api/cobradores/col-2", { name: "Segundo cobrador", accountId: assignedCollector.id })).statusCode, 409);
   assert.deepEqual(await store.read(), before);
   const row = await account("user");

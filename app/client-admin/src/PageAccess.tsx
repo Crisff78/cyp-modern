@@ -11,6 +11,8 @@ const actions: Record<string, readonly [number, number, number]> = {
   dailySettlements: [402, 402, 403], exchangeRates: [201, 201, 201], generalConfig: [4, 4, 4],
   sessions: [116, 116, 116],
 };
+// Importing a file has its own code, as the server checks it.
+const imports: Record<string, number> = { charges: 304, payouts: 364 };
 export function usePageAccess() {
   const context = useContext(PageAccessContext);
   const actor = context?.actor ?? { role: "undefined" };
@@ -18,5 +20,6 @@ export function usePageAccess() {
   const manage = accessRole(actor.role) === "admin";
   return { actor, page: context?.page, canCreate: manage && hasPermission(actor, ids[0]),
     canEdit: manage && hasPermission(actor, ids[1]), canDelete: manage && hasPermission(actor, ids[2]),
-    canAccept: manage && hasPermission(actor, 334), has: (id: number) => hasPermission(actor, id) };
+    canAccept: manage && hasPermission(actor, 334), canImport: manage && context?.page !== undefined && hasPermission(actor, imports[context.page] ?? 0),
+    has: (id: number) => hasPermission(actor, id) };
 }

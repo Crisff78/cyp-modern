@@ -74,7 +74,7 @@ function validateCollectorAccount(state: State, accountId?: string, current?: Co
   if (!accountId || accountId === current?.accountId) return;
   const account = state.accounts.find((row) => row.id === accountId);
   if (!account) throw new DomainError("ACCOUNT_NOT_FOUND", "Selecciona una cuenta registrada.", 422);
-  if (!isCollectorAccountRole(account.role)) throw new DomainError("ACCOUNT_ROLE_FORBIDDEN", "Una cuenta Admin no puede enlazarse a un cobrador.", 422);
+  if (!isCollectorAccountRole(account.role)) throw new DomainError("ACCOUNT_ROLE_FORBIDDEN", "Una cuenta Admin o Cajero no puede enlazarse a un cobrador.", 422);
   if (account.role === "collector" && account.collectorId !== current?.id)
     throw new DomainError("COLLECTOR_ACCOUNT_SCOPE", "La cuenta de cobrador está asignada a otro cobrador.", 409);
 }

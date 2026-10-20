@@ -7,6 +7,7 @@ import test from "node:test";
 import { buildApp } from "../src/app.js";
 import { getAdminTools } from "../src/admin-tools.js";
 import { enrichCollectorDemo } from "../src/demo-collector-scenarios.js";
+import { DEMO_CASHIER_EMAIL, enrichCashierDemo } from "../src/demo-cashier-scenarios.js";
 import { enrichPublicDemo } from "../src/demo-scenarios.js";
 import { normalizeDemoCollectorLabel, seedPublicDemo } from "../src/seed.js";
 import { FileStore } from "../src/store.js";
@@ -55,6 +56,7 @@ async function isolatedRestart() {
       // Reproduce public-demo startup on this private synthetic file only.
       await store.transaction((state) => {
         normalizeDemoCollectorLabel(state, true);
+        enrichCashierDemo(state);
         enrichPublicDemo(state);
         enrichCollectorDemo(state);
       });
@@ -107,16 +109,20 @@ async function isolatedRestart() {
   return { start, login, token, me, changePassword, state: () => currentStore().read(), close };
 }
 
-test("initial admin and collector aliases and active sessions survive a complete FileStore application restart", async () => {
+test("initial admin and collector aliases, the practice Cajero and active sessions survive a complete FileStore application restart", async () => {
   const isolated = await isolatedRestart();
   try {
     await isolated.start();
     const tokens: string[] = [];
     for (const actor of actors) for (const alias of actor.aliases)
       tokens.push(await isolated.token(alias, originalPassword));
+    // The practice Cajero is a stored account created once by the demo start.
+    tokens.push(await isolated.token(DEMO_CASHIER_EMAIL, originalPassword));
     const before = await isolated.state();
     assert.ok(before.accounts.every((account) => !actors.some((actor) => actor.id === account.id)),
       "Initial bootstrap identities must remain virtual until their own password changes.");
+    assert.equal(before.accounts.filter((account) => account.email === DEMO_CASHIER_EMAIL && account.role === "cashier").length, 1,
+      "The demo start must store exactly one practice Cajero.");
 
     // start closes the old app/store, opens the same file and builds new instances.
     await isolated.start();

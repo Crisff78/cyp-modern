@@ -40,10 +40,15 @@
 .remittance-party-fields { display: grid; align-content: start; gap: 14px; min-width: 0; }
 .remittance-client-picker { position: relative; min-width: 0; }
 .remittance-client-create { margin-bottom: 6px; }
+/* With a client chosen the button keeps its place, out of sight and out of reach: the field does not move. */
+.remittance-client-create.is-reserved { visibility: hidden; }
 .remittance-client-anchor { position: relative; }
 .remittance-client-picker input, .remittance-phone-field input { min-height: 48px; font-size: 17px; }
 .remittance-client-phone { color: var(--cyp-text-muted, #5b6876); font-size: 12px; white-space: nowrap; }
 .remittances .remittance-client-warning { margin: -8px 0 0; color: var(--cyp-warning-text, #9a3412); font-size: 12px; font-weight: 600; }
+.remittances .remittance-cash-warning, .remittances-dialog .remittance-cash-warning { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 12px; padding: 8px 12px; border: 1px solid var(--cyp-border-strong, #e0b48a); border-radius: 4px; background: var(--cyp-warning-surface, #fff7ed); color: var(--cyp-warning-text, #9a3412); font-size: 13px; font-weight: 600; }
+.remittances .remittance-cash-warning p, .remittances-dialog .remittance-cash-warning p { flex: 1 1 280px; margin: 0; }
+.remittance-form-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .remittance-client-selection { display: block; margin-top: 5px; color: var(--cyp-text, #43566f); font-size: 12px; overflow-wrap: anywhere; }
 .remittance-client-options { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 3; max-height: 280px; overflow: auto; border: 1px solid var(--cyp-border-strong, #879db8); border-radius: 4px; background: var(--cyp-surface, #fff); box-shadow: 0 5px 16px #152c4b26; }
 .remittance-client-options button { width: 100%; display: block; text-align: left; border: 0; border-bottom: 1px solid var(--cyp-border, #e1e8f0); border-radius: 0; font-weight: 500; }
@@ -93,6 +98,102 @@ dialog.remittances-dialog { position: fixed; inset: 0; margin: auto; }
 .remittances-dialog-body form > button { margin-top: 14px; }
 .remittance-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-top: 18px; }
 .remittance-cancel { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--cyp-border-strong, #d6aaa7); }
+/* Envíos de Dinero of Administración (fixedForm): the form stays ready above and the list takes the rest of
+   the window, with its own scroll. The rules reach only the heading, the notices, the form and the list: the
+   dialogs keep their sizes and the collector terminal never carries this class. A phone keeps one scroll for
+   the window and the touch sizes of the media query below. */
+@media (min-width: 701px) {
+  .remittances.remittances-fixed { display: flex; flex-direction: column; overflow: hidden; padding: 4px 10px; }
+  .remittances-fixed > * { flex: 0 0 auto; }
+  /* In a short window the form scrolls inside before the list loses its last rows. An open list of clients is
+     placed over the window by the picker (floating), so the form keeps its scroll and never covers the list. */
+  .remittances-fixed > .remittance-send-form { flex: 0 1 auto; min-height: 0; overflow: auto; }
+  .remittances-fixed > .remittance-list-area { flex: 1 1 0; min-height: 140px; display: flex; flex-direction: column; }
+  .remittances-fixed .remittance-list-area > * { flex: 0 0 auto; }
+  .remittances-fixed .remittance-list-area > .remittance-table-wrap { flex: 1 1 0; min-height: 0; overflow: auto; }
+  .remittances-fixed .remittance-list-area .remittance-table thead th { position: sticky; top: 0; z-index: 1; }
+  .remittances-fixed > .remittance-heading { margin-bottom: 4px; }
+  .remittances-fixed > .remittance-heading > div { flex: 1 1 auto; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 12px; }
+  .remittances-fixed > .remittance-heading h1 { font-size: 16px; }
+  .remittances-fixed > .remittance-heading p { margin: 0; }
+  .remittances-fixed > :is(.remittance-heading, .remittance-cash-warning, .remittance-send-form, .remittance-list-area) button { min-height: 32px; padding: 4px 12px; }
+  .remittances-fixed > :is(.remittance-error, .remittance-notice, .remittance-empty) { padding: 5px 10px; margin: 0 0 4px; font-size: 13px; }
+  /* The box notice is one line under the heading, beside "Actualizar", with its button on the right: the list keeps
+     its rows. The whole text stays in the title. */
+  .remittances-fixed > .remittance-heading .remittance-cash-warning { flex: 1 1 100%; flex-wrap: nowrap; min-width: 0; margin: 2px 0 0; padding: 1px 2px 1px 10px; font-size: 12px; line-height: 1.3; }
+  .remittances-fixed > .remittance-heading .remittance-cash-warning p { min-width: 0; color: inherit; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .remittances-fixed > .remittance-heading .remittance-cash-warning button { flex: 0 0 auto; min-height: 20px; padding: 0 10px; font-size: 12px; line-height: 18px; }
+  /* The window and the field names already say what the form is: its heading stays for screen readers only.
+     The help goes beside the buttons. */
+  .remittances-fixed > .remittance-send-form { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; column-gap: 16px; padding: 6px 10px; margin-bottom: 4px; }
+  .remittances-fixed > .remittance-send-form > h2 { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .remittances-fixed > .remittance-send-form > fieldset { grid-column: 1 / -1; grid-row: 1; margin-bottom: 4px; }
+  .remittances-fixed > .remittance-send-form > .remittance-form-actions { grid-column: 1; grid-row: 2; gap: 8px; }
+  .remittances-fixed > .remittance-send-form > .remittance-help { grid-column: 2; grid-row: 2; }
+  .remittances-fixed > .remittance-send-form > .remittance-quote { grid-column: 1 / -1; grid-row: 3; }
+  .remittances-fixed > :is(.remittance-send-form, .remittance-list-area) p { margin: 0; }
+  .remittances-fixed > :is(.remittance-send-form, .remittance-list-area) .remittance-help { font-size: 12px; line-height: 1.25; }
+  .remittances-fixed > :is(.remittance-send-form, .remittance-list-area) label { gap: 2px; font-size: 12px; line-height: 1.25; }
+  .remittances-fixed > :is(.remittance-send-form, .remittance-list-area) :is(input, select, textarea) { min-height: 30px; padding: 4px 8px; font-size: 13px; line-height: 1.4; }
+  .remittances-fixed > .remittance-send-form textarea { height: 30px; }
+  .remittances-fixed > .remittance-send-form :is(.remittance-client-picker, .remittance-phone-field) input { min-height: 34px; padding: 5px 9px; font-size: 14px; }
+  .remittances-fixed > .remittance-send-form .remittance-form-grid { gap: 5px 10px; }
+  /* Two columns per block: the client takes the whole line and the other fields go in pairs. */
+  .remittances-fixed > .remittance-send-form .remittance-party-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-flow: row dense; gap: 5px 10px; }
+  .remittances-fixed > .remittance-send-form .remittance-party-fields > :is([data-client-side], .remittance-client-warning) { grid-column: 1 / -1; }
+  .remittances-fixed > .remittance-send-form .remittance-client-warning { margin: 0; }
+  /* The note under the readonly commission stays for screen readers only. */
+  .remittances-fixed > .remittance-send-form .remittance-party-fields label > small { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  /* "Registrar cliente nuevo" and the state of the choice share the line of the field name. */
+  .remittances-fixed > .remittance-send-form .remittance-client-create { position: absolute; top: 0; right: 0; z-index: 1; min-height: 24px; height: 24px; margin: 0; padding: 0 10px; font-size: 12px; line-height: 22px; }
+  .remittances-fixed > .remittance-send-form .remittance-client-picker:has(> .remittance-client-create) > .remittance-client-anchor > label { line-height: 24px; }
+  .remittances-fixed > .remittance-send-form .remittance-client-selection { position: absolute; top: 0; right: 0; max-width: calc(100% - 96px); margin: 0; font-size: 11px; line-height: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .remittances-fixed > .remittance-send-form .remittance-client-picker:has(> .remittance-client-create:not(.is-reserved)) > .remittance-client-selection { width: 1px; height: 1px; clip-path: inset(50%); }
+  .remittances-fixed > .remittance-send-form .remittance-client-options { max-height: 220px; }
+  .remittances-fixed > .remittance-send-form .remittance-client-options button { min-height: 0; padding: 4px 10px; font-size: 13px; }
+  .remittances-fixed > .remittance-send-form .remittance-client-options p { margin: 6px 10px; }
+  .remittances-fixed > .remittance-send-form .remittance-contact { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 0 8px; margin: 3px 0 0; font-size: 12px; line-height: 1.3; }
+  .remittances-fixed > .remittance-send-form .remittance-contact > div { display: block; padding: 0; border: 0; }
+  .remittances-fixed > .remittance-send-form .remittance-contact dt { font-size: 11px; }
+  .remittances-fixed > .remittance-send-form .remittance-contact dd { text-align: left; }
+  /* A client typed for this transfer: its name, its data and both buttons in little space. */
+  .remittances-fixed > .remittance-send-form .remittance-party-fields > div[data-client-side]:not(.remittance-client-picker) { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+  .remittances-fixed > .remittance-send-form .remittance-party-fields > div[data-client-side]:not(.remittance-client-picker) > :is(strong, .remittance-contact) { flex: 1 1 100%; }
+  .remittances-fixed > .remittance-send-form .remittance-quote { margin-top: 6px; padding-top: 6px; }
+  .remittances-fixed > .remittance-send-form .remittance-quote .remittance-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 24px; margin: 4px 0; font-size: 13px; }
+  .remittances-fixed > .remittance-send-form .remittance-quote .remittance-summary > div { padding: 3px 0; }
+  /* The list help goes beside Buscar and Estado. */
+  .remittances-fixed > .remittance-list-area:has(> .remittance-toolbar + .remittance-help) { display: grid; grid-template: auto minmax(0, 1fr) / minmax(0, 1fr) minmax(0, 36%); column-gap: 14px; align-items: center; }
+  .remittances-fixed .remittance-list-area > .remittance-table-wrap { grid-column: 1 / -1; align-self: stretch; }
+  .remittances-fixed .remittance-list-area > .remittance-help { margin: 4px 0; }
+  .remittances-fixed .remittance-list-area .remittance-toolbar { margin: 4px 0; gap: 6px 14px; }
+  .remittances-fixed .remittance-list-area .remittance-toolbar label { flex-direction: row; align-items: center; gap: 6px; }
+  .remittances-fixed .remittance-list-area .remittance-toolbar label:has(> select) { flex: 0 1 200px; }
+  .remittances-fixed .remittance-list-area .remittance-table caption { padding: 3px 8px; line-height: 1.3; }
+  .remittances-fixed .remittance-list-area .remittance-table :is(th, td) { padding: 3px 8px; line-height: 1.3; }
+  .remittances-fixed .remittance-list-area .remittance-table small { margin-top: 1px; }
+  .remittances-fixed .remittance-list-area .remittance-table .remittance-link { min-height: 0; padding: 0; }
+  .remittances-fixed .remittance-list-area .remittance-status { padding: 1px 6px; }
+  /* A wide window: operator, note and the commission split go under the recipient, beside the sender. */
+  @container (min-width: 861px) {
+    .remittances-fixed > .remittance-send-form .remittance-form-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: auto auto 1fr; }
+    .remittances-fixed > .remittance-send-form .remittance-form-grid > .remittance-party-fields:first-child { grid-column: 1 / span 2; grid-row: 1 / span 3; }
+    .remittances-fixed > .remittance-send-form .remittance-form-grid > .remittance-party-fields + .remittance-party-fields { grid-column: 3 / span 2; grid-row: 1; }
+    .remittances-fixed > .remittance-send-form .remittance-operator-field { grid-column: 3; grid-row: 2; }
+    .remittances-fixed > .remittance-send-form .remittance-note-field { grid-column: 4; grid-row: 2; }
+    .remittances-fixed > .remittance-send-form .remittance-form-grid:not(:has(.remittance-operator-field)) .remittance-note-field { grid-column: 3 / span 2; }
+    .remittances-fixed > .remittance-send-form .remittance-manager-help { grid-column: 3 / span 2; grid-row: 3; margin: 0; }
+    .remittances-fixed > .remittance-send-form .remittance-quote .remittance-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
+  /* A narrow window: one column, with the help back above the buttons. */
+  @container (max-width: 600px) {
+    .remittances-fixed > .remittance-send-form .remittance-party-fields { grid-template-columns: minmax(0, 1fr); }
+    .remittances-fixed > .remittance-send-form, .remittances-fixed > .remittance-list-area:has(> .remittance-toolbar + .remittance-help) { display: flex; flex-direction: column; align-items: stretch; }
+    .remittances-fixed > .remittance-send-form > .remittance-help { margin: 4px 0; }
+  }
+}
+
+/* Modeless receipt window (detail of a send or receipt). */
 .remittance-receipt-window { flex-direction: column; container-type: inline-size; margin: 0; max-width: none; max-height: none; overflow: hidden; border-radius: 5px; box-shadow: 0 10px 35px #152c4b40; }
 .remittance-receipt-window > .remittance-receipt-titlebar { flex: 0 0 36px; min-height: 36px; padding: 0 7px 0 12px; gap: 8px; color: #f8fafc; background: linear-gradient(180deg, #0f766e, #065f46); cursor: move; user-select: none; touch-action: none; }
 .remittance-receipt-titlebar h2 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: inherit; font-size: 13px; }
@@ -112,8 +213,11 @@ dialog.remittances-dialog { position: fixed; inset: 0; margin: auto; }
 .remittance-receipt-extra { padding: 10px 0; border-top: 1px solid var(--rem-edge); }
 .remittance-receipt-extra summary { font-size: 12px; font-weight: 600; cursor: pointer; }
 .remittance-receipt-extra[open] summary { margin-bottom: 10px; }
-.remittance-window-restore { position: fixed; bottom: 18px; right: 18px; z-index: 2147482000; display: flex; align-items: center; gap: 8px; max-width: min(350px, calc(100vw - 32px)); padding: 10px 14px; border: 1px solid var(--cyp-border-strong, #879db8); border-radius: 5px; background: var(--cyp-surface, #fff); color: var(--cyp-text, #172a45); box-shadow: 0 3px 14px #152c4b26; font: 600 12px/1.4 Inter, Arial, sans-serif; cursor: pointer; }
-@media (max-width: 700px) { .remittance-receipt-columns { grid-template-columns: 1fr; gap: 12px; } .remittance-window-restore { bottom: 88px; } }
+/* One tray for the minimized receipts of every window: each restore button keeps its own place, none covers another. */
+.remittance-window-tray { position: fixed; bottom: 18px; right: 18px; z-index: 2147482000; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; pointer-events: none; }
+.remittance-window-tray:empty { display: none; }
+.remittance-window-restore { pointer-events: auto; display: flex; flex: 0 0 auto; align-items: center; gap: 8px; max-width: min(350px, calc(100vw - 32px)); padding: 10px 14px; border: 1px solid var(--cyp-border-strong, #879db8); border-radius: 5px; background: var(--cyp-surface, #fff); color: var(--cyp-text, #172a45); box-shadow: 0 3px 14px #152c4b26; font: 600 12px/1.4 Inter, Arial, sans-serif; cursor: pointer; }
+@media (max-width: 700px) { .remittance-receipt-columns { grid-template-columns: 1fr; gap: 12px; } .remittance-window-tray { bottom: 88px; } }
 @container (max-width: 600px) {
   .remittance-form-grid { grid-template-columns: 1fr; }
   .remittance-heading { align-items: flex-start; }

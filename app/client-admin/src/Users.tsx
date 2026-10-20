@@ -97,7 +97,7 @@ function AccountForm({
     [error, setError] = useState("");
   const creating = operation.type === "create",
     rotating = operation.type === "password";
-  const close = () => { if (!locked) { request.clear(); onClose(); } };
+  const close = () => { if (request.closable && !mockBusy) { request.clear(); onClose(); } };
 
   async function runAccount<T>(path: string, body: unknown, draft: unknown, valid: (result: T) => boolean): Promise<T> {
     // Mock operations resolve locally; an unsupported mock route remains a
@@ -290,7 +290,7 @@ function AccountForm({
           <button
             type="button"
             className="btn"
-            disabled={locked}
+            disabled={!request.closable || mockBusy}
             onClick={close}
           >
             Cancelar

@@ -6,6 +6,7 @@ import { commissionReportStatusLabels } from "../../shared/remittances/commissio
 import { LatestRequestGate } from "../../shared/remittances/suggestions";
 import { remittanceReportForPage, remittanceReportPath, remittanceReportSections, remittanceReportTitle, type RemittanceReportFilters, type RemittanceReportPage } from "../../shared/remittances/reporting";
 import type { ConsolidatedCommissionReport, RemittanceSnapshot, Report } from "../../shared/remittances/types";
+import { remittanceOperatorName } from "../../shared/remittances/operatorNames";
 import type { StrictApi } from "../../shared/remittances/strictApi";
 import "./connected-report-layout.css";
 import "./remittance-report-view.css";
@@ -52,7 +53,7 @@ export function RemittanceReportView({ page, api, actorId }: { page: RemittanceR
     finally { if (requests.current.accepts(request)) setBusy(false); }
   }
   const displayed = allocationReport ?? report;
-  const sections = remittanceReportSections(definition.type, report, allocationReport, (id) => metadata?.operators.find((operator) => operator.id === id)?.name ?? id);
+  const sections = remittanceReportSections(definition.type, report, allocationReport, (id) => remittanceOperatorName(metadata, id) ?? id);
   const title = displayed ? remittanceReportTitle(definition.type, displayed) : definition.label;
   const managers = [...new Map((metadata?.transfers ?? []).flatMap((transfer) => transfer.commissionAllocation?.managerId ? [[transfer.commissionAllocation.managerId, { id: transfer.commissionAllocation.managerId, name: transfer.commissionAllocation.managerName ?? transfer.commissionAllocation.managerId }] as const] : [])).values()].sort((a, b) => a.name.localeCompare(b.name));
   const canOutput = Boolean(displayed) && !busy;

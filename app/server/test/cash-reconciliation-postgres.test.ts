@@ -27,7 +27,9 @@ test("isolated PostgreSQL 001–033 preserves movements and serializes immutable
     const files = (await readdir(directory)).filter((file) => /^\d{3}_.+\.sql$/.test(file) && Number(file.slice(0, 3)) <= 33).sort();
     assert.equal(files.length, 33);
     const ledger = (await sql.query("SELECT name,sha256 FROM cyp_schema_migrations ORDER BY name")).rows;
-    assert.equal(ledger.length, 33);
+    // The current store also needs the later migrations (034 permissions, 035 Cajero); 001–033 must be the exact prefix.
+    assert.ok(ledger.length >= 33);
+    assert.deepEqual(ledger.slice(0, 33).map((row) => row.name), files);
     for (const file of files) assert.equal(ledger.find((row) => row.name === file)?.sha256,
       createHash("sha256").update(await readFile(new URL(file, directory), "utf8")).digest("hex"), file);
     assert.equal((await store.read()).collectors.length, 0, "Use only a fresh disposable database.");

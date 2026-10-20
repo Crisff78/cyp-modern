@@ -58,7 +58,9 @@ test("isolated PostgreSQL 001–031 persist installation proofs, serialize consu
     const files = (await readdir(directory)).filter((file) => /^\d{3}_.+\.sql$/.test(file) && Number(file.slice(0, 3)) <= 31).sort();
     assert.equal(files.length, 31);
     const ledger = (await sql.query("SELECT name,sha256 FROM cyp_schema_migrations ORDER BY name")).rows;
-    assert.deepEqual(ledger.map((row) => row.name), files);
+    // The current store also needs the later migrations (032 onwards); 001–031 must be the exact prefix.
+    assert.ok(ledger.length >= 31);
+    assert.deepEqual(ledger.slice(0, 31).map((row) => row.name), files);
     for (const file of files) assert.equal(ledger.find((row) => row.name === file)?.sha256,
       createHash("sha256").update(await readFile(new URL(file, directory), "utf8")).digest("hex"), file);
     const tables = (await sql.query("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename")).rows.map((row) => String(row.tablename));

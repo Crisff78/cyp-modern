@@ -10,6 +10,7 @@ import { seed } from "../src/seed.js";
 import { FileStore, MemoryStore, PostgresStore, type Store } from "../src/store.js";
 import { permissionCatalog } from "../src/user-permissions.js";
 import type { AccountRole } from "../src/account-roles.js";
+import { rolePermissionIds, roleRemittancePermissions } from "../../shared/access.mjs";
 
 async function setup(t: TestContext, store: Store = new MemoryStore(seed())) {
   const app = await buildApp({ store, demo: true, secret: "synthetic-permissions-test-secret-at-least-32-characters", origins: [], collectorUrl: "http://localhost:5174" });
@@ -59,10 +60,14 @@ test("permission saves affect only the requested account and preserve credential
   const ownToken = await login(first.email, first.body.password);
   assert.deepEqual((await get(`/api/usuarios/${first.id}/permisos`)).json(), { userId: first.id, permissionIds: [], revision: 0, mode: "role", remittancePermissions: [] });
   assert.equal((await get(`/api/usuarios/${admin.id}/permisos`)).json().permissionIds.length, 119);
+  const cashier = await account("cashier");
+  assert.deepEqual((await get(`/api/usuarios/${cashier.id}/permisos`)).json(),
+    { userId: cashier.id, permissionIds: [1, 2], revision: 0, mode: "role", remittancePermissions: roleRemittancePermissions("cashier") });
   const before = await store.read(), target = before.accounts.find(({ id }) => id === first.id)!;
+  // The previous contract (no `mode`) keeps the account's mode: the list is stored, not applied.
   const saved = await post(`/api/usuarios/${first.id}/permisos`, { permissionIds: [501, 140, 2], revision: 0 });
   assert.equal(saved.statusCode, 200, saved.body);
-  assert.deepEqual(saved.json(), { userId: first.id, permissionIds: [2, 140, 501], revision: 1, mode: "custom", remittancePermissions: [] });
+  assert.deepEqual(saved.json(), { userId: first.id, permissionIds: [2, 140, 501], revision: 1, mode: "role", remittancePermissions: [] });
   const after = await store.read(), changed = after.accounts.find(({ id }) => id === first.id)!;
   for (const field of ["name", "email", "role", "collectorId", "salt", "passwordHash", "credentialVersion", "status", "createdAt"] as const)
     assert.deepEqual(changed[field], target[field], field);
@@ -70,11 +75,19 @@ test("permission saves affect only the requested account and preserve credential
   assert.deepEqual(after.adminTools.sessions, before.adminTools.sessions);
   assert.deepEqual(after.charges, before.charges);
   assert.deepEqual(after.movements, before.movements);
-  assert.equal((await get("/api/auth/me", token)).statusCode, 200);
-  assert.equal((await get("/api/auth/me", ownToken)).statusCode, 200);
+  // Operational endpoints, not the exempt /api/auth/me, prove that the sessions still work.
+  assert.equal((await get("/api/usuarios", token)).statusCode, 200);
+  assert.equal((await post(`/api/usuarios/${first.id}/clave`, { currentPassword: first.body.password, password: first.body.password }, ownToken)).statusCode, 200);
+  const adminToken = await login(admin.email, admin.body.password);
   const cleared = await post(`/api/usuarios/${admin.id}/permisos`, { permissionIds: [], revision: 0 });
-  assert.equal(cleared.statusCode, 200);
+  assert.equal(cleared.statusCode, 200); assert.equal(cleared.json().mode, "role");
   assert.deepEqual((await get(`/api/usuarios/${admin.id}/permisos`)).json().permissionIds, [], "Explicit empty must not restore Admin defaults.");
+  // A legacy body without `mode` never revokes an Admin that works with its role profile.
+  assert.equal((await get("/api/usuarios", adminToken)).statusCode, 200);
+  assert.equal((await get("/api/snapshot", adminToken)).statusCode, 200);
+  // Only an explicit personalized mode applies the stored selection.
+  assert.equal((await post(`/api/usuarios/${admin.id}/permisos`, { mode: "custom", permissionIds: [], revision: 1 })).statusCode, 200);
+  assert.equal((await get("/api/usuarios", adminToken)).json().error.code, "ACCESS_REVOKED");
 });
 
 test("Zod rejects invalid IDs, duplicates, mixed strings and injected fields without mutations", async (t) => {
@@ -101,16 +114,33 @@ test("Zod rejects invalid IDs, duplicates, mixed strings and injected fields wit
 test("catalog assignments never elevate roles; only Admin can save and Supervisor remains read-only", async (t) => {
   const { store, account, login, get, post } = await setup(t);
   const all = permissionCatalog.permissions.map(({ id }) => id);
-  for (const role of ["undefined", "user", "collector", "supervisor"] as const) {
+  const keys = ["remittances.view", "remittances.create", "remittances.receipts", "remittances.pay", "remittances.cancel", "remittances.clients.create", "remittances.cash.view",
+    "remittances.cash.open", "remittances.cash.close", "remittances.reports", "remittances.rates.view", "remittances.rates.manage", "remittances.commissions.view", "remittances.commissions.manage"];
+  const keysWithout = (...left: string[]) => keys.filter((key) => !left.includes(key));
+  // The most each role can reach with every code and every key of Envíos personalized, written out apart from
+  // access.mjs so a leak there is caught here. Without «Entrar al sistema» (No definido) nothing applies.
+  const ceilings: Record<"undefined" | "user" | "collector" | "supervisor" | "cashier", { legacy: number[]; remittances: string[] }> = {
+    undefined: { legacy: [], remittances: [] },
+    user: { legacy: [1, 2], remittances: keysWithout("remittances.cash.open", "remittances.rates.manage", "remittances.commissions.manage") },
+    collector: { legacy: rolePermissionIds("collector"), remittances: keysWithout("remittances.cash.open", "remittances.rates.manage", "remittances.commissions.view", "remittances.commissions.manage") },
+    supervisor: { legacy: rolePermissionIds("supervisor"), remittances: ["remittances.view", "remittances.receipts", "remittances.cash.view", "remittances.reports", "remittances.rates.view", "remittances.commissions.view"] },
+    cashier: { legacy: [1, 2], remittances: keysWithout("remittances.rates.view", "remittances.rates.manage", "remittances.commissions.view", "remittances.commissions.manage") },
+  };
+  const sorted = <T extends string | number>(values: readonly T[]) => [...values].sort((a, b) => String(a).localeCompare(String(b), "en", { numeric: true }));
+  for (const role of ["undefined", "user", "collector", "supervisor", "cashier"] as const) {
     const target = await account(role), actor = await login(target.email, target.body.password);
-    const assigned = await post(`/api/usuarios/${target.id}/permisos`, { permissionIds: all, revision: 0 });
-    assert.equal(assigned.statusCode, 200);
+    // An explicit personalized mode: a body without `mode` would only store the lists (S9).
+    const assigned = await post(`/api/usuarios/${target.id}/permisos`, { permissionIds: all, mode: "custom", remittancePermissions: keys, revision: 0 });
+    assert.equal(assigned.statusCode, 200, assigned.body); assert.equal(assigned.json().mode, "custom");
     const before = await store.read();
     assert.equal((await get("/api/permisos", actor)).statusCode, role === "supervisor" ? 200 : 403);
     assert.equal((await get(`/api/usuarios/${target.id}/permisos`, actor)).statusCode, role === "supervisor" ? 200 : 403);
     assert.equal((await post(`/api/usuarios/${target.id}/permisos`, { permissionIds: [], revision: 1 }, actor)).statusCode, 403);
     assert.equal((await post("/api/cobradores", { name: "No autorizado" }, actor)).statusCode, 403);
-    assert.equal((await get("/api/auth/me", actor)).json().role, role);
+    const me = (await get("/api/auth/me", actor)).json();
+    assert.equal(me.role, role); assert.equal(me.access.mode, "custom", `${role} applies the personalized selection`);
+    assert.deepEqual(sorted(me.access.legacy), sorted(ceilings[role].legacy), `${role} stays within its ceiling of codes`);
+    assert.deepEqual(sorted(me.access.remittances), sorted(ceilings[role].remittances), `${role} stays within its ceiling of Envíos`);
     assert.deepEqual(await store.read(), before);
   }
 });

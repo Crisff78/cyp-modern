@@ -6,8 +6,10 @@ export function advanceCaptureField(event: KeyboardEvent<HTMLFormElement>) {
   const target = event.target;
   if (!(target instanceof HTMLInputElement) || target.type === "checkbox" || target.type === "radio") return;
   event.preventDefault();
-  const fields = [...event.currentTarget.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | HTMLButtonElement>("input,select,textarea,button")]
-    .filter((field) => !field.disabled && !(field instanceof HTMLInputElement && (field.readOnly || field.type === "hidden")) && field.getClientRects().length > 0 && field.getAttribute("role") !== "option");
+  // Only capture fields: Enter never leaves the focus on a button, where the next Enter would press it.
+  // The current field keeps its place even when it is readonly, so Enter goes on from there.
+  const fields = [...event.currentTarget.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>("input,select,textarea")]
+    .filter((field) => field === target || (!field.disabled && !(field instanceof HTMLInputElement && (field.readOnly || field.type === "hidden")) && field.getClientRects().length > 0 && field.getAttribute("role") !== "option"));
   const index = fields.indexOf(target);
   fields[index + (event.shiftKey ? -1 : 1)]?.focus();
 }

@@ -63,10 +63,12 @@ import type { RraaValidator } from "./rraa.js";
 import { legacyFinancialFingerprintBody } from "./financial-currency-compat.js";
 import { boundedId, fourDecimalNumber, freeText, machineCounter, optionalEmail, phone, singleLine, systemConfigInput } from "./input-validation.js";
 import { claimClientIdentity, reserveClientIdentity, SYSTEM_CLIENT_CODE } from "./client-identities.js";
-import { ACCOUNT_ROLES, isOperationalRole } from "./account-roles.js";
-import { permissionCatalog, permissionsForAccount, updateAccountPermissions, userPermissionsBody } from "./user-permissions.js";
-import { authorizeRequest, currentAccessUser, filterOperationalSnapshot, guardCatalogChanges, requirePermission } from "./access.js";
-import { hasPermission, hasRemittanceAccess } from "../../shared/access.mjs";
+import { ACCOUNT_ROLES, isCollectorAccountRole, isOperationalRole } from "./account-roles.js";
+import { DEMO_PASSWORD } from "./demo-credentials.js";
+import { DEMO_CASHIER_ID } from "./demo-cashier-scenarios.js";
+import { dropSavedRoleProfile, permissionCatalog, permissionsForAccount, updateAccountPermissions, userPermissionsBody } from "./user-permissions.js";
+import { assertBootstrapManagedBySelf, assertManagesAccount, authorizeRequest, currentAccessUser, filterOperationalSnapshot, guardCatalogChanges, requirePermission } from "./access.js";
+import { effectiveAccess, hasPermission, hasRemittanceAccess } from "../../shared/access.mjs";
 import { clientInput } from "./client-schema.js";
 import { previousCashPreview, reconcilePreviousCash } from "./cash-reconciliation.js";
 
@@ -173,7 +175,7 @@ export async function buildApp(config: Config) {
       JSON.stringify({
         demo: config.demo,
         email: config.adminEmail ?? "",
-        password: config.demo ? "Demo-CyP-2026!" : config.adminPassword,
+        password: config.demo ? DEMO_PASSWORD : config.adminPassword,
       }),
     )
     .digest("hex");
@@ -298,6 +300,8 @@ export async function buildApp(config: Config) {
     if (
       !account ||
       account.status !== "active" ||
+      // The practice Cajero saved by the demo keeps the published password: only demo mode accepts it.
+      (!config.demo && account.id === DEMO_CASHIER_ID) ||
       account.role !== u.role ||
       account.collectorId !== u.collectorId ||
       u.authVersion !== String(account.credentialVersion)
@@ -313,7 +317,7 @@ export async function buildApp(config: Config) {
     req.user = accessedUser;
     if (!isOperationalRole(u.role)) {
       const ownSession = path === "/api/auth/me" || path === "/api/auth/logout" || path === `/api/usuarios/${u.id}/clave`;
-      const remittanceOperator = u.role === "user" && hasRemittanceAccess(accessedUser) && (path.startsWith("/api/envios") || path === "/api/snapshot");
+      const remittanceOperator = (u.role === "user" || u.role === "cashier") && hasRemittanceAccess(accessedUser) && (path.startsWith("/api/envios") || path === "/api/snapshot");
       if (!ownSession && !remittanceOperator && !(u.role === "supervisor" && req.method === "GET"))
         throw new DomainError("FORBIDDEN", "Este rol no tiene permiso para realizar esta operación.", 403);
     }
@@ -437,7 +441,7 @@ export async function buildApp(config: Config) {
   describe("get", "/api/health", "Estado del servicio", undefined, true);
   const salt = randomUUID(),
     expectedPassword = scryptSync(
-      config.demo ? "Demo-CyP-2026!" : config.adminPassword!,
+      config.demo ? DEMO_PASSWORD : config.adminPassword!,
       salt,
       64,
     );
@@ -472,7 +476,8 @@ export async function buildApp(config: Config) {
       const stored = await config.store.read();
       const account = u ? stored.accounts.find((row) => row.id === u!.id) : findAccount(stored, email);
       if (account) {
-        if (account.status !== "active" || !verifyPassword(body.password, account.salt, account.passwordHash))
+        // A base or file that once started in demo mode keeps the practice Cajero with the published password.
+        if (account.status !== "active" || (!config.demo && account.id === DEMO_CASHIER_ID) || !verifyPassword(body.password, account.salt, account.passwordHash))
           throw new DomainError("INVALID_CREDENTIALS", "Usuario o contraseña incorrectos.", 401);
         u = { id: account.id, name: account.name, role: account.role, ...(account.collectorId ? { collectorId: account.collectorId } : {}) };
         version = String(account.credentialVersion);
@@ -528,6 +533,8 @@ export async function buildApp(config: Config) {
   const accountStatusBody = z
     .object({ status: z.enum(["active", "disabled"]) })
     .strict();
+  const collectorNotAllowed = (role: string) => new DomainError("COLLECTOR_NOT_ALLOWED",
+    role === "admin" ? "Una cuenta de administración no se asocia a un cobrador." : "Una cuenta de Cajero no se asocia a un cobrador.", 422);
   const touch = (account: Account, now = new Date()) => {
     account.updatedAt = now.toISOString();
     account.credentialVersion += 1;
@@ -566,12 +573,8 @@ export async function buildApp(config: Config) {
           "Una cuenta de cobrador necesita un cobrador asignado.",
           422,
         );
-      if (body.role === "admin" && body.collectorId)
-        throw new DomainError(
-          "COLLECTOR_NOT_ALLOWED",
-          "Una cuenta de administración no se asocia a un cobrador.",
-          422,
-        );
+      if (!isCollectorAccountRole(body.role) && body.collectorId)
+        throw collectorNotAllowed(body.role);
       if (
         body.collectorId &&
         !state.collectors.some((c) => c.id === body.collectorId && c.active !== false)
@@ -612,12 +615,17 @@ export async function buildApp(config: Config) {
     assertAdmin(actor);
     const account = state.accounts.find((item) => item.id === params.id);
     if (!account) throw new DomainError("NOT_FOUND", "La cuenta no existe.", 404);
-    if (body.role !== account.role && !["undefined", "user"].includes(body.role)) requirePermission(actor, 106);
+    assertBootstrapManagedBySelf(actor, account.id);
+    // A role change grants, changes or withdraws operational access, so it needs 106, also towards
+    // Usuario or No definido. Only moving between those two without access on either side keeps 103.
+    const withoutAccess = (role: string) => { const access = effectiveAccess(role, account); return !access.legacy.length && !access.remittances.length; };
+    if (body.role !== account.role && !([account.role, body.role].every((role) => role === "undefined" || role === "user") && withoutAccess(account.role) && withoutAccess(body.role)))
+      requirePermission(actor, 106);
     if (actor.id === account.id && body.role !== "admin") throw new DomainError("FORBIDDEN", "No puedes retirar tu propio acceso administrativo.", 403);
-    if (body.role === "admin" && account.role !== "admin" && state.collectors.some((collector) => collector.accountId === account.id))
-      throw new DomainError("ACCOUNT_LINKED_COLLECTOR", "Retira la cuenta del cobrador antes de cambiar su rol a Admin.", 409);
+    if (body.role !== account.role && !isCollectorAccountRole(body.role) && state.collectors.some((collector) => collector.accountId === account.id))
+      throw new DomainError("ACCOUNT_LINKED_COLLECTOR", `Retira la cuenta del cobrador antes de cambiar su rol a ${body.role === "admin" ? "Admin" : "Cajero"}.`, 409);
     if (body.role === "collector" && !body.collectorId) throw new DomainError("COLLECTOR_REQUIRED", "Una cuenta de cobrador necesita un cobrador asignado.", 422);
-    if (body.role === "admin" && body.collectorId) throw new DomainError("COLLECTOR_NOT_ALLOWED", "Una cuenta de administración no se asocia a un cobrador.", 422);
+    if (!isCollectorAccountRole(body.role) && body.collectorId) throw collectorNotAllowed(body.role);
     if (body.collectorId && !state.collectors.some((item) => item.id === body.collectorId && item.active !== false))
       throw new DomainError("COLLECTOR_INACTIVE", "Selecciona un cobrador activo.", 409);
     const email = body.email.trim().toLowerCase();
@@ -630,6 +638,10 @@ export async function buildApp(config: Config) {
     // Keep the existing revocation behavior for changes reflected in auth claims.
     const authChanged = account.name !== body.name || account.email !== email ||
       account.role !== body.role || account.collectorId !== body.collectorId;
+    // These changes revoke the account's sessions: only for accounts within the actor's own access.
+    if (authChanged) assertManagesAccount(state, actor, account.id);
+    // A copy of the previous role profile saved with «Perfil del rol» would show up as an earlier selection.
+    if (body.role !== account.role) dropSavedRoleProfile(account);
     Object.assign(account, { name: body.name, email, role: body.role });
     if (body.nickname !== undefined) account.nickname = body.nickname;
     if (body.note !== undefined) account.note = body.note;
@@ -676,6 +688,7 @@ export async function buildApp(config: Config) {
           "Solo puedes cambiar tu propia contraseña.",
           403,
         );
+      if (!own) assertManagesAccount(state, u, account.id);
       const { salt: newSalt, passwordHash } = hashPassword(body.password);
       Object.assign(account, { salt: newSalt, passwordHash });
       touch(account);
@@ -692,6 +705,8 @@ export async function buildApp(config: Config) {
       const account = state.accounts.find((a) => a.id === params.id);
       if (!account)
         throw new DomainError("NOT_FOUND", "La cuenta no existe.", 404);
+      // Disabling or reactivating another account needs all of its effective access.
+      assertManagesAccount(state, u, account.id);
       if (account.status === body.status)
         throw new DomainError(
           "NO_CHANGE",

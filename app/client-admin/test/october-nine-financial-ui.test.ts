@@ -53,7 +53,7 @@ import {ConnectedSettlements} from ${module("ConnectedSettlements.tsx")};
 import {remittancesApi} from ${module("remittancesApi.ts")};
 import RemittancesWorkspace from ${shared};
 import ${module("styles.css")};
-function Fixture({snapshot}){const [view,setView]=useState('rates');return <main><nav>{['rates','settlements','remittances'].map(v=><button key={v} onClick={()=>setView(v)}>{v}</button>)}</nav><PageAccessContext.Provider value={{actor:{role:'admin'},page:view==='rates'?'exchangeRates':'dailySettlements'}}>{view==='rates'?<ConnectedExchangeRates actorId='demo-admin' isAdmin={true}/>:view==='settlements'?<ConnectedSettlements snapshot={snapshot} onRefresh={()=>{}}/>:<RemittancesWorkspace api={remittancesApi} user={{id:'demo-admin',name:'Administración'}} isAdmin={true}/>}</PageAccessContext.Provider></main>}
+function Fixture({snapshot}){const [view,setView]=useState('rates');return <main><nav>{['rates','settlements','remittances'].map(v=><button key={v} onClick={()=>setView(v)}>{v}</button>)}</nav><PageAccessContext.Provider value={{actor:{role:'admin'},page:view==='rates'?'exchangeRates':'dailySettlements'}}>{view==='rates'?<ConnectedExchangeRates actorId='demo-admin' isAdmin={true}/>:view==='settlements'?<ConnectedSettlements snapshot={snapshot} onRefresh={()=>{}}/>:<RemittancesWorkspace api={remittancesApi} user={{id:'demo-admin',name:'Administración'}} isAdmin={true} sections={['recibos']} heading='Pagos de Envíos'/>}</PageAccessContext.Provider></main>}
 remittancesApi('/snapshot').then(snapshot=>createRoot(document.getElementById('root')).render(<Fixture snapshot={snapshot}/>));`, "utf8");
     const [{ build }, { default: react }, { default: tailwind }, { chromium }] = await Promise.all([import(pathToFileURL(localRequire.resolve("vite")).href), import(pathToFileURL(localRequire.resolve("@vitejs/plugin-react")).href), import(pathToFileURL(localRequire.resolve("@tailwindcss/vite")).href), import(pathToFileURL(playwrightEntry!).href)]);
     await build({ root, configFile: false, envFile: false, publicDir: false, cacheDir: path.join(output, "cache"), resolve: { dedupe: ["react", "react-dom"] }, plugins: [react(), tailwind()], define: { "process.env.NODE_ENV": JSON.stringify("production") }, logLevel: "error", build: { outDir: path.join(output, "dist"), emptyOutDir: false, cssCodeSplit: false, lib: { entry: fixture, formats: ["es"], fileName: () => "fixture.js", cssFileName: "fixture" } } });
@@ -80,7 +80,7 @@ remittancesApi('/snapshot').then(snapshot=>createRoot(document.getElementById('r
     await t.test("buy/sell survive a missing successful acknowledgement and retry keeps one idempotent write", async () => {
       await page.getByRole("button", { name: "Nuevo", exact: true }).click();
       let dialog = page.getByRole("dialog", { name: "Datos de la Tasa de Cambio...", exact: true });
-      await dialog.getByLabel("Tasa de remesas", { exact: true }).fill("60"); await dialog.getByLabel("Compra", { exact: true }).fill("59.25"); await dialog.getByLabel("Venta", { exact: true }).fill("61.75");
+      await dialog.getByLabel("Tasa de envíos", { exact: true }).fill("60"); await dialog.getByLabel("Compra", { exact: true }).fill("59.25"); await dialog.getByLabel("Venta", { exact: true }).fill("61.75");
       await dialog.getByRole("button", { name: "Revisar tasa", exact: true }).click();
       dialog = page.getByRole("dialog", { name: "Confirmar Tasa de Cambio...", exact: true });
       const before = (await store.read()).remittances.rateHistory?.length ?? 0;
@@ -98,7 +98,7 @@ remittancesApi('/snapshot').then(snapshot=>createRoot(document.getElementById('r
     await t.test("editing the DOP reference shows three readonly values of one", async () => {
       await page.locator("tbody tr").filter({ hasText: "Peso Dominicano" }).dblclick();
       const dialog = page.getByRole("dialog", { name: "Datos de la Tasa de Cambio...", exact: true });
-      for (const name of ["Tasa de remesas", "Compra", "Venta"]) { const input = dialog.getByLabel(name, { exact: true }); assert.equal(await input.inputValue(), "1.000000"); assert.equal(await input.getAttribute("readonly"), ""); }
+      for (const name of ["Tasa de envíos", "Compra", "Venta"]) { const input = dialog.getByLabel(name, { exact: true }); assert.equal(await input.inputValue(), "1.000000"); assert.equal(await input.getAttribute("readonly"), ""); }
       await dialog.getByRole("button", { name: "Revisar tasa", exact: true }).click();
       await page.getByRole("dialog", { name: "Confirmar Tasa de Cambio...", exact: true }).getByRole("button", { name: "Cerrar Confirmar Tasa de Cambio...", exact: true }).click();
     });
@@ -115,10 +115,13 @@ remittancesApi('/snapshot').then(snapshot=>createRoot(document.getElementById('r
       const totals = await popup.locator("table").last().innerText(); for (const amount of ["DOP 100.00", "USD 10.00", "EUR 5.00"]) assert.ok(totals.includes(amount)); assert.ok(!totals.includes("115.00")); await popup.close();
       await page.screenshot({ path: path.join(output, "settlements.png"), fullPage: true });
     });
-    await t.test("remittance rates are readonly central references and receipt print hides commission splits", async () => {
+    await t.test("remittance windows have no rate or commission maintenance and the printed receipt hides commission splits", async () => {
       await page.getByRole("button", { name: "remittances", exact: true }).click();
       assert.equal(await page.getByRole("button", { name: "Revisar tasa", exact: true }).count(), 0); assert.equal(await page.getByRole("button", { name: "Tasas", exact: true }).count(), 0); assert.equal(await page.getByRole("button", { name: "Comisiones", exact: true }).count(), 0);
-      await page.getByRole("button", { name: "Recibos", exact: true }).click(); await page.getByLabel("Buscar", { exact: true }).fill("QA-DOC-ORIGIN");
+      // Administración pays in its own window «Pagos de Envíos», without the sections of the collector terminal.
+      const payouts = page.getByRole("region", { name: "Pagos de Envíos", exact: true }); await payouts.getByLabel("Buscar", { exact: true }).waitFor();
+      assert.equal(await payouts.getByRole("navigation", { name: "Secciones de Envíos", exact: true }).count(), 0);
+      await page.getByLabel("Buscar", { exact: true }).fill("QA-DOC-ORIGIN");
       const row = page.locator(".remittance-transfer-table tbody tr").filter({ hasText: "REC" }); await row.waitFor(); await row.dblclick();
       const detail = page.getByRole("dialog"); const popupReady = context.waitForEvent("page"); await detail.getByRole("button", { name: "Imprimir comprobante", exact: true }).click(); const popup = await popupReady; await popup.waitForLoadState();
       const receiptText = await popup.locator("body").innerText(); assert.ok(receiptText.includes("DOP 105.00")); assert.ok(receiptText.includes("8090000101")); assert.ok(receiptText.includes("Pie ficticio para comprobar impresión")); assert.ok(!/Comisión|gestor/i.test(receiptText)); await popup.close();

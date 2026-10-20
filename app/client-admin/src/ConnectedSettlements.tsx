@@ -142,7 +142,7 @@ export function ConnectedSettlements({ snapshot, actorId = "", canManage = false
   };
   const output: OutputSection[] = [
     { title: "Criterios", columns: ["Dato", "Valor"], rows: [["Desde", from || "Inicio"], ["Hasta", to || "Fin"], ["Cobrador", filterCollectorId ? collectorName(filterCollectorId) : "Todos"],
-      ["Moneda", currency || "Todas, con totales separados"], ["Estado", filterState || "Todos"], ["Alcance", "Cuadres pendientes, cerrados y conciliados del libro de cobros y pagos. La caja de Envíos de Dinero es independiente."]] },
+      ["Moneda", currency || "Todas, con totales separados"], ["Estado", filterState || "Todos"], ["Alcance", "Cuadres pendientes, cerrados y conciliados del libro de cobros y pagos. La caja de envíos se cuadra aparte, en Cuadres Diarios → Caja de envíos."]] },
     { title: "Cuadres diarios", columns: ["Fecha", "Cobrador", "Moneda", "Cobrado", "Depositado", "Entregado", "Pagado", "Devuelto / conciliado", "Diferencia", "Estado"],
       rows: rows.map((row) => [row.date, collectorName(row.collectorId), row.currency, ...balanceFields.map(([, key]) => formatMoney(row[key], row.currency)),
         formatMoney((row.returnedCollection ?? 0) + (row.returnedPayout ?? 0), row.currency), formatMoney(row.difference, row.currency), row.state]) },
@@ -182,7 +182,7 @@ export function ConnectedSettlements({ snapshot, actorId = "", canManage = false
         <label>Cobrador:<select aria-label="Cobrador:" value={filterCollectorId} onChange={(event) => setFilterCollectorId(event.target.value)}><option value="">Todos</option>{snapshot.collectors.map((collector) => <option key={collector.id} value={collector.id}>{collector.name}</option>)}</select></label>
         <label>Estado:<select aria-label="Estado:" value={filterState} onChange={(event) => setFilterState(event.target.value)}><option value="">Todos</option><option>Pendiente</option><option>Cerrado</option><option>Conciliado</option></select></label>
         {invalidRange && <p role="alert">La fecha inicial debe ser anterior o igual a la final.</p>}
-        <p className="connected-settlement-scope">Selecciona una jornada pendiente y pulsa Revisar cuadre. Aquí se recibe el efectivo pendiente y se guarda el cierre. Cada moneda se mantiene separada. La caja de Envíos de Dinero se consulta dentro de Envíos.</p>
+        <p className="connected-settlement-scope">Selecciona una jornada pendiente y pulsa Revisar cuadre. Aquí se recibe el efectivo pendiente y se guarda el cierre. Cada moneda se mantiene separada. La caja de envíos (apertura, conteo y cierre) está en la sección «Caja de envíos» de Cuadres Diarios.</p>
       </aside>}
       <section className="daily-settlements-grid-panel" aria-label="Cuadres diarios pendientes y guardados">
         <div className="daily-settlements-grid-scroll legacy-mdi-table-wrap" ref={gridRef}>

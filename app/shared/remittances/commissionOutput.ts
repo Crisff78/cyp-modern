@@ -10,7 +10,7 @@ export function allocationRows(allocation?: CommissionAllocation, status?: Trans
     ["Comisión de la empresa", money(allocation.companyAmount)],
     [`Comisión del gestor (${allocation.managerCommissionBps / 100}%)`, money(allocation.managerAmount)],
     ["Base del gestor (importe final de destino)", money(allocation.baseAmount)],
-    ["Devengo", status === "cancelled" ? "Anulado por cancelación; excluido del acumulado vigente" : "Al crear la remesa; no representa un pago al gestor"],
+    ["Devengo", status === "cancelled" ? "Anulado por cancelación; excluido del acumulado vigente" : "Al crear el envío; no representa un pago al gestor"],
   ];
 }
 

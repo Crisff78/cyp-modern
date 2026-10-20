@@ -387,7 +387,8 @@ export function CollectorDrawer({
   collector: Collector | null;
   snapshot: Snapshot;
   onClose: () => void;
-  onSettle: (id: string) => void;
+  // Omitted when the account cannot open the collector settlements (401).
+  onSettle?: (id: string) => void;
 }) {
   if (!collector) return null;
   const route = snapshot.routes.find((route) => route.id === collector.routeId);
@@ -467,13 +468,13 @@ export function CollectorDrawer({
         <h3>Últimos movimientos</h3>
         <ActivityList snapshot={{ ...snapshot, movements }} limit={5} />
       </div>
-      <button
+      {onSettle && <button
         className="btn primary full"
         onClick={() => onSettle(collector.id)}
       >
         Ir al cuadre diario
         <ChevronRight size={17} />
-      </button>
+      </button>}
     </Modal>
   );
 }

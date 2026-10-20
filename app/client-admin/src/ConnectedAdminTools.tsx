@@ -9,6 +9,7 @@ import { confirmedRraaPreview, confirmedRraaStationPreview, type RraaPreview } f
 import { StationInstallationPanel, pendingStationInstallationStationId } from "./StationInstallationPanel";
 import type { Snapshot, User } from "./types";
 import { currentOperationalWeek } from "../../shared/operationalWeek";
+import { accountRoleLabel } from "../../shared/accountRoles";
 import { usePageAccess } from "./PageAccess";
 import "./connected-admin-tools.css";
 
@@ -52,6 +53,8 @@ export function ConnectedAdminTools({ page, snapshot, user, onRefresh }: { page:
   const stationLookupVersion = useRef(0);
   useEffect(() => () => { stationLookupVersion.current += 1; }, []);
   const locked = busy || uncertain;
+  // The PCP window opens with 170; its group names (160) and stations (111) are read only when allowed.
+  const canSeeGroups = access.has(160), canSeeStations = access.has(111);
   const refresh = useCallback(async () => {
     const version = ++requestVersion.current;
     setLoading(true); setError("");
@@ -60,10 +63,10 @@ export function ConnectedAdminTools({ page, snapshot, user, onRefresh }: { page:
     try {
       const [result, groupRows, stationRows, reasonRows, rraaStatus] = await Promise.all([
         remittancesApi<Row[] | PageResult>(`${definition.path}${paged ? `?${query}` : ""}`),
-        page === "pcps" ? remittancesApi<Row[]>("/grupos-pcp") : Promise.resolve([]),
-        page === "pcps" ? remittancesApi<Row[]>("/estaciones") : Promise.resolve([]),
+        page === "pcps" && canSeeGroups ? remittancesApi<Row[]>("/grupos-pcp") : Promise.resolve([]),
+        page === "pcps" && canSeeStations ? remittancesApi<Row[]>("/estaciones") : Promise.resolve([]),
         page === "authorizationRequests" ? remittancesApi<Row[]>("/motivos-atraso") : Promise.resolve([]),
-        page === "stations" || page === "pcps" ? remittancesApi<RraaStatus>("/estaciones/rraa") : Promise.resolve({ configured: false }),
+        page === "stations" || page === "pcps" && canSeeStations ? remittancesApi<RraaStatus>("/estaciones/rraa") : Promise.resolve({ configured: false }),
       ]);
       if (version !== requestVersion.current) return;
       const items = Array.isArray(result) ? result : result.items;
@@ -73,14 +76,15 @@ export function ConnectedAdminTools({ page, snapshot, user, onRefresh }: { page:
       if (paged && offset > 0 && offset >= count) setOffset(Math.max(0, Math.ceil(count / 50) - 1) * 50);
     } catch (failure) { if (version === requestVersion.current) setError(errorText(failure)); }
     finally { if (version === requestVersion.current) setLoading(false); }
-  }, [definition.path, paged, page, applied, offset]);
+  }, [definition.path, paged, page, applied, offset, canSeeGroups, canSeeStations]);
   useEffect(() => { void refresh(); return () => { requestVersion.current += 1; }; }, [refresh]);
   const close = () => { if (!locked) { if (stationStatusReview) { setStationStatusReview(false); setFormError(""); return; } stationLookupVersion.current += 1; setDialog(null); setDraft({}); setRraaPreview(null); setRraaNeedsValidation(false); setFormError(""); setAddingStation(false); } };
   const open = (next: Dialog) => {
-    if (next.type === "edit" && (next.row ? !access.canEdit : !access.canCreate)) return;
+    // Without the modify permission an existing record opens read-only.
+    if (next.type === "edit" && !next.row && !access.canCreate) return;
     if (next.type === "confirm" && !access.canDelete) return;
     if (locked || loading || installationLocked) return;
-    if (page === "stations" && !rraa.configured && next.type === "edit") return;
+    if (page === "stations" && !rraa.configured && next.type === "edit" && (!next.row || access.canEdit)) return;
     pendingRequest.current = null; stationLookupVersion.current += 1; setUncertain(false); setStationStatusReview(false);
     setDialog(next); setFormError(""); setMessage(""); setRraaPreview(null); setRraaNeedsValidation(false);
     const row = next.row;
@@ -103,7 +107,8 @@ export function ConnectedAdminTools({ page, snapshot, user, onRefresh }: { page:
     { key: "active", label: "Activa", boolean: true },
   ] : page === "groups" ? [{ key: "name", label: "Nombre del grupo", required: true, maxLength: INPUT_LIMITS.name }] : page === "pcps" ? [
     { key: "number", label: "Número", required: true, maxLength: INPUT_LIMITS.id }, { key: "name", label: "Nombre del PCP", required: true, maxLength: INPUT_LIMITS.name },
-    { key: "groupId", label: "Grupo", required: true, options: groups.map((row) => ({ value: row.id, label: value(row, "name") })) },
+    { key: "groupId", label: "Grupo", required: true, options: canSeeGroups ? groups.map((row) => ({ value: row.id, label: value(row, "name") }))
+      : draft.groupId ? [{ value: String(draft.groupId), label: "Grupo actual" }] : [] },
     { key: "address", label: "Dirección", maxLength: 500 }, { key: "phone", label: "Teléfono", maxLength: INPUT_LIMITS.phone }, { key: "active", label: "Activo", boolean: true },
   ] : [
     { key: "clientId", label: "Cliente", required: true, options: snapshot.clients.filter((client) => client.active !== false).map((client) => ({ value: client.id, label: `${client.code} · ${client.name}` })) },
@@ -231,14 +236,18 @@ export function ConnectedAdminTools({ page, snapshot, user, onRefresh }: { page:
   const cells = (row: Row): ReactNode => page === "groups" ? <td>{value(row, "name")}</td>
     : page === "stations" ? <><td title={value(row, "description")}>{value(row, "name")}</td><td>{value(row, "deviceId") || "—"}</td><td title={row.rraaValidated ? rraa.simulated ? "Licencia ficticia del control de prueba de la demo" : "Licencia recibida de RRAA" : rraa.simulated ? "Sin validar por el control de prueba" : "Licencia histórica sin validar por RRAA"}>{value(row, "license") || "—"}</td><td title="Código de sistema operativo devuelto por RRAA">{value(row, "operatingSystem") || "—"}</td><td>{value(row, "version") || "—"}</td><td>{unavailable("La versión recibida no está disponible.")}</td><td title={row.active === true && row.rraaValidated !== true ? rraa.simulated ? "Marcada como activa, pero el control de prueba aún no la ha validado" : "Marcada como activa, pero RRAA aún no la ha validado" : undefined}><LegacyCheck checked={row.active === true} /></td><td>{row.rraaValidated ? "Validada · " + dateTime(row.rraaValidatedAt) : "No validado"}</td></>
     : page === "pcps" ? <><td title={[value(row, "address"), value(row, "phone"), "Estaciones: " + (stationIds(row).map((id) => stations.find((station) => station.id === id)?.name ?? id).join(", ") || "Sin asignar")].filter(Boolean).join(" · ")}>{value(row, "name")}</td><td>{unavailable("El PCP es independiente de los clientes.")}</td><td>{groups.find((group) => group.id === row.groupId)?.name as string ?? "—"}</td><td>{unavailable("El PCP no tiene una ruta de cobro asignada.")}</td><td><LegacyCheck checked={row.active !== false} /></td></>
-    : page === "sessions" ? <><td title={value(row, "role") === "admin" ? "Administración" : "Cobrador"}>{value(row, "userName")}{row.current ? " (esta sesión)" : ""}</td><td>{unavailable("Las sesiones no registran una estación de PCP.")}</td><td>{dateTime(row.startedAt)}</td><td title={row.revokedAt ? "Cerrada: " + dateTime(row.revokedAt) : undefined}>{states[value(row, "status")] ?? value(row, "status")}</td><td>{dateTime(row.expiresAt)}</td></>
+    : page === "sessions" ? <><td title={value(row, "role") === "admin" ? "Administración" : accountRoleLabel(value(row, "role"))}>{value(row, "userName")}{row.current ? " (esta sesión)" : ""}</td><td>{unavailable("Las sesiones no registran una estación de PCP.")}</td><td>{dateTime(row.startedAt)}</td><td title={row.revokedAt ? "Cerrada: " + dateTime(row.revokedAt) : undefined}>{states[value(row, "status")] ?? value(row, "status")}</td><td>{dateTime(row.expiresAt)}</td></>
     : page === "traces" ? <><td>{dateTime(row.createdAt)}</td><td className="legacy-admin-trace-cell">{row.action === "session.started" ? "Inicio de sesión" : row.action === "mutation.completed" ? "Cambio guardado" : value(row, "action")} · {value(row, "resource")} · Usuario: {value(row, "actorId")}{row.resourceId ? " · Referencia: " + value(row, "resourceId") : ""}</td></>
     : <><td>{dateTime(row.createdAt)}</td><td title="Administrador que registró la solicitud">{personLabel(row, "createdBy")}</td><td>{collectorLabel(row)}</td><td>{clientFor(row)?.code ?? "—"}</td><td title={row.forCollection ? "Solicitud para cobro" : "Otra solicitud"}>{clientLabel(row)}</td><td>{clientFor(row)?.phone || "—"}</td><td>{clientFor(row)?.cellular || "—"}</td><td>{states[value(row, "status")] ?? value(row, "status")}</td></>;
   const fieldFor = (key: string) => fields.find((field) => field.key === key);
   const stationReadOnlyInput = (key: string, label?: string) => <input aria-label={label ?? fieldFor(key)?.label ?? key} readOnly value={String(draft[key] ?? "")} placeholder={key === "number" ? "Al guardar" : ""} />;
   const input = (key: string, className?: string, autoFocus = false) => <input aria-label={fieldFor(key)?.label ?? key} className={className} autoFocus={autoFocus} type={key === "phone" ? "tel" : "text"} inputMode={key === "phone" ? "tel" : undefined} value={String(draft[key] ?? "")} required={fieldFor(key)?.required} maxLength={fieldFor(key)?.maxLength ?? INPUT_LIMITS.name} disabled={locked} onChange={(event) => updateDraft(key, event.target.value)} />;
   const selectInput = (key: string) => <select aria-label={fieldFor(key)?.label ?? key} value={String(draft[key] ?? "")} required={fieldFor(key)?.required} disabled={locked} onChange={(event) => updateDraft(key, event.target.value)}><option value="">{fieldFor(key)?.required ? "Seleccione..." : "Sin seleccionar"}</option>{fieldFor(key)?.options?.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>;
-  const check = (key: string, label: string) => <label className="legacy-admin-checkbox"><input type="checkbox" checked={Boolean(draft[key])} disabled={locked} onChange={(event) => updateDraft(key, event.target.checked)} />{label}</label>;
+  const check = (key: string, label: string, disabled = false, title?: string) => <label className="legacy-admin-checkbox" title={title}><input type="checkbox" checked={Boolean(draft[key])} disabled={locked || disabled} onChange={(event) => updateDraft(key, event.target.checked)} />{label}</label>;
+  // Activating or inactivating an existing PCP (173) or station (114) has its own permission.
+  const activityLocked = Boolean(dialog?.row) && !access.canDelete;
+  const readOnlyDialog = dialog?.type === "edit" && Boolean(dialog.row) && !access.canEdit;
+  const readOnlyBlock = (content: ReactNode) => readOnlyDialog ? <fieldset disabled className="legacy-admin-readonly" style={{ border: 0, padding: 0, margin: 0, display: "contents" }}>{content}</fieldset> : content;
   const formMessages = <>{formError && <p className="legacy-admin-feedback error" role="alert">{formError}</p>}{uncertain && <p className="legacy-admin-note">El resultado está pendiente de confirmación. Reintenta con estos mismos datos antes de cerrar.</p>}</>;
   const actions = (label = "oK") => <div className="legacy-dialog-actions centered"><button type="submit" disabled={busy}>{busy ? "Guardando…" : uncertain ? "Reintentar" : label}</button><button type="button" disabled={locked} onClick={close}>Cancelar</button></div>;
   const search = <label className="legacy-admin-search">Buscar:<input aria-label="Buscar" value={filter.q} maxLength={160} disabled={installationLocked} onChange={(event) => updateFilter("q", event.target.value)} /></label>;
@@ -266,13 +275,13 @@ export function ConnectedAdminTools({ page, snapshot, user, onRefresh }: { page:
       <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" onClick={() => setFiltersVisible((current) => !current)}><KeyRound size={15} /></button>
       <button type="button" className="nav-tool" title="Primer registro" disabled={loading || !selected} onClick={() => moveSelection("first")}>|&lt;</button><button type="button" className="nav-tool" title="Registro anterior" disabled={loading || !selected} onClick={() => moveSelection("previous")}>&lt;</button><button type="button" className="nav-tool" title="Registro siguiente" disabled={loading || !selected} onClick={() => moveSelection("next")}>&gt;</button><button type="button" className="nav-tool" title="Último registro" disabled={loading || !selected} onClick={() => moveSelection("last")}>&gt;|</button>
       <span className="mdi-toolbar-separator" />
-      {page === "sessions" && <button type="button" title={selected?.current ? "Cerrar mi sesión" : "Cerrar sesión"} disabled={loading || selected?.status !== "active"} onClick={() => selected && open({ type: "confirm", row: selected, action: "close" })}><FileCheck2 size={15} /><span>×</span></button>}
+      {page === "sessions" && <button type="button" title={selected?.current ? "Cerrar mi sesión" : "Cerrar sesión"} disabled={loading || selected?.status !== "active" || !access.canDelete} onClick={() => selected && open({ type: "confirm", row: selected, action: "close" })}><FileCheck2 size={15} /><span>×</span></button>}
       <button type="button" title="Refrescar" disabled={loading} onClick={() => void refresh()}><RefreshCw size={15} /></button>
     </div>
     : <LegacyToolbar onToggleFilters={page === "pcps" || page === "authorizationRequests" ? () => setFiltersVisible((current) => !current) : undefined} filtersVisible={filtersVisible}
       onFirst={() => moveSelection("first")} onPrevious={() => moveSelection("previous")} onNext={() => moveSelection("next")} onLast={() => moveSelection("last")}
       onNew={() => open({ type: "edit" })} disableNew={installationLocked || (page === "stations" && !rraa.configured) || loading || (page === "pcps" && !groups.length)} newTitle={page === "authorizationRequests" ? "Nueva solicitud" : "Nuevo"}
-      showEdit={page !== "authorizationRequests"} onEdit={() => selected && open({ type: "edit", row: selected })} disableEdit={installationLocked || (page === "stations" && !rraa.configured) || loading || !selected}
+      showEdit={page !== "authorizationRequests"} consultOnEdit={page !== "authorizationRequests"} onEdit={() => selected && open({ type: "edit", row: selected })} disableEdit={installationLocked || (page === "stations" && !rraa.configured && access.canEdit) || loading || !selected}
       onDelete={deleteSelected} deleteTitle={deleteTitle} deleteIcon={page === "groups" ? "trash" : "x"} disableDelete={installationLocked || (page === "stations" && !rraa.configured && !selected?.active) || loading || !selected || (page === "authorizationRequests" && selected.status !== "pending")}
       onRefresh={() => { if (!loading && !installationLocked) void refresh(); }} extra={page === "pcps" ? <button type="button" className="pcp-stations-button" title="Estaciones del PCP" disabled={loading || !selected || selected.active === false} onClick={() => selected && open({ type: "stations", row: selected })}><Building2 size={15} /><span>Estaciones</span></button>
         : page === "authorizationRequests" ? <><button type="button" disabled={loading || !selected} onClick={() => selected && open({ type: "detail", row: selected })}>Detalle</button><button type="button" disabled={loading || selected?.status !== "pending"} onClick={() => beginResolution()}>Resolver</button></> : search} />;
@@ -305,7 +314,8 @@ export function ConnectedAdminTools({ page, snapshot, user, onRefresh }: { page:
     {page === "stations" && rraaLoaded && <p className="legacy-admin-note" role="status" title={rraa.configured && rraa.simulated ? "Con datos que no estén en el control responde «Estación no encontrada». Las estaciones «DEMO V2 · Estación 1» a «6» del catálogo también están en él." : undefined}>{rraa.configured && rraa.simulated ? practiceNote : rraa.configured ? "Para consultar RRAA, escribe la Estación. Obtener Datos y Obtener Licencia consultan STATDAT y comprueban VALSTAT para la empresa configurada. Guardar y activar vuelven a comprobar los datos con RRAA." : "No validado. Deshabilitado temporalmente hasta conexión RRAA: no se permite crear, editar ni activar estaciones. Solo puedes desactivar registros históricos."}</p>}
     {page === "authorizationRequests" && <p className="legacy-admin-note">Solicitudes de revisión administrativa de un cliente y su cobrador responsable. <strong>Quién las genera:</strong> un administrador las registra aquí con el botón Nuevo; el cobrador no las crea desde su terminal y el sistema no las genera solo. La columna «Registrada por» muestra quién la creó. Después un administrador la resuelve como aprobada, rechazada o anulada. La decisión queda en el historial; no registra cobros o pagos ni amplía límites o permisos.</p>}
     {error && <p className="legacy-admin-feedback error" role="alert">{error}</p>}{message && <p className="legacy-admin-feedback success" role="status">{message}</p>}
-    {page === "pcps" && !loading && !groups.length && <p className="legacy-admin-note">Crea un grupo de PCPs para registrar el primer punto.</p>}
+    {page === "pcps" && !loading && canSeeGroups && !groups.length && <p className="legacy-admin-note">Crea un grupo de PCPs para registrar el primer punto.</p>}
+    {page === "pcps" && (!canSeeGroups || !canSeeStations) && <p className="legacy-admin-note" role="status">{!canSeeGroups && "Sin «Visualizar Grupos de PCPs» (160) no se muestran los grupos de los PCPs. "}{!canSeeStations && "Sin «Visualizar estaciones de usuarios» (111) no se muestran sus estaciones."}</p>}
     {paged || page === "pcps" ? <div className={layout + "-workspace"}>{filtersVisible && filterPanel}{grid}</div> : grid}
     {page === "stations" && <StationInstallationPanel station={selected ? { id: selected.id, name: value(selected, "name"), deviceId: value(selected, "deviceId"), active: selected.active === true, rraaValidated: selected.rraaValidated === true } : null} user={user} disabled={loading || locked || Boolean(dialog)} onLockChange={setInstallationLocked} simulatedControl={rraa.configured && rraa.simulated === true} />}
     {paged && <div className={"legacy-mdi-pager " + (page === "traces" ? "traces-pager" : "")}>
@@ -323,7 +333,7 @@ export function ConnectedAdminTools({ page, snapshot, user, onRefresh }: { page:
         <p className="legacy-admin-note">La decisión administrativa no crea pagos ni modifica límites de efectivo.</p>
         <div className="legacy-dialog-actions centered">{dialog.row.status === "pending" && <button type="button" onClick={() => open({ type: "resolve", row: dialog.row })}>Resolver</button>}<button type="button" onClick={close}>Cerrar</button></div>
       </div> : <form className={formClass} onSubmit={submit}>
-        {dialog.type === "edit" && page === "stations" && !stationStatusReview && <>
+        {readOnlyBlock(<>{dialog.type === "edit" && page === "stations" && !stationStatusReview && <>
           <div className="legacy-tabs compact"><button type="button" className="active">General</button></div>
           <fieldset className="legacy-config-fieldset station-general-fieldset"><legend>General</legend>
             <span className="station-internal-id" title={dialog.row?.id}>ID: {dialog.row?.id ?? "Nuevo"}</span>
@@ -334,7 +344,7 @@ export function ConnectedAdminTools({ page, snapshot, user, onRefresh }: { page:
             <label>SO RRAA:{stationReadOnlyInput("operatingSystem", "SO RRAA:")}</label>
             <label>Descrip.:<textarea aria-label="Descripción" rows={2} maxLength={INPUT_LIMITS.userNote} value={String(draft.description ?? "")} disabled={locked} onChange={(event) => updateDraft("description", event.target.value)} /></label>
             <div className="legacy-dialog-row two-cols"><label>Grupo:{stationReadOnlyInput("group")}</label><label>Tipo:{stationReadOnlyInput("type")}</label></div>
-            <div className="legacy-dialog-row two-cols"><label>Versión registrada:<input readOnly value={String(draft.version ?? "")} /></label><label className="legacy-admin-checkbox"><input type="checkbox" checked={Boolean(draft.active)} disabled={locked || !draftValidated} onChange={(event) => updateDraft("active", event.target.checked)} /><span>Activa</span></label></div>
+            <div className="legacy-dialog-row two-cols"><label>Versión registrada:<input readOnly value={String(draft.version ?? "")} /></label><label className="legacy-admin-checkbox"><input type="checkbox" checked={Boolean(draft.active)} disabled={locked || !draftValidated || activityLocked} onChange={(event) => updateDraft("active", event.target.checked)} /><span>Activa</span></label></div>
           </fieldset><p className="legacy-admin-note">{busy ? "Consultando RRAA…" : rraaPreview ? "Validación recibida: " + dateTime(rraaPreview.validatedAt) + ". Se comprobará nuevamente al guardar." : rraa.simulated ? `Escribe la Estación del control de prueba${practiceExample ? `, por ejemplo «${practiceExample.stationCode}»` : ""}, y pulsa Obtener Datos u Obtener Licencia.` : "Para consultar RRAA, escribe la Estación y pulsa Obtener Datos u Obtener Licencia. RRAA proporciona el ID, la licencia y SO; consultar no guarda ni activa el registro."}</p>
           <p className="legacy-admin-note">La descripción es un dato local editable; se guarda al confirmar con oK.</p>
         </>}
@@ -343,8 +353,8 @@ export function ConnectedAdminTools({ page, snapshot, user, onRefresh }: { page:
           <div className="pcp-form-row pcp-code-row"><span className="pcp-form-label">PCP:</span>{input("number", "pcp-code-input", true)}{input("name", "pcp-name-input")}</div>
           <label className="pcp-form-row"><span className="pcp-form-label">Grupo:</span>{selectInput("groupId")}</label>
           <label className="pcp-form-row"><span className="pcp-form-label">Dir.:</span>{input("address")}</label>
-          <label className="pcp-form-row pcp-phone-row"><span className="pcp-form-label">Telef.:</span>{input("phone")}</label>{check("active", "Activo")}
-        </>}
+          <label className="pcp-form-row pcp-phone-row"><span className="pcp-form-label">Telef.:</span>{input("phone")}</label>{check("active", "Activo", activityLocked, activityLocked ? "Activar o inactivar requiere «Inactivar/Eliminar PCPs» (173)." : undefined)}
+        </>}</>)}
         {dialog.type === "edit" && page === "authorizationRequests" && <>
           <div className="legacy-dialog-row two-cols"><label>Fecha:<input readOnly value="Al guardar" /></label><label>Estado:<input readOnly value="Pendiente" /></label></div>
           <label>Cobrador:{selectInput("collectorId")}</label>
@@ -369,7 +379,7 @@ export function ConnectedAdminTools({ page, snapshot, user, onRefresh }: { page:
         </>}
         {dialog.type === "confirm" && <div className="legacy-confirm-content"><span className="legacy-question-icon">?</span><p>{dialog.action === "close" ? dialog.row?.current ? "Tu sesión se cerrará y tendrás que iniciar sesión de nuevo." : "Se cerrará la sesión de " + (dialog.row ? value(dialog.row, "userName") : "este usuario") + ". No podrá seguir usando el sistema hasta que vuelva a entrar." : dialog.action === "delete" ? "El grupo se eliminará si no tiene PCPs asociados." : page === "stations" && dialog.row ? `¿Está seguro que desea ${dialog.action === "activate" ? "activar" : "inactivar"} la estación ${value(dialog.row, "name")} (código ${value(dialog.row, "number")})? Su historial y asociaciones se conservan.${dialog.action !== "activate" ? deactivateWarning(dialog.row) : ""}` : "El registro quedará " + (dialog.action === "activate" ? "activo" : "inactivo") + "."}</p></div>}
         {stationStatusReview && <div className="legacy-confirm-content"><span className="legacy-question-icon">?</span><p>¿Está seguro que desea {draft.active ? "activar" : "inactivar"} la estación {String(draft.name ?? "")} (código {String(draft.number ?? "")})? Su historial y asociaciones se conservan.</p><p>También se guardarán los demás cambios del formulario. Cancelar vuelve a los datos sin guardarlos.</p></div>}
-        {dialog.type !== "stations" && <>{formMessages}{actions(dialog.type === "confirm" || stationStatusReview ? "Confirmar" : "oK")}</>}
+        {dialog.type !== "stations" && <>{formMessages}{readOnlyDialog ? <><p className="legacy-admin-note">Solo consulta: tu cuenta no tiene permiso para modificar este registro.</p><div className="legacy-dialog-actions centered"><button type="button" onClick={close}>Cerrar</button></div></> : actions(dialog.type === "confirm" || stationStatusReview ? "Confirmar" : "oK")}</>}
       </form>}
     </LegacyDialog>}
     {dialog?.type === "stations" && addingStation && <LegacyDialog title="Seleccionar..." onClose={() => { if (!locked) setAddingStation(false); }} className="legacy-select-dialog legacy-admin-dialog">

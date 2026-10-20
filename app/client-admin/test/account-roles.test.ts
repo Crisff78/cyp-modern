@@ -14,13 +14,21 @@ import { MemoryStore } from "../../server/src/store.js";
 import { randomUUID } from "node:crypto";
 
 test("role options and portal guards distinguish eligible accounts without granting Admin", () => {
-  assert.deepEqual(ACCOUNT_ROLE_OPTIONS.map((row) => row.label), ["No definido", "Admin", "Supervisor", "Cobrador", "Usuario"]);
+  assert.deepEqual(ACCOUNT_ROLE_OPTIONS.map((row) => row.label), ["No definido", "Admin", "Supervisor", "Cobrador", "Usuario", "Cajero"]);
   for (const role of ["undefined", "user"]) {
     const actor = enrichUserRole({ id: "QA", name: "QA", role });
     assert.equal(canAccessAdmin(actor), false); assert.equal(canAccessCollector(actor), false);
   }
+  // The cashier enters Administración with the profile of its role (Envíos de Dinero), never the collector terminal.
+  for (const role of ["cashier", "CAJERO", "ROLE_CASHIER"]) {
+    const actor = enrichUserRole({ id: "QA", name: "QA", role });
+    assert.equal(actor.role, "CASHIER"); assert.equal(actor.roleCode, "ROLE_CASHIER");
+    assert.equal(canAccessAdmin(actor), true); assert.equal(canAccessCollector(actor), false);
+  }
+  const withoutEnvios = enrichUserRole({ id: "QA", name: "QA", role: "cashier", access: { mode: "custom", revision: 1, legacy: [1, 2], remittances: [] } });
+  assert.equal(canAccessAdmin(withoutEnvios), false, "a cashier without any permission of Envíos cannot enter");
   for (const role of ["undefined", "supervisor", "collector", "user"]) assert.equal(isCollectorAccountRole(role), true);
-  for (const role of ["admin", "ADMIN", "SUPERADMIN", "ROLE_ADMIN", "unknown", "", "__proto__", undefined, null, 1, {}, []]) assert.equal(isCollectorAccountRole(role), false);
+  for (const role of ["admin", "cashier", "ADMIN", "SUPERADMIN", "ROLE_ADMIN", "unknown", "", "__proto__", undefined, null, 1, {}, []]) assert.equal(isCollectorAccountRole(role), false);
 });
 
 const adminRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -40,7 +48,7 @@ test("actual user forms and collector picker persist real API references in an i
   const app = await buildApp({ store, demo: true, secret: "synthetic-role-ui-secret-at-least-32-characters", origins: [], collectorUrl: "http://localhost:5174" });
   const { token, user } = (await app.inject({ method: "POST", url: "/api/auth/login", payload: { email: "admin@cyp.local", password: "Demo-CyP-2026!" } })).json();
   const samples: Record<string, { id: string; name: string; email: string }> = {};
-  for (const role of ["admin", "supervisor", "collector", "user", "undefined"]) {
+  for (const role of ["admin", "supervisor", "collector", "user", "undefined", "cashier"]) {
     const result = await app.inject({ method: "POST", url: "/api/usuarios", headers: { authorization: `Bearer ${token}`, "idempotency-key": randomUUID() }, payload: { name: `Cuenta QA ${role}`, email: `qa-${role}@example.invalid`, role, password: "Qa3+#'", ...(role === "collector" ? { collectorId: "col-1" } : {}) } });
     assert.equal(result.statusCode, 200, result.body); samples[role] = result.json();
   }
@@ -109,6 +117,8 @@ remittancesApi("/snapshot").then(initial=>createRoot(document.getElementById("ro
       assert.equal(await association.locator('option[value="qa-inactive-collector"]').count(), 0);
       await association.selectOption("col-1"); await role.selectOption("undefined");
       assert.equal(await association.count(), 0);
+      await role.selectOption("cashier"); assert.equal(await association.count(), 0, "a Cajero has no collector");
+      await role.selectOption("undefined");
       await dialog.getByLabel("Nombre", { exact: true }).fill("Cuenta nueva QA");
       const username = dialog.getByLabel("Usuario / correo", { exact: true });
       assert.equal(await username.getAttribute("type"), "text");
@@ -140,6 +150,7 @@ remittancesApi("/snapshot").then(initial=>createRoot(document.getElementById("ro
       const picker = page.getByRole("dialog", { name: "Seleccionar cuenta del cobrador...", exact: true });
       await launch(); await picker.getByText(samples.supervisor.email, { exact: true }).waitFor();
       assert.equal(await picker.getByText(samples.admin.email, { exact: true }).count(), 0);
+      assert.equal(await picker.getByText(samples.cashier.email, { exact: true }).count(), 0, "a Cajero account is never linked to a collector");
       assert.equal(await picker.getByText("qa-other@example.invalid", { exact: true }).count(), 0);
       assert.equal(await picker.getByText("qa-disabled@example.invalid", { exact: true }).count(), 0);
       for (const role of ["undefined", "supervisor", "collector", "user"]) assert.equal(await picker.getByText(samples[role].email, { exact: true }).count(), 1);

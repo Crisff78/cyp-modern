@@ -1,4 +1,8 @@
+import { hasPermission, type AccessActor } from "../../shared/access.mjs";
 import type { Movement } from "./types";
+// The snapshot carries collections (320), deposits (330) and closed days (401) only with their
+// permissions: without all three the balance would report deposited money as pending.
+export const canReviewCollectionFunds = (actor: AccessActor) => [320, 330, 401].every((id) => hasPermission(actor, id));
 // Collection funds are independent of advances/payments. Pending deposits
 // do not confirm administrative receipt of funds.
 export function unconfirmedCollectionBalances(movements: readonly Movement[], reconciliations: readonly { collectorId: string; currency: "DOP" | "USD" | "EUR"; returnedCollection: number }[] = []) {

@@ -138,6 +138,9 @@ instalaciones. Los servidores auxiliares que construyen la app por su cuenta (po
   omitirse; si se envía, tiene que coincidir con STATDAT. El ID y la licencia siempre
   proceden del proveedor. La API vuelve a consultar RRAA antes de guardar; la vista
   previa del cliente no es prueba de autorización. Solo OK crea/actualiza el registro.
+  `active` es opcional: al crear, la estación empieza inactiva; al editar sin
+  `active`, se conserva el estado actual. Con permisos personalizados, cambiar la
+  actividad desde la edición exige el 114, igual que la ruta de actividad.
 - POST `/api/estaciones/:id/actividad`: `{active}`. Activar requiere validación nueva
   de los identificadores persistidos. Inactivar siempre es posible para Admin,
   aunque el proveedor esté fuera de servicio, y conserva los demás datos.

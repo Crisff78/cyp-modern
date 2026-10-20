@@ -27,6 +27,13 @@
 .connected-settlements-mdi .legacy-mdi-toolbar button:disabled,
 .connected-report-layout button:disabled { opacity: .45; cursor: not-allowed; }
 .connected-settlements-mdi .connected-settlements-grid { min-width: 760px; }
+/* Cuadres de cobradores and Caja de envíos share the window; the selected section looks like an active tool. */
+.daily-settlements-window { display: flex; flex-direction: column; gap: 4px; width: 100%; height: 100%; min-width: 0; min-height: 0; }
+.daily-settlements-window > .daily-settlements-mdi { flex: 1 1 0; height: auto; }
+.settlement-sections { flex: 0 0 auto; }
+.settlement-sections button { padding: 0 9px; }
+.settlement-sections button[aria-pressed="true"] { border-color: var(--cyp-success-text, #047857); background: var(--cyp-success-surface, #d1fae5); color: var(--cyp-success-text, #065f46); }
+.settlement-remittance-cash { flex: 1 1 0; min-height: 0; }
 .connected-settlements-grid .connected-settlement-collector-column { width: 170px; }
 .connected-settlements-grid .connected-settlement-state-column { width: 80px; }
 .connected-settlements-grid .settlement-total-column { width: 270px; }
@@ -38,3 +45,8 @@
   .connected-report-layout { flex-direction: row; }
   .connected-report-layout > .report-filter-panel { width: 200px; flex: 0 0 200px; }
 }
+
+/* Report opened by an account that lacks part of its data: the notice above, the report below. */
+.report-permission-frame { display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; }
+.report-permission-frame > :last-child { flex: 1 1 auto; min-height: 0; }
+.report-permission-note { flex-shrink: 0; margin: 0; padding: 6px 10px; border-bottom: 1px solid var(--cyp-border-strong, #cbd5e1); background: var(--cyp-warning-surface, #fffbeb); color: var(--cyp-warning-text, #78350f); font-size: 12px; }

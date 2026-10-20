@@ -28,7 +28,9 @@ test("PostgreSQL 001–029 preserve new contracts, serialized reservations and i
     const files = (await readdir(directory)).filter((file) => /^\d{3}_.+\.sql$/.test(file) && Number(file.slice(0, 3)) <= 29).sort();
     assert.equal(files.length, 29);
     const migrations = (await sql.query("SELECT name,sha256 FROM cyp_schema_migrations ORDER BY name")).rows;
-    assert.equal(migrations.length, 29);
+    // The current store also needs the later migrations (030 onwards); 001–029 must be the exact prefix.
+    assert.ok(migrations.length >= 29);
+    assert.deepEqual(migrations.slice(0, 29).map((row) => row.name), files);
     for (const file of files) assert.equal(migrations.find((row) => row.name === file)?.sha256,
       createHash("sha256").update(await readFile(new URL(file, directory), "utf8")).digest("hex"), file);
     await store.transaction((state) => { if (!state.clients.length) Object.assign(state, seed()); });

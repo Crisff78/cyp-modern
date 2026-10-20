@@ -14,5 +14,6 @@ export function actorAccess(actor: AccessActor): EffectiveAccess;
 export function hasPermission(actor: AccessActor, id: number): boolean;
 export function hasRemittancePermission(actor: AccessActor, key: RemittancePermission): boolean;
 export function hasRemittanceAccess(actor: AccessActor): boolean;
+export function canChangeOwnPassword(actor: AccessActor): boolean;
 export const PAGE_PERMISSIONS: Readonly<Record<string, number>>;
 export function canOpenPage(actor: AccessActor, page: string): boolean;
