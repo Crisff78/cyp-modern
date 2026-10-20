@@ -249,7 +249,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
       const reference = payouts.getByRole("button", { name: pending!.reciboReference, exact: true });
       await reference.click();
       const detail = page.getByRole("dialog", { name: `${pending!.envioReference} · ${pending!.reciboReference}`, exact: true });
-      await detail.getByText(/^Creado:/).waitFor();
+      await detail.getByRole("heading", { name: "Registro del recibo", exact: true }).waitFor();
       return { reference, detail };
     };
     await t.test("Cajero in Pagos de Envíos: the detail and the printed receipt of another operator's transfer name that operator", async () => {
@@ -257,8 +257,8 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
       const { context, page } = await open(cashierToken);
       try {
         const { detail } = await receiptDetail(page);
-        const summary = await detail.getByText(/^Creado:/).innerText();
-        assert.match(summary, /Operador: Administración/); assert.match(summary, /Registrado por: Administración/);
+        const summary = await detail.locator("section").filter({ has: page.getByRole("heading", { name: "Registro del recibo", exact: true }) }).innerText();
+        assert.match(summary, /Operador\s+Administración/); assert.match(summary, /Registrado por\s+Administración/);
         const popupReady = context.waitForEvent("page");
         await detail.getByRole("button", { name: "Imprimir comprobante", exact: true }).click();
         const popup = await popupReady; await popup.waitForLoadState();

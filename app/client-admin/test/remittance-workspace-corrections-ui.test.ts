@@ -367,7 +367,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
       try {
         const bar = page.getByRole("navigation", { name: "Navegación principal", exact: true });
         await bar.getByRole("button").first().waitFor();
-        assert.deepEqual(await bar.getByRole("button").allTextContents(), ["Pagos", "Recibos", "Envíos", "Mi bolsillo"]);
+        assert.deepEqual(await bar.getByRole("button").allTextContents(), ["Pagos", "Recibos", "Envíos", "Reportes", "Mi bolsillo"]);
         await page.waitForLoadState("networkidle"); await page.locator(".cash-pill").waitFor();
         const outcome: Record<string, unknown> = {};
         outcome["views marked as shown"] = await bar.locator('[aria-current="page"]').count();
