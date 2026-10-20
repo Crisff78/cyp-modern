@@ -5387,15 +5387,6 @@ export default function App() {
                 </div>
               </div>
             </header>
-            <nav className="desktop-launchers" aria-label="Operaciones principales">
-              {canOpenPage(effectiveUser, "charges") && <button type="button" className="btn launcher-collections" onClick={() => openMdiWindow("charges", "charges")}><FolderOpen size={17} />CARGOS</button>}
-              {canOpenPage(effectiveUser, "collections") && <button type="button" className="btn launcher-collections" onClick={() => openMdiWindow("collections", "collections")}><ReceiptText size={17} />COBROS</button>}
-              {canOpenPage(effectiveUser, "payouts") && <button type="button" className="btn launcher-payments" onClick={() => openMdiWindow("payouts", "payouts")}><ArrowDownLeft size={17} />ÓRDENES DE PAGO</button>}
-              {canOpenPage(effectiveUser, "payments") && <button type="button" className="btn launcher-payments" onClick={() => openMdiWindow("payments", "payments")}><Wallet size={17} />PAGOS</button>}
-              {canOpenPage(effectiveUser, "remittances") && <button type="button" className="btn launcher-remittances" onClick={() => openMdiWindow("remittances", "remittances")}><Globe size={17} />ENVÍOS DE DINERO</button>}
-              {canOpenPage(effectiveUser, "remittancePayouts") && <button type="button" className="btn launcher-remittances" onClick={() => openMdiWindow("remittancePayouts", "remittance-payouts")}><HandCoins size={17} />ENTREGAS DE DINERO</button>}
-              {canOpenPage(effectiveUser, "dailySettlements") && <button type="button" className="btn launcher-settlements" onClick={() => openMdiWindow("dailySettlements", "daily-settlements")}><FileCheck2 size={17} />CUADRES</button>}
-            </nav>
             <main id="main-content" className="main-content desktop-canvas" tabIndex={-1}>
           {snapshot && mdiWindows.filter((windowState) => isUiPageVisible(windowState.page) && canOpenPage(effectiveUser, windowState.page)).map((windowState) => (
             <MdiWindow

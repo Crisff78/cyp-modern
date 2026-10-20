@@ -27,6 +27,8 @@ Cómo se aplica en cada cambio:
   a su portal (oficina o app del cobrador), sin elegir antes.
 - El menú lateral empieza con todas las secciones cerradas y recuerda, por cuenta,
   cómo lo dejó la última vez.
+- Un solo camino para cada pantalla: el menú lateral. Sin botones rápidos encima del
+  escritorio (el jefe pidió quitarlos el 2026-10-20).
 - Antes de entregar, mirar cada pantalla con ojos de alguien nuevo: si hace falta
   explicarla, hay que simplificarla. Se simplifican las palabras y el camino, nunca
   se quitan validaciones, permisos ni reglas de negocio del servidor.

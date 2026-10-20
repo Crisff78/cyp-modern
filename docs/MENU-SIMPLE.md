@@ -46,8 +46,8 @@ una remesa se usa REMESAS → Entregas de dinero.
 
 ## Otros nombres
 
-- Botones rápidos de arriba: ÓRDENES DE PAGO (antes DESCARGOS), ENVÍOS DE DINERO y
-  ENTREGAS DE DINERO (nuevo).
+- Sin botones rápidos encima del escritorio (CARGOS, COBROS, DESCARGOS…): el jefe pidió
+  quitarlos el 2026-10-20. Todo se abre desde el menú lateral, que es un solo camino.
 - Caja de envíos → **Caja de remesas**; Comisiones de envíos → **Comisiones de
   remesas**; pestaña Recibos de remesas → **Entregas**; botón «Registrar pago
   completo» → **Registrar entrega**.

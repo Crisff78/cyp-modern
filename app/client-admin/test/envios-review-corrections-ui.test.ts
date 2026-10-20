@@ -146,14 +146,14 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
     const top = (locator: any) => locator.evaluate((element: HTMLElement) => Math.round((element.getBoundingClientRect().top - element.closest(".remittances")!.getBoundingClientRect().top) * 10) / 10);
     const cashPlace = "Cuadres y reportes → Cuadres diarios → Caja de remesas";
     const sendingWindow = async (page: any) => {
-      await page.locator(".desktop-launchers").getByRole("button", { name: "ENVÍOS DE DINERO", exact: true }).click();
+      await (await menuOption(page, "Envíos de dinero")).click();
       const envios = page.getByRole("region", { name: "Envíos de dinero", exact: true });
       await envios.getByRole("combobox", { name: "Remitente", exact: true }).waitFor();
       return envios;
     };
     // Opens a box from Cuadres diarios → Caja de remesas, choosing its operator and currency by hand.
     const openBox = async (page: any, operatorId: string, currency: string) => {
-      await page.locator(".desktop-launchers").getByRole("button", { name: "CUADRES", exact: true }).click();
+      await (await menuOption(page, "Cuadres diarios")).click();
       const settlements = page.getByRole("dialog", { name: "Cuadres diarios", exact: true });
       await settlements.getByRole("group", { name: "Secciones de Cuadres diarios", exact: true }).getByRole("button", { name: "Caja de remesas", exact: true }).click();
       const cash = settlements.getByRole("region", { name: "Caja de remesas", exact: true });
@@ -217,7 +217,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
     await t.test("Admin: the badge of the collector settlements (401) shows them although Cuadres diarios was on Caja de remesas", async () => {
       const { context, page } = await open(adminToken);
       try {
-        await page.locator(".desktop-launchers").getByRole("button", { name: "CUADRES", exact: true }).click();
+        await (await menuOption(page, "Cuadres diarios")).click();
         const settlements = page.getByRole("dialog", { name: "Cuadres diarios", exact: true });
         const sections = settlements.getByRole("group", { name: "Secciones de Cuadres diarios", exact: true });
         await sections.getByRole("button", { name: "Caja de remesas", exact: true }).click();
@@ -238,7 +238,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         const warning = envios.locator(".remittance-cash-warning"); await warning.waitFor();
         assert.equal(await warning.locator("p").innerText(), "La caja de remesas de hoy en DOP de Cajero de práctica ya se cerró y no admite más movimientos: no se pueden registrar más envíos en DOP hasta la jornada siguiente.");
         assert.equal(await warning.getByRole("button").count(), 0, "no way to a box that cannot be opened");
-        await page.locator(".desktop-launchers").getByRole("button", { name: "CUADRES", exact: true }).click();
+        await (await menuOption(page, "Cuadres diarios")).click();
         const cash = page.getByRole("dialog", { name: "Cuadres diarios", exact: true }).getByRole("region", { name: "Caja de remesas", exact: true });
         await cash.locator("article").filter({ hasText: "DOP · Cajero de práctica" }).getByText(`${today} · Cerrada`, { exact: true }).waitFor();
         assert.equal(await cash.getByLabel("Moneda").inputValue(), "DOP");
@@ -344,7 +344,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
       for (const amount of [11_000, 12_000, 13_000, 14_000, 15_000]) await adminTransfer(amount);
       const { context, page } = await open(adminToken, { width: 1366, height: 768 });
       try {
-        await page.locator(".desktop-launchers").getByRole("button", { name: "ENVÍOS DE DINERO", exact: true }).click();
+        await (await menuOption(page, "Envíos de dinero")).click();
         const window = page.getByRole("dialog", { name: "Envíos de dinero", exact: true });
         const region = window.getByRole("region", { name: "Envíos de dinero", exact: true });
         const rows = region.locator(".remittance-transfer-table tbody tr"); await rows.nth(4).waitFor();
@@ -374,7 +374,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
     // 1280×600 is the useful area of a 1920×1080 screen at 150 % (or of a 1366×768 one with the browser bars).
     const shortWindow = async () => {
       const { context, page } = await open(adminToken, { width: 1280, height: 600 });
-      await page.locator(".desktop-launchers").getByRole("button", { name: "ENVÍOS DE DINERO", exact: true }).click();
+      await (await menuOption(page, "Envíos de dinero")).click();
       const window = page.getByRole("dialog", { name: "Envíos de dinero", exact: true });
       const region = window.getByRole("region", { name: "Envíos de dinero", exact: true });
       await region.locator(".remittance-transfer-table tbody tr").first().waitFor();
@@ -537,7 +537,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
           assert.equal(await page.evaluate(({ x, y }: { x: number; y: number }) => document.elementFromPoint(x, y)?.closest("button")?.getAttribute("aria-label"), { x: part.x + part.width / 2, y: part.y + part.height / 2 }), `Restaurar ${title}`, "each restore button is the one under the pointer");
         await page.screenshot({ path: path.join(output, "minimized-receipts.png") });
         // Choosing the reference of the minimized receipt again brings it back on top, with the keyboard.
-        await page.locator(".desktop-launchers").getByRole("button", { name: "ENVÍOS DE DINERO", exact: true }).click();
+        await (await menuOption(page, "Envíos de dinero")).click();
         await sentReference.click();
         await first.detail.waitFor({ state: "visible", timeout: 5000 });
         await waitForFocus(page, ".remittance-receipt-window");

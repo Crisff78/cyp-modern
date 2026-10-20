@@ -11115,7 +11115,6 @@ table {
 .topbar-actions button.status-badge { cursor: pointer; }
 .topbar-actions button.status-badge:hover,
 .topbar-actions button.status-badge:focus-visible { outline: 2px solid var(--cyp-success-text, #047857); outline-offset: 2px; }
-.desktop-launchers .launcher-settlements { --launcher-color: oklch(.43 .1 185); --launcher-hover: oklch(.36 .09 185); }
 .client-generated-field { display: grid; grid-template-columns: 136px minmax(0, 1fr) auto; align-items: center; gap: 8px; }
 .client-generated-field > label { white-space: normal; }
 .client-generated-field > input { width: 100%; min-width: 0; }
