@@ -128,8 +128,8 @@ test("October nine shell changes work in actual App with isolated synthetic APIs
       catch (error) { cases.push({ name, status: "FAIL" }); await page.screenshot({ path: path.join(output, `failure-${cases.length}.png`) }).catch(() => {}); throw error; }
     });
     await run("dashboard modules, visible SVGs, support and clickable daily settlement", async () => {
-      await reset(); const launchers = page.locator(".desktop-launchers");
-      assert.deepEqual(await launchers.getByRole("button").allTextContents(), ["CARGOS", "COBROS", "ÓRDENES DE PAGO", "PAGOS", "ENVÍOS DE DINERO", "ENTREGAS DE DINERO", "CUADRES"]);
+      // No quick buttons above the desktop (removed 2026-10-20): the desktop starts right under the top bar.
+      await reset(); assert.equal(await page.locator(".desktop-launchers").count(), 0);
       assert.equal(await page.getByRole("button", { name: "Ayuda", exact: true }).isVisible(), true);
       await page.getByTitle("Abrir Cuadres diarios", { exact: true }).click(); await page.getByRole("dialog", { name: "Cuadres diarios", exact: true }).waitFor();
       await page.screenshot({ path: path.join(output, "dashboard.png") });

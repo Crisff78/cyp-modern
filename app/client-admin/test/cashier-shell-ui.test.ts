@@ -117,7 +117,16 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
     // Groups of the side menu with their items, as the menu names them.
     const menu = (page: any) => page.locator('nav[aria-label="Navegación principal"] .nav-group').evaluateAll((groups: HTMLElement[]) => groups.map((group) =>
       [group.querySelector(".nav-group-trigger")?.getAttribute("aria-label"), Array.from(group.querySelectorAll(".nav-group-items .nav-item"), (item) => item.getAttribute("aria-label"))]));
-    const launchers = (page: any) => page.locator(".desktop-launchers button").allTextContents();
+    // The windows open from the side menu: open the section that holds the option, then the option.
+    const openFromMenu = async (page: any, name: string) => {
+      const option = page.locator(".sidebar").getByRole("button", { name, exact: true });
+      const folded = page.locator(`.sidebar .nav-item[aria-label="${name}"]`);
+      await option.or(folded).first().waitFor({ state: "attached" });
+      if (!await option.isVisible()) await page.locator(".sidebar .nav-group").filter({ has: page.locator(`.nav-item[aria-label="${name}"]`) }).locator(".nav-group-trigger").click();
+      await option.click();
+    };
+    // The quick buttons above the desktop were removed: everything opens from the menu.
+    const launchers = (page: any) => page.locator(".desktop-launchers").count();
     const focused = (locator: any) => locator.evaluate((element: Element) => element === document.activeElement);
     const waitForFocus = (page: any, selector: string) => page.waitForFunction((selector: string) => document.activeElement?.matches(selector) === true, selector);
     const choose = async (region: any, label: string, code: string) => {
@@ -153,10 +162,10 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         assert.deepEqual(groups.find(([name]: [string]) => name === "PAGOS")?.[1], ["Órdenes de pago", "Pagos realizados", "Efectivo a cobradores"]);
         const trigger = page.locator(".sidebar").getByRole("button", { name: "REMESAS", exact: true });
         assert.equal(await trigger.getAttribute("data-short-label"), "RE"); assert.equal(await trigger.getAttribute("aria-expanded"), "false", "every section starts closed");
-        assert.deepEqual(await launchers(page), ["CARGOS", "COBROS", "ÓRDENES DE PAGO", "PAGOS", "ENVÍOS DE DINERO", "ENTREGAS DE DINERO", "CUADRES"]);
+        assert.equal(await launchers(page), 0, "no quick buttons above the desktop");
         assert.equal(await page.getByTitle("Abrir Cuadres diarios", { exact: true }).count(), 1, "the settlement badge stays for 401");
         assert.equal(await page.getByText(/cobradores en calle$/).count(), 1);
-        await page.locator(".desktop-launchers").getByRole("button", { name: "ENVÍOS DE DINERO", exact: true }).click();
+        await openFromMenu(page, "Envíos de dinero");
         const envios = page.getByRole("region", { name: "Envíos de dinero", exact: true });
         const senderInput = envios.getByRole("combobox", { name: "Remitente", exact: true }); await senderInput.waitFor();
         await waitForFocus(page, '[data-client-side="sender"] input');
@@ -191,13 +200,13 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
     await t.test("Admin: Remesas → Entregas de dinero finds the transfer, asks for the box in the destination currency and then delivers", async () => {
       const { context, page } = await open(adminToken);
       try {
-        await page.locator(".desktop-launchers").getByRole("button", { name: "ENVÍOS DE DINERO", exact: true }).click();
+        await openFromMenu(page, "Envíos de dinero");
         const envios = page.getByRole("region", { name: "Envíos de dinero", exact: true });
         adminSent = await send(page, envios, "600", "USD");
         await waitForFocus(page, '[data-client-side="sender"] input');
         assert.equal(await envios.getByRole("combobox", { name: "Remitente", exact: true }).inputValue(), "");
-        // The section opens with one click and shows its two windows.
-        await page.locator(".sidebar").getByRole("button", { name: "REMESAS", exact: true }).click();
+        // Remesas is already open (Envíos de dinero was opened from it) and shows both windows.
+        assert.equal(await page.locator(".sidebar").getByRole("button", { name: "REMESAS", exact: true }).getAttribute("aria-expanded"), "true");
         await page.locator(".sidebar").getByRole("button", { name: "Entregas de dinero", exact: true }).click();
         const payouts = page.getByRole("region", { name: "Entregas de dinero", exact: true });
         await payouts.getByRole("heading", { name: "Entregas de dinero", level: 1 }).waitFor();
@@ -235,7 +244,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
       for (const amount of [11_000, 12_000, 13_000, 14_000]) await adminTransfer(amount);
       const { context, page } = await open(adminToken, { width: 1366, height: 768 });
       try {
-        await page.locator(".desktop-launchers").getByRole("button", { name: "ENVÍOS DE DINERO", exact: true }).click();
+        await openFromMenu(page, "Envíos de dinero");
         const window = page.getByRole("dialog", { name: "Envíos de dinero", exact: true });
         const region = window.getByRole("region", { name: "Envíos de dinero", exact: true });
         const rows = region.locator(".remittance-transfer-table tbody tr"); await rows.nth(4).waitFor();
@@ -283,7 +292,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         await page.reload(); await page.getByRole("button", { name: "Abrir cuenta", exact: true }).waitFor();
         assert.equal(await section("REMESAS").getAttribute("aria-expanded"), "true", "remembered for this account");
         assert.equal(await section("CUADRES Y REPORTES").getAttribute("aria-expanded"), "false");
-        assert.deepEqual(await launchers(page), ["ENVÍOS DE DINERO", "ENTREGAS DE DINERO", "CUADRES"]);
+        assert.equal(await launchers(page), 0, "no quick buttons above the desktop");
         assert.equal(await page.getByText(/cobradores en calle$/).count(), 0);
         assert.equal(await page.getByTitle("Abrir Cuadres diarios", { exact: true }).count(), 0, "no collector settlement badge without 401");
         for (const name of ["Buscar en tu operación", "Administración", "Facturas", "Ventana de Pagos", "Hacer copia de respaldo"]) assert.equal(await page.getByRole("button", { name, exact: true }).count(), 0, name);
@@ -293,7 +302,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         const account = page.getByRole("dialog", { name: "Tu espacio de trabajo", exact: true });
         assert.match(await account.innerText(), /Cajero/); await page.keyboard.press("Escape"); await account.waitFor({ state: "detached" });
 
-        await page.locator(".desktop-launchers").getByRole("button", { name: "ENVÍOS DE DINERO", exact: true }).click();
+        await openFromMenu(page, "Envíos de dinero");
         const envios = page.getByRole("region", { name: "Envíos de dinero", exact: true });
         await envios.getByRole("combobox", { name: "Remitente", exact: true }).waitFor();
         assert.equal(await envios.getByLabel("Operador del envío").count(), 0, "the Cajero always sends as itself");
@@ -313,7 +322,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         const box = cash.locator("article").filter({ hasText: "DOP · Cajero de práctica" }); await box.getByText(`${today} · Abierta`, { exact: true }).waitFor();
         await warning.waitFor({ state: "detached" });
 
-        await page.locator(".desktop-launchers").getByRole("button", { name: "ENVÍOS DE DINERO", exact: true }).click();
+        await openFromMenu(page, "Envíos de dinero");
         const own = await send(page, envios, "100", "DOP");
         assert.equal((await store.read()).remittances.transfers.find((row) => row.id === own.id)?.sendingUserId, "demo-cashier");
 
@@ -328,7 +337,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         assert.equal((await store.read()).remittances.transfers.find((row) => row.id === pending.id)?.paidBy, "demo-cashier", "the Cajero pays a receipt of another operator");
         await detail.getByRole("button", { name: `Cerrar ${pending.envioReference} · ${pending.reciboReference}`, exact: true }).click();
 
-        await page.locator(".desktop-launchers").getByRole("button", { name: "CUADRES", exact: true }).click();
+        await openFromMenu(page, "Cuadres diarios");
         await cash.getByRole("button", { name: "Actualizar", exact: true }).click();
         await page.waitForFunction(() => document.querySelector('section[aria-label="Caja de remesas"] .remittance-heading button')?.textContent === "Actualizar");
         const expected = (await box.locator(".remittance-total dd").innerText()).replace(/^DOP /, "").replaceAll(",", "");
