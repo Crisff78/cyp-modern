@@ -10,7 +10,8 @@
     "moduleResolution": "Bundler",
     "paths": {
       "react": ["./node_modules/@types/react"],
-      "react/jsx-runtime": ["./node_modules/@types/react/jsx-runtime.d.ts"]
+      "react/jsx-runtime": ["./node_modules/@types/react/jsx-runtime.d.ts"],
+      "react-dom": ["./node_modules/@types/react-dom"]
     },
     "jsx": "react-jsx",
     "skipLibCheck": true,

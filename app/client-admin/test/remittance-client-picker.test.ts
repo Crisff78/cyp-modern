@@ -170,10 +170,14 @@ createRoot(document.getElementById("root")).render(new URLSearchParams(location.
       await page.goto(`${origin}/?view=workspace`);
       await page.getByRole("button", { name: "ENV00000001", exact: true }).click();
       const exact = page.getByRole("dialog", { name: "ENV00000001 · REC00000001", exact: true }); await exact.waitFor();
+      await exact.getByText("Desglose de tasas y comisiones", { exact: true }).click();
       assert.match(await exact.innerText(), /1 USD = 0\.8 EUR/);
-      await exact.getByRole("button", { name: "Cerrar ENV00000001 · REC00000001", exact: true }).click();
+      await exact.getByRole("button", { name: "Minimizar ENV00000001 · REC00000001", exact: true }).click();
+      await exact.waitFor({ state: "hidden" });
       await page.getByRole("button", { name: "ENV00000002", exact: true }).click();
       const rounded = page.getByRole("dialog", { name: "ENV00000002 · REC00000002", exact: true }); await rounded.waitFor();
+      assert.equal(await page.getByRole("button", { name: "Restaurar ENV00000001 · REC00000001", exact: true }).count(), 0, "a different receipt opens visibly rather than inheriting the minimized state");
+      await rounded.getByText("Desglose de tasas y comisiones", { exact: true }).click();
       assert.match(await rounded.innerText(), /1 USD ≈ 0\.333333333333 EUR/);
       assert.match(await rounded.innerText(), /tasa mostrada redondeada/);
       assert.equal(await page.evaluate(() => (window as any).__qaCalls.some(({ method }: { method: string }) => method !== "GET")), false);

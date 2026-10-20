@@ -789,7 +789,10 @@ function MdiWindow({ windowState, onClose, onFocus, onMove, onResize, onToggleMa
     document.addEventListener("mouseup", onMouseUp, { once: true });
     return () => { document.removeEventListener("mousemove", onMouseMove); document.removeEventListener("mouseup", onMouseUp); };
   }, [drag, onMove, windowState.id]);
-  const focusIfNeeded = () => {
+  const focusIfNeeded = (event: ReactPointerEvent<HTMLElement>) => {
+    // A portal is a React child but an independent desktop window. Do not
+    // raise this parent over a click that belongs to the portaled receipt.
+    if (!frame.current?.contains(event.target as Node)) return;
     if (!windowState.isFocused) onFocus(windowState.id);
   };
   const startDrag = (event: ReactMouseEvent<HTMLDivElement>) => {
@@ -4774,6 +4777,10 @@ export default function App() {
     highestZIndex.current += 1;
     return highestZIndex.current;
   }, []);
+  const nextReceiptZIndex = useCallback(() => {
+    setMdiWindows((windows) => windows.map((item) => item.isFocused ? { ...item, isFocused: false } : item));
+    return nextZIndex();
+  }, [nextZIndex]);
   const clearLocalSession = useCallback(() => {
     invalidateSnapshotReads();
     clearToken();
@@ -5438,9 +5445,9 @@ export default function App() {
               ) : windowState.page === "exchangeRates" ? (
                 <ConnectedExchangeRates actorId={effectiveUser.id} isAdmin={["ADMIN", "SUPERADMIN"].includes(normalizeRole(effectiveUser.role)) && hasPermission(effectiveUser, 201) && hasRemittancePermission(effectiveUser, "remittances.rates.manage")} />
               ) : windowState.page === "remittances" ? (
-                <RemittancesWorkspace api={remittancesApi} user={effectiveUser} isAdmin={isAdminRole} sections={["envios"]} fixedForm onOpenCash={canViewRemittanceCash ? openRemittanceCash : undefined} />
+                <RemittancesWorkspace api={remittancesApi} user={effectiveUser} isAdmin={isAdminRole} sections={["envios"]} fixedForm onOpenCash={canViewRemittanceCash ? openRemittanceCash : undefined} desktopId="main-content" nextWindowZIndex={nextReceiptZIndex} />
               ) : windowState.page === "remittancePayouts" ? (
-                <RemittancesWorkspace api={remittancesApi} user={effectiveUser} isAdmin={isAdminRole} sections={["recibos"]} heading="Pagos de Envíos" payoutRequest={remittancePayoutRequest} onOpenCash={canViewRemittanceCash ? openRemittanceCash : undefined} />
+                <RemittancesWorkspace api={remittancesApi} user={effectiveUser} isAdmin={isAdminRole} sections={["recibos"]} heading="Pagos de Envíos" payoutRequest={remittancePayoutRequest} onOpenCash={canViewRemittanceCash ? openRemittanceCash : undefined} desktopId="main-content" nextWindowZIndex={nextReceiptZIndex} />
               ) : windowState.page === "remittanceCommissions" ? (
                 <ConnectedRemittanceCommissions actor={effectiveUser} />
               ) : isConnectedCatalog(windowState.page) ? (

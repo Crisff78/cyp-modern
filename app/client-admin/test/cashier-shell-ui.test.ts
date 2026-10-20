@@ -363,7 +363,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         const workspace = page.getByRole("region", { name: "Envíos de Dinero", exact: true });
         const sections = workspace.getByRole("navigation", { name: "Secciones de Envíos", exact: true });
         await sections.getByRole("button").first().waitFor();
-        assert.deepEqual(await sections.getByRole("button").allTextContents(), ["Envíos", "Recibos", "Caja", "Reportes"]);
+        assert.deepEqual(await sections.getByRole("button").allTextContents(), ["Envíos", "Recibos", "Caja"], "the terminal keeps its sections; its reports open from its own Reportes view");
         await workspace.getByRole("button", { name: "Nuevo envío", exact: true }).waitFor();
         assert.equal(await page.locator(".remittances-fixed, .remittance-cash-warning").count(), 0, "the terminal keeps its own layout and its Caja section");
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);

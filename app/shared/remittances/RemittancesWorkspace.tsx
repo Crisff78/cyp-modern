@@ -11,6 +11,7 @@ import { changedRecipientPhone, confirmedCreatedTransfer, recipientPhoneRecord }
 import { allocationRows, commissionReportStatusLabels } from "./commissionOutput";
 import { accessRole, hasRemittancePermission, type EffectiveAccess, type RemittancePermission } from "../access.mjs";
 import { RemittanceDialog as Dialog } from "./RemittanceDialog";
+import { RemittanceWindow } from "./RemittanceWindow";
 import { QuickClientDialog } from "./QuickClientDialog";
 import { advanceCaptureField } from "./formKeyboard";
 import { currentOperationalWeek } from "../operationalWeek";
@@ -20,7 +21,9 @@ import { remittanceOperatorName } from "./operatorNames";
 
 export type RemittanceSection = "envios" | "recibos" | "caja" | "reportes";
 type Tab = RemittanceSection;
-const allSections: readonly RemittanceSection[] = ["envios", "recibos", "caja", "reportes"];
+// The capture keeps its reports out: Administración opens them from Reportes & Monitoreo, the collector from its Reportes view.
+const captureSections: readonly RemittanceSection[] = ["envios", "recibos", "caja"];
+const reportsOnlySections: readonly RemittanceSection[] = ["reportes"];
 // Every window of the workspace announces a saved operation; the others reload what they show.
 export const REMITTANCES_CHANGED_EVENT = "cyp-remittances-changed";
 const cashPlace = "Reportes & Monitoreo → Cuadres Diarios → Caja de envíos";
@@ -179,16 +182,20 @@ let appliedCashRequest = 0;
 /** The box a notice asks for: the opening form starts with this operator and currency. */
 export type RemittanceCashOpening = { operatorId: string; currency: Currency };
 
-// sections: the parts this window shows; the collector terminal keeps all four.
+// sections: the parts this window shows; the collector terminal keeps Envíos, Recibos and Caja and opens its reports apart.
+// reportsOnly: only the reports of envíos (the collector terminal's Reportes view).
 // fixedForm: the sending window of Administración, with the form always open above its list.
 // onOpenCash: opens the window where the box of envíos is opened and closed, for the box the notice names.
 // cashRequest: in that window, the box asked from a notice of another one.
-export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = "envios", sections = allSections, heading = "Envíos de Dinero", fixedForm = false, onOpenCash, payoutRequest, cashRequest }: {
-  api: StrictApi; user: Actor; isAdmin: boolean; initialTab?: Tab; sections?: readonly RemittanceSection[]; heading?: string; fixedForm?: boolean; onOpenCash?: (opening: RemittanceCashOpening) => void;
-  /** @deprecated Ignored: the reports of envíos open from Reportes & Monitoreo → Reportes. */
-  reportRequest?: number; payoutRequest?: { id: number; search: string };
+// desktopId and nextWindowZIndex: where the modeless receipt windows open and how they stack on the desktop.
+export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = "envios", sections: requestedSections = captureSections, reportsOnly = false, heading: requestedHeading, fixedForm = false, onOpenCash, desktopId, nextWindowZIndex, payoutRequest, cashRequest }: {
+  api: StrictApi; user: Actor; isAdmin: boolean; initialTab?: Tab; sections?: readonly RemittanceSection[]; reportsOnly?: boolean; heading?: string; fixedForm?: boolean; onOpenCash?: (opening: RemittanceCashOpening) => void;
+  desktopId?: string; nextWindowZIndex?: () => number;
+  payoutRequest?: { id: number; search: string };
   cashRequest?: RemittanceCashOpening & { id: number };
 }) {
+  const sections = reportsOnly ? reportsOnlySections : requestedSections;
+  const heading = requestedHeading ?? (reportsOnly ? "Reportes de envíos" : "Envíos de Dinero");
   const sectionsKey = sections.join(",");
   const pendingKey = `${user.id}\n${sectionsKey}`;
   const sendsShown = sections.includes("envios"), payoutsShown = sections.includes("recibos"), cashShown = sections.includes("caja");
@@ -237,7 +244,6 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   const [opening, setOpening] = useState({ operatorId: pendingCash?.operatorId ?? user.id, currency: pendingCash?.currency ?? "DOP" as Currency, amount: "0" });
   // The keyboard goes to the box asked from a notice; a closed detail then does not take it back.
   const cashFocus = useRef(false);
-  const detailFocusReturn = useRef(true);
   const [closing, setClosing] = useState<Cash | null>(null);
   const [counted, setCounted] = useState("");
   const [reportFilters, setReportFilters] = useState<RemittanceReportFilters>({ ...currentOperationalWeek(), grouping: "range", type: "amounts",
@@ -290,7 +296,6 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
     setOpening((current) => ({ ...current, operatorId: cashRequest.operatorId, currency: cashRequest.currency }));
     cashFocus.current = true;
   }, [cashRequest, cashShown]);
-  useEffect(() => { if (detailId) detailFocusReturn.current = true; }, [detailId]);
   useEffect(() => {
     if (!cashFocus.current || !snapshot || loading || confirmation || closing) return;
     cashFocus.current = false;
@@ -374,6 +379,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   };
   const resetForm = () => {
     retireQuote(); setFormOpen(true); clearErrors(); setNewClients({}); setSenderSearch(""); setRecipientSearch("");
+    setSearch(""); setStatus("all");
     setDraft({ senderClientId: "", recipientClientId: "", sendingUserId: user.id, sourceCurrency: "DOP", destinationCurrency: "DOP", amount: "", amountMode: "source", note: "" });
     recipientPhoneTyped.current = false; setRecipientPhone(""); setFocusVersion((value) => value + 1);
   };
@@ -572,7 +578,9 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   };
   const list = (view === "recibos" ? received : sent).filter((transfer) => (status === "all" || transfer.status === status) && matchesSearch(transfer)).sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.sequence - a.sequence);
   // The sending window of Administración has no "Nuevo envío": its form is always open and has "Limpiar formulario".
-  const toolbar = <div className="remittance-toolbar"><label>Buscar<input data-receipt-search={view === "recibos" || undefined} type="search" maxLength={INPUT_LIMITS.name} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Serie, teléfono, nombre, identificación, dirección o nota" title="El teléfono se encuentra aunque lo escribas sin guiones ni espacios." /></label><label>Estado<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">Todos</option><option value="pending">Pendientes</option><option value="paid">Pagados</option><option value="cancelled">Cancelados</option></select></label>{view === "envios" && !fixedForm && can("remittances.create") && <button type="button" className="remittance-primary" disabled={working || uncertain} onClick={resetForm}>Nuevo envío</button>}</div>;
+  // Outside the fixed window, searching hands the space to the list; «Nuevo envío» brings the capture back. The draft is kept.
+  const hideCaptureForSearch = () => { if (view === "envios" && !fixedForm && !working && !uncertain) setFormOpen(false); };
+  const toolbar = <div className="remittance-toolbar"><label>Buscar<input data-receipt-search={view === "recibos" || undefined} type="search" maxLength={INPUT_LIMITS.name} value={search} onFocus={hideCaptureForSearch} onChange={(event) => { setSearch(event.target.value); hideCaptureForSearch(); }} placeholder="Serie, teléfono, nombre, identificación, dirección o nota" title="El teléfono se encuentra aunque lo escribas sin guiones ni espacios." /></label><label>Estado<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">Todos</option><option value="pending">Pendientes</option><option value="paid">Pagados</option><option value="cancelled">Cancelados</option></select></label>{view === "envios" && !fixedForm && can("remittances.create") && <button type="button" className="remittance-primary" disabled={working || uncertain} onClick={resetForm}>Nuevo envío</button>}</div>;
   const transferList = <>
     <p className="remittance-help">{view === "recibos" ? "Recibos por destino. Abre un pendiente para registrar su entrega completa." : "Envíos registrados por tu operación. Abre una referencia para consultar su detalle."}</p>
     <div className="remittance-table-wrap"><table className="remittance-table remittance-transfer-table"><caption>{view === "recibos" ? "Recepción de dinero" : "Listado de envíos"} · {list.length}</caption><thead><tr><th>Referencia</th><th>Fecha</th><th>Remitente → destinatario · teléfono</th><th>Total recibido</th><th>A entregar</th><th>Estado</th></tr></thead><tbody>{list.map((transfer) => <tr key={transfer.id} onDoubleClick={() => { setDetailId(transfer.id); setCancelReason(""); }}><td data-label="Referencia"><button type="button" className="remittance-link" onClick={() => { setDetailId(transfer.id); setCancelReason(""); }}>{view === "recibos" ? transfer.reciboReference : transfer.envioReference}</button><small>{transfer.operatingCode}</small></td><td data-label="Fecha">{formatDate(transfer.createdAt)}</td><td data-label="Clientes"><span className="remittance-client-cell">{transfer.senderContact?.name ?? clientName(transfer.senderClientId)}{transfer.senderContact?.phone || transfer.senderContact?.cellular ? <span className="remittance-client-phone"> · {transfer.senderContact.phone || transfer.senderContact.cellular}</span> : null}<br />→ {transfer.recipientContact?.name ?? clientName(transfer.recipientClientId)}{transfer.recipientContact?.phone || transfer.recipientContact?.cellular ? <span className="remittance-client-phone"> · {transfer.recipientContact.phone || transfer.recipientContact.cellular}</span> : null}</span></td><td data-label="Total recibido">{money(transfer.totalAmount, transfer.sourceCurrency)}</td><td data-label="A entregar">{money(transfer.receiveAmount, transfer.destinationCurrency)}</td><td data-label="Estado"><span className={`remittance-status ${transfer.status}`}>{statusText[transfer.status]}</span></td></tr>)}{!list.length && <tr><td colSpan={6}>No hay {view === "envios" ? "envíos" : "recibos"} para estos filtros.</td></tr>}</tbody></table></div>
@@ -600,7 +608,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
       : payCash === "closedToday" ? `Tu caja de envíos de hoy en ${detail.destinationCurrency} ya se cerró y no admite más movimientos: no se pueden registrar más pagos en ${detail.destinationCurrency} hasta la jornada siguiente.`
       : `Tu caja de envíos en ${detail.destinationCurrency} del ${previousOpenCashDate(snapshot, user.id, detail.destinationCurrency)} sigue abierta: hay que cerrarla y abrir la de hoy en ${cashPlace}.`}</p>
     {/* Going to the box moves the keyboard there: the closed detail does not give the focus back behind it. */}
-    {onOpenCash && payCash !== "closedToday" && <button type="button" onClick={() => { detailFocusReturn.current = false; setDetailId(null); onOpenCash({ operatorId: user.id, currency: detail.destinationCurrency }); }}>Ir a Caja de envíos</button>}
+    {onOpenCash && payCash !== "closedToday" && <button type="button" onClick={() => { setDetailId(null); onOpenCash({ operatorId: user.id, currency: detail.destinationCurrency }); }}>Ir a Caja de envíos</button>}
   </div>;
   const openingCash = snapshot && canOpenCash ? remittanceCashNotice(snapshot, openingOperator, opening.currency) : "ok";
   // A transfer is registered only for an operator who can send; the boxes still list every operator.
@@ -620,7 +628,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
       {(view === "envios" || view === "recibos") && <>
         {!fixedForm && toolbar}
         {!fixedForm && sendCashNotice}
-        {view === "envios" && formOpen && can("remittances.create") && <form onKeyDown={advanceCaptureField} className={"remittance-panel" + fixedPlace("remittance-send-form")} onSubmit={(event) => void requestQuote(event)}>
+        {view === "envios" && formOpen && can("remittances.create") && <form aria-label="Nuevo envío" onKeyDown={advanceCaptureField} className={"remittance-panel" + fixedPlace("remittance-send-form")} onSubmit={(event) => void requestQuote(event)}>
           <h2>Nuevo envío</h2><fieldset disabled={working || uncertain} className="remittance-form-grid">
             <div className="remittance-party-fields" role="group" aria-label="Datos del remitente">
               {newClients.sender ? <div data-client-side="sender"><strong>Nuevo remitente: {newClients.sender.name}</strong><ContactDetails contact={senderContact.contact!} label="Remitente" /><button type="button" onClick={() => setClientEditor("sender")}>Modificar datos del nuevo remitente</button><button type="button" onClick={() => { setNewClients((current) => ({ ...current, sender: undefined })); retireQuote(); setFocusVersion((value) => value + 1); }}>Elegir remitente registrado</button></div> : <ClientPicker api={api} side="sender" senderId="" label="Remitente" clients={eligibleClients(snapshot.clients, "sender", draft.senderClientId)} value={draft.senderClientId} query={senderSearch} onQuery={(value) => { setSenderSearch(value); updateDraft("senderClientId", ""); }} onSelect={(client) => chooseClient("sender", client)} onCreate={can("remittances.clients.create") && snapshot.clientRoutes?.length ? () => setClientEditor("sender") : undefined} contactState={senderContact} floating={fixedForm} />}
@@ -674,15 +682,18 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
       retireQuote(); clearErrors(); setClientEditor(null);
       window.requestAnimationFrame(() => root.current?.querySelector<HTMLElement>(side === "sender" ? '[data-client-side="sender"] + label select' : '.remittance-phone-field input')?.focus());
     }} />}
-    {detail && <Dialog title={`${detail.envioReference} · ${detail.reciboReference}`} returnFocus={detailFocusReturn} onClose={() => { setDetailId(null); if (view === "recibos") setFocusVersion((value) => value + 1); }}>
-      <p><span className={`remittance-status ${detail.status}`}>{statusText[detail.status]}</span> · {detail.operatingCode}</p><p><strong>{detail.senderContact?.name ?? clientName(detail.senderClientId)}</strong> → <strong>{detail.recipientContact?.name ?? clientName(detail.recipientClientId)}</strong></p><QuoteDetails quote={detail} /><p>Creado: {formatDate(detail.createdAt)}<br />Operador: {operatorName(detail.sendingUserId)}<br />Registrado por: {operatorName(detail.registeredBy)}</p>{detail.note && <p>Nota: {detail.note}</p>}
-      <DataTable section={{ title: "Contactos guardados en esta operación", columns: ["Dato", "Valor"], rows: contactRows(detail) }} />
+    {detail && <RemittanceWindow key={detail.id} title={`${detail.envioReference} · ${detail.reciboReference}`} desktopId={desktopId} nextZIndex={nextWindowZIndex} onClose={() => { setDetailId(null); if (view === "recibos") setFocusVersion((value) => value + 1); }}>
+      <div className="remittance-receipt-status"><span className={`remittance-status ${detail.status}`}>{statusText[detail.status]}</span><span>{detail.operatingCode}</span></div>
+      <div className="remittance-receipt-parties"><div><span>Remitente</span><strong>{detail.senderContact?.name ?? clientName(detail.senderClientId)}</strong><small>{detail.senderContact?.phone || detail.senderContact?.cellular}</small></div><div><span>Destinatario</span><strong>{detail.recipientContact?.name ?? clientName(detail.recipientClientId)}</strong><small>{detail.recipientContact?.phone || detail.recipientContact?.cellular}</small></div></div>
+      <div className="remittance-receipt-columns"><section><h3>Importes de la operación</h3><dl className="remittance-summary"><div><dt>Principal</dt><dd>{money(detail.amount, detail.sourceCurrency)}</dd></div>{detail.amountDop !== undefined && <div><dt>Equivalente en DOP</dt><dd>{money(detail.amountDop, "DOP")}</dd></div>}<div><dt>Comisión</dt><dd>{money(detail.commissionAmount, detail.sourceCurrency)}</dd></div><div className="remittance-total"><dt>Total recibido</dt><dd>{money(detail.totalAmount, detail.sourceCurrency)}</dd></div><div className="remittance-total"><dt>Recibe el destinatario</dt><dd>{money(detail.receiveAmount, detail.destinationCurrency)}</dd></div></dl></section><section><h3>Registro del recibo</h3><dl className="remittance-summary"><div><dt>Creado</dt><dd>{formatDate(detail.createdAt)}</dd></div><div><dt>Operador</dt><dd>{operatorName(detail.sendingUserId)}</dd></div><div><dt>Registrado por</dt><dd>{operatorName(detail.registeredBy)}</dd></div></dl>{detail.note && <p>Nota: {detail.note}</p>}</section></div>
+      <details className="remittance-receipt-extra"><summary>Desglose de tasas y comisiones</summary><QuoteDetails quote={detail} /></details>
+      <details className="remittance-receipt-extra"><summary>Contactos guardados en esta operación</summary><DataTable section={{ title: "Contactos guardados en esta operación", columns: ["Dato", "Valor"], rows: contactRows(detail) }} /></details>
       {detail.managerCommission && <DataTable section={{ title: "Anotación histórica manual del gestor", columns: ["Dato", "Valor"], rows: managerCommissionRows(detail.managerCommission) }} />}
       {detail.paidAt && <p>Pagado: {formatDate(detail.paidAt)} · {operatorName(detail.paidBy)}</p>}{detail.cancelReason && <p>Cancelado: {formatDate(detail.cancelledAt)}. Motivo: {detail.cancelReason}</p>}
       {payCashNotice}
       <div className="remittance-actions"><button type="button" onClick={() => runOutput(() => printSections(`Comprobante ${detail.envioReference}`, transferOutput(detail, true), "CyP · Envíos de Dinero", { footerNote: snapshot?.receiptFooterNote }))}>Imprimir comprobante</button>{payoutsShown && detail.status === "pending" && detail.canPay && can("remittances.pay") && <button type="button" className="remittance-primary" onClick={() => confirm({ title: "Confirmar entrega al destinatario", path: `/envios/${encodeURIComponent(detail.id)}/pagar`, body: {}, kind: "pay", description: <p>Registrar entrega única de <strong>{money(detail.receiveAmount, detail.destinationCurrency)}</strong> a <strong>{detail.recipientContact?.name ?? clientName(detail.recipientClientId)}</strong>. Se descuenta de tu caja abierta de hoy. Confirma después de entregar el dinero.</p> })}>Registrar pago completo</button>}</div>
       {sendsShown && detail.status === "pending" && detail.canCancel && can("remittances.cancel") && <form className="remittance-cancel" onSubmit={prepareCancellation}><label>Motivo de cancelación<textarea required maxLength={INPUT_LIMITS.freeNote} value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} /></label><button className="remittance-danger" type="submit" disabled={!cancelReason.trim()}>Revisar cancelación</button></form>}
-    </Dialog>}
+    </RemittanceWindow>}
     {closing && <Dialog title={`Contar caja ${closing.currency}`} onClose={() => setClosing(null)}><form onSubmit={prepareClosing}><p>{operatorName(closing.operatorId)} · {closing.date}</p><p>Esperado: <strong>{money(closing.expected, closing.currency)}</strong></p><label>Efectivo contado<input data-autofocus required inputMode="decimal" maxLength={moneyInputLength} value={counted} onChange={(event) => { if (isDecimalDraft(event.target.value)) setCounted(event.target.value); }} /></label>{error && <p role="alert" className="remittance-error">{error}</p>}<button className="remittance-primary" type="submit">Revisar cierre</button></form></Dialog>}
     {confirmation && <Dialog title={confirmation.title} onClose={() => setConfirmation(null)} locked={busy || uncertain}>{confirmation.description}{confirmationError && <p className="remittance-error" role="alert">{confirmationError}</p>}{uncertain && <p>No cambies los datos ni cierres esta ventana. El reintento usa la misma referencia de operación.</p>}<div className="remittance-actions"><button type="button" disabled={busy || uncertain} onClick={() => setConfirmation(null)}>Volver</button><button type="button" className={confirmation.kind === "cancel" ? "remittance-danger" : "remittance-primary"} disabled={busy} onClick={() => void submitConfirmation()}>{busy ? "Registrando…" : uncertain ? "Reintentar misma operación" : "Confirmar"}</button></div></Dialog>}
     {printTransfer && <Dialog title="¿Quieres imprimir el recibo?" onClose={closePrintPrompt}>

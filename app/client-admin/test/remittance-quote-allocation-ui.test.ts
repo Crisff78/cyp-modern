@@ -142,11 +142,18 @@ createRoot(document.getElementById("root")).render(<App />);`);
           assert.equal(await workspace.getByRole("navigation", { name: "Secciones de Envíos", exact: true }).count(), 0);
           assert.equal(await workspace.getByRole("button", { name: "Nuevo envío", exact: true }).count(), 0);
         } else {
-          // The collector terminal keeps its four sections and its «Nuevo envío».
+          // The collector terminal keeps Envíos, Recibos and Caja (its reports open from its Reportes view) and its «Nuevo envío».
           const sections = workspace.getByRole("navigation", { name: "Secciones de Envíos", exact: true });
           await sections.getByRole("button").first().waitFor();
-          assert.deepEqual(await sections.getByRole("button").allTextContents(), ["Envíos", "Recibos", "Caja", "Reportes"]);
+          assert.deepEqual(await sections.getByRole("button").allTextContents(), ["Envíos", "Recibos", "Caja"]);
           await workspace.getByRole("button", { name: "Nuevo envío", exact: true }).click();
+          // Searching hands the screen to the list; «Nuevo envío» brings the capture back with the filters cleared.
+          const search = workspace.getByLabel("Buscar", { exact: true });
+          await search.fill("QA búsqueda");
+          assert.equal(await workspace.getByRole("form", { name: "Nuevo envío", exact: true }).count(), 0, "search gives the list the capture space");
+          await workspace.getByRole("button", { name: "Nuevo envío", exact: true }).click();
+          await workspace.getByRole("form", { name: "Nuevo envío", exact: true }).waitFor();
+          assert.equal(await search.inputValue(), "");
         }
         const choose = async (label: string, code: string) => { const input = workspace.getByRole("combobox", { name: label, exact: true }); await input.fill(code); await workspace.getByRole("option").filter({ hasText: code }).first().click(); };
         const state = await store.read(), sender = state.clients.find((row) => row.id === "cli-1")!, recipient = state.clients.find((row) => row.id === "cli-5")!;
@@ -222,7 +229,15 @@ createRoot(document.getElementById("root")).render(<App />);`);
         await workspace.getByRole("button", { name: "Calcular cotización", exact: true }).click();
         await workspace.getByText(/El importe real difiere por redondeo/).waitFor();
         assert.match(await workspace.locator('.remittance-quote').innerText(), /DOP 72\.00/);
-        if (surface === "collector") assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+        if (surface === "collector") {
+          assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+          assert.equal(await workspace.getByRole("button", { name: "Reportes", exact: true }).count(), 0);
+          await page.getByRole("navigation", { name: "Navegación principal" }).getByRole("button", { name: "Reportes", exact: true }).click();
+          const reports = page.getByRole("region", { name: "Reportes de envíos", exact: true });
+          await reports.getByRole("button", { name: "Consultar", exact: true }).click();
+          await reports.getByRole("table", { name: "Montos de envíos por moneda de origen y destino", exact: true }).waitFor();
+          assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+        }
       } finally { await context.close(); }
     });
     await t.test("consolidated report filters and totals match CSV and isolated print output", async () => {
@@ -362,9 +377,29 @@ createRoot(document.getElementById("root")).render(<App />);`);
         const transfer = after.remittances.transfers.find(({ sendingUserId }) => sendingUserId === cashier.id)!;
         await payouts.getByRole("button", { name: transfer.reciboReference, exact: true }).click();
         const detail = page.getByRole("dialog", { name: `${transfer.envioReference} · ${transfer.reciboReference}`, exact: true });
+        const initialBox = await detail.boundingBox(); assert(initialBox);
+        const detailTitle = detail.locator(".remittance-receipt-titlebar"); const detailBar = await detailTitle.boundingBox(); assert(detailBar);
+        await page.mouse.move(detailBar.x + 65, detailBar.y + 15); await page.mouse.down(); await page.mouse.move(detailBar.x + 100, detailBar.y + 30); await page.mouse.up();
+        const movedBox = await detail.boundingBox(); assert(movedBox && movedBox.x > initialBox.x + 20);
+        await detail.getByRole("button", { name: /^Maximizar / }).click();
+        assert.ok((await detail.boundingBox())!.width > initialBox.width);
+        await detail.getByRole("button", { name: /^Restaurar tamaño de / }).click();
+        await detail.getByRole("button", { name: /^Minimizar / }).click(); await detail.waitFor({ state: "hidden" });
+        await page.getByRole("button", { name: `Restaurar ${transfer.envioReference} · ${transfer.reciboReference}`, exact: true }).click();
+        await detail.waitFor({ state: "visible" });
+        const parentWindow = page.getByRole("dialog", { name: "Envíos de Dinero", exact: true });
+        await parentWindow.locator(".mdi-window-titlebar > span").click({ position: { x: 5, y: 8 } });
+        assert.ok(Number(await parentWindow.evaluate((node: Element) => getComputedStyle(node).zIndex)) > Number(await detail.evaluate((node: Element) => getComputedStyle(node).zIndex)));
+        await detailTitle.click();
+        assert.ok(Number(await detail.evaluate((node: Element) => getComputedStyle(node).zIndex)) > Number(await parentWindow.evaluate((node: Element) => getComputedStyle(node).zIndex)));
+        await page.screenshot({ path: path.join(output, "receipt-window.png") });
         await detail.getByRole("button", { name: "Registrar pago completo", exact: true }).click();
+        const paymentReview = page.getByRole("dialog", { name: "Confirmar entrega al destinatario", exact: true });
+        await paymentReview.waitFor();
+        assert.equal(await paymentReview.evaluate((node: Element) => node.matches(":modal")), true, "financial review still blocks the desktop");
+        await page.screenshot({ path: path.join(output, "receipt-payment-confirmation.png") });
         assert.equal((await store.read()).remittances.transfers.find(({ id }) => id === transfer.id)?.status, "pending", "reviewing a payout does not move money");
-        await page.getByRole("dialog", { name: "Confirmar entrega al destinatario", exact: true }).getByRole("button", { name: "Confirmar", exact: true }).click();
+        await paymentReview.getByRole("button", { name: "Confirmar", exact: true }).click();
         await detail.locator(".remittance-status.paid").waitFor();
         const paid = (await store.read()).remittances.transfers.find(({ id }) => id === transfer.id)!;
         assert.equal(paid.status, "paid"); assert.equal(paid.paidBy, cashier.id);
