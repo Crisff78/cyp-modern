@@ -56,7 +56,7 @@ function AreaPicker({ kind, options, assigned, onSelect, onClose }: Readonly<{
       <span>Seleccione:</span>
       <div className="legacy-mdi-table-wrap"><AssignmentGrid kind={kind} rows={options} selectedId={selectedId} onSelect={(id) => { setSelectedId(id); setMessage(""); }} /></div>
       {message && <p role="alert" className="collector-assignment-error">{message}</p>}
-      <div className="legacy-dialog-actions centered"><button type="button" disabled={!selected} onClick={submit}>oK</button><button type="button" onClick={onClose}>Cancelar</button></div>
+      <div className="legacy-dialog-actions centered"><button type="button" disabled={!selected} onClick={submit}>Aceptar</button><button type="button" onClick={onClose}>Cancelar</button></div>
     </div>
   </LegacyDialog>;
 }
@@ -89,7 +89,7 @@ function LimitPicker({ rows, onSelect, onClose }: Readonly<{
       <label>Lím. de Pago:<input type="text" inputMode="decimal" maxLength={17} value={payoutLimit} onChange={(event) => { const next = event.target.value; if (isDecimalDraft(next) || next.length < payoutLimit.length) setPayoutLimit(next); }} /></label>
       {rows.some((row) => row.id === currency) && <small>Los valores reemplazarán los límites de esta moneda al aceptar.</small>}
       {error && <p role="alert" className="collector-assignment-error">{error}</p>}
-      <div className="legacy-dialog-actions centered"><button type="submit">oK</button><button type="button" onClick={onClose}>Cancelar</button></div>
+      <div className="legacy-dialog-actions centered"><button type="submit">Aceptar</button><button type="button" onClick={onClose}>Cancelar</button></div>
     </form>
   </LegacyDialog>;
 }
@@ -158,7 +158,7 @@ export function CollectorAssignmentsDialog({ collectorId, collectorName, kind, i
       </div>
       {error && <p className="collector-assignment-error" role="alert">{error}</p>}
       <div className="collector-assignment-scope">{collectorName} · {kind === "limits" ? "Para cambiar los límites que se aplican al cobrador pulsa «Modificar límites operativos DOP». La lista por moneda de esta ventana es solo una anotación temporal de esta sesión: no cambia los límites reales." : "Esta lista es una anotación temporal de esta sesión. Para asignar de verdad una ruta o una zona al cobrador usa Rutas y Zonas en el Panel de Control."}</div>
-      <div className="legacy-relation-footer"><button type="button" onClick={save}>oK</button><button type="button" onClick={onClose}>Cancelar</button></div>
+      <div className="legacy-relation-footer"><button type="button" onClick={save}>Aceptar</button><button type="button" onClick={onClose}>Cancelar</button></div>
     </div>
     {pickerOpen && kind !== "limits" && <AreaPicker kind={kind} options={options} assigned={rows} onSelect={add} onClose={() => setPickerOpen(false)} />}
     {pickerOpen && kind === "limits" && <LimitPicker rows={rows} onSelect={add} onClose={() => setPickerOpen(false)} />}

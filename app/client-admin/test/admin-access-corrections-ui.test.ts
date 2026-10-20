@@ -125,19 +125,19 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
       return { context, page };
     };
     const sidebar = (page: any) => page.locator(".sidebar");
+    // Sections start closed; Clientes and Administración are single buttons always on view.
     const menuItem = async (page: any, group: string, item: string) => {
       const trigger = sidebar(page).getByRole("button", { name: group, exact: true });
       const target = sidebar(page).getByRole("button", { name: item, exact: true });
-      // A profile may fold its groups right after loading; check again if the item is not there yet.
       for (let attempt = 0; ; attempt++) {
-        if (await trigger.getAttribute("aria-expanded") !== "true") await trigger.click();
+        if (!await target.isVisible() && await trigger.getAttribute("aria-expanded") !== "true") await trigger.click();
         try { await target.click({ timeout: 3000 }); return; } catch (error) { if (attempt === 2) throw error; }
       }
     };
     const windowNamed = (page: any, name: string) => page.getByRole("dialog", { name, exact: true });
     const controlPanelTile = async (page: any, tile: string) => {
-      await menuItem(page, "ARCHIVOS", "Admin.");
-      await windowNamed(page, "Panel de Control").getByRole("button", { name: tile, exact: true }).click();
+      await menuItem(page, "ADMINISTRACIÓN", "Administración");
+      await windowNamed(page, "Administración").getByRole("button", { name: tile, exact: true }).click();
     };
     // Reads the account again as the 30-second refresh does.
     const refresh = async (page: any) => {
@@ -173,26 +173,26 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
     await t.test("U6: the side menu keeps the groups the Supervisor opened when the session refreshes", async () => {
       const { context, page } = await open(supervisorToken);
       try {
-        const files = sidebar(page).getByRole("button", { name: "ARCHIVOS", exact: true });
-        assert.equal(await files.getAttribute("aria-expanded"), "false", "Supervisor starts with Reportes & Monitoreo");
-        await files.click(); assert.equal(await files.getAttribute("aria-expanded"), "true");
+        const monitors = sidebar(page).getByRole("button", { name: "MONITOREO", exact: true });
+        assert.equal(await monitors.getAttribute("aria-expanded"), "false", "every section starts closed");
+        await monitors.click(); assert.equal(await monitors.getAttribute("aria-expanded"), "true");
         await refresh(page); await refresh(page);
-        assert.equal(await files.getAttribute("aria-expanded"), "true");
-        assert.equal(await sidebar(page).getByRole("button", { name: "Clientes", exact: true }).isVisible(), true);
+        assert.equal(await monitors.getAttribute("aria-expanded"), "true");
+        assert.equal(await sidebar(page).getByRole("button", { name: "Monitor de cobradores", exact: true }).isVisible(), true);
       } finally { await context.close(); }
     });
 
     await t.test("U3 and U9: Supervisor consults a client's ficha and location read-only, without save buttons", async () => {
       const { context, page } = await open(supervisorToken);
       try {
-        await menuItem(page, "ARCHIVOS", "Clientes");
+        await menuItem(page, "CLIENTES", "Clientes");
         const clients = windowNamed(page, "Clientes");
         await clients.getByTitle("Consultar", { exact: true }).click();
         const ficha = page.getByRole("dialog", { name: "Datos del Cliente...", exact: true });
         await ficha.waitFor();
         assert.equal(await ficha.getByRole("textbox", { name: "Cliente:" }).isDisabled(), true);
         assert.notEqual(await ficha.getByRole("textbox", { name: "Dirección:" }).inputValue(), undefined);
-        assert.equal(await ficha.getByRole("button", { name: "oK", exact: true }).count(), 0);
+        assert.equal(await ficha.getByRole("button", { name: "Aceptar", exact: true }).count(), 0);
         await ficha.getByText("Solo consulta: tu cuenta no tiene permiso para modificar clientes.").waitFor();
         await ficha.getByRole("button", { name: "Cerrar", exact: true }).click(); await ficha.waitFor({ state: "detached" });
         await clients.getByTitle("Mapa", { exact: true }).click();
@@ -206,15 +206,15 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
     await t.test("U3: Supervisor consults a PCP read-only from Admin.", async () => {
       const { context, page } = await open(supervisorToken);
       try {
-        await controlPanelTile(page, "PCPs");
-        const pcps = windowNamed(page, "Puntos de Cobros y Pagos");
+        await controlPanelTile(page, "Puntos de cobro");
+        const pcps = windowNamed(page, "Puntos de cobro y pago");
         await pcps.getByRole("row").filter({ hasText: "PCP sintético" }).click();
         await pcps.getByTitle("Consultar", { exact: true }).click();
         const ficha = page.getByRole("dialog", { name: "Datos del PCP...", exact: true });
         await ficha.waitFor();
         assert.equal(await ficha.getByRole("textbox", { name: "Nombre del PCP" }).inputValue(), "PCP sintético");
         assert.equal(await ficha.getByRole("textbox", { name: "Nombre del PCP" }).isDisabled(), true);
-        assert.equal(await ficha.getByRole("button", { name: "oK", exact: true }).count(), 0);
+        assert.equal(await ficha.getByRole("button", { name: "Aceptar", exact: true }).count(), 0);
         await ficha.getByRole("button", { name: "Cerrar", exact: true }).click(); await ficha.waitFor({ state: "detached" });
       } finally { await context.close(); }
     });
@@ -223,8 +223,8 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
       const editor = await account([1, 10, 170, 172]);
       const { context, page } = await open(editor.token);
       try {
-        await controlPanelTile(page, "PCPs");
-        const pcps = windowNamed(page, "Puntos de Cobros y Pagos");
+        await controlPanelTile(page, "Puntos de cobro");
+        const pcps = windowNamed(page, "Puntos de cobro y pago");
         await pcps.getByRole("row").filter({ hasText: "PCP sintético" }).waitFor();
         assert.equal(await pcps.getByRole("alert").count(), 0, "a missing auxiliary list does not break the window");
         await pcps.getByText("Sin «Visualizar Grupos de PCPs» (160) no se muestran los grupos de los PCPs.", { exact: false }).waitFor();
@@ -237,7 +237,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         assert.equal(await ficha.getByRole("combobox", { name: "Grupo" }).inputValue(), "qa-pcp-group");
         await ficha.getByRole("textbox", { name: "Dirección" }).fill("Dirección sintética revisada");
         const saved = page.waitForResponse((reply: any) => reply.request().method() === "POST" && new URL(reply.url()).pathname === "/api/pcps/qa-pcp");
-        await ficha.getByRole("button", { name: "oK", exact: true }).click();
+        await ficha.getByRole("button", { name: "Aceptar", exact: true }).click();
         assert.equal((await saved).status(), 200); await ficha.waitFor({ state: "detached" });
         const pcp = (await store.read()).adminTools?.pcps.find(({ id }: { id: string }) => id === "qa-pcp");
         assert.equal(pcp?.address, "Dirección sintética revisada"); assert.equal(pcp?.active, true); assert.equal(pcp?.groupId, "qa-pcp-group");
@@ -248,8 +248,8 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
       const viewer = await account([1, 10, 115]);
       const { context, page } = await open(viewer.token);
       try {
-        await controlPanelTile(page, "Sesiones");
-        const sessions = windowNamed(page, "Listado de Sesiones");
+        await controlPanelTile(page, "Sesiones abiertas");
+        const sessions = windowNamed(page, "Sesiones abiertas");
         await sessions.getByRole("row").filter({ hasText: "Activa" }).filter({ hasNotText: "(esta sesión)" }).first().click();
         assert.equal(await sessions.getByTitle("Cerrar sesión", { exact: true }).isDisabled(), true);
       } finally { await context.close(); }
@@ -259,8 +259,8 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
       const acceptor = await account([1, 10, 330, 334]);
       const { context, page } = await open(acceptor.token);
       try {
-        await menuItem(page, "COBROS", "Depósitos por Cobradores");
-        const deposits = windowNamed(page, "Depósitos por Cobradores");
+        await menuItem(page, "COBROS", "Depósitos de cobradores");
+        const deposits = windowNamed(page, "Depósitos de cobradores");
         await deposits.locator("tbody tr").filter({ hasText: /200.00/ }).first().click();
         const accept = deposits.getByTitle("Aceptar depósito", { exact: true });
         assert.equal(await accept.isDisabled(), false);
@@ -281,8 +281,8 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         const importer = await account([...ids]);
         const { context, page } = await open(importer.token);
         try {
-          await menuItem(page, "COBROS", "Cargos");
-          const upload = windowNamed(page, "Cargos").getByRole("button", { name: "Subir archivo de cargos", exact: true });
+          await menuItem(page, "COBROS", "Cargos por cobrar");
+          const upload = windowNamed(page, "Cargos por cobrar").getByRole("button", { name: "Subir archivo de cargos", exact: true });
           assert.equal(await upload.isDisabled(), !enabled, `codes ${ids.join(",")}`);
         } finally { await context.close(); }
       }
@@ -293,9 +293,9 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
       for (const [token, expected] of [[reader.token, true], [adminToken, false]] as const) {
         const { context, page } = await open(token);
         try {
-          await menuItem(page, "REPORTES & MONITOREO", "Reportes");
-          await windowNamed(page, "Reportes").getByRole("button", { name: "Cobros Res.", exact: true }).click();
-          const report = windowNamed(page, "Reporte de Cobros Resumido");
+          await menuItem(page, "CUADRES Y REPORTES", "Reportes");
+          await windowNamed(page, "Reportes").getByRole("button", { name: "Resumen de cobros", exact: true }).click();
+          const report = windowNamed(page, "Resumen de cobros");
           await report.getByRole("button", { name: /Refrescar/ }).first().waitFor();
           const note = report.getByText("Este reporte usa datos que tu cuenta no tiene permiso para consultar: «Visualizar Cobros» (320). Se muestra sin esos datos.", { exact: true });
           assert.equal(await note.count(), expected ? 1 : 0);

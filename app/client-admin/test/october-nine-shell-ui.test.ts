@@ -115,40 +115,46 @@ test("October nine shell changes work in actual App with isolated synthetic APIs
     context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: "es-DO", timezoneId: "America/Santo_Domingo", serviceWorkers: "block" });
     await protect(context, token); const page = await context.newPage();
     const reset = async () => { await page.goto(origin); await page.getByRole("button", { name: "Abrir cuenta", exact: true }).waitFor(); };
-    const openNav = async (name: string, selector: string) => { await reset(); await page.locator('.sidebar').getByRole("button", { name, exact: true }).click(); const view = page.locator(selector); await view.waitFor(); return view; };
-    const openAdmin = async (name: string, selector: string) => { await reset(); await page.getByRole("button", { name: "Admin.", exact: true }).click(); await page.getByRole("dialog", { name: "Panel de Control", exact: true }).getByRole("button", { name, exact: true }).click(); const view = page.locator(selector); await view.waitFor(); return view; };
+    const openNav = async (name: string, selector: string) => { await reset(); const option = page.locator('.sidebar').getByRole("button", { name, exact: true });
+      // Sections start closed: open the one that holds the option.
+      const folded = page.locator(`.sidebar .nav-item[aria-label="${name}"]`);
+      // Wait until the menu of the account is drawn: the option on view or folded in its section.
+      await option.or(folded).first().waitFor({ state: "attached" });
+      if (!await option.isVisible()) await page.locator(".sidebar .nav-group").filter({ has: page.locator(`.nav-item[aria-label="${name}"]`) }).locator(".nav-group-trigger").click();
+      await option.click(); const view = page.locator(selector); await view.waitFor(); return view; };
+    const openAdmin = async (name: string, selector: string) => { await reset(); await page.getByRole("button", { name: "Administración", exact: true }).click(); await page.getByRole("dialog", { name: "Administración", exact: true }).getByRole("button", { name, exact: true }).click(); const view = page.locator(selector); await view.waitFor(); return view; };
     const run = async (name: string, action: () => Promise<void>) => t.test(name, async () => {
       try { await action(); cases.push({ name, status: "PASS" }); }
       catch (error) { cases.push({ name, status: "FAIL" }); await page.screenshot({ path: path.join(output, `failure-${cases.length}.png`) }).catch(() => {}); throw error; }
     });
     await run("dashboard modules, visible SVGs, support and clickable daily settlement", async () => {
-      await reset(); const launchers = page.locator(".desktop-launchers");
-      assert.deepEqual(await launchers.getByRole("button").allTextContents(), ["CARGOS", "COBROS", "DESCARGOS", "PAGOS", "ENVÍO DE DINERO", "CUADRES"]);
-      assert.equal(await page.getByRole("button", { name: "Soporte Técnico", exact: true }).isVisible(), true);
-      await page.getByTitle("Abrir Cuadres Diarios", { exact: true }).click(); await page.getByRole("dialog", { name: "Cuadres Diarios", exact: true }).waitFor();
+      // No quick buttons above the desktop (removed 2026-10-20): the desktop starts right under the top bar.
+      await reset(); assert.equal(await page.locator(".desktop-launchers").count(), 0);
+      assert.equal(await page.getByRole("button", { name: "Ayuda", exact: true }).isVisible(), true);
+      await page.getByTitle("Abrir Cuadres diarios", { exact: true }).click(); await page.getByRole("dialog", { name: "Cuadres diarios", exact: true }).waitFor();
       await page.screenshot({ path: path.join(output, "dashboard.png") });
     });
     let bankId = "";
     await run("banks create, edit and inactivate through the actual Administration catalog", async () => {
       const view = await openAdmin("Bancos", ".connected-banks"); await view.getByTitle("Nuevo", { exact: true }).click();
       const dialog = page.getByRole("dialog", { name: "Datos del Banco...", exact: true });
-      await dialog.getByLabel("Banco:", { exact: true }).fill("Banco sintético octubre"); await dialog.getByRole("button", { name: "oK", exact: true }).click();
+      await dialog.getByLabel("Banco:", { exact: true }).fill("Banco sintético octubre"); await dialog.getByRole("button", { name: "Aceptar", exact: true }).click();
       await view.getByRole("cell", { name: "Banco sintético octubre", exact: true }).waitFor();
       bankId = (await store.read()).banks!.find((bank) => bank.name === "Banco sintético octubre")!.id;
-      await view.getByTitle("Editar", { exact: true }).click(); await dialog.getByLabel("Activo", { exact: true }).uncheck(); await dialog.getByRole("button", { name: "oK", exact: true }).click();
+      await view.getByTitle("Editar", { exact: true }).click(); await dialog.getByLabel("Activo", { exact: true }).uncheck(); await dialog.getByRole("button", { name: "Aceptar", exact: true }).click();
       await dialog.waitFor({ state: "hidden" }); assert.equal((await store.read()).banks!.find((bank) => bank.id === bankId)!.active, false);
-      await view.getByTitle("Editar", { exact: true }).click(); await dialog.getByLabel("Activo", { exact: true }).check(); await dialog.getByRole("button", { name: "oK", exact: true }).click(); await dialog.waitFor({ state: "hidden" });
+      await view.getByTitle("Editar", { exact: true }).click(); await dialog.getByLabel("Activo", { exact: true }).check(); await dialog.getByRole("button", { name: "Aceptar", exact: true }).click(); await dialog.waitFor({ state: "hidden" });
       await page.screenshot({ path: path.join(output, "banks.png") });
     });
     const footer = "Pie sintético octubre\nSegunda línea <texto>";
     await run("company logo is bounded and configurable receipt footer saves literal text", async () => {
-      const view = await openAdmin("Configuracion General", ".legacy-config-layout");
+      const view = await openAdmin("Configuración general", ".legacy-config-layout");
       await page.waitForFunction(() => !(document.querySelector(".legacy-config-actions .ok-button") as HTMLButtonElement)?.disabled);
       const upload = view.locator('input[type="file"]'); await upload.waitFor();
       await upload.setInputFiles({ name: "synthetic-logo.png", mimeType: "image/png", buffer: Buffer.from(logo.split(",")[1], "base64") });
       await view.locator(".company-logo-setting img").waitFor();
       await view.getByRole("button", { name: "Cobros y Pagos", exact: true }).click(); await view.getByRole("button", { name: "Recibos", exact: true }).click();
-      await view.getByLabel(/^Nota al pie del recibo:/).fill(footer); await view.getByRole("button", { name: "oK", exact: true }).click();
+      await view.getByLabel(/^Nota al pie del recibo:/).fill(footer); await view.getByRole("button", { name: "Aceptar", exact: true }).click();
       await page.getByText("Configuración guardada", { exact: true }).waitFor();
       assert.equal((await store.read()).systemConfig!.companyLogoDataUrl, logo); assert.equal((await store.read()).systemConfig!.receiptFooterNote, footer);
       await page.locator(".brand-company-logo img").waitFor();
@@ -178,7 +184,7 @@ test("October nine shell changes work in actual App with isolated synthetic APIs
       failMainSnapshots = true;
       try {
         const createReload = failedSnapshot();
-        await dialog.getByRole("button", { name: "oK", exact: true }).click(); await dialog.waitFor({ state: "hidden" }); await createReload;
+        await dialog.getByRole("button", { name: "Aceptar", exact: true }).click(); await dialog.waitFor({ state: "hidden" }); await createReload;
         await page.getByText("El cliente quedó guardado; no se pudo actualizar el listado.", { exact: true }).waitFor();
         assert.equal(controlledSnapshotFailures, failuresBefore + 1);
         const created = (await store.read()).clients.find((client) => client.name === "Cliente creado sintético octubre")!;
@@ -205,7 +211,7 @@ test("October nine shell changes work in actual App with isolated synthetic APIs
         assert.equal(await dialog.getByRole("button", { name: "Generar código", exact: true }).isDisabled(), true); assert.equal(await dialog.getByRole("button", { name: "Generar identificación", exact: true }).count(), 0);
         await dialog.locator("#client-generated-code").fill("QA-MANUAL-EDIT");
         const editReload = failedSnapshot();
-        await dialog.getByRole("button", { name: "oK", exact: true }).click(); await dialog.waitFor({ state: "hidden" }); await editReload;
+        await dialog.getByRole("button", { name: "Aceptar", exact: true }).click(); await dialog.waitFor({ state: "hidden" }); await editReload;
         const editWrite = writes.findLast((write) => write.pathname === clientPath)!;
         assert.equal(editWrite.status, 200); assert.equal(Object.hasOwn(editWrite.body, "reservationId"), false); assert.equal(Object.hasOwn(editWrite.body, "internalIdentification"), false);
         assert.equal(editWrite.body.code, "QA-MANUAL-EDIT"); assert.equal(editWrite.body.identification, "QA-LEGAL-CREATED"); assert.equal(editWrite.body.lat, 0.123456); assert.equal(editWrite.body.lng, 0.654321);
@@ -216,7 +222,7 @@ test("October nine shell changes work in actual App with isolated synthetic APIs
       } finally { failMainSnapshots = false; }
     });
     await run("deliveries search actual collector and actor data, retain current week and open ledger detail on double click", async () => {
-      const view = await openNav("Entregas de Dinero", ".cash-deliveries-legacy-view");
+      const view = await openNav("Efectivo a cobradores", ".cash-deliveries-legacy-view");
       assert.deepEqual(await view.locator('input[type="date"]').evaluateAll((nodes: HTMLInputElement[]) => nodes.map((node) => node.value)), [currentOperationalWeek().from, currentOperationalWeek().to]);
       const searches = [["Serie / referencia", delivery.id], ["Celular del cobrador", "5550101"], ["Nombre del cobrador", "sintético octubre"], ["Identificación del cobrador", "QA-COL-OCT"], ["Registrado por", delivery.createdByName], ["Nota", "Nota entrega octubre"]];
       for (const [label, value] of searches) { await view.getByLabel(label, { exact: true }).fill(value); assert.equal(await view.locator("tbody tr").filter({ hasText: "Cobrador sintético octubre" }).count(), 1); await view.getByLabel(label, { exact: true }).fill(""); }
@@ -226,11 +232,11 @@ test("October nine shell changes work in actual App with isolated synthetic APIs
       assert.ok((await detail.innerText()).includes(delivery.createdByName)); await page.screenshot({ path: path.join(output, "delivery-detail.png") });
     });
     await run("charges import and collection print/map tools sit together at left; deposit denominations ascend without changing greedy refresh", async () => {
-      const charges = await openNav("Cargos", ".charges-view");
+      const charges = await openNav("Cargos por cobrar", ".charges-view");
       const refresh = await charges.getByTitle("Refrescar", { exact: true }).boundingBox(), upload = await charges.locator(".mdi-toolbar-extra").getByTitle("Subir", { exact: true }).boundingBox(); assert(refresh && upload); assert(upload.x - (refresh.x + refresh.width) < 24);
       assert.equal(await charges.locator(".mdi-toolbar-extra").getByTitle("Subir", { exact: true }).locator("svg").evaluate((node: SVGElement) => getComputedStyle(node).display), "block");
       await charges.getByTitle("Nuevo", { exact: true }).click(); const chargeDialog = page.getByRole("dialog", { name: "Datos del Cargo...", exact: true }); await chargeDialog.waitFor(); assert.equal(await chargeDialog.getByLabel("Cantidad", { exact: true }).count(), 1); assert.equal(await chargeDialog.getByText("Tasa / Cantidad", { exact: true }).count(), 0);
-      const deposits = await openNav("Depósitos por Cobradores", ".deposits-legacy-view"); await deposits.getByTitle("Nuevo", { exact: true }).click();
+      const deposits = await openNav("Depósitos de cobradores", ".deposits-legacy-view"); await deposits.getByTitle("Nuevo", { exact: true }).click();
       const deposit = page.getByRole("dialog", { name: "Datos del Depósito...", exact: true }); await deposit.waitFor();
       const names = await deposit.locator(".deposit-denominations-table input").evaluateAll((nodes: HTMLInputElement[]) => nodes.map((node) => node.getAttribute("aria-label")));
       assert.deepEqual(names, [1, 100, 500, 1000, 2000, 2500, 5000, 10000, 20000, 50000, 100000, 200000].map((value) => `Cantidad ${value / 100}`));
@@ -239,21 +245,21 @@ test("October nine shell changes work in actual App with isolated synthetic APIs
       await page.screenshot({ path: path.join(output, "deposit-denominations.png") });
     });
     await run("collection bank reference and note persist; selected row highlights; list printing is a single table and current receipt uses configured footer", async () => {
-      const view = await openNav("Cobros", ".collections-legacy-view");
+      const view = await openNav("Cobros realizados", ".collections-legacy-view");
       const refresh = await view.getByTitle("Refrescar", { exact: true }).boundingBox(), print = await view.getByTitle("Imprimir", { exact: true }).boundingBox(), map = await view.getByTitle("Mapa", { exact: true }).boundingBox(); assert(refresh && print && map); assert(print.x - (refresh.x + refresh.width) < 24); assert(map.x - (print.x + print.width) < 16);
       await view.getByTitle("Nuevo", { exact: true }).click(); const dialog = page.getByRole("dialog", { name: "Datos del Cobro...", exact: true });
       await dialog.locator("#receipt-client-code").fill("QA-CLIENT-OCT"); await dialog.locator("#receipt-bank").selectOption(bankId);
       await dialog.locator("#receipt-reference").fill("REF-OCT-SYNTHETIC"); await dialog.locator("#receipt-note").fill("Nota cobro sintética octubre");
-      await dialog.getByRole("button", { name: "Agregar", exact: true }).click(); const picker = page.getByRole("dialog", { name: "Seleccionar...", exact: true }); await picker.getByRole("button", { name: "oK", exact: true }).click();
+      await dialog.getByRole("button", { name: "Agregar", exact: true }).click(); const picker = page.getByRole("dialog", { name: "Seleccionar...", exact: true }); await picker.getByRole("button", { name: "Aceptar", exact: true }).click();
       await dialog.getByRole("button", { name: "Guardar", exact: true }).click(); await dialog.waitFor({ state: "hidden" });
       const movement = (await store.read()).movements.findLast((movement) => movement.reference === "REF-OCT-SYNTHETIC")!; assert.equal(movement.bankId, bankId); assert.equal(movement.bankName, "Banco sintético octubre"); assert.equal(movement.note, "Nota cobro sintética octubre");
       const row = view.locator("tbody tr[role=button]").filter({ hasText: movement.receiptToken.slice(0, 10) }); await row.locator("td").first().click();
       await page.waitForFunction((prefix: string) => Array.from(document.querySelectorAll(".collections-table tbody tr")).find((node) => node.textContent?.includes(prefix))?.getAttribute("aria-selected") === "true", movement.receiptToken.slice(0, 10)); assert.equal(await row.getAttribute("aria-selected"), "true");
       assert.notEqual(await row.locator("td").first().evaluate((node: HTMLElement) => getComputedStyle(node).backgroundColor), "rgba(0, 0, 0, 0)");
       await view.getByTitle("Imprimir", { exact: true }).click(); let choice = page.getByRole("dialog", { name: "Seleccione...", exact: true });
-      await choice.getByLabel("Listado de registros", { exact: true }).check(); const popupPromise = context.waitForEvent("page"); await choice.getByRole("button", { name: "oK", exact: true }).click(); const popup = await popupPromise;
+      await choice.getByLabel("Listado de registros", { exact: true }).check(); const popupPromise = context.waitForEvent("page"); await choice.getByRole("button", { name: "Aceptar", exact: true }).click(); const popup = await popupPromise;
       await popup.getByRole("heading", { name: "Listado de Cobros", exact: true }).waitFor(); assert.equal(await popup.getByRole("heading", { name: "Totales por moneda", exact: true }).count(), 1); assert.ok((await popup.locator("body").innerText()).includes("REF-OCT-SYNTHETIC")); assert.equal(await page.locator(".collection-ticket-preview").count(), 0); await popup.close();
-      await view.getByTitle("Imprimir", { exact: true }).click(); choice = page.getByRole("dialog", { name: "Seleccione...", exact: true }); await choice.getByLabel("Registro actual", { exact: true }).check(); await choice.getByRole("button", { name: "oK", exact: true }).click();
+      await view.getByTitle("Imprimir", { exact: true }).click(); choice = page.getByRole("dialog", { name: "Seleccione...", exact: true }); await choice.getByLabel("Registro actual", { exact: true }).check(); await choice.getByRole("button", { name: "Aceptar", exact: true }).click();
       const receipt = page.getByRole("dialog", { name: "Imprimir Recibo de Cobro...", exact: true }); await receipt.getByRole("button", { name: "Imprimir / Guardar PDF", exact: true }).waitFor();
       await receipt.getByRole("button", { name: "Imprimir / Guardar PDF", exact: true }).click(); assert.equal(await page.evaluate(() => (window as any).__qaPrintCalls), 1); assert.equal(await receipt.locator(".collection-ticket-preview").count(), 1); assert.ok((await receipt.innerText()).includes(footer)); assert.ok((await receipt.innerText()).includes("Banco sintético octubre")); await page.screenshot({ path: path.join(output, "collection-receipt.png") });
     });
@@ -262,7 +268,7 @@ test("October nine shell changes work in actual App with isolated synthetic APIs
       const ownPage = await ownContext.newPage(); await ownPage.goto(origin); await ownPage.getByRole("button", { name: "Abrir cuenta", exact: true }).click(); await ownPage.getByRole("button", { name: "Cambiar mi clave", exact: true }).click();
       const dialog = ownPage.getByRole("dialog", { name: "Cambiar mi clave...", exact: true }); await dialog.getByLabel("Clave actual:", { exact: true }).fill("Incorrecta-ficticia"); await dialog.getByLabel("Nueva clave:", { exact: true }).fill("Nueva-ficticia-2026!"); await dialog.getByLabel("Confirmación:", { exact: true }).fill("Nueva-ficticia-2026!"); await dialog.getByRole("button", { name: "Guardar", exact: true }).click(); await dialog.getByRole("alert").waitFor();
       assert.equal(await ownPage.evaluate(() => Boolean(localStorage.getItem("cyp-admin-token"))), true);
-      await dialog.getByLabel("Clave actual:", { exact: true }).fill("Demo-CyP-2026!"); await dialog.getByRole("button", { name: "Guardar", exact: true }).click(); await ownPage.getByRole("button", { name: /^Administrador/ }).waitFor(); assert.equal(await ownPage.evaluate(() => localStorage.getItem("cyp-admin-token")), null);
+      await dialog.getByLabel("Clave actual:", { exact: true }).fill("Demo-CyP-2026!"); await dialog.getByRole("button", { name: "Guardar", exact: true }).click(); await ownPage.getByRole("heading", { name: "Iniciar sesión", exact: true }).waitFor(); assert.equal(await ownPage.evaluate(() => localStorage.getItem("cyp-admin-token")), null);
       assert.equal((await app.inject({ url: "/api/snapshot", headers: { authorization: `Bearer ${token}` } })).statusCode, 200);
       const oldLogin = await passwordApp.inject({ method: "POST", url: "/api/auth/login", payload: { email: "admin", password: "Demo-CyP-2026!" } }); assert.equal(oldLogin.statusCode, 401);
       const newLogin = await passwordApp.inject({ method: "POST", url: "/api/auth/login", payload: { email: "admin", password: "Nueva-ficticia-2026!" } }); assert.equal(newLogin.statusCode, 200);

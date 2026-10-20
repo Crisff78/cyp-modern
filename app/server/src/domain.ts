@@ -704,7 +704,7 @@ function findClientByIdentificacion(state: State, identificacion: string) {
 // they are never registered as a charge.
 export function assertChargeService(service: string, previous?: string) {
   if (service !== previous && /remesa/i.test(service))
-    throw new DomainError("REMITTANCE_SERVICE", "Los envíos de dinero se registran en Envíos de Dinero, no como cargo.", 422);
+    throw new DomainError("REMITTANCE_SERVICE", "Los envíos de dinero se registran en Remesas → Envíos de dinero, no como cargo.", 422);
 }
 export function importCharges(
   state: State,

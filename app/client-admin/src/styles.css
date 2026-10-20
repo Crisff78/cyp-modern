@@ -8795,6 +8795,8 @@ table {
 
 .client-finance-tabs {
   flex: 0 0 auto;
+  /* Full tab names ("Cargos que se repiten") wrap instead of hiding behind a scroll. */
+  flex-wrap: wrap;
 }
 
 .client-finance-filters {
@@ -11113,7 +11115,6 @@ table {
 .topbar-actions button.status-badge { cursor: pointer; }
 .topbar-actions button.status-badge:hover,
 .topbar-actions button.status-badge:focus-visible { outline: 2px solid var(--cyp-success-text, #047857); outline-offset: 2px; }
-.desktop-launchers .launcher-settlements { --launcher-color: oklch(.43 .1 185); --launcher-hover: oklch(.36 .09 185); }
 .client-generated-field { display: grid; grid-template-columns: 136px minmax(0, 1fr) auto; align-items: center; gap: 8px; }
 .client-generated-field > label { white-space: normal; }
 .client-generated-field > input { width: 100%; min-width: 0; }
@@ -11244,56 +11245,6 @@ table {
   stroke-width: 2;
 }
 
-/* Entregas de Dinero: search of a remittance by beneficiary or sender. */
-.cash-delivery-remittance-search {
-  flex: 0 0 auto;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 10px;
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--cyp-border-strong, #9ca3af);
-  background: #f0faf6;
-  font-size: 12px;
-  color: #1f2d27;
-}
-.cash-delivery-remittance-search strong {
-  color: #064e3b;
-}
-.cash-delivery-remittance-search label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex: 1 1 300px;
-  min-width: 0;
-}
-.cash-delivery-remittance-search input {
-  flex: 1 1 auto;
-  min-width: 0;
-  height: 26px;
-  padding: 0 6px;
-  border: 1px solid var(--cyp-border-strong, #94a3b8);
-  border-radius: 4px;
-  background: white;
-  font-size: 12px;
-}
-.cash-delivery-remittance-search button {
-  height: 26px;
-  padding: 0 12px;
-  border: 1px solid #047857;
-  border-radius: 4px;
-  background: #047857;
-  color: white;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-}
-.cash-delivery-remittance-search small {
-  flex: 1 1 100%;
-  color: #44505c;
-  font-size: 11px;
-}
-
 /* The selected record stands out clearly: stronger blue, bold text and a frame
    around the whole row (before it was a pale blue that got lost among white rows). */
 .collections-table tbody tr.selected-row td,
@@ -11372,18 +11323,25 @@ table {
   color: var(--cyp-danger-text, #b42318);
   border-color: var(--cyp-danger-text, #b42318);
 }
-/* Fixed light surfaces keep readable text in the dark theme too. */
-.cash-delivery-remittance-search input {
-  color: #1f2d27;
-}
-.cash-delivery-remittance-search input::placeholder,
-:root[data-theme="dark"] .cash-delivery-remittance-search input::placeholder {
-  color: #5b6876;
-}
 .help-content .support-contact p strong {
   color: inherit;
 }
 /* Between 1001 and 1360 px the informative badge gives its room to the buttons. */
 @media (min-width: 1001px) and (max-width: 1360px) {
   .app-shell .topbar-actions span.status-badge { display: none; }
+}
+
+/* Narrow menu (remembered per account): each section keeps its two-letter mark. */
+.sidebar-collapsed .nav-group-trigger { justify-content: center; }
+.sidebar-collapsed .nav-group-trigger::before { content: attr(data-short-label); font-size: 11px; letter-spacing: 0.04em; }
+/* On a phone the menu slides in at full width: the narrow setting of the computer does not apply. */
+@media (max-width: 560px) {
+  .sidebar-collapsed .nav-group-trigger { justify-content: space-between; }
+  .sidebar-collapsed .nav-group-trigger::before { content: none; }
+  .sidebar-collapsed .nav-group-trigger > span,
+  .sidebar-collapsed .nav-group-trigger > svg,
+  .sidebar-collapsed .nav-item > span,
+  .sidebar-collapsed .nav-item > small,
+  .sidebar-collapsed .workspace-switch > span:nth-child(2) { display: revert; }
+  .sidebar-collapsed .nav-item { justify-content: flex-start; }
 }

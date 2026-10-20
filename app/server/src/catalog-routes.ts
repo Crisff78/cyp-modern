@@ -195,7 +195,7 @@ export function registerCatalogRoutes(app: FastifyInstance, store: Store, user: 
       const service = input.serviceId ? requireRow(state.services, input.serviceId, "Servicio") : state.services.find((item) => item.service === input.service);
       if (!service || service.service !== input.service) throw new DomainError("SERVICE_REQUIRED", "Selecciona un servicio del catálogo.", 422);
       if (/remesa/i.test(service.service) && (!current || current.serviceId !== service.id))
-        throw new DomainError("REMITTANCE_SERVICE", "Los envíos de dinero se registran en Envíos de Dinero, no como cargo.", 422);
+        throw new DomainError("REMITTANCE_SERVICE", "Los envíos de dinero se registran en Remesas → Envíos de dinero, no como cargo.", 422);
       if (!service.active && (!current || current.serviceId !== service.id)) throw new DomainError("SERVICE_INACTIVE", "Selecciona un servicio activo.", 409);
       if (!Object.hasOwn(frequencyCodes, input.frequency)) throw new DomainError("FREQUENCY_INVALID", "Selecciona una frecuencia válida.", 422);
       if (input.endDate && input.endDate < input.startDate) throw new DomainError("DATE_RANGE", "La fecha final debe ser igual o posterior a la inicial.", 422);

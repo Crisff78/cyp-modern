@@ -16,7 +16,7 @@ export const decimalCents = (value: string, allowZero = false) => {
 };
 const escapeHtml = (value: unknown) => String(value ?? "").replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]!);
 export type OutputSection = { title: string; columns: string[]; rows: (string | number)[][] };
-export function printSections(title: string, sections: OutputSection[], subtitle = "CyP · Envíos de Dinero", options: { footerNote?: string } = {}) {
+export function printSections(title: string, sections: OutputSection[], subtitle = "CyP · Remesas", options: { footerNote?: string } = {}) {
   const popup = window.open("", "_blank", "width=1000,height=750");
   if (!popup) throw new Error("Permite abrir la ventana de impresión para este sitio.");
   popup.opener = null;

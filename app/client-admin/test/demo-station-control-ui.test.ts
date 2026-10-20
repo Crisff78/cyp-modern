@@ -99,7 +99,7 @@ remittancesApi("/snapshot").then(snapshot => createRoot(document.getElementById(
       assert.equal(await dialog.getByLabel("Activa", { exact: true }).isDisabled(), true);
       assert.equal(await dialog.getByLabel("Lic.:", { exact: true }).inputValue(), "");
       const rejected = page.waitForResponse((response: any) => new URL(response.url()).pathname === "/api/estaciones" && response.request().method() === "POST");
-      await dialog.getByRole("button", { name: "oK", exact: true }).click();
+      await dialog.getByRole("button", { name: "Aceptar", exact: true }).click();
       assert.equal((await rejected).status(), 422);
       await dialog.getByRole("alert").filter({ hasText: "Estación no encontrada." }).waitFor();
       assert.equal(getAdminTools(await store.read()).stations.length, 0);
@@ -114,7 +114,7 @@ remittancesApi("/snapshot").then(snapshot => createRoot(document.getElementById(
       assert.equal(await dialog.getByLabel("ID dispositivo", { exact: true }).inputValue(), "DISP-PRUEBA-01");
       assert.equal(await dialog.getByLabel("SO RRAA:", { exact: true }).inputValue(), "SO-DEMO");
       await dialog.getByLabel("Activa", { exact: true }).check();
-      await dialog.getByRole("button", { name: "oK", exact: true }).click();
+      await dialog.getByRole("button", { name: "Aceptar", exact: true }).click();
       await page.getByText("Datos guardados correctamente.", { exact: true }).waitFor();
       const [station] = getAdminTools(await store.read()).stations;
       assert.equal(station.name, "EST-PRUEBA-01"); assert.equal(station.deviceId, "DISP-PRUEBA-01");
