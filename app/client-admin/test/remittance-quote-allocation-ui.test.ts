@@ -349,7 +349,9 @@ createRoot(document.getElementById("root")).render(<App />);`);
         await print.getByRole("button", { name: "No imprimir", exact: true }).click();
         const after = await store.read(); assert.equal(after.clients.length, before.clients.length + 2);
         assert.equal(after.remittances.transfers.length, before.remittances.transfers.length + 1);
-        assert.equal(await sender.inputValue(), ""); assert.equal(await sender.evaluate((element: Element) => element === document.activeElement), true);
+        assert.equal(await sender.inputValue(), "");
+        await page.waitForFunction(() => !document.querySelector("dialog[open]") && document.activeElement?.closest('[data-client-side="sender"]') !== null, undefined, { timeout: 5000 }).catch(() => undefined);
+        assert.equal(await sender.evaluate((element: Element) => element === document.activeElement), true, "after a confirmed send the cursor returns to the sender");
         // Paying is done in its own window, «Pagos de Envíos», with the cursor in Buscar.
         assert.equal(await workspace.getByRole("button", { name: "Recibos", exact: true }).count(), 0);
         await page.locator(".sidebar").getByRole("button", { name: "Pagos de Envíos", exact: true }).click();

@@ -145,7 +145,7 @@ export function ClientPicker({ api, side, senderId, label, clients, value, query
         place, hidden while a client is chosen, so the field never moves when the choice is made or edited. */}
     {onCreate && <button type="button" className={"remittance-client-create" + (selected ? " is-reserved" : "")} aria-hidden={selected ? true : undefined} tabIndex={selected ? -1 : undefined} disabled={Boolean(selected) || lookupBusy || Boolean(lookupError) || missingSnapshotClients} onClick={() => { setExpanded(false); onCreate(); }}>Registrar cliente nuevo</button>}
     <div className="remittance-client-anchor" ref={anchorRef}>
-    <label htmlFor={id}>{label}<input id={id} type="search" inputMode="text" autoComplete="off" value={query} role="combobox" aria-autocomplete="list" aria-expanded={expanded} aria-controls={`${id}-options`} aria-activedescendant={expanded && visible[highlight] ? `${id}-${highlight}` : undefined} onFocus={() => { setExpanded(true); setHighlight(-1); }} onBlur={() => setExpanded(false)} onChange={(event) => { onQuery(event.target.value); setExpanded(true); setHighlight(-1); }} onKeyDown={(event) => {
+    <label htmlFor={id}>{label}<input id={id} type="search" inputMode="text" autoComplete="off" value={query} role="combobox" aria-autocomplete="list" aria-expanded={expanded} aria-controls={`${id}-options`} aria-activedescendant={expanded && visible[highlight] ? `${id}-${highlight}` : undefined} onFocus={(event) => { if (event.currentTarget.dataset.quietFocus) { delete event.currentTarget.dataset.quietFocus; return; } setExpanded(true); setHighlight(-1); }} onClick={() => setExpanded(true)} onBlur={() => setExpanded(false)} onChange={(event) => { onQuery(event.target.value); setExpanded(true); setHighlight(-1); }} onKeyDown={(event) => {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); setExpanded(true); setHighlight((current) => Math.min(Math.max(current + (event.key === "ArrowDown" ? 1 : -1), 0), Math.max(visible.length - 1, 0))); }
       // Enter picks only a highlighted option, or the only match of a typed search when the view holds all of them.
       // With nothing typed or highlighted, Enter goes on to the next field.
@@ -203,7 +203,8 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   const [outputError, setOutputError] = useState("");
   const [notice, setNotice] = useState("");
   const [search, setSearch] = useState(pendingPayout?.search ?? "");
-  const [status, setStatus] = useState("all");
+  // «Pagos de Envíos» opens on the receipts still to pay.
+  const [status, setStatus] = useState(pendingPayout || (sections.length === 1 && sections[0] === "recibos") ? "pending" : "all");
   const [formOpen, setFormOpen] = useState(true);
   const [draft, setDraft] = useState<Draft>({ senderClientId: "", recipientClientId: "", sendingUserId: user.id, sourceCurrency: "DOP", destinationCurrency: "DOP", amount: "", amountMode: "source", note: "" });
   const [newClients, setNewClients] = useState<{ sender?: NewRemittanceClient; recipient?: NewRemittanceClient }>({});
@@ -268,8 +269,13 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
     if (!snapshot || loading || busy || confirmation || printTransfer || clientEditor || detailId || marker === lastFocus.current) return;
     const field = tab === "envios" ? root.current?.querySelector<HTMLInputElement>('[data-client-side="sender"] input')
       : tab === "recibos" ? root.current?.querySelector<HTMLInputElement>('[data-receipt-search]') : null;
-    if (field) { lastFocus.current = marker; field.focus(); }
-  }, [tab, focusVersion, snapshot, loading, busy, confirmation, printTransfer, clientEditor, detailId]);
+    if (field) {
+      lastFocus.current = marker;
+      // In the fixed window the cursor waits in the sender without unfolding the catalog over the form; a click or typing opens it.
+      if (fixedForm && tab === "envios" && document.activeElement !== field) { field.dataset.quietFocus = "1"; window.requestAnimationFrame(() => { delete field.dataset.quietFocus; }); }
+      field.focus();
+    }
+  }, [tab, focusVersion, snapshot, loading, busy, confirmation, printTransfer, clientEditor, detailId, fixedForm]);
   // The fixed form scrolls inside its window: a new quote brings its confirm button into view.
   useEffect(() => {
     if (fixedForm && quote) root.current?.querySelector<HTMLElement>(".remittance-quote .remittance-primary")?.scrollIntoView({ block: "nearest" });

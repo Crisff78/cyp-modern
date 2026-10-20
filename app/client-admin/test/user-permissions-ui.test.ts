@@ -180,6 +180,8 @@ createRoot(document.getElementById("root")).render(<Fixture />);`, "utf8");
       await dialog().getByRole("alert").getByText("Otro operador modificó los permisos. Refresca el catálogo antes de guardar.").waitFor();
       assert.equal(await checkbox(2).isChecked(), true); assert.deepEqual((await getProfile()).permissionIds, [1]);
       await dialog().getByRole("button", { name: "Refrescar", exact: true }).click(); await page.waitForFunction(() => !document.querySelector('.connected-user-permissions-dialog')?.textContent?.includes("Cargando permisos…"));
+      // Refrescar starts the reload on the next render: wait until the newer revision is shown, not only until no load is visible.
+      for (const deadline = Date.now() + 5000; Date.now() < deadline && !(await checkbox(1).isChecked());) await page.waitForTimeout(50);
       assert.equal(await checkbox(1).isChecked(), true); assert.equal(await checkbox(2).isChecked(), false);
       await dialog().getByRole("button", { name: "Cancelar", exact: true }).click();
     });

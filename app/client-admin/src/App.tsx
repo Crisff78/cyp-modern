@@ -7,6 +7,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -4865,7 +4866,8 @@ export default function App() {
   // Applied when the account or its role changes, not on every refresh: each periodic read of
   // /auth/me replaces the user object and would fold the groups the user opened.
   const menuProfile = user ? `${normalizeRole(user.role)}\n${user.id}` : "";
-  useEffect(() => {
+  // Before paint: the menu never flashes every group unfolded for a profile that starts folded.
+  useLayoutEffect(() => {
     const role = menuProfile.split("\n")[0];
     if (role === "SUPERVISOR")
       setExpandedGroups(["REPORTES & MONITOREO"]);

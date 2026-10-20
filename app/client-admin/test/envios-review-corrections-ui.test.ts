@@ -366,7 +366,8 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
     await t.test("1280×600: an open list of clients is drawn over the window and the form never covers the list of sends", async () => {
       const { context, page, window, region, measure } = await shortWindow();
       try {
-        const senders = region.getByRole("listbox", { name: "Clientes para remitente", exact: true }); await senders.waitFor();
+        const senders = region.getByRole("listbox", { name: "Clientes para remitente", exact: true });
+        await region.getByRole("combobox", { name: "Remitente", exact: true }).click(); await senders.waitFor();
         const content = await box(window.locator(".mdi-window-content")), listbox = await box(senders);
         assert.ok(inside(listbox, content), "the list of clients fits in the window");
         assert.equal(await page.evaluate(({ x, y }: { x: number; y: number }) => Boolean(document.elementFromPoint(x, y)?.closest('[role="listbox"]')), { x: listbox.x + listbox.width / 2, y: listbox.y + listbox.height - 4 }), true, "its last row is on top");

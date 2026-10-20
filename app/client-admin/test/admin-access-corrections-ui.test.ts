@@ -127,8 +127,12 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
     const sidebar = (page: any) => page.locator(".sidebar");
     const menuItem = async (page: any, group: string, item: string) => {
       const trigger = sidebar(page).getByRole("button", { name: group, exact: true });
-      if (await trigger.getAttribute("aria-expanded") !== "true") await trigger.click();
-      await sidebar(page).getByRole("button", { name: item, exact: true }).click();
+      const target = sidebar(page).getByRole("button", { name: item, exact: true });
+      // A profile may fold its groups right after loading; check again if the item is not there yet.
+      for (let attempt = 0; ; attempt++) {
+        if (await trigger.getAttribute("aria-expanded") !== "true") await trigger.click();
+        try { await target.click({ timeout: 3000 }); return; } catch (error) { if (attempt === 2) throw error; }
+      }
     };
     const windowNamed = (page: any, name: string) => page.getByRole("dialog", { name, exact: true });
     const controlPanelTile = async (page: any, tile: string) => {

@@ -238,10 +238,12 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         const window = page.getByRole("dialog", { name: "Envíos de Dinero", exact: true });
         const region = window.getByRole("region", { name: "Envíos de Dinero", exact: true });
         const rows = region.locator(".remittance-transfer-table tbody tr"); await rows.nth(4).waitFor();
-        // The sender has the cursor and shows its clients; Escape folds the list to measure the form alone.
+        // The sender has the cursor without unfolding the catalog over the form; a click shows its clients and Escape folds them.
         const senderInput = region.getByRole("combobox", { name: "Remitente", exact: true });
         await waitForFocus(page, '[data-client-side="sender"] input');
-        const clients = region.getByRole("listbox", { name: "Clientes para remitente", exact: true }); await clients.waitFor();
+        const clients = region.getByRole("listbox", { name: "Clientes para remitente", exact: true });
+        assert.equal(await clients.count(), 0, "opening the window does not unfold the client list over the form");
+        await senderInput.click(); await clients.waitFor();
         await senderInput.press("Escape"); await clients.waitFor({ state: "detached" });
         const box = async (locator: any) => { const value = await locator.boundingBox(); assert.ok(value, "the element is painted"); return value as { x: number; y: number; width: number; height: number }; };
         const inside = (part: { y: number; height: number }, frame: { y: number; height: number }) => part.y >= frame.y - 0.5 && part.y + part.height <= frame.y + frame.height + 0.5;
