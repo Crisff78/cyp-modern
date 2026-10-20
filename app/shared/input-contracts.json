@@ -7,5 +7,10 @@
     "message": "Escribe un teléfono válido con 8 a 15 dígitos; admite + al inicio, espacios, guiones y paréntesis. No uses puntos ni extensiones."
   },
   "email": { "maxLength": 200 },
+  "remittanceDocument": {
+    "maxLength": 80,
+    "pattern": "^[\\p{L}\\p{M}\\p{N} ./-]*$",
+    "message": "La cédula o el pasaporte admite letras, números, espacios, guiones, puntos y barras."
+  },
   "recurringDay": { "min": 1, "max": 31, "numericStringPattern": "^[0-9]{1,2}$" }
 }
