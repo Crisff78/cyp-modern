@@ -155,6 +155,8 @@ test("PostgreSQL 020 preserves nullable history and validates immutable manual s
   try {
     const rows = await store.transaction((state) => {
       if (!state.clients.length) Object.assign(state, seed());
+      // Same central commission rule as fixture(): quotes must match the saved policy.
+      setCommissionPolicy(state, admin, { transactionCommissionBps: 100, managerCommissionBps: 0 }, at);
       openRemittanceCash(state, admin, { operatorId: admin.id, currency: "DOP", openingAmount: 0 }, [], at);
       return [createRemittance(state, admin, body(state), [], at),
         createRemittance(state, admin, body(state, { ...manual, amount: Number.MAX_SAFE_INTEGER }), [], at),

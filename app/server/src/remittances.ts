@@ -194,6 +194,8 @@ export function setDailyRate(state: State, user: User, input: Pick<ExchangeRate,
   state.remittances.rates.push(row);
   return row;
 }
+// Office desks (Usuario, Cajero) serve any client and see only their own business.
+const isRemittanceDesk = (role: string) => role === "user" || role === "cashier";
 export function remittanceOperators(state: State, user: User, systemOperators: User[] = []) {
   const account = state.accounts.find((a) => a.id === user.id);
   if (account && (account.status !== "active" || account.role !== user.role || account.collectorId !== user.collectorId))
@@ -201,8 +203,8 @@ export function remittanceOperators(state: State, user: User, systemOperators: U
   // Only the business identity: the token payload also carries session fields.
   const self: User = { id: user.id, name: user.name, role: user.role, ...(user.collectorId ? { collectorId: user.collectorId } : {}) };
   if (user.access) self.access = user.access;
-  if (user.role !== "admin") return user.role === "collector" || (user.role === "user" && hasRemittanceAccess(user)) ? [self] : [];
-  const accounts: User[] = state.accounts.filter((a) => a.status === "active" && (a.role === "admin" || a.role === "collector" || (a.role === "user" && hasRemittanceAccess({ role: a.role, access: effectiveAccess(a.role, a) })))).map((a) => ({
+  if (user.role !== "admin") return user.role === "collector" || (isRemittanceDesk(user.role) && hasRemittanceAccess(user)) ? [self] : [];
+  const accounts: User[] = state.accounts.filter((a) => a.status === "active" && (a.role === "admin" || a.role === "collector" || (isRemittanceDesk(a.role) && hasRemittanceAccess({ role: a.role, access: effectiveAccess(a.role, a) })))).map((a) => ({
     id: a.id, name: a.name, role: a.role, ...(a.collectorId ? { collectorId: a.collectorId } : {}),
     access: effectiveAccess(a.role, a),
   }));
@@ -217,23 +219,26 @@ function operator(state: State, user: User, id: string, systemOperators: User[])
 }
 function clientInRoute(state: State, user: User, clientId: string) {
   if (user.role === "admin") return true;
-  if (user.role === "user" && hasRemittanceAccess(user)) return true;
+  if (isRemittanceDesk(user.role) && hasRemittanceAccess(user)) return true;
   const client = state.clients.find((c) => c.id === clientId);
   return !!client && state.routes.some((r) => r.id === client.routeId && r.collectorId === user.collectorId);
 }
+// Supervision reads every operation, like administration; its permissions never include
+// paying, cancelling or closing, and the API keeps it read-only.
+const readsAllOperations = (user: User) => user.role === "admin" || user.role === "supervisor";
 export function canSeeOutgoing(state: State, user: User, transfer: Remittance) {
   if (!hasRemittancePermission(user, "remittances.view")) return false;
-  if (user.role === "user") return transfer.sendingUserId === user.id;
-  return user.role === "admin" || transfer.sendingUserId === user.id || clientInRoute(state, user, transfer.senderClientId);
+  if (isRemittanceDesk(user.role)) return transfer.sendingUserId === user.id;
+  return readsAllOperations(user) || transfer.sendingUserId === user.id || clientInRoute(state, user, transfer.senderClientId);
 }
 export function canSeeReceipt(state: State, user: User, transfer: Remittance) {
   if (!hasRemittancePermission(user, "remittances.receipts")) return false;
-  if (user.role === "user") return transfer.status === "pending" || transfer.paidBy === user.id;
-  return clientInRoute(state, user, transfer.recipientClientId);
+  if (isRemittanceDesk(user.role)) return transfer.status === "pending" || transfer.paidBy === user.id;
+  return readsAllOperations(user) || clientInRoute(state, user, transfer.recipientClientId);
 }
 export function canReportTransfer(state: State, user: User, transfer: Remittance) {
-  if (user.role === "user") return transfer.sendingUserId === user.id || transfer.paidBy === user.id;
-  return user.role === "admin" || transfer.sendingUserId === user.id || clientInRoute(state, user, transfer.senderClientId) || clientInRoute(state, user, transfer.recipientClientId);
+  if (isRemittanceDesk(user.role)) return transfer.sendingUserId === user.id || transfer.paidBy === user.id;
+  return readsAllOperations(user) || transfer.sendingUserId === user.id || clientInRoute(state, user, transfer.senderClientId) || clientInRoute(state, user, transfer.recipientClientId);
 }
 export function transferView(state: State, user: User, transfer: Remittance) {
   return {
@@ -274,7 +279,11 @@ function currentCash(state: State, operatorId: string, currency: Currency, now: 
   return cash;
 }
 export function openRemittanceCash(state: State, user: User, input: { operatorId: string; currency: Currency; openingAmount: number }, systemOperators: User[] = [], now = new Date()) {
-  assertAdmin(user);
+  // Administration opens any cash box; a cashier with the permission opens only his own.
+  if (user.role === "cashier") {
+    if (input.operatorId !== user.id || !hasRemittancePermission(user, "remittances.cash.open"))
+      fail("FORBIDDEN", "Solo puedes abrir tu propia caja de envíos.", 403);
+  } else assertAdmin(user);
   operator(state, user, input.operatorId, systemOperators);
   assertCurrency(input.currency);
   integerMoney(input.openingAmount);
@@ -394,22 +403,48 @@ export function cancelRemittance(state: State, user: User, id: string, reason: s
   addEvent(state, user, cash, "cancelled", transfer.totalAmount, now, transfer.id, reason.trim());
   return transferView(state, user, transfer);
 }
+// Names of the operators that appear in what the account sees: its operations, its boxes and the rows of its
+// reports, also of disabled accounts. A receipt, a box or a report shows a name, never an internal id. Only id
+// and name: no role, access or route, and no operator the account does not already see.
+function visibleOperatorNames(state: State, user: User, systemOperators: User[], transfers: Remittance[], cashSessions: CashSession[]) {
+  const reports = hasRemittancePermission(user, "remittances.reports");
+  const ids = new Set([
+    ...[...transfers, ...(reports ? state.remittances.transfers.filter((t) => canReportTransfer(state, user, t)) : [])]
+      .flatMap((t) => [t.sendingUserId, t.registeredBy, t.paidBy, t.cancelledBy]),
+    ...[...cashSessions, ...(reports ? state.remittances.cashSessions.filter((c) => readsAllOperations(user) || c.operatorId === user.id) : [])]
+      .map((c) => c.operatorId),
+  ]);
+  const names = new Map<string, string>([...systemOperators, ...state.accounts, user].map((row) => [row.id, row.name]));
+  return Object.fromEntries([...ids].flatMap((id) => id && names.has(id) ? [[id, names.get(id)!]] : []));
+}
 export function remittanceSnapshot(state: State, user: User, systemOperators: User[] = [], now = new Date()) {
   const date = businessDate(now);
+  const transfers = state.remittances.transfers.filter((t) => canSeeOutgoing(state, user, t) || canSeeReceipt(state, user, t));
+  const cashSessions = hasRemittancePermission(user, "remittances.cash.view") ? state.remittances.cashSessions.filter((c) => readsAllOperations(user) || c.operatorId === user.id) : [];
+  const operators = remittanceOperators(state, user, systemOperators);
+  // Consultation only: just the clients of the visible operations, so rows saved before the frozen
+  // contacts existed still show their names. Saved contacts are never rebuilt from the catalog.
+  const referenced = new Set(transfers.flatMap((t) => [t.senderClientId, t.recipientClientId]));
+  const catalog = hasRemittancePermission(user, "remittances.create") || hasRemittancePermission(user, "remittances.receipts") ? state.clients
+    : hasRemittancePermission(user, "remittances.view") ? state.clients.filter((c) => referenced.has(c.id)) : [];
   return {
     businessDate: date, currencies, access: user.access ?? effectiveAccess(user.role),
     commissionPolicy: getCommissionPolicy(state),
     receiptFooterNote: typeof state.systemConfig?.receiptFooterNote === "string" ? state.systemConfig.receiptFooterNote : "",
-    clients: hasRemittancePermission(user, "remittances.create") || hasRemittancePermission(user, "remittances.receipts") ? state.clients.map((c) => ({ id: c.id, code: c.code, name: c.name, routeId: c.routeId, active: c.active !== false, preferredCurrency: c.preferredCurrency ?? "DOP",
-      canSendFrom: clientInRoute(state, user, c.id), canReceive: clientInRoute(state, user, c.id) })) : [],
+    clients: catalog.map((c) => ({ id: c.id, code: c.code, name: c.name, routeId: c.routeId, active: c.active !== false, preferredCurrency: c.preferredCurrency ?? "DOP",
+      canSendFrom: clientInRoute(state, user, c.id), canReceive: clientInRoute(state, user, c.id) })),
     clientRoutes: hasRemittancePermission(user, "remittances.clients.create") ? state.routes.filter((route) => user.role !== "collector" || route.collectorId === user.collectorId).map(({ id, name }) => ({ id, name })) : [],
-    operators: remittanceOperators(state, user, systemOperators).map(({ access: _access, ...row }) => row),
+    operators: operators.map(({ access: _access, ...row }) => row),
+    // Only these operators can register remittances, so only they are valid for «Operador del envío».
+    // The others stay in `operators` because administration may still open their cash box to pay receipts.
+    sendingOperatorIds: operators.filter((operator) => hasRemittancePermission(operator, "remittances.create")).map(({ id }) => id),
+    operatorNames: visibleOperatorNames(state, user, systemOperators, transfers, cashSessions),
     rates: [state.remittances.rates.find((r) => r.currency === "DOP" && r.date === date) ?? { id: `DOP-${date}`, currency: "DOP" as Currency, rate: "1.000000", date }, ...state.remittances.rates.filter((r) => r.currency !== "DOP" && (hasRemittancePermission(user, "remittances.rates.view") || r.date === date))]
       .sort((a, b) => b.date.localeCompare(a.date) || (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "") || a.currency.localeCompare(b.currency))
       .map(({ updatedBy, ...row }) => ({ ...row, ...(user.role === "admin" && updatedBy ? { updatedBy } : {}) })),
     rateHistory: user.role === "admin" && hasRemittancePermission(user, "remittances.rates.view") ? [...(state.remittances.rateHistory ?? [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.date.localeCompare(a.date) || b.id.localeCompare(a.id)) : [],
-    transfers: state.remittances.transfers.filter((t) => canSeeOutgoing(state, user, t) || canSeeReceipt(state, user, t)).map((t) => transferView(state, user, t)),
-    cashSessions: hasRemittancePermission(user, "remittances.cash.view") ? state.remittances.cashSessions.filter((c) => user.role === "admin" || c.operatorId === user.id).map((c) => cashView(state, user, c)) : [],
+    transfers: transfers.map((t) => transferView(state, user, t)),
+    cashSessions: cashSessions.map((c) => cashView(state, user, c)),
   };
 }
 export function remittanceReports(state: State, user: User, input: { from: string; to: string; grouping: "range" | "day" }) {
@@ -503,7 +538,7 @@ export function remittanceReports(state: State, user: User, input: { from: strin
     group.totalSeconds += BigInt(row.elapsedSeconds); timeGroups.set(date, group);
   }
   const deliveryTimeSummary = [...timeGroups.values()].map(({ totalSeconds, ...row }) => ({ ...row, averageSeconds: safeMoney(totalSeconds) / row.count }));
-  const cash = state.remittances.cashSessions.filter((c) => c.date >= input.from && c.date <= input.to && (user.role === "admin" || c.operatorId === user.id))
+  const cash = state.remittances.cashSessions.filter((c) => c.date >= input.from && c.date <= input.to && (readsAllOperations(user) || c.operatorId === user.id))
     .sort((a, b) => a.date.localeCompare(b.date) || a.openedAt.localeCompare(b.openedAt)).map((c) => cashView(state, user, c));
   type CashSummary = { operatorId: string; currency: Currency; date: string; sessionCount: number; sentTotal: number; cancelRefund: number; paid: number; firstOpening: number; lastExpected: number };
   const cashGroups = new Map<string, CashSummary>();

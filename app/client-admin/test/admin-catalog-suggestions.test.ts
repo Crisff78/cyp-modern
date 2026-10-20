@@ -438,13 +438,13 @@ remittancesApi("/snapshot").then(snapshot => { if (new URLSearchParams(location.
       await open("rates"); await page.getByTitle("Nuevo", { exact: true }).waitFor();
       await page.waitForFunction(() => !document.querySelector<HTMLButtonElement>('button[title="Nuevo"]')?.disabled);
       await page.getByTitle("Nuevo", { exact: true }).click();
-      await page.getByLabel("Tasa de remesas", { exact: true }).fill("0.005000");
+      await page.getByLabel("Tasa de envíos", { exact: true }).fill("0.005000");
       await page.getByLabel("Compra", { exact: true }).fill("0.004000");
       await page.getByLabel("Venta", { exact: true }).fill("0.006000");
       await page.getByRole("button", { name: "Revisar tasa", exact: true }).click();
       await page.getByRole("button", { name: "Confirmar", exact: true }).click();
       await page.getByText("Tasa del día guardada. Los envíos anteriores conservan su tasa.", { exact: true }).waitFor();
-      for (const name of ["Tasa de remesas", "Compra", "Venta"]) assert.equal(await page.getByRole("columnheader", { name, exact: true }).count(), 1);
+      for (const name of ["Tasa de envíos", "Compra", "Venta"]) assert.equal(await page.getByRole("columnheader", { name, exact: true }).count(), 1);
       const saved = writes.findLast((row) => row.pathname === "/api/envios/tasas")!;
       assert.equal(saved.status, 200); assert.equal(saved.body.rate, "0.005000");
       assert.equal(saved.body.purchaseRate, "0.004000"); assert.equal(saved.body.saleRate, "0.006000");

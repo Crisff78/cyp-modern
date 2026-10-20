@@ -11,11 +11,11 @@ export const REMITTANCE_PERMISSIONS = [
   { key: "remittances.cash.view", name: "Consultar caja de envíos" },
   { key: "remittances.cash.open", name: "Abrir cajas de envíos" },
   { key: "remittances.cash.close", name: "Cerrar la caja propia de envíos" },
-  { key: "remittances.reports", name: "Consultar e imprimir reportes de remesas" },
-  { key: "remittances.rates.view", name: "Consultar tasas de remesas" },
-  { key: "remittances.rates.manage", name: "Administrar tasas de remesas" },
+  { key: "remittances.reports", name: "Consultar e imprimir reportes de envíos" },
+  { key: "remittances.rates.view", name: "Consultar tasas de envíos" },
+  { key: "remittances.rates.manage", name: "Administrar tasas de envíos" },
   { key: "remittances.commissions.view", name: "Consultar la configuración de comisiones" },
-  { key: "remittances.commissions.manage", name: "Administrar comisiones de remesas" },
+  { key: "remittances.commissions.manage", name: "Administrar comisiones de envíos" },
 ];
 export const REMITTANCE_PERMISSION_KEYS = REMITTANCE_PERMISSIONS.map(({ key }) => key);
 export const REMITTANCE_PERMISSION_DEPENDENCIES = {
@@ -31,15 +31,19 @@ const readIds = [1, 2, 3, 5, 10, 101, 111, 115, 120, 130, 140, 144, 150, 160, 17
 const collectorIds = [1, 2, 130, 140, 144, 300, 320, 321, 323, 370, 371, 373, 400, 500, 501];
 const maintenance = new Set(["remittances.rates.manage", "remittances.commissions.manage", "remittances.cash.open"]);
 const readKeys = new Set(["remittances.view", "remittances.receipts", "remittances.cash.view", "remittances.reports", "remittances.rates.view", "remittances.commissions.view"]);
+// The cashier opens only his own cash box (enforced by the server); rates and commissions stay administrative.
+const cashierKeys = ["remittances.view", "remittances.create", "remittances.receipts", "remittances.pay", "remittances.cancel",
+  "remittances.clients.create", "remittances.cash.view", "remittances.cash.open", "remittances.cash.close"];
 export function accessRole(value) {
   const role = value.trim().toLowerCase().replace(/^role_/, "");
-  return role === "superadmin" || role === "administrador" ? "admin" : role === "cobrador" ? "collector" : role;
+  return role === "superadmin" || role === "administrador" ? "admin" : role === "cobrador" ? "collector" : role === "cajero" ? "cashier" : role;
 }
 export function rolePermissionIds(role) {
   switch (accessRole(role)) {
     case "admin": return [...legacyIds];
     case "supervisor": return [...readIds];
     case "collector": return [...collectorIds];
+    case "cashier": return [1, 2];
     default: return [];
   }
 }
@@ -47,7 +51,10 @@ export function roleRemittancePermissions(role) {
   switch (accessRole(role)) {
     case "admin": return [...REMITTANCE_PERMISSION_KEYS];
     case "supervisor": return [...readKeys];
+    // Intentional since PR 36: the collector keeps the quick client sign-up during a remittance
+    // (`remittances.clients.create`), always limited to his own route by the server.
     case "collector": return REMITTANCE_PERMISSION_KEYS.filter((key) => !maintenance.has(key) && key !== "remittances.commissions.view");
+    case "cashier": return [...cashierKeys];
     default: return [];
   }
 }
@@ -55,7 +62,9 @@ export function effectiveAccess(role, selection) {
   const normalized = accessRole(role), mode = selection?.permissionMode ?? "role";
   const ceiling = normalized === "user" ? [1, 2] : rolePermissionIds(role);
   const legacy = mode === "role" ? rolePermissionIds(role) : [...new Set(selection?.permissionIds ?? [])].filter((id) => ceiling.includes(id));
-  const allowed = normalized === "user" ? REMITTANCE_PERMISSION_KEYS.filter((key) => !maintenance.has(key)) : roleRemittancePermissions(role);
+  // A cashier may additionally be granted the reports of his own operations.
+  const allowed = normalized === "user" ? REMITTANCE_PERMISSION_KEYS.filter((key) => !maintenance.has(key))
+    : normalized === "cashier" ? [...cashierKeys, "remittances.reports"] : roleRemittancePermissions(role);
   const remittances = mode === "role" ? roleRemittancePermissions(role)
     : [...new Set(selection?.remittancePermissions ?? [])].filter((key) => allowed.includes(key));
   return { mode, revision: selection?.permissionRevision ?? 0,
@@ -69,6 +78,9 @@ export const hasRemittancePermission = (actor, key) => {
 };
 export const hasRemittanceAccess = (actor) => actorAccess(actor).remittances.some((key) =>
   ["remittances.view", "remittances.receipts", "remittances.cash.view", "remittances.reports"].includes(key));
+// On its role profile every account changes its own password, as before PR 36; only
+// personalized permissions can withdraw it through code 2.
+export const canChangeOwnPassword = (actor) => actorAccess(actor).mode !== "custom" || hasPermission(actor, 2);
 
 // Every UI entry point uses the same page requirement, including direct hashes.
 export const PAGE_PERMISSIONS = {
@@ -80,12 +92,15 @@ export const PAGE_PERMISSIONS = {
   systemConfig: 3, generalConfig: 3, exchangeRates: 200,
 };
 export function canOpenPage(actor, page) {
-  if (page === "remittances") return hasRemittanceAccess(actor);
+  if (page === "remittances") return hasRemittancePermission(actor, "remittances.view");
+  if (page === "remittancePayouts") return hasRemittancePermission(actor, "remittances.receipts");
+  // Collector settlements need 401; the remittance cash section only its own permission.
+  if (page === "dailySettlements") return hasPermission(actor, 401) || hasRemittancePermission(actor, "remittances.cash.view");
   if (page === "remittanceCommissions") return accessRole(actor.role) === "admin" && hasRemittancePermission(actor, "remittances.commissions.view");
   if (page === "exchangeRates") return hasPermission(actor, 200) && hasRemittancePermission(actor, "remittances.rates.view");
   if (page === "reports") return hasPermission(actor, 400) || hasRemittancePermission(actor, "remittances.reports");
   if (page.startsWith("reportRemittance")) return hasRemittancePermission(actor, "remittances.reports");
   if (page.startsWith("report")) return hasPermission(actor, 400);
-  if (accessRole(actor.role) === "user" || accessRole(actor.role) === "undefined") return false;
+  if (["user", "undefined", "cashier"].includes(accessRole(actor.role))) return false;
   return hasPermission(actor, PAGE_PERMISSIONS[page] ?? 10);
 }

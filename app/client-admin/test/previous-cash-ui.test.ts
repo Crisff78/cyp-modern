@@ -210,9 +210,8 @@ test("actual Cuadres Diarios UI exclusively closes synthetic cash, preserves his
       await generation.getByRole("button", { name: "Actualizar vista", exact: true }).click(); await generation.waitFor({ state: "hidden" });
       assert.equal(writes.filter((row) => row.url === "/api/cuadres").length, count); assert.equal((await store.read()).settlements.length, 1);
       await page.reload(); await page.getByRole("button", { name: "Abrir cuenta", exact: true }).waitFor(); await navigate("Cuadres Diarios");
-      // Closed fixtures from two days ago may belong to the preceding operational week.
+      // The reloaded window starts on the current operational week (from Monday): the closures of two days ago need the range.
       await settlementGrid().getByLabel("Fecha Inicial:", { exact: true }).fill(oldDate);
-      await settlementGrid().getByLabel("Fecha Final:", { exact: true }).fill(today);
       assert.equal(await settlementGrid().getByRole("cell", { name: "Conciliado", exact: true }).count(), 4);
       assert.equal(await settlementGrid().getByRole("cell", { name: "Cerrado", exact: true }).count(), 1);
     });

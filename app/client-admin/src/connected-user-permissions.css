@@ -73,6 +73,27 @@
 .connected-user-permissions-table input[type="checkbox"] { width: 14px; height: 14px; accent-color: #059669; }
 .connected-permissions-name { font: inherit; color: inherit; cursor: pointer; }
 .connected-permissions-feedback { margin: 0; padding: 6px 12px; font-size: 12px; color: var(--cyp-text-muted, #64748b); }
+.connected-permissions-stored {
+  flex-shrink: 0;
+  max-height: 96px;
+  overflow: auto;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--cyp-border-strong, #cbd5e1);
+  background: var(--cyp-warning-surface, #fffbeb);
+  color: var(--cyp-warning-text, #78350f);
+  font-size: 11px;
+}
+.connected-permissions-stored p { margin: 0 0 4px; overflow-wrap: anywhere; }
+.connected-permissions-stored button {
+  padding: 2px 10px;
+  border: 1px solid var(--cyp-border-strong, #94a3b8);
+  border-radius: 4px;
+  background: var(--cyp-surface, #fff);
+  color: var(--cyp-text, #1e293b);
+  font-size: 11px;
+  cursor: pointer;
+}
+.connected-permissions-stored button:disabled { opacity: .5; cursor: not-allowed; }
 .connected-permissions-footer {
   display: flex;
   justify-content: space-between;

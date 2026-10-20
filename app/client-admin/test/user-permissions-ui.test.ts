@@ -11,6 +11,7 @@ import { buildApp } from "../../server/src/app.js";
 import { seed } from "../../server/src/seed.js";
 import { MemoryStore } from "../../server/src/store.js";
 import catalog from "../../shared/permission-catalog.json" with { type: "json" };
+import { roleRemittancePermissions } from "../../shared/access.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const localRequire = createRequire(path.join(root, "package.json"));
@@ -50,8 +51,15 @@ test("user permission checkboxes, categories, cancel and backend saves work in t
       assert.equal(result.statusCode, 200, result.body); return result.json();
     };
     const first = await create("Usuario de prueba uno"), second = await create("Usuario de prueba dos"), supervisor = await create("Supervisor de prueba", "supervisor"), cashier = await create("Cajero de prueba", "user");
+    const cashierRole = await create("Cajero con perfil de rol", "cashier");
+    // An account carried over by the 034 migration: «Perfil del rol» with its earlier, referential list.
+    const migrated = await create("Cuenta migrada", "supervisor");
+    const limited = await create("Administración limitada"), delegate = await create("Administración delegada");
     await store.transaction((state) => { for (const account of state.accounts.filter(({ id }) => [first.id, second.id].includes(id))) { account.permissionMode = "custom"; account.permissionIds = []; account.remittancePermissions = []; } });
+    await store.transaction((state) => { const account = state.accounts.find(({ id }) => id === migrated.id)!; account.permissionMode = "role"; account.permissionIds = [1, 2, 140, 141, 400]; account.remittancePermissions = []; });
+    assert.equal((await post(`/api/usuarios/${limited.id}/permisos`, { mode: "custom", permissionIds: [1, 10, 101, 103, 104, 107], remittancePermissions: [], revision: 0 })).statusCode, 200);
     const supervisorToken = (await login(supervisor.email, "Synthetic-Permissions-2026!")).json().token;
+    const limitedToken = (await login(limited.email, "Synthetic-Permissions-2026!")).json().token, delegateToken = (await login(delegate.email, "Synthetic-Permissions-2026!")).json().token;
     const getProfile = async (id = first.id) => {
       const result = await app.inject({ url: `/api/usuarios/${id}/permisos`, headers: { authorization: `Bearer ${adminToken}` } });
       assert.equal(result.statusCode, 200, result.body); return result.json();
@@ -61,6 +69,7 @@ test("user permission checkboxes, categories, cancel and backend saves work in t
 import { useState } from "react";
 import { ConnectedCatalog } from ${source("ConnectedCatalog.tsx")};
 import { PageAccessContext } from ${source("PageAccess.tsx")};
+import { hasUnresolvedMovementRequest } from ${source("useMovementRequest.ts")};
 import { setToken, api } from ${source("api.ts")};
 import ${source("styles.css")};
 setToken(${JSON.stringify(adminToken)});
@@ -68,6 +77,8 @@ const snapshot = await api("/snapshot");
 function Fixture(){
  const [actor,setActor] = useState({id:"demo-admin",canEdit:true});
  window.__qaSupervisor = () => { setToken(${JSON.stringify(supervisorToken)}); setActor({id:${JSON.stringify(supervisor.id)},canEdit:false}); };
+ window.__qaActor = (token, id) => { setToken(token); setActor({id,canEdit:true}); };
+ window.__qaUnresolved = (id) => hasUnresolvedMovementRequest(id);
  return <main><PageAccessContext.Provider value={{actor:{role:actor.canEdit?'admin':'supervisor'},page:'users'}}><ConnectedCatalog key={actor.id} page="users" snapshot={snapshot} actorId={actor.id} canManagePermissions={actor.canEdit} onRefresh={()=>{}} /></PageAccessContext.Provider></main>;
 }
 createRoot(document.getElementById("root")).render(<Fixture />);`, "utf8");
@@ -126,10 +137,10 @@ createRoot(document.getElementById("root")).render(<Fixture />);`, "utf8");
     await t.test("complete catalog, draggable title, blocked background and category-only bulk toggles", async () => {
       await open();
       assert.equal(await dialog().getByRole("checkbox", { name: /^Permiso / }).count(), 119);
-      assert.equal(await dialog().getByRole("checkbox", { name: /^Remesas: / }).count(), 14);
+      assert.equal(await dialog().getByRole("checkbox", { name: /^Envíos de Dinero: / }).count(), 14);
       const names = await dialog().locator("tbody tr").filter({ has: page.locator('input[aria-label^="Permiso "]') }).evaluateAll((rows: HTMLTableRowElement[]) => rows.map((row) => ({ id: Number(row.cells[1].textContent), name: row.cells[2].textContent, category: row.cells[3].textContent })));
       assert.deepEqual(names, catalog.permissions);
-      assert.deepEqual(await category().locator("option").allTextContents(), [...catalog.categories, "Remesas"]);
+      assert.deepEqual(await category().locator("option").allTextContents(), [...catalog.categories, "Envíos de Dinero"]);
       const title = dialog().locator(".legacy-dialog-titlebar"), before = await dialog().boundingBox(), bar = await title.boundingBox(); assert(bar && before);
       await page.mouse.move(bar.x + 110, bar.y + 12); await page.mouse.down(); await page.mouse.move(bar.x + 195, bar.y + 42); await page.mouse.up();
       const after = await dialog().boundingBox(); assert(after); assert.ok(after.x > before.x + 70); assert.ok(after.y > before.y + 20);
@@ -169,6 +180,8 @@ createRoot(document.getElementById("root")).render(<Fixture />);`, "utf8");
       await dialog().getByRole("alert").getByText("Otro operador modificó los permisos. Refresca el catálogo antes de guardar.").waitFor();
       assert.equal(await checkbox(2).isChecked(), true); assert.deepEqual((await getProfile()).permissionIds, [1]);
       await dialog().getByRole("button", { name: "Refrescar", exact: true }).click(); await page.waitForFunction(() => !document.querySelector('.connected-user-permissions-dialog')?.textContent?.includes("Cargando permisos…"));
+      // Refrescar starts the reload on the next render: wait until the newer revision is shown, not only until no load is visible.
+      for (const deadline = Date.now() + 5000; Date.now() < deadline && !(await checkbox(1).isChecked());) await page.waitForTimeout(50);
       assert.equal(await checkbox(1).isChecked(), true); assert.equal(await checkbox(2).isChecked(), false);
       await dialog().getByRole("button", { name: "Cancelar", exact: true }).click();
     });
@@ -186,21 +199,161 @@ createRoot(document.getElementById("root")).render(<Fixture />);`, "utf8");
     await t.test("office cashier grants add their read dependency without granting catalog administration", async () => {
       await open(cashier.name);
       assert.equal(await checkbox(101).isDisabled(), true); assert.equal(await checkbox(141).isDisabled(), true);
-      await category().selectOption("Remesas");
-      await dialog().getByRole("checkbox", { name: "Remesas: Registrar envíos", exact: true }).check();
-      assert.equal(await dialog().getByRole("checkbox", { name: "Remesas: Consultar envíos", exact: true }).isChecked(), true);
-      assert.equal(await dialog().getByRole("checkbox", { name: "Remesas: Administrar tasas de remesas", exact: true }).isDisabled(), true);
+      await category().selectOption("Envíos de Dinero");
+      await dialog().getByRole("checkbox", { name: "Envíos de Dinero: Registrar envíos", exact: true }).check();
+      assert.equal(await dialog().getByRole("checkbox", { name: "Envíos de Dinero: Consultar envíos", exact: true }).isChecked(), true);
+      assert.equal(await dialog().getByRole("checkbox", { name: "Envíos de Dinero: Administrar tasas de envíos", exact: true }).isDisabled(), true);
       await dialog().getByRole("button", { name: "Guardar", exact: true }).click(); await dialog().waitFor({ state: "detached" });
       const profile = await getProfile(cashier.id);
       assert.deepEqual(profile.permissionIds, [1]); assert.equal(profile.mode, "custom");
       assert.deepEqual(profile.remittancePermissions, ["remittances.create", "remittances.view"]);
       assert.equal((await store.read()).accounts.find(({ id }) => id === cashier.id)?.role, "user");
     });
+    await t.test("a Cajero in Perfil del rol shows its initial profile and can only add the reports of Envíos", async () => {
+      await open(cashierRole.name);
+      assert.equal(await dialog().getByRole("combobox", { name: "Modo de permisos", exact: true }).inputValue(), "role");
+      assert.match(await dialog().innerText(), /Se aplica el perfil inicial del rol\./);
+      for (const id of [1, 2]) assert.equal(await checkbox(id).isChecked(), true, `legacy ${id}`);
+      for (const id of [101, 140, 200, 401]) assert.equal(await checkbox(id).isDisabled(), true, `legacy ${id} stays out of reach`);
+      await category().selectOption("Envíos de Dinero");
+      const remittance = (name: string) => dialog().getByRole("checkbox", { name: `Envíos de Dinero: ${name}`, exact: true });
+      for (const name of ["Consultar envíos", "Registrar envíos", "Consultar recibos pendientes", "Entregar dinero al destinatario", "Cancelar envíos pendientes",
+        "Registrar clientes durante un envío", "Consultar caja de envíos", "Abrir cajas de envíos", "Cerrar la caja propia de envíos"])
+        assert.equal(await remittance(name).isChecked(), true, name);
+      const reports = remittance("Consultar e imprimir reportes de envíos");
+      assert.equal(await reports.isChecked(), false); assert.equal(await reports.isDisabled(), false);
+      for (const name of ["Consultar tasas de envíos", "Administrar tasas de envíos", "Consultar la configuración de comisiones", "Administrar comisiones de envíos"])
+        assert.equal(await remittance(name).isDisabled(), true, `${name} is administrative`);
+      await reports.check();
+      assert.equal(await dialog().getByRole("combobox", { name: "Modo de permisos", exact: true }).inputValue(), "custom");
+      await dialog().getByRole("button", { name: "Guardar", exact: true }).click(); await dialog().waitFor({ state: "detached" });
+      const profile = await getProfile(cashierRole.id);
+      assert.equal(profile.mode, "custom"); assert.deepEqual(profile.permissionIds, [1, 2]);
+      assert.deepEqual(profile.remittancePermissions, ["remittances.cancel", "remittances.cash.close", "remittances.cash.open", "remittances.cash.view", "remittances.clients.create",
+        "remittances.create", "remittances.pay", "remittances.receipts", "remittances.reports", "remittances.view"]);
+      assert.equal((await store.read()).accounts.find(({ id }) => id === cashierRole.id)?.role, "cashier");
+    });
+    // The Cajero saved above uses its profile plus the reports of Envíos.
+    const cashierReports = () => dialog().getByRole("checkbox", { name: "Envíos de Dinero: Consultar e imprimir reportes de envíos", exact: true });
+    const personalizedCashier = [...roleRemittancePermissions("cashier"), "remittances.reports"].sort();
+    await t.test("a personalized account taken to «Perfil del rol» and back, without saving, shows again the selection it was loaded with", async () => {
+      await open(cashierRole.name);
+      const count = writes.length;
+      try {
+        const mode = dialog().getByRole("combobox", { name: "Modo de permisos", exact: true });
+        assert.equal(await mode.inputValue(), "custom"); assert.equal(await cashierReports().isChecked(), true);
+        await mode.selectOption("role"); assert.equal(await cashierReports().isChecked(), false, "the role profile is shown");
+        await mode.selectOption("custom"); assert.equal(await cashierReports().isChecked(), true, "back to the personalized selection that was loaded");
+      } finally { await dialog().getByRole("button", { name: "Cancelar", exact: true }).click(); await dialog().waitFor({ state: "detached" }); }
+      assert.equal(writes.length, count);
+    });
+    await t.test("«Perfil del rol» keeps the personalized keys of Envíos as an earlier selection that is adopted again with them", async () => {
+      await open(cashierRole.name);
+      const mode = dialog().getByRole("combobox", { name: "Modo de permisos", exact: true });
+      const stored = dialog().getByRole("group", { name: "Selección anterior de permisos", exact: true });
+      await mode.selectOption("role");
+      const count = writes.length;
+      await dialog().getByRole("button", { name: "Guardar", exact: true }).click(); await dialog().waitFor({ state: "detached" });
+      const { mode: sentMode, permissionIds, remittancePermissions } = writes[count].body as { mode: string; permissionIds: number[]; remittancePermissions: string[] };
+      assert.deepEqual([sentMode, permissionIds, remittancePermissions], ["role", [1, 2], personalizedCashier], "the saved lists go back unchanged");
+      let profile = await getProfile(cashierRole.id);
+      assert.deepEqual([profile.mode, profile.remittancePermissions], ["role", personalizedCashier]);
+      await open(cashierRole.name);
+      assert.equal(await mode.inputValue(), "role"); assert.equal(await cashierReports().isChecked(), false, "the role profile is what applies");
+      assert.match(await stored.innerText(), /Envíos de Dinero: .*Consultar e imprimir reportes de envíos/);
+      await stored.getByRole("button", { name: "Aplicar selección anterior", exact: true }).click();
+      assert.equal(await mode.inputValue(), "custom"); assert.equal(await cashierReports().isChecked(), true);
+      await dialog().getByRole("button", { name: "Guardar", exact: true }).click(); await dialog().waitFor({ state: "detached" });
+      profile = await getProfile(cashierRole.id);
+      assert.deepEqual([profile.mode, profile.permissionIds, profile.remittancePermissions], ["custom", [1, 2], personalizedCashier]);
+    });
+    await t.test("U1 a migrated account in «Perfil del rol» shows its earlier list, keeps it when saving and adopts it only on request", async () => {
+      await open(migrated.name);
+      const mode = dialog().getByRole("combobox", { name: "Modo de permisos", exact: true });
+      const stored = dialog().getByRole("group", { name: "Selección anterior de permisos", exact: true });
+      assert.equal(await mode.inputValue(), "role");
+      assert.match(await stored.innerText(), /conserva una selección anterior de 5 permisos que no se aplica mientras use «Perfil del rol»/);
+      assert.match(await stored.innerText(), /Códigos: 1, 2, 140, 141, 400\./);
+      assert.match(await stored.innerText(), /Fuera del alcance del rol, no se aplicarán: 141\./);
+      assert.equal(await checkbox(101).isChecked(), true, "the table shows the role profile, which is what applies");
+      await page.screenshot({ path: path.join(output, "permissions-earlier-list.png") });
+      const count = writes.length;
+      await dialog().getByRole("button", { name: "Guardar", exact: true }).click(); await dialog().waitFor({ state: "detached" });
+      assert.deepEqual(writes[count].body, { permissionIds: [1, 2, 140, 141, 400], revision: 0, mode: "role", remittancePermissions: [...roleRemittancePermissions("supervisor")].sort() });
+      let profile = await getProfile(migrated.id);
+      assert.equal(profile.mode, "role"); assert.deepEqual(profile.permissionIds, [1, 2, 140, 141, 400], "saving with the role profile keeps the earlier list");
+      await open(migrated.name);
+      await stored.getByRole("button", { name: "Aplicar selección anterior", exact: true }).click();
+      assert.equal(await mode.inputValue(), "custom");
+      for (const id of [1, 2, 140, 400]) assert.equal(await checkbox(id).isChecked(), true, `kept ${id}`);
+      for (const id of [101, 141, 500]) assert.equal(await checkbox(id).isChecked(), false, `not in the earlier list or out of reach: ${id}`);
+      assert.match(await stored.innerText(), /Al guardar, los permisos marcados la sustituirán\./);
+      // U5: the legacy report codes are kept but do not open or hide reports by themselves.
+      assert.match(await dialog().innerText(), /Los códigos 410–415 \(reportes del sistema anterior\) se conservan, pero los reportes se abren con «Visualizar Reportes» \(400\)/);
+      await dialog().getByRole("button", { name: "Guardar", exact: true }).click(); await dialog().waitFor({ state: "detached" });
+      profile = await getProfile(migrated.id);
+      assert.equal(profile.mode, "custom"); assert.deepEqual(profile.permissionIds, [1, 2, 140, 400]);
+      assert.equal((await store.read()).accounts.find(({ id }) => id === migrated.id)?.role, "supervisor");
+    });
+    await t.test("S1 a limited administrator gets the server's reason when the account has permissions it lacks", async () => {
+      const credentials = (await store.read()).accounts.find(({ id }) => id === supervisor.id)?.credentialVersion;
+      await page.evaluate(({ token, id }: { token: string; id: string }) => (window as any).__qaActor(token, id), { token: limitedToken, id: limited.id });
+      await page.getByRole("cell", { name: supervisor.name, exact: true }).click();
+      await page.getByRole("button", { name: "Cambiar Clave", exact: true }).click();
+      const password = page.getByRole("dialog", { name: "Cambiar clave de usuario...", exact: true });
+      await password.getByLabel("Clave:").fill("Synthetic-Takeover-2026!"); await password.getByLabel("Confirmación:").fill("Synthetic-Takeover-2026!");
+      await password.getByRole("button", { name: "oK", exact: true }).click();
+      await password.getByRole("alert").getByText("Esa cuenta tiene permisos que la tuya no tiene. Solo puede gestionarla una cuenta que tenga todos sus permisos.", { exact: true }).waitFor();
+      assert.equal(await password.getByRole("button", { name: "oK", exact: true }).isEnabled(), true, "a definitive answer, not an operation to retry");
+      await password.getByRole("button", { name: "Cancelar", exact: true }).click(); await password.waitFor({ state: "detached" });
+      assert.equal((await store.read()).accounts.find(({ id }) => id === supervisor.id)?.credentialVersion, credentials);
+    });
+    await t.test("U3 Supervisor consults a user's data read-only", async () => {
+      await page.evaluate(() => (window as any).__qaSupervisor());
+      await page.getByRole("cell", { name: first.name, exact: true }).click();
+      await page.getByTitle("Consultar", { exact: true }).click();
+      const ficha = page.getByRole("dialog", { name: "Datos de Usuario...", exact: true });
+      await ficha.getByText("Solo consulta: tu cuenta no tiene permiso para modificar este registro.", { exact: true }).waitFor();
+      const name = ficha.getByLabel("Nombre", { exact: true });
+      assert.equal(await name.inputValue(), first.name); assert.equal(await name.isDisabled(), true);
+      assert.equal(await ficha.getByLabel("Rol", { exact: true }).isDisabled(), true);
+      assert.equal(await ficha.getByRole("button", { name: "oK", exact: true }).count(), 0);
+      await ficha.getByRole("button", { name: "Cerrar", exact: true }).click(); await ficha.waitFor({ state: "detached" });
+    });
     await t.test("Supervisor can inspect but cannot toggle, bulk-select or submit permissions", async () => {
       await page.evaluate(() => (window as any).__qaSupervisor()); await open(); const count = writes.length;
       assert.equal(await checkbox(1).isDisabled(), true);
       for (const name of ["Seleccionar Todos", "Desmarcar Todos", "Guardar"]) assert.equal(await dialog().getByRole("button", { name, exact: true }).isDisabled(), true);
+      await dialog().getByText("Tu cuenta no tiene permiso para modificar permisos («Modificar permisos de usuario», 106).", { exact: true }).waitFor();
       await dialog().getByRole("button", { name: "Cancelar", exact: true }).click(); assert.equal(writes.length, count);
+    });
+    await t.test("U9 a retry refused because the permission was withdrawn lets the dialog close and keeps the attempt", async () => {
+      await page.evaluate(({ token, id }: { token: string; id: string }) => (window as any).__qaActor(token, id), { token: delegateToken, id: delegate.id });
+      await open(second.name); await checkbox(500).check(); const count = writes.length;
+      loseNextResponse = true;
+      await dialog().getByRole("button", { name: "Guardar", exact: true }).click();
+      const retry = dialog().getByRole("button", { name: "Reintentar guardado", exact: true }), cancel = dialog().getByRole("button", { name: "Cancelar", exact: true });
+      await retry.waitFor();
+      assert.equal(await cancel.isDisabled(), true); assert.equal(await page.evaluate((id: string) => (window as any).__qaUnresolved(id), delegate.id), true);
+      // Another administrator withdraws «Modificar permisos de usuario» while the result is unknown.
+      const all = catalog.permissions.map(({ id }) => id), current = await getProfile(delegate.id);
+      assert.equal((await post(`/api/usuarios/${delegate.id}/permisos`, { mode: "custom", permissionIds: all.filter((id) => id !== 106), remittancePermissions: [], revision: current.revision })).statusCode, 200);
+      await retry.click();
+      await dialog().getByRole("alert").getByText(/No se pudo confirmar si la operación anterior quedó registrada: pide a Administración que lo revise\. Puedes cerrar esta ventana/).waitFor();
+      assert.equal(await cancel.isDisabled(), false, "the dialog can be closed");
+      assert.equal(await page.evaluate((id: string) => (window as any).__qaUnresolved(id), delegate.id), false, "its window can be closed too");
+      await cancel.click(); await dialog().waitFor({ state: "detached" });
+      await page.getByRole("cell", { name: second.name, exact: true }).click(); await page.getByRole("button", { name: "Permisos", exact: true }).click();
+      await retry.waitFor();
+      assert.equal(await checkbox(500).isChecked(), true); assert.equal(await checkbox(500).isDisabled(), true, "the kept attempt stays frozen");
+      // With the permission back, the same key recovers the saved result instead of writing twice.
+      const restored = await getProfile(delegate.id);
+      assert.equal((await post(`/api/usuarios/${delegate.id}/permisos`, { mode: "role", permissionIds: all, remittancePermissions: [], revision: restored.revision })).statusCode, 200);
+      await retry.click(); await dialog().waitFor({ state: "detached" });
+      const attempts = writes.slice(count);
+      assert.deepEqual(attempts.map(({ status }) => status), [200, 403, 200]);
+      assert.equal(new Set(attempts.map(({ key }) => key)).size, 1);
+      assert.deepEqual((await getProfile(second.id)).permissionIds, [500]);
     });
     assert.deepEqual(errors, []); assert.equal(unexpectedExternalAttempts, 0, "The application must not attempt any unexpected external request.");
     t.diagnostic(`Blocked known antivirus attempts: ${blockedAntivirusAttempts}; unexpected external attempts: ${unexpectedExternalAttempts}; no external URLs recorded or requests sent.`);

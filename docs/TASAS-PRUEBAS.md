@@ -3,6 +3,11 @@
 Alcance: Administración → Tasas de Cambio y Envíos de Dinero → Tasas.
 Las escrituras de prueba usan exclusivamente datos ficticios aislados.
 
+Nota del 19 de octubre de 2026: esta revisión describe la interfaz de esa fecha.
+Hoy las tasas se mantienen solo en Archivos → Admin. → Tasas de cambio, donde la
+columna que usan los envíos se llama «Tasa de envíos». Envíos de Dinero ya no
+tiene una pestaña Tasas: toma la tasa del día al cotizar.
+
 ## Fallos reproducidos y corregidos
 
 1. Escribir `60,50` carácter por carácter eliminaba la coma y mostraba `6050`
@@ -57,7 +62,9 @@ pnpm exec tsx ../../scripts/qa-exchange-rates.mts
 
 El script construye los dos componentes y una API real con MemoryStore,
 sin leer `.env`, sin base de datos y escuchando solo en loopback. Abre la
-dirección que imprime. Los controles amarillos simulan una respuesta perdida,
+dirección que imprime: la página principal es **Tasas de Cambio** y el enlace
+«Envíos de Dinero» abre la ventana de envíos de Administración, que no mantiene
+tasas y cotiza con la tasa del día registrada. Los controles amarillos simulan una respuesta perdida,
 un rechazo de jornada o una respuesta incompleta; deben prepararse antes de
 abrir la confirmación. `/qa/status` permite cotejar claves, respuestas e historial
 del estado ficticio. Ctrl+C cierra el fixture y elimina su salida temporal.

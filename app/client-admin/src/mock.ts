@@ -75,6 +75,15 @@ const users: Record<string, User & { password: string }> = {
     hasWorkPermission: false,
   },
 };
+// The practice cashier signs in with the same demo password as the other accounts.
+users["cajero@cyp.local"] = {
+  id: "UUID-222",
+  name: "Cajero de práctica",
+  role: "CASHIER",
+  password: users.admin.password,
+  isActive: true,
+  hasWorkPermission: true,
+};
 
 const initialSnapshot = (): Snapshot => ({
   businessDate: today(),
@@ -765,7 +774,7 @@ export async function mockApi<T>(
     const match = path.match(/^\/usuarios\/([^/]+)\/permisos$/);
     const account = state.accounts.find(({ id }) => id === (match ? decodeURIComponent(match[1]) : ""));
     if (!account) throw new MockApiError("La cuenta no existe.", 404);
-    const response = (): UserPermissions => ({ userId: account.id, permissionIds: account.permissionIds ?? defaultPermissionIds(account.role), revision: account.permissionRevision ?? 0, mode: account.permissionMode ?? "role", remittancePermissions: (account.permissionMode ?? "role") === "role" ? roleRemittancePermissions(account.role) : account.remittancePermissions ?? [] });
+    const response = (): UserPermissions => ({ userId: account.id, permissionIds: account.permissionIds ?? defaultPermissionIds(account.role), revision: account.permissionRevision ?? 0, mode: account.permissionMode ?? "role", remittancePermissions: (account.permissionMode ?? "role") === "role" && !account.remittancePermissions?.length ? roleRemittancePermissions(account.role) : account.remittancePermissions ?? [] });
     if (method === "GET") return structuredClone(response()) as T;
     if (method === "POST") {
       const body = jsonBody(options);

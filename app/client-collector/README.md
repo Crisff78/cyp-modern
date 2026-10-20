@@ -5,9 +5,9 @@ Web React/TypeScript, accesible desde el navegador y preparada como PWA. El back
 Desde la raíz del repositorio:
 
 ```powershell
-npm install
-npm run dev --workspace @cyp/client-collector
-npm run build --workspace @cyp/client-collector
+pnpm install --frozen-lockfile
+pnpm --filter @cyp/client-collector dev
+pnpm --filter @cyp/client-collector build
 ```
 
 La opción **Entrar a la demostración** envía las credenciales de prueba al servidor. Requiere `DEMO_MODE=true`; no hay datos simulados ni saldos calculados como autoridad en el frontend. La aplicación muestra que los datos de demostración son ficticios. El token de sesión se guarda en `sessionStorage`.
@@ -19,6 +19,7 @@ La opción **Entrar a la demostración** envía las credenciales de prueba al se
 - Cada intento monetario guarda temporalmente importe y `Idempotency-Key` en la pestaña antes de enviarlo. Un fallo de red conserva esa referencia, incluso tras cerrar y reabrir la hoja o recargar. El reintento manual reutiliza la referencia. No se envía dinero en segundo plano ni se encolan movimientos sin conexión. Los errores definitivos 4xx permiten corregir los datos.
 - Recibos: enlaces públicos `/?receipt=<token>`; lectura desde `/api/recibos/:token`, compartir nativo, copiar, WhatsApp, impresión de navegador 58/80 mm y descarga ESC/POS. El archivo binario necesita un puente de impresión externo compatible. El navegador no imprime directamente en dispositivos arbitrarios.
 - Bolsillo: saldo recibido del servidor y desglose informativo calculado del libro de movimientos, límites separados, cierre de sesión e instalación.
+- Vistas según permisos: la barra inferior muestra solo las vistas que la cuenta puede abrir, sin huecos. Si falta el permiso de la vista pedida (la inicial «Mi ruta», código 300, o un enlace `?view`), se abre la primera permitida; «Mi bolsillo» siempre está disponible. Cada sondeo de 30 s lee `/api/auth/me` y `/api/snapshot`, de modo que un cambio de permisos llega sin cerrar la sesión.
 - Ubicación: solo se solicita permiso al pulsar Compartir mi ubicación. `watchPosition` envía a `/api/tracking` como máximo cada 45 segundos; se detiene manualmente, al salir o cerrar la aplicación. HTTPS/localhost y el permiso de ubicación son necesarios. No promete seguimiento en segundo plano.
 
 ## PWA y privacidad
@@ -31,4 +32,4 @@ En producción, configurar el servidor frontal con fallback a `index.html` para 
 
 ## Verificación
 
-`npm run build --workspace @cyp/client-collector` ejecuta TypeScript estricto y genera el bundle Vite. El service worker se prueba con el build servido por un servidor con proxy `/api` o el hosting final; Vite dev lo omite deliberadamente.
+`pnpm --filter @cyp/client-collector build` ejecuta TypeScript estricto y genera el bundle Vite; `pnpm --filter @cyp/client-collector test` ejecuta sus pruebas. El service worker se prueba con el build servido por un servidor con proxy `/api` o el hosting final; Vite dev lo omite deliberadamente.

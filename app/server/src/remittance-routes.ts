@@ -35,11 +35,11 @@ export function registerRemittanceRoutes(
   };
   get("/api/envios/snapshot", "Estado de envíos, tasas y cajas por moneda", async (req) =>
     remittanceSnapshot(await store.read(), user(req), systemOperators));
-  get("/api/envios/clientes/buscar", "Buscar clientes de remesas por código, nombre o teléfono sin devolver notas", async (req) => {
+  get("/api/envios/clientes/buscar", "Buscar clientes de envíos por código, nombre o teléfono sin devolver notas", async (req) => {
     const input = z.object({ query: singleLine(160, 1), side: z.enum(["sender", "recipient"]), senderId: id.optional() }).strict().parse(req.query);
     return searchRemittanceClients(await store.read(), user(req), input.query, input.side, input.senderId);
   });
-  get("/api/envios/clientes/:id/contacto", "Consultar el contacto del cliente seleccionado para una remesa", async (req) => {
+  get("/api/envios/clientes/:id/contacto", "Consultar el contacto del cliente seleccionado para un envío", async (req) => {
     const params = z.object({ id }).strict().parse(req.params);
     const input = z.object({ side: z.enum(["sender", "recipient"]), senderId: id.optional() }).strict().parse(req.query);
     return remittanceClientContact(await store.read(), user(req), params.id, input.side, input.senderId);
@@ -57,7 +57,7 @@ export function registerRemittanceRoutes(
     }).strict().parse(req.query);
     return quoteRemittance(await store.read(), input);
   });
-  mutate("/api/envios/politica-comisiones", "Configurar reparto de comisiones para remesas futuras", z.object({
+  mutate("/api/envios/politica-comisiones", "Configurar reparto de comisiones para envíos futuros", z.object({
     transactionCommissionBps: bps.optional(), managerCommissionBps: bps,
   }).strict(), (state, actor, input) => setCommissionPolicy(state, actor, input));
   mutate("/api/envios/tasas", "Registrar tasa diaria DOP por unidad", z.object({
@@ -84,8 +84,11 @@ export function registerRemittanceRoutes(
     .refine((input) => Boolean(input.recipientClientId) !== Boolean(input.newRecipientClient), { path: ["recipientClientId"], message: "Selecciona un destinatario o completa su ficha nueva." }), (state, actor, input) => {
     // Both client identities and the remittance commit in the same transaction.
     // A rejected quote, cancelled form or retry cannot leave orphan client records.
-    const senderClientId = input.senderClientId ?? registerRemittanceClient(state, actor, input.newSenderClient!);
-    const recipientClientId = input.recipientClientId ?? registerRemittanceClient(state, actor, input.newRecipientClient!);
+    const senderClientId = input.senderClientId ?? registerRemittanceClient(state, actor, input.newSenderClient!, "sender", input.recipientClientId);
+    // A new recipient record without its own phone keeps the one written in «Teléfono del destinatario».
+    const recipientDraft = input.newRecipientClient && !input.newRecipientClient.phone && input.recipientPhone
+      ? { ...input.newRecipientClient, phone: input.recipientPhone } : input.newRecipientClient;
+    const recipientClientId = input.recipientClientId ?? registerRemittanceClient(state, actor, recipientDraft!, "recipient", senderClientId);
     const { newSenderClient: _sender, newRecipientClient: _recipient, ...values } = input;
     return createRemittance(state, actor, { ...values, senderClientId, recipientClientId }, systemOperators);
   });

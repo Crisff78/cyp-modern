@@ -1,6 +1,6 @@
 import { isValidElement, useEffect, useRef, useState, type ReactNode, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
-import { ClipboardCheck, KeyRound, Pencil, Plus, Printer, RefreshCw, Trash2, X } from "lucide-react";
+import { ClipboardCheck, Eye, KeyRound, Pencil, Plus, Printer, RefreshCw, Trash2, X } from "lucide-react";
 import { usePageAccess } from "./PageAccess";
 
 // Original MDI presentation shared by the connected screens.
@@ -36,8 +36,10 @@ export const handleKeyboardActivation = (event: ReactKeyboardEvent<HTMLElement>,
   action();
 };
 
-export function LegacyToolbar({ onToggleFilters, filtersVisible = true, onFirst, onPrevious, onNext, onLast, onNew, onEdit, onAccept, onDelete, onRefresh, onPrint, disableNew = false, disableEdit = false, disableAccept = false, disableDelete = false, showEdit = true, deleteIcon = "trash", deleteTitle = "Eliminar", newTitle = "Nuevo", newIcon, extra }: Readonly<{ onToggleFilters?: () => void; filtersVisible?: boolean; onFirst?: () => void; onPrevious?: () => void; onNext?: () => void; onLast?: () => void; onNew?: () => void; onEdit?: () => void; onAccept?: () => void; onDelete?: () => void; onRefresh?: () => void; onPrint?: () => void; disableNew?: boolean; disableEdit?: boolean; disableAccept?: boolean; disableDelete?: boolean; showEdit?: boolean; deleteIcon?: "trash" | "x"; deleteTitle?: string; newTitle?: string; newIcon?: ReactNode; extra?: ReactNode }>) {
+export function LegacyToolbar({ onToggleFilters, filtersVisible = true, onFirst, onPrevious, onNext, onLast, onNew, onEdit, onAccept, onDelete, onRefresh, onPrint, disableNew = false, disableEdit = false, disableAccept = false, disableDelete = false, showEdit = true, consultOnEdit = false, deleteIcon = "trash", deleteTitle = "Eliminar", newTitle = "Nuevo", newIcon, extra }: Readonly<{ onToggleFilters?: () => void; filtersVisible?: boolean; onFirst?: () => void; onPrevious?: () => void; onNext?: () => void; onLast?: () => void; onNew?: () => void; onEdit?: () => void; onAccept?: () => void; onDelete?: () => void; onRefresh?: () => void; onPrint?: () => void; disableNew?: boolean; disableEdit?: boolean; disableAccept?: boolean; disableDelete?: boolean; showEdit?: boolean; consultOnEdit?: boolean; deleteIcon?: "trash" | "x"; deleteTitle?: string; newTitle?: string; newIcon?: ReactNode; extra?: ReactNode }>) {
   const access = usePageAccess();
+  // Screens that open their record read-only offer «Consultar» to accounts that may see but not modify it.
+  const consult = consultOnEdit && !access.canEdit;
   return (
     <div className="legacy-mdi-toolbar" aria-label="Barra de herramientas legacy" onMouseDown={stopToolbarEvent} onClick={stopToolbarEvent}>
       {onToggleFilters && <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" onClick={runToolbarAction(onToggleFilters)}><KeyRound size={15} /></button>}
@@ -47,7 +49,7 @@ export function LegacyToolbar({ onToggleFilters, filtersVisible = true, onFirst,
       <button type="button" className="nav-tool" title="Último registro" onClick={runToolbarAction(onLast)}>&gt;|</button>
       <span className="mdi-toolbar-separator" />
       <button type="button" title={newTitle} disabled={disableNew || !access.canCreate} onClick={runToolbarAction(onNew)}>{newIcon ?? <Plus size={15} />}</button>
-      {showEdit && <button type="button" title="Editar" disabled={disableEdit || !access.canEdit} onClick={runToolbarAction(onEdit)}><Pencil size={15} /></button>}
+      {showEdit && <button type="button" title={consult ? "Consultar" : "Editar"} disabled={disableEdit || !access.canEdit && !consult} onClick={runToolbarAction(onEdit)}>{consult ? <Eye size={15} /> : <Pencil size={15} />}</button>}
       {onAccept && <button type="button" title="Aceptar depósito" disabled={disableAccept || !access.canAccept} onClick={runToolbarAction(onAccept)}><ClipboardCheck size={15} /></button>}
       <button type="button" className="danger-tool" title={deleteTitle} disabled={disableDelete || !access.canDelete} onClick={runToolbarAction(onDelete)}>{deleteIcon === "x" ? <X size={15} /> : <Trash2 size={15} />}</button>
       <button type="button" title="Refrescar" onClick={runToolbarAction(onRefresh)}><RefreshCw size={15} /></button>

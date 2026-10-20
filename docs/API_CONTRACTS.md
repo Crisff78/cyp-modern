@@ -5,7 +5,7 @@ tasas diarias, envíos, pagos, cancelaciones, caja por moneda y reportes. Sus
 importes son unidades menores de DOP/USD/EUR; las rutas históricas de este
 documento mantienen el libro DOP. El contrato nuevo incluye actividad de clientes.
 
-Base local `http://127.0.0.1:3001/api`. Especificación OpenAPI 3.1 generada desde los esquemas Zod en **GET `/api/openapi.json`**; copia versionada en `docs/openapi.json`. Swagger Editor/Swagger UI puede cargarla. Dinero = centavos enteros DOP. JSON UTF-8. CORS limitado por `ALLOWED_ORIGINS`.
+Base local `http://127.0.0.1:3001/api`. Especificación OpenAPI 3.1 generada desde los esquemas Zod en **GET `/api/openapi.json`**; copia versionada en `docs/openapi.json`. Esa copia es una instantánea anterior (por ejemplo, no incluye el rol `cashier`): la especificación vigente es la que sirve el servidor. Swagger Editor/Swagger UI puede cargarla. Dinero = centavos enteros DOP. JSON UTF-8. CORS limitado por `ALLOWED_ORIGINS`.
 
 ## Autenticación y errores
 
@@ -45,6 +45,8 @@ Todos los POST financieros requieren cabecera `Idempotency-Key` (8–100 caracte
 | POST `/recibos/:token/revocar`                 | —                                                     | `{ok:true}` / admin                                                                                       |
 
 `required` por defecto false; fechas ISO YYYY-MM-DD validadas. Cadenas de negocio 1–160 caracteres; ids 1–80; importe entero positivo máximo 1,000,000,000. Campos inesperados rechazados. El frontend no fija collectorId al cobrar: el backend lo obtiene del cargo y la ruta. Generación recurrente crea un lote explícito; no incluye scheduler automático.
+
+La columna «permiso» indica el rol. Además, cada ruta exige los permisos efectivos de la cuenta (códigos del catálogo y claves `remittances.*`; ver [USUARIOS-PERMISOS.md](USUARIOS-PERMISOS.md) y `app/server/src/access.ts`). Por ejemplo, POST `/cargos/recurrentes` crea cargos reales y exige 350, 351, 300 y 301; POST `/cuadres` cierra la jornada y exige 402 y 403.
 
 ## Ejemplo reproducible
 
