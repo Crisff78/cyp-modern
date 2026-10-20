@@ -16,7 +16,6 @@ import {
   Banknote,
   BellRing,
   Check,
-  ChevronLeft,
   ChevronRight,
   CircleAlert,
   Clock3,
@@ -61,6 +60,7 @@ import { locationUnavailable, locationError, validLocation } from "../../shared/
 import { INPUT_LIMITS, validateText } from "../../shared/inputRules";
 import { LoginPasswordInput, PasswordManagerHint } from "../../shared/LoginPasswordInput";
 import { loginCredentials } from "../../shared/loginCredentials";
+import { openAdminPortal } from "../../shared/sessionHandoff";
 import { transformRouteToMap } from "./services/mapAdapter";
 import { businessDay as localDay, timeLabel } from "./services/dates";
 import { pocketBalances } from "./services/pocket";
@@ -86,7 +86,7 @@ const tabs = [
   { id: "route", name: "Mi ruta", icon: Route },
   { id: "payouts", name: "Pagos", icon: ArrowUpRight },
   { id: "receipts", name: "Recibos", icon: ReceiptText },
-  { id: "remittances", name: "Envíos", icon: ArrowRight },
+  { id: "remittances", name: "Remesas", icon: ArrowRight },
   { id: "reports", name: "Reportes", icon: ReceiptText },
   { id: "pocket", name: "Mi bolsillo", icon: Wallet },
 ] as const;
@@ -626,6 +626,13 @@ export function App() {
   );
 }
 
+// The office panel lives at the root of the same site (its own server on port 5173 in development).
+const adminPortalUrl = () => {
+  const url = new URL("/", window.location.origin);
+  if (import.meta.env.DEV) url.port = "5173";
+  return url.href;
+};
+
 function Login({
   onLogin,
   online,
@@ -640,6 +647,7 @@ function Login({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const [leaving, setLeaving] = useState(false);
   const [error, setError] = useState(initialError);
   useEffect(() => setError(initialError), [initialError]);
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -648,7 +656,7 @@ function Login({
     setBusy(true);
     setError("");
     try {
-      validateText(credentials.email, "Usuario / Email", INPUT_LIMITS.email, { required: true });
+      validateText(credentials.email, "Usuario o correo", INPUT_LIMITS.email, { required: true });
       if (!credentials.password || credentials.password.length > INPUT_LIMITS.password)
         throw new Error(`Escribe una contraseña de hasta ${INPUT_LIMITS.password} caracteres.`);
       const result = await api<{ token: string; user: User }>("/auth/login", {
@@ -657,11 +665,13 @@ function Login({
       });
       const next = enrichUserRole(result.user);
       if (isSuspendedUser(next))
-        throw new Error("Cuenta o empresa suspendida.");
-      if (!canAccessCollector(next))
-        throw new Error(
-          "Esta cuenta corresponde a administración. Entra con una cuenta de cobrador.",
-        );
+        throw new Error("Tu cuenta o tu empresa está suspendida. Habla con la oficina.");
+      // One sign-in page for every account: an office account goes on to the office panel.
+      if (!canAccessCollector(next)) {
+        setLeaving(true);
+        openAdminPortal(result.token, adminPortalUrl());
+        return;
+      }
       setToken(result.token);
       onLogin(next);
     } catch (err) {
@@ -730,12 +740,12 @@ function Login({
               cyp<span>.</span>
             </span>
           </div>
-          <h2>Cobros y Pagos — Acceso del Cobrador</h2>
-          <p>Ingrese sus credenciales para continuar.</p>
+          <h2>Iniciar sesión</h2>
+          <p>Escribe tu usuario y tu contraseña para entrar.</p>
         </div>
         <form name="collector-login" autoComplete="on" onSubmit={(event) => void submit(event)}>
           <label>
-            Usuario / Email
+            Usuario o correo
             <input
               id="collector-login-username"
               name="username"
@@ -747,7 +757,7 @@ function Login({
               required
               autoComplete="username"
               maxLength={INPUT_LIMITS.email}
-              placeholder="usuario@empresa.com"
+              placeholder="Tu usuario o correo"
               defaultValue={email}
               onChange={(event) => setEmail(event.target.value)}
             />
@@ -768,27 +778,16 @@ function Login({
               {error}
             </p>
           )}
-          <button className="primary" type="submit" disabled={busy || !online}>
-            {busy ? (
+          {leaving && <p role="status">Entrando a la oficina…</p>}
+          <button className="primary" type="submit" disabled={busy || leaving || !online}>
+            {busy || leaving ? (
               <LoaderCircle className="spin" size={20} />
             ) : (
               <>
-                Entrar a mi ruta
+                Iniciar sesión
                 <ArrowRight size={20} />
               </>
             )}
-          </button>
-          <button
-            type="button"
-            className="text-button login-back"
-            disabled={busy}
-            onClick={() => {
-              const selectionUrl = new URL("/", window.location.origin);
-              if (import.meta.env.DEV) selectionUrl.port = "5173";
-              window.location.assign(selectionUrl.href);
-            }}
-          >
-            <ChevronLeft size={15} /> Volver
           </button>
         </form>
         {onRetry && (
@@ -800,7 +799,7 @@ function Login({
             Verificar mi sesión guardada
           </button>
         )}
-        <p className="login-note">Accede con la cuenta habilitada por el administrador.</p>
+        <p className="login-note">¿No tienes usuario? Pídeselo a la oficina de tu empresa.</p>
         <footer>
           <Fingerprint size={18} />
           Cobros y Pagos Móviles

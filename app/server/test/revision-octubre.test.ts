@@ -584,7 +584,7 @@ test("B15 a remittance cannot be registered as a new charge", async (t) => {
     const response = await env.post("/api/cargos", chargeInput(service));
     assert.equal(response.statusCode, 422, response.body);
     assert.equal(response.json().error.code, "REMITTANCE_SERVICE");
-    assert.match(response.json().error.message, /Envíos de Dinero/);
+    assert.match(response.json().error.message, /Remesas/);
   }
   assert.deepEqual(await env.store.read(), before);
   const accepted = await env.post("/api/cargos", chargeInput("Servicio semanal"));
@@ -731,7 +731,7 @@ test("B15 a charge import rejects the remittance rows and keeps the rest", async
   assert.equal(response.statusCode, 200, response.body);
   assert.equal(response.json().creados, 1);
   assert.deepEqual(response.json().errores.map((row: { fila: number }) => row.fila), [1, 2]);
-  for (const row of response.json().errores as { mensaje: string }[]) assert.match(row.mensaje, /Envíos de Dinero/);
+  for (const row of response.json().errores as { mensaje: string }[]) assert.match(row.mensaje, /Remesas/);
   const charges = (await env.store.read()).charges;
   assert.equal(charges.length, before + 1);
   assert.equal(charges.some((charge) => /remesa/i.test(charge.service)), false);

@@ -27,13 +27,14 @@ test("Collector login supports password visibility/autofill without saving secre
     fs.writeFileSync(fixture, `import { createRoot } from "react-dom/client";
 import { App } from ${module("App.tsx")};
 import ${module("styles.css")};
-window.__qaLogins = 0;
+// Kept in the tab, not in the page: the office account leaves this page for the office panel.
+const qaLogins = () => Number(sessionStorage.getItem("qa-logins") || 0);
 window.fetch = async (input, options = {}) => {
   if (new URL(String(input), location.origin).pathname === "/api/recibos/QA-SIN-VALOR-CONTABLE") return new Response(JSON.stringify({ id: "QA-SIN-VALOR-CONTABLE", clientName: "Cliente ficticio con nombre largo y acentos: María Rodríguez " + "QA".repeat(40), collectorName: "Cobrador ficticio", concept: "PRUEBA SIN VALOR CONTABLE " + "CONCEPTO".repeat(30), amount: 123456, createdAt: "2026-10-09T16:00:00Z", type: "collection" }));
   if (new URL(String(input), location.origin).pathname !== "/api/auth/login") throw new Error("Unexpected API in isolated login fixture");
-  window.__qaLogins++;
+  sessionStorage.setItem("qa-logins", String(qaLogins() + 1));
   const credentials = JSON.parse(String(options.body || "{}"));
-  window.__qaLoginValues = { username: credentials.email, passwordLength: credentials.password?.length ?? 0 };
+  sessionStorage.setItem("qa-login-values", JSON.stringify({ username: credentials.email, passwordLength: credentials.password?.length ?? 0 }));
   return new Response(JSON.stringify({token:"qa-forbidden-admin",user:{id:"qa-admin",name:"Admin QA",role:"admin",isActive:true,hasWorkPermission:true}}));
 };
 createRoot(document.getElementById("root")).render(<App />);`, "utf8");
@@ -45,7 +46,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
     const server = createServer((request, response) => {
       const pathname = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
       if (request.method !== "GET") { network.push(`${request.method} ${pathname}`); response.writeHead(405); response.end(); return; }
-      if (pathname === "/") { response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }); response.end('<h1>Selecciona tu acceso</h1>'); return; }
+      if (pathname === "/") { response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }); response.end('<h1>Oficina</h1>'); return; }
       if (pathname === "/collector/") { response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }); response.end('<!doctype html><html lang="es"><meta charset="utf-8"><link rel="stylesheet" href="/fixture.css"><div id="root"></div><script type="module" src="/fixture.js"></script></html>'); return; }
       const assets = new Map([["/fixture.js", "text/javascript"], ["/fixture.css", "text/css"]]);
       if (assets.has(pathname)) { response.writeHead(200, { "Content-Type": assets.get(pathname)! }); response.end(fs.readFileSync(path.join(output, "dist", pathname.slice(1)))); return; }
@@ -70,7 +71,11 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
     });
     const page = await context.newPage(); page.setDefaultTimeout(15000); page.on("pageerror", (error: Error) => errors.push(error.message));
     await page.goto(`${origin}/collector/`);
-    const email = page.getByLabel("Usuario / Email", { exact: true }), password = page.getByLabel("Contraseña", { exact: true });
+    const logins = () => page.evaluate(() => Number(sessionStorage.getItem("qa-logins") || 0));
+    const loginValues = () => page.evaluate(() => JSON.parse(sessionStorage.getItem("qa-login-values") ?? "null"));
+    await page.getByRole("heading", { name: "Iniciar sesión", exact: true }).waitFor();
+    assert.equal(await page.getByRole("button", { name: "Volver", exact: true }).count(), 0, "there is no page to choose a portal any more");
+    const email = page.getByLabel("Usuario o correo", { exact: true }), password = page.getByLabel("Contraseña", { exact: true });
     await email.waitFor();
     assert.equal(await email.getAttribute("name"), "username"); assert.equal(await email.getAttribute("autocomplete"), "username");
     assert.equal(await email.getAttribute("inputmode"), "email"); assert.equal(await email.getAttribute("maxlength"), "200");
@@ -81,11 +86,16 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
     await page.getByRole("button", { name: "Mostrar contraseña", exact: true }).click();
     assert.equal(await password.getAttribute("type"), "text"); assert.equal(await password.inputValue(), secret);
     await page.getByRole("button", { name: "Ocultar contraseña", exact: true }).click();
-    assert.equal(await password.getAttribute("type"), "password"); assert.equal(await page.evaluate("window.__qaLogins"), 0);
+    assert.equal(await password.getAttribute("type"), "password"); assert.equal(await logins(), 0);
     assert.equal(await page.evaluate((secret: string) => [localStorage, sessionStorage].every((storage) => Object.values(storage).every((value) => !String(value).includes(secret))), secret), true);
-    await page.getByRole("button", { name: "Entrar a mi ruta", exact: true }).click();
-    await page.getByText("Esta cuenta corresponde a administración. Entra con una cuenta de cobrador.", { exact: true }).waitFor();
+    // An office account signs in here too and goes on to the office panel with its session.
+    await page.getByRole("button", { name: "Iniciar sesión", exact: true }).click();
+    await page.getByRole("heading", { name: "Oficina" }).waitFor();
+    assert.equal(new URL(page.url()).pathname, "/"); assert.equal(new URL(page.url()).search, "");
+    assert.equal(await page.evaluate(() => localStorage.getItem("cyp-admin-token")), "qa-forbidden-admin");
     assert.equal(await page.evaluate(() => sessionStorage.getItem("cyp-collector-token")), null);
+    assert.equal(await page.evaluate((secret: string) => [localStorage, sessionStorage].every((storage) => Object.values(storage).every((value) => !String(value).includes(secret))), secret), true);
+    await page.evaluate(() => localStorage.clear()); await page.goto(`${origin}/collector/`); await email.waitFor();
     const nativeUser = "qa-autofill@example.invalid", nativeSecret = "Native-PWA!+#'";
     await page.evaluate(({ nativeUser, nativeSecret }) => {
       const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
@@ -95,20 +105,21 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
     await page.getByRole("button", { name: "Mostrar contraseña", exact: true }).click();
     assert.equal(await password.inputValue(), nativeSecret); assert.equal(await email.inputValue(), nativeUser);
     await page.getByRole("button", { name: "Ocultar contraseña", exact: true }).click();
-    await page.getByRole("button", { name: "Entrar a mi ruta", exact: true }).click();
-    await page.getByText("Esta cuenta corresponde a administración. Entra con una cuenta de cobrador.", { exact: true }).waitFor();
-    assert.deepEqual(await page.evaluate(() => (window as any).__qaLoginValues), { username: nativeUser, passwordLength: nativeSecret.length });
-    const calls = await page.evaluate(() => (window as any).__qaLogins);
-    await page.evaluate(() => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(document.querySelector('[name="password"]'), "x".repeat(201));
+    await page.getByRole("button", { name: "Iniciar sesión", exact: true }).click();
+    await page.getByRole("heading", { name: "Oficina" }).waitFor();
+    assert.deepEqual(await loginValues(), { username: nativeUser, passwordLength: nativeSecret.length });
+    await page.evaluate(() => localStorage.clear()); await page.goto(`${origin}/collector/`); await email.waitFor();
+    const calls = await logins();
+    await page.evaluate((nativeUser: string) => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+      setter.call(document.querySelector('[name="username"]'), nativeUser);
+      setter.call(document.querySelector('[name="password"]'), "x".repeat(201));
       document.querySelector<HTMLFormElement>("form")!.requestSubmit();
-    });
+    }, nativeUser);
     await page.getByRole("alert").filter({ hasText: "hasta 200 caracteres" }).waitFor();
-    assert.equal(await page.evaluate(() => (window as any).__qaLogins), calls, "Autofilled values retain the existing password length validation.");
+    assert.equal(await logins(), calls, "Autofilled values retain the existing password length validation.");
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     await page.screenshot({ path: path.join(output, "collector-login-mobile.png") });
-    await page.getByRole("button", { name: "Volver", exact: true }).click();
-    await page.getByRole("heading", { name: "Selecciona tu acceso" }).waitFor(); assert.equal(await page.locator("input,form").count(), 0);
     await t.test("native printing uses selected paper without cutting long text or including buttons", async () => {
       await page.goto(`${origin}/collector/?receipt=QA-SIN-VALOR-CONTABLE`);
       const receipt = page.getByRole("article", { name: "Comprobante de operación" }); await receipt.waitFor();

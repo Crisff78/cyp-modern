@@ -56,7 +56,7 @@ export function authorizeRequest(actor: User, method: string, route: string) {
     let permission: RemittancePermission | undefined;
     if (path === "envios/snapshot") {
       if (!hasRemittanceAccess(actor) && !hasRemittancePermission(actor, "remittances.commissions.view") && !hasRemittancePermission(actor, "remittances.rates.view"))
-        throw new DomainError("PERMISSION_REQUIRED", "Tu cuenta no tiene acceso a Envíos de Dinero.", 403);
+        throw new DomainError("PERMISSION_REQUIRED", "Tu cuenta no tiene acceso a Remesas.", 403);
       return;
     }
     if (path.startsWith("envios/clientes")) {

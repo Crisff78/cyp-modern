@@ -1,7 +1,7 @@
 import { isMockToken, mockApi } from "./mock";
 import { createStrictApi, StrictApiError } from "../../shared/remittances/strictApi";
 
-const TOKEN_KEY = "cyp-admin-token";
+import { ADMIN_TOKEN_KEY as TOKEN_KEY } from "../../shared/sessionHandoff";
 export const getToken = () => localStorage.getItem(TOKEN_KEY);
 export const setToken = (token: string) =>
   localStorage.setItem(TOKEN_KEY, token);

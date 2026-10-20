@@ -158,7 +158,7 @@ export function ConnectedLegacyReports({ page, title, snapshot, onRefresh }: { p
         <label><span>Formato:</span><select defaultValue="csv"><option value="csv">CSV (separado por punto y coma)</option></select></label>
         <p className="connected-report-dialog-note">Se exportan los filtros, el alcance y todos los resultados, con sus totales separados por moneda.</p>
         {error && <p role="alert">{error}</p>}
-        <div className="pending-charges-export-actions"><button type="submit" disabled={Boolean(invalidRange)}>oK</button><button type="button" onClick={() => setExportOpen(false)}>Cancelar</button></div>
+        <div className="pending-charges-export-actions"><button type="submit" disabled={Boolean(invalidRange)}>Aceptar</button><button type="button" onClick={() => setExportOpen(false)}>Cancelar</button></div>
       </form>
     </LegacyDialog>}
   </div>;

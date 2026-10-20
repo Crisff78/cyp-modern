@@ -20,7 +20,7 @@ const canRunBrowser = process.platform === "win32" && fs.existsSync(edge) && Boo
 
 // Render the actual App and styles with its existing synthetic frontend store.
 // No .env, real API, shared records, database, provider, or browser download.
-test("login selection and receipt navigation work in the actual Admin UI", { skip: canRunBrowser ? false : "Installed Windows Edge and Playwright required; no download attempted." }, async (t) => {
+test("the single sign-in page and receipt navigation work in the actual Admin UI", { skip: canRunBrowser ? false : "Installed Windows Edge and Playwright required; no download attempted." }, async (t) => {
   const output = fs.mkdtempSync(path.join(os.tmpdir(), "cyp-login-notifications-"));
   let browser: any, context: any, server: ReturnType<typeof createServer> | undefined;
   const pageErrors: string[] = [], networkAttempts: string[] = [];
@@ -59,6 +59,8 @@ createRoot(document.getElementById("root")).render(<App />);
       if (pathname === "/") { response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }); response.end('<!doctype html><html lang="es"><meta charset="utf-8"><link rel="stylesheet" href="/fixture.css"><div id="root"></div><script type="module" src="/fixture.js"></script></html>'); return; }
       const assets = new Map([["/fixture.js", "text/javascript"], ["/fixture.css", "text/css"]]);
       if (assets.has(pathname)) { response.writeHead(200, { "Content-Type": assets.get(pathname)! }); response.end(fs.readFileSync(path.join(output, "dist", pathname.slice(1)))); return; }
+      // Stand-in for the collector app, where a collector account goes after signing in.
+      if (pathname === "/collector/") { response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }); response.end("<!doctype html><title>Mi ruta</title><h1>App del cobrador</h1>"); return; }
       response.writeHead(404); response.end();
     });
     await new Promise<void>((resolve, reject) => { server!.once("error", reject); server!.listen(0, "127.0.0.1", resolve); });
@@ -78,24 +80,23 @@ createRoot(document.getElementById("root")).render(<App />);
     });
     const page = await context.newPage(); page.setDefaultTimeout(15000);
     page.on("pageerror", (error: Error) => pageErrors.push(error.message));
-    const chooseAdmin = () => page.getByRole("button", { name: /^Administrador/ });
-    const submit = () => page.getByRole("button", { name: "Iniciar Sesión", exact: true });
+    const submit = () => page.getByRole("button", { name: "Iniciar sesión", exact: true });
     const credentials = async (email: string, password = "Demo-CyP-2026!") => {
-      await page.getByLabel("Usuario / Correo", { exact: true }).fill(email);
+      await page.getByLabel("Usuario o correo", { exact: true }).fill(email);
       await page.getByLabel("Contraseña", { exact: true }).fill(password);
       await submit().click();
     };
 
-    await t.test("selection hides credentials; Back resets values; native security constraints remain", async () => {
-      await page.goto(origin); await chooseAdmin().waitFor();
-      assert.equal(await page.locator("form, input").count(), 0);
+    await t.test("one sign-in page for every account, with no choice of portal; native security constraints remain", async () => {
+      await page.goto(origin);
+      await page.getByRole("heading", { name: "Iniciar sesión", exact: true }).waitFor();
       await page.screenshot({ path: path.join(output, "login-selection.png") });
-      const collector = page.getByRole("link", { name: /^Terminal del cobrador/ });
-      assert.equal(await collector.getAttribute("href"), "/collector/");
-      assert.equal(await collector.getAttribute("target"), null);
-      await chooseAdmin().focus(); await page.keyboard.press("Enter");
-      const email = page.getByLabel("Usuario / Correo", { exact: true }), password = page.getByLabel("Contraseña", { exact: true });
-      assert.equal(await chooseAdmin().count(), 0); assert.equal(await collector.count(), 0);
+      // The old choice between Administrador and Terminal del cobrador is gone, and nothing says «administrador».
+      assert.equal(await page.getByRole("button", { name: /^Administrador/ }).count(), 0);
+      assert.equal(await page.getByRole("link", { name: /^Terminal del cobrador/ }).count(), 0);
+      assert.doesNotMatch(await page.locator(".login-form-inner").innerText(), /administra/i);
+      const email = page.getByLabel("Usuario o correo", { exact: true }), password = page.getByLabel("Contraseña", { exact: true });
+      assert.equal(await email.getAttribute("placeholder"), "Tu usuario o correo");
       assert.equal(await email.getAttribute("maxlength"), "200");
       assert.equal(await password.getAttribute("maxlength"), "200");
       assert.equal(await password.getAttribute("minlength"), "3");
@@ -103,7 +104,7 @@ createRoot(document.getElementById("root")).render(<App />);
       assert.equal(await email.getAttribute("name"), "username");
       assert.equal(await email.getAttribute("inputmode"), "email");
       assert.equal(await password.getAttribute("name"), "password");
-      assert.equal(await page.locator('form[name="admin-login"]').getAttribute("autocomplete"), "on");
+      assert.equal(await page.locator('form[name="login"]').getAttribute("autocomplete"), "on");
       const secret = "NoGuardar!+#'";
       await email.fill("qa-login@example.invalid");
       await password.fill(secret);
@@ -120,11 +121,7 @@ createRoot(document.getElementById("root")).render(<App />);
       assert.equal(await page.evaluate(() => (window as any).__qaLoginRequests), 0, "Native minimum length must block submission.");
       await credentials("admin@cyp.local", "Incorrecta!+#'");
       await page.getByRole("alert").getByText("Usuario o contraseña incorrectos.").waitFor();
-      await page.getByRole("button", { name: "Volver", exact: true }).click();
-      assert.equal(await page.locator("form, input").count(), 0);
-      await chooseAdmin().click();
-      assert.equal(await email.inputValue(), ""); assert.equal(await password.inputValue(), "");
-      assert.equal(await page.getByRole("alert").count(), 0);
+      assert.equal(await page.getByRole("button", { name: "Volver", exact: true }).count(), 0, "there is no page before this one to go back to");
       await page.setViewportSize({ width: 390, height: 844 });
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
       await page.screenshot({ path: path.join(output, "login-form-mobile.png") });
@@ -140,34 +137,38 @@ createRoot(document.getElementById("root")).render(<App />);
       const before = await page.evaluate(() => (window as any).__qaLoginRequests);
       await page.getByRole("button", { name: "Mostrar contraseña", exact: true }).click();
       assert.equal(await page.getByLabel("Contraseña", { exact: true }).inputValue(), secret);
-      assert.equal(await page.getByLabel("Usuario / Correo", { exact: true }).inputValue(), username);
+      assert.equal(await page.getByLabel("Usuario o correo", { exact: true }).inputValue(), username);
       await page.getByRole("button", { name: "Ocultar contraseña", exact: true }).click();
       assert.equal(await page.evaluate(() => (window as any).__qaLoginRequests), before);
       await submit().click(); await page.getByRole("alert").getByText("Usuario o contraseña incorrectos.").waitFor();
       assert.deepEqual(await page.evaluate(() => (window as any).__qaLoginValues), { username, passwordLength: secret.length });
       assert.equal(await page.evaluate((secret: string) => [localStorage, sessionStorage].every((storage) => Object.values(storage).every((value) => !String(value).includes(secret))), secret), true);
-      await page.getByRole("button", { name: "Volver", exact: true }).click(); await chooseAdmin().click();
     });
-    await t.test("collector and suspended accounts retain their Admin guards", async () => {
+    await t.test("a collector account goes on to the collector app; a suspended one stays out", async () => {
       await credentials("collector@cyp.local");
-      await page.getByRole("heading", { name: "Acceso no autorizado", exact: true }).waitFor();
+      // Same tab and origin: the session goes in the storage the collector app reads, never in the URL.
+      await page.waitForURL(`${origin}/collector/`); await page.getByRole("heading", { name: "App del cobrador" }).waitFor();
+      assert.equal(new URL(page.url()).search, "");
+      assert.equal(typeof await page.evaluate(() => sessionStorage.getItem("cyp-collector-token")), "string");
       assert.equal(await page.evaluate(() => localStorage.getItem("cyp-admin-token")), null);
-      await page.getByRole("button", { name: "Volver al login administrativo" }).click();
+      await page.goto(origin); await page.getByRole("heading", { name: "Iniciar sesión", exact: true }).waitFor();
+      await page.evaluate(() => sessionStorage.clear());
       await credentials("suspendido@cyp.local");
-      await page.getByRole("alert").getByText("Cuenta o empresa suspendida.").waitFor();
+      await page.getByRole("alert").getByText("Tu cuenta o tu empresa está suspendida. Habla con la oficina.").waitFor();
       assert.equal(await page.evaluate(() => localStorage.getItem("cyp-admin-token")), null);
       await credentials("admin@cyp.local");
       await page.getByRole("button", { name: /^Notificaciones,/ }).waitFor();
     });
     await t.test("native printing supports printer paper and thermal widths for an individual receipt without MDI controls", async () => {
-      await page.getByRole("button", { name: "Cobros", exact: true }).click();
+      await page.locator(".sidebar").getByRole("button", { name: "COBROS", exact: true }).click();
+      await page.getByRole("button", { name: "Cobros realizados", exact: true }).click();
       const view = page.locator(".collections-legacy-view"); await view.waitFor();
       await view.locator(".collections-table tbody tr[role=button]").first().click();
       await view.getByTitle("Imprimir", { exact: true }).click();
       const scope = page.getByRole("dialog", { name: "Seleccione...", exact: true });
       assert.equal(await scope.getByLabel("Listado de registros", { exact: true }).isChecked(), true);
       await scope.getByLabel("Registro actual", { exact: true }).check();
-      await scope.getByRole("button", { name: "oK", exact: true }).click();
+      await scope.getByRole("button", { name: "Aceptar", exact: true }).click();
       const ticket = page.getByRole("dialog", { name: "Imprimir Recibo de Cobro...", exact: true }); await ticket.waitFor();
       assert.equal(await ticket.locator(".collection-ticket-preview").count(), 1);
       assert.equal(await ticket.getByLabel("Papel de impresión", { exact: true }).inputValue(), "auto");
@@ -184,11 +185,11 @@ createRoot(document.getElementById("root")).render(<App />);
         assert.equal(await ticket.locator(".collection-ticket-preview").last().evaluate((node: HTMLElement) => getComputedStyle(node).breakAfter), "auto");
         await page.screenshot({ path: path.join(output, `admin-print-${paper}.png`) }); await page.emulateMedia({ media: "screen" });
       }
-      await ticket.getByRole("button", { name: "oK", exact: true }).click();
+      await ticket.getByRole("button", { name: "Aceptar", exact: true }).click();
       await page.emulateMedia({ media: "print" });
       assert.equal(await page.locator("#root").evaluate((node: HTMLElement) => getComputedStyle(node).visibility), "visible", "Receipt CSS must not blank unrelated print views.");
       await page.emulateMedia({ media: "screen" });
-      await page.getByRole("button", { name: "Cerrar Cobros", exact: true }).click();
+      await page.getByRole("button", { name: "Cerrar Cobros realizados", exact: true }).click();
       await page.evaluate(() => { window.print = (window as any).__qaOriginalPrint; });
     });
     await t.test("receipt X, Escape and backdrop preserve the bell, focus and scroll for the next receipt", async () => {
@@ -226,7 +227,7 @@ createRoot(document.getElementById("root")).render(<App />);
       assert.equal(await themeButton().getAttribute("aria-pressed"), "false");
       const token = await page.evaluate(() => localStorage.getItem("cyp-admin-token"));
       const launchers = page.getByRole("navigation", { name: "Operaciones principales" }).getByRole("button");
-      assert.deepEqual(await launchers.allTextContents(), ["CARGOS", "COBROS", "DESCARGOS", "PAGOS", "ENVÍO DE DINERO", "CUADRES"]);
+      assert.deepEqual(await launchers.allTextContents(), ["CARGOS", "COBROS", "ÓRDENES DE PAGO", "PAGOS", "ENVÍOS DE DINERO", "ENTREGAS DE DINERO", "CUADRES"]);
       const lightLauncherColors = await launchers.evaluateAll((nodes: HTMLElement[]) => nodes.map((node) => ({ color: getComputedStyle(node).color, background: getComputedStyle(node).backgroundColor, height: node.getBoundingClientRect().height })));
       assert.equal(lightLauncherColors[0].background, lightLauncherColors[1].background);
       assert.equal(lightLauncherColors[2].background, lightLauncherColors[3].background);
@@ -245,16 +246,15 @@ createRoot(document.getElementById("root")).render(<App />);
       const darkLauncherColors = await launchers.evaluateAll((nodes: HTMLElement[]) => nodes.map((node) => ({ color: getComputedStyle(node).color, background: getComputedStyle(node).backgroundColor, height: node.getBoundingClientRect().height })));
       assert.deepEqual(darkLauncherColors, lightLauncherColors);
       await launchers.filter({ hasText: /^CARGOS$/ }).click();
-      const chargesWindow = page.locator(".mdi-window").filter({ has: page.getByText("Cargos", { exact: true }) });
-      await chargesWindow.waitFor(); await chargesWindow.getByRole("button", { name: "Cerrar Cargos", exact: true }).click();
-      await launchers.filter({ hasText: /^DESCARGOS$/ }).click(); await page.locator(".payouts-legacy-view").waitFor();
-      await page.locator(".mdi-window").filter({ has: page.locator(".payouts-legacy-view") }).getByRole("button", { name: "Cerrar Descargos", exact: true }).click();
+      const chargesWindow = page.locator(".mdi-window").filter({ has: page.getByText("Cargos por cobrar", { exact: true }) });
+      await chargesWindow.waitFor(); await chargesWindow.getByRole("button", { name: "Cerrar Cargos por cobrar", exact: true }).click();
+      await launchers.filter({ hasText: /^ÓRDENES DE PAGO$/ }).click(); await page.locator(".payouts-legacy-view").waitFor();
+      await page.locator(".mdi-window").filter({ has: page.locator(".payouts-legacy-view") }).getByRole("button", { name: "Cerrar Órdenes de pago", exact: true }).click();
       assert.notEqual(await page.locator(".sidebar").evaluate((node: HTMLElement) => getComputedStyle(node).backgroundColor), lightSidebar);
       assert.equal(await page.evaluate(() => localStorage.getItem("cyp-admin-token")), token);
       assert.equal(await page.evaluate(() => (window as any).__qaLoginRequests), loginCount);
 
       const clients = page.getByRole("button", { name: "Clientes", exact: true });
-      if (!await clients.isVisible()) await page.getByRole("button", { name: "ARCHIVOS", exact: true }).click();
       await clients.click();
       const mdiWindow = page.locator(".mdi-window").filter({ has: page.locator(".clients-mdi-view") });
       await mdiWindow.waitFor();
@@ -301,8 +301,10 @@ createRoot(document.getElementById("root")).render(<App />);
       assert.equal(await page.evaluate(() => localStorage.getItem("cyp-admin-token")), token);
     });
     await t.test("error notifications remain visible and dismissible above MDI forms and nested alerts", async () => {
-      await page.getByRole("button", { name: "Entregas de Dinero", exact: true }).click();
-      const deliveries = page.getByRole("dialog", { name: "Entregas de Dinero", exact: true });
+      const cash = page.getByRole("button", { name: "Efectivo a cobradores", exact: true });
+      if (!await cash.isVisible()) await page.locator(".sidebar").getByRole("button", { name: "PAGOS", exact: true }).click();
+      await cash.click();
+      const deliveries = page.getByRole("dialog", { name: "Efectivo a cobradores", exact: true });
       await deliveries.getByTitle("Nuevo", { exact: true }).click();
       const form = page.getByRole("dialog", { name: "Datos de la Entrega de Dinero...", exact: true });
       await form.getByLabel("Cobrad.:").selectOption("");

@@ -57,8 +57,8 @@ export function ConnectedRemittanceCommissions({ actor }: { actor: AccessActor &
       window.dispatchEvent(new Event("cyp-remittance-commissions-updated"));
     } catch { /* The mutation lifecycle retains an uncertain intent for the same retry. */ }
   };
-  return <section className="legacy-mdi-view remittances" aria-label="Configuración de comisiones de envíos">
-    <div className="remittance-heading"><h2>Comisiones de envíos</h2><button type="button" disabled={loading || request.locked} onClick={() => setReload((value) => value + 1)}>Refrescar</button></div>
+  return <section className="legacy-mdi-view remittances" aria-label="Configuración de comisiones de remesas">
+    <div className="remittance-heading"><h2>Comisiones de remesas</h2><button type="button" disabled={loading || request.locked} onClick={() => setReload((value) => value + 1)}>Refrescar</button></div>
     <p className="remittance-help">Administración configura aquí los porcentajes aprobados por Gerencia. El cajero los recibe automáticamente. Los cambios no modifican envíos anteriores.</p>
     {loading && <p role="status">Cargando configuración…</p>}{error && <p role="alert" className="remittance-error">{error}</p>}{notice && <p role="status" className="remittance-notice">{notice}</p>}
     <form className="remittance-panel" onSubmit={prepare}>

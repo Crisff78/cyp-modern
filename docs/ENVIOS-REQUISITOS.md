@@ -176,7 +176,7 @@ del menú se muestra como «ENVÍOS»; su clave interna sigue siendo `REMESAS`.
 
 | Función | Dónde está | Permiso |
 |---|---|---|
-| Registrar envíos: formulario fijo arriba, con el cursor en el remitente, y listado de envíos debajo. Alta rápida de clientes con «Registrar cliente nuevo». Cancelación desde el detalle. | Envíos → Envíos de Dinero | `remittances.view` (registrar: `remittances.create`; alta rápida: `remittances.clients.create`; cancelar: `remittances.cancel`) |
+| Registrar envíos de dinero: formulario fijo arriba, con el cursor en el remitente, y listado de envíos debajo. Alta rápida de clientes con «Registrar cliente nuevo». Cancelación desde el detalle. | Envíos → Envíos de Dinero | `remittances.view` (registrar: `remittances.create`; alta rápida: `remittances.clients.create`; cancelar: `remittances.cancel`) |
 | Pagar al destinatario los envíos recibidos | Envíos → Pagos de Envíos | `remittances.receipts` (pagar: `remittances.pay`) |
 | Entregas de efectivo de la oficina al cobrador; su buscador abre Pagos de Envíos con los envíos pendientes que coinciden | Envíos → Entregas de Dinero | 380 (buscador: `remittances.receipts`) |
 | Abrir, contar y cerrar la caja de envíos | Reportes & Monitoreo → Cuadres Diarios → Caja de envíos | `remittances.cash.view` (abrir: `remittances.cash.open`; cerrar: `remittances.cash.close`) |

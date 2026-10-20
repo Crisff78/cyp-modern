@@ -1,6 +1,6 @@
 import { isMockToken, mockApi, MockApiError } from "./mock";
 
-const TOKEN_KEY = "cyp-collector-token";
+import { COLLECTOR_TOKEN_KEY as TOKEN_KEY } from "../../shared/sessionHandoff";
 export const getToken = () => sessionStorage.getItem(TOKEN_KEY);
 export const setToken = (token: string | null) =>
   token

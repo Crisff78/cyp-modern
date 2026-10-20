@@ -85,7 +85,7 @@ test("shared access gives the Cajero its own profile, ceiling and pages without 
   const withReports = { role: "cashier", access: effectiveAccess("cashier", { permissionMode: "custom", permissionIds: [1, 2], remittancePermissions: [...cashierKeys, "remittances.reports"] }) };
   assert.equal(canOpenPage(withReports, "reports"), true); assert.equal(canOpenPage(withReports, "reportRemittanceCommissions"), true);
   const custom = (role: string, permissionIds: number[], keys: RemittancePermission[]) => ({ role, access: effectiveAccess(role, { permissionMode: "custom", permissionIds, remittancePermissions: keys }) });
-  // Envíos de Dinero needs view; Pagos de Envíos needs receipts.
+  // Envíos de dinero needs view; Entregas de dinero needs receipts.
   const payoutsOnly = custom("user", [1, 2], ["remittances.receipts", "remittances.pay"]);
   assert.equal(canOpenPage(payoutsOnly, "remittances"), false); assert.equal(canOpenPage(payoutsOnly, "remittancePayouts"), true);
   assert.equal(canOpenPage(payoutsOnly, "dailySettlements"), false);
@@ -147,7 +147,7 @@ test("the Cajero opens only his own cash box; Cobrador and Usuario still cannot 
   const before = await store.read();
   const foreign = await openCash(cashier.token, "demo-collector", "EUR");
   assert.equal(foreign.statusCode, 403); assert.equal(code(foreign), "FORBIDDEN");
-  assert.equal(foreign.json().error.message, "Solo puedes abrir tu propia caja de envíos.");
+  assert.equal(foreign.json().error.message, "Solo puedes abrir tu propia caja de remesas.");
   assert.equal(code(await openCash(cashier.token, cashier.id, "DOP")), "CASH_EXISTS");
   assert.equal((await openCash(collector, "demo-collector", "DOP")).statusCode, 403);
   assert.equal((await openCash(user.token, user.id, "DOP")).statusCode, 403);

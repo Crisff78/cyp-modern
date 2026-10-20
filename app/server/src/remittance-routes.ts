@@ -45,7 +45,7 @@ export function registerRemittanceRoutes(
     return remittanceClientContact(await store.read(), user(req), params.id, input.side, input.senderId);
   });
   for (const [path, filter] of [["/api/envios", canSeeOutgoing], ["/api/envios/recibos", canSeeReceipt]] as const)
-    get(path, "Consultar envíos o recibos autorizados", async (req) => {
+    get(path, "Ver envíos de dinero o recibos autorizados", async (req) => {
       const state = await store.read(), actor = user(req);
       return state.remittances.transfers.filter((t) => filter(state, actor, t)).map((t) => transferView(state, actor, t));
     });
@@ -97,7 +97,7 @@ export function registerRemittanceRoutes(
   mutate("/api/envios/:id/cancelar", "Cancelar envío pendiente y devolver principal más comisión",
     z.object({ reason: freeText(500, 1) }).strict(),
     (state, actor, input, params) => cancelRemittance(state, actor, params.id, input.reason));
-  mutate("/api/envios/cajas/abrir", "Abrir caja de envíos por operador y moneda", z.object({
+  mutate("/api/envios/cajas/abrir", "Abrir caja de remesas por operador y moneda", z.object({
     operatorId: id, currency, openingAmount: amount,
   }).strict(), (state, actor, input) => openRemittanceCash(state, actor, input, systemOperators));
   mutate("/api/envios/cajas/:id/cerrar", "Cerrar caja con contado exacto",

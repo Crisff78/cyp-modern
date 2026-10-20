@@ -132,7 +132,7 @@ test("a Cajero opens only his own cash box and must close an earlier one first; 
   assert.equal(opened.operatorId, cashier.id); assert.equal(opened.openedBy, cashier.id); assert.equal(opened.canClose, true);
   assert.throws(() => openRemittanceCash(state, cashier, { operatorId: sender.id, currency: "USD", openingAmount: 0 }, operators, now), (error: unknown) => {
     assert.equal((error as { code: string }).code, "FORBIDDEN");
-    assert.equal((error as Error).message, "Solo puedes abrir tu propia caja de envíos.");
+    assert.equal((error as Error).message, "Solo puedes abrir tu propia caja de remesas.");
     return true;
   });
   assert.throws(() => openRemittanceCash(state, cashier, { operatorId: cashier.id, currency: "DOP", openingAmount: 0 }, operators, tomorrow), code("PREVIOUS_CASH_OPEN"));

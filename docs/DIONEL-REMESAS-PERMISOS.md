@@ -102,7 +102,7 @@ comprobados en el código y con pruebas:
 
 | Función | Ubicación en Administración | Requisito |
 | --- | --- | --- |
-| Registrar envíos y cancelar los pendientes | Envíos → Envíos de Dinero (lanzador ENVÍO DE DINERO) | `remittances.view`; registrar con `remittances.create`, cancelar con `remittances.cancel` |
+| Registrar envíos de dinero y cancelar los pendientes | Envíos → Envíos de Dinero (lanzador ENVÍO DE DINERO) | `remittances.view`; registrar con `remittances.create`, cancelar con `remittances.cancel` |
 | Entregar un envío a su destinatario | Envíos → Pagos de Envíos | `remittances.receipts`; pagar con `remittances.pay` |
 | Entregas de efectivo de la oficina al cobrador | Envíos → Entregas de Dinero | 380; el buscador «Buscar envío para entregar» solo con `remittances.receipts` |
 | Abrir, contar y cerrar la caja de envíos | Reportes & Monitoreo → Cuadres Diarios → Caja de envíos (lanzador CUADRES) | `remittances.cash.view`; abrir con `remittances.cash.open`, cerrar con `remittances.cash.close` |
@@ -272,20 +272,20 @@ cada casilla como «Envíos de Dinero: {nombre}» y la columna Código como «En
 
 | Clave | Nombre en el diálogo |
 | --- | --- |
-| `remittances.view` | Consultar envíos |
-| `remittances.create` | Registrar envíos |
-| `remittances.receipts` | Consultar recibos pendientes |
+| `remittances.view` | Ver envíos de dinero |
+| `remittances.create` | Registrar envíos de dinero |
+| `remittances.receipts` | Ver remesas por entregar |
 | `remittances.pay` | Entregar dinero al destinatario |
 | `remittances.cancel` | Cancelar envíos pendientes |
 | `remittances.clients.create` | Registrar clientes durante un envío |
-| `remittances.cash.view` | Consultar caja de envíos |
-| `remittances.cash.open` | Abrir cajas de envíos |
-| `remittances.cash.close` | Cerrar la caja propia de envíos |
-| `remittances.reports` | Consultar e imprimir reportes de envíos |
-| `remittances.rates.view` | Consultar tasas de envíos |
-| `remittances.rates.manage` | Administrar tasas de envíos |
-| `remittances.commissions.view` | Consultar la configuración de comisiones |
-| `remittances.commissions.manage` | Administrar comisiones de envíos |
+| `remittances.cash.view` | Ver caja de remesas |
+| `remittances.cash.open` | Abrir cajas de remesas |
+| `remittances.cash.close` | Cerrar su propia caja de remesas |
+| `remittances.reports` | Ver e imprimir reportes de remesas |
+| `remittances.rates.view` | Ver tasas de remesas |
+| `remittances.rates.manage` | Cambiar tasas de remesas |
+| `remittances.commissions.view` | Ver comisiones de remesas |
+| `remittances.commissions.manage` | Cambiar comisiones de remesas |
 
 Crear necesita consultar envíos; pagar necesita consultar recibos; altas rápidas
 necesitan crear y consultar envíos; mantener tasas/comisiones requiere su consulta;

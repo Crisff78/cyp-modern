@@ -137,10 +137,10 @@ createRoot(document.getElementById("root")).render(<Fixture />);`, "utf8");
     await t.test("complete catalog, draggable title, blocked background and category-only bulk toggles", async () => {
       await open();
       assert.equal(await dialog().getByRole("checkbox", { name: /^Permiso / }).count(), 119);
-      assert.equal(await dialog().getByRole("checkbox", { name: /^Envíos de Dinero: / }).count(), 14);
+      assert.equal(await dialog().getByRole("checkbox", { name: /^Remesas: / }).count(), 14);
       const names = await dialog().locator("tbody tr").filter({ has: page.locator('input[aria-label^="Permiso "]') }).evaluateAll((rows: HTMLTableRowElement[]) => rows.map((row) => ({ id: Number(row.cells[1].textContent), name: row.cells[2].textContent, category: row.cells[3].textContent })));
       assert.deepEqual(names, catalog.permissions);
-      assert.deepEqual(await category().locator("option").allTextContents(), [...catalog.categories, "Envíos de Dinero"]);
+      assert.deepEqual(await category().locator("option").allTextContents(), [...catalog.categories, "Remesas"]);
       const title = dialog().locator(".legacy-dialog-titlebar"), before = await dialog().boundingBox(), bar = await title.boundingBox(); assert(bar && before);
       await page.mouse.move(bar.x + 110, bar.y + 12); await page.mouse.down(); await page.mouse.move(bar.x + 195, bar.y + 42); await page.mouse.up();
       const after = await dialog().boundingBox(); assert(after); assert.ok(after.x > before.x + 70); assert.ok(after.y > before.y + 20);
@@ -199,10 +199,10 @@ createRoot(document.getElementById("root")).render(<Fixture />);`, "utf8");
     await t.test("office cashier grants add their read dependency without granting catalog administration", async () => {
       await open(cashier.name);
       assert.equal(await checkbox(101).isDisabled(), true); assert.equal(await checkbox(141).isDisabled(), true);
-      await category().selectOption("Envíos de Dinero");
-      await dialog().getByRole("checkbox", { name: "Envíos de Dinero: Registrar envíos", exact: true }).check();
-      assert.equal(await dialog().getByRole("checkbox", { name: "Envíos de Dinero: Consultar envíos", exact: true }).isChecked(), true);
-      assert.equal(await dialog().getByRole("checkbox", { name: "Envíos de Dinero: Administrar tasas de envíos", exact: true }).isDisabled(), true);
+      await category().selectOption("Remesas");
+      await dialog().getByRole("checkbox", { name: "Remesas: Registrar envíos de dinero", exact: true }).check();
+      assert.equal(await dialog().getByRole("checkbox", { name: "Remesas: Ver envíos de dinero", exact: true }).isChecked(), true);
+      assert.equal(await dialog().getByRole("checkbox", { name: "Remesas: Cambiar tasas de remesas", exact: true }).isDisabled(), true);
       await dialog().getByRole("button", { name: "Guardar", exact: true }).click(); await dialog().waitFor({ state: "detached" });
       const profile = await getProfile(cashier.id);
       assert.deepEqual(profile.permissionIds, [1]); assert.equal(profile.mode, "custom");
@@ -215,14 +215,14 @@ createRoot(document.getElementById("root")).render(<Fixture />);`, "utf8");
       assert.match(await dialog().innerText(), /Se aplica el perfil inicial del rol\./);
       for (const id of [1, 2]) assert.equal(await checkbox(id).isChecked(), true, `legacy ${id}`);
       for (const id of [101, 140, 200, 401]) assert.equal(await checkbox(id).isDisabled(), true, `legacy ${id} stays out of reach`);
-      await category().selectOption("Envíos de Dinero");
-      const remittance = (name: string) => dialog().getByRole("checkbox", { name: `Envíos de Dinero: ${name}`, exact: true });
-      for (const name of ["Consultar envíos", "Registrar envíos", "Consultar recibos pendientes", "Entregar dinero al destinatario", "Cancelar envíos pendientes",
-        "Registrar clientes durante un envío", "Consultar caja de envíos", "Abrir cajas de envíos", "Cerrar la caja propia de envíos"])
+      await category().selectOption("Remesas");
+      const remittance = (name: string) => dialog().getByRole("checkbox", { name: `Remesas: ${name}`, exact: true });
+      for (const name of ["Ver envíos de dinero", "Registrar envíos de dinero", "Ver remesas por entregar", "Entregar dinero al destinatario", "Cancelar envíos pendientes",
+        "Registrar clientes durante un envío", "Ver caja de remesas", "Abrir cajas de remesas", "Cerrar su propia caja de remesas"])
         assert.equal(await remittance(name).isChecked(), true, name);
-      const reports = remittance("Consultar e imprimir reportes de envíos");
+      const reports = remittance("Ver e imprimir reportes de remesas");
       assert.equal(await reports.isChecked(), false); assert.equal(await reports.isDisabled(), false);
-      for (const name of ["Consultar tasas de envíos", "Administrar tasas de envíos", "Consultar la configuración de comisiones", "Administrar comisiones de envíos"])
+      for (const name of ["Ver tasas de remesas", "Cambiar tasas de remesas", "Ver comisiones de remesas", "Cambiar comisiones de remesas"])
         assert.equal(await remittance(name).isDisabled(), true, `${name} is administrative`);
       await reports.check();
       assert.equal(await dialog().getByRole("combobox", { name: "Modo de permisos", exact: true }).inputValue(), "custom");
@@ -234,7 +234,7 @@ createRoot(document.getElementById("root")).render(<Fixture />);`, "utf8");
       assert.equal((await store.read()).accounts.find(({ id }) => id === cashierRole.id)?.role, "cashier");
     });
     // The Cajero saved above uses its profile plus the reports of Envíos.
-    const cashierReports = () => dialog().getByRole("checkbox", { name: "Envíos de Dinero: Consultar e imprimir reportes de envíos", exact: true });
+    const cashierReports = () => dialog().getByRole("checkbox", { name: "Remesas: Ver e imprimir reportes de remesas", exact: true });
     const personalizedCashier = [...roleRemittancePermissions("cashier"), "remittances.reports"].sort();
     await t.test("a personalized account taken to «Perfil del rol» and back, without saving, shows again the selection it was loaded with", async () => {
       await open(cashierRole.name);
@@ -260,7 +260,7 @@ createRoot(document.getElementById("root")).render(<Fixture />);`, "utf8");
       assert.deepEqual([profile.mode, profile.remittancePermissions], ["role", personalizedCashier]);
       await open(cashierRole.name);
       assert.equal(await mode.inputValue(), "role"); assert.equal(await cashierReports().isChecked(), false, "the role profile is what applies");
-      assert.match(await stored.innerText(), /Envíos de Dinero: .*Consultar e imprimir reportes de envíos/);
+      assert.match(await stored.innerText(), /Remesas: .*Ver e imprimir reportes de remesas/);
       await stored.getByRole("button", { name: "Aplicar selección anterior", exact: true }).click();
       assert.equal(await mode.inputValue(), "custom"); assert.equal(await cashierReports().isChecked(), true);
       await dialog().getByRole("button", { name: "Guardar", exact: true }).click(); await dialog().waitFor({ state: "detached" });
@@ -302,9 +302,9 @@ createRoot(document.getElementById("root")).render(<Fixture />);`, "utf8");
       await page.getByRole("button", { name: "Cambiar Clave", exact: true }).click();
       const password = page.getByRole("dialog", { name: "Cambiar clave de usuario...", exact: true });
       await password.getByLabel("Clave:").fill("Synthetic-Takeover-2026!"); await password.getByLabel("Confirmación:").fill("Synthetic-Takeover-2026!");
-      await password.getByRole("button", { name: "oK", exact: true }).click();
+      await password.getByRole("button", { name: "Aceptar", exact: true }).click();
       await password.getByRole("alert").getByText("Esa cuenta tiene permisos que la tuya no tiene. Solo puede gestionarla una cuenta que tenga todos sus permisos.", { exact: true }).waitFor();
-      assert.equal(await password.getByRole("button", { name: "oK", exact: true }).isEnabled(), true, "a definitive answer, not an operation to retry");
+      assert.equal(await password.getByRole("button", { name: "Aceptar", exact: true }).isEnabled(), true, "a definitive answer, not an operation to retry");
       await password.getByRole("button", { name: "Cancelar", exact: true }).click(); await password.waitFor({ state: "detached" });
       assert.equal((await store.read()).accounts.find(({ id }) => id === supervisor.id)?.credentialVersion, credentials);
     });
@@ -317,7 +317,7 @@ createRoot(document.getElementById("root")).render(<Fixture />);`, "utf8");
       const name = ficha.getByLabel("Nombre", { exact: true });
       assert.equal(await name.inputValue(), first.name); assert.equal(await name.isDisabled(), true);
       assert.equal(await ficha.getByLabel("Rol", { exact: true }).isDisabled(), true);
-      assert.equal(await ficha.getByRole("button", { name: "oK", exact: true }).count(), 0);
+      assert.equal(await ficha.getByRole("button", { name: "Aceptar", exact: true }).count(), 0);
       await ficha.getByRole("button", { name: "Cerrar", exact: true }).click(); await ficha.waitFor({ state: "detached" });
     });
     await t.test("Supervisor can inspect but cannot toggle, bulk-select or submit permissions", async () => {

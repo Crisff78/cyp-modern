@@ -9,7 +9,7 @@ import "./connected-user-permissions.css";
 import { effectiveAccess, rolePermissionIds, roleRemittancePermissions, REMITTANCE_PERMISSIONS, REMITTANCE_PERMISSION_KEYS, REMITTANCE_PERMISSION_DEPENDENCIES, type PermissionMode, type RemittancePermission } from "../../shared/access.mjs";
 
 // The keys stay "remittances.*"; the dialog shows the name of the module.
-const REMITTANCE_CATEGORY = "Envíos de Dinero";
+const REMITTANCE_CATEGORY = "Remesas";
 type DialogCategory = PermissionCategory | typeof REMITTANCE_CATEGORY;
 const sortedIds = (ids: readonly number[]) => [...new Set(ids)].sort((a, b) => a - b);
 const sameIds = (left: readonly number[], right: readonly number[]) => JSON.stringify(sortedIds(left)) === JSON.stringify(sortedIds(right));
@@ -191,7 +191,7 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
           </tbody>
         </table>
       </div>
-      <p className="connected-user-permissions-note">{mode === "role" ? "Se aplica el perfil inicial del rol. Al marcar o desmarcar una acción pasarás a permisos personalizados." : "Al guardar se aplicarán estos permisos en las pantallas y en cada operación. El rol no cambia: Supervisor conserva solo consulta, Cobrador conserva su ruta y Cajero atiende solo Envíos de Dinero y su propia caja, sin catálogos, tasas ni comisiones. Los códigos 410–415 (reportes del sistema anterior) se conservan, pero los reportes se abren con «Visualizar Reportes» (400) y muestran solo los datos que la cuenta puede consultar."}</p>
+      <p className="connected-user-permissions-note">{mode === "role" ? "Se aplica el perfil inicial del rol. Al marcar o desmarcar una acción pasarás a permisos personalizados." : "Al guardar se aplicarán estos permisos en las pantallas y en cada operación. El rol no cambia: Supervisor conserva solo consulta, Cobrador conserva su ruta y Cajero atiende solo Remesas y su propia caja, sin catálogos, tasas ni comisiones. Los códigos 410–415 (reportes del sistema anterior) se conservan, pero los reportes se abren con «Visualizar Reportes» (400) y muestran solo los datos que la cuenta puede consultar."}</p>
       {mode === "custom" && !assigned.has(1) && <p role="status" className="connected-permission-error">Sin «Entrar al sistema» esta cuenta no podrá iniciar sesión ni realizar operaciones.</p>}
       {!canEdit && <p className="connected-permissions-feedback">Tu cuenta no tiene permiso para modificar permisos («Modificar permisos de usuario», 106).</p>}
       {request.error && <p className="connected-permission-error" role="alert">{request.error}</p>}

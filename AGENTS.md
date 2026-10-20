@@ -4,6 +4,33 @@ Este archivo resume el estado operativo para quienes trabajan en CyP Modern. La
 historia detallada pertenece al Superbrain del proyecto. Antes de actuar, comprobar
 el código, la rama y el entorno real; este archivo no sustituye esa verificación.
 
+## Regla número uno: un sistema que entienda cualquiera
+
+Pedido del jefe, transmitido por Rardiel el 2026-10-20, y la regla que más pesa en
+este proyecto (para Claude Code, Codex y Antigravity por igual): **el sistema tiene
+que poder usarlo alguien que nunca lo ha visto, sin perderse, «como un niño
+pequeño»**. Nosotros sabemos dónde está cada cosa porque lo hicimos; el cliente no.
+
+Cómo se aplica en cada cambio:
+
+- Nombres sencillos para un dominicano, que digan qué hace la pantalla: técnicos
+  pero fáciles («Cargos por cobrar», «Órdenes de pago», «Entregas de dinero»). Nada
+  de abreviaturas («Cobros Res.», «Imp. Ch...», «PCPs»), claves internas, códigos en
+  inglés (ADMIN, CASHIER) ni botones «oK». Si se renombra algo conocido, la
+  explicación de la opción dice el nombre anterior («antes Descargos»).
+- Cada opción va en la sección del menú que lleva su nombre; lo que no encaja en
+  ninguna va solo. Menú actual: CLIENTES · COBROS · PAGOS · REMESAS (Envíos de
+  dinero, Entregas de dinero) · CUADRES Y REPORTES · MONITOREO · ADMINISTRACIÓN.
+- Cada opción del menú explica para qué sirve al pasar el puntero, y la ventana se
+  llama igual que la opción o el botón que la abre.
+- Una sola página de inicio de sesión para todas las cuentas; cada cuenta llega sola
+  a su portal (oficina o app del cobrador), sin elegir antes.
+- El menú lateral empieza con todas las secciones cerradas y recuerda, por cuenta,
+  cómo lo dejó la última vez.
+- Antes de entregar, mirar cada pantalla con ojos de alguien nuevo: si hace falta
+  explicarla, hay que simplificarla. Se simplifican las palabras y el camino, nunca
+  se quitan validaciones, permisos ni reglas de negocio del servidor.
+
 ## Objetivo
 
 Mantener la API REST, el portal administrativo y la PWA del cobrador para cobros,
