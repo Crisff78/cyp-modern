@@ -1,6 +1,7 @@
 import { StrictApiError } from "./strictApi";
 import { managerCommissionMatches } from "./suggestions";
 import type { NewRemittanceClient, Quotation, RemittanceContact, Transfer } from "./types";
+import { paymentAmounts, type RemittancePaymentInput } from "./payment.mjs";
 
 // A phone is the same however it is written: the server compares only its digits.
 const phoneDigits = (value: string) => value.replace(/\D/g, "");
@@ -26,6 +27,15 @@ export function recipientPhoneRecord(typed: string, contact: Pick<RemittanceCont
 export function confirmedCreatedTransfer(value: unknown, expected: Record<string, unknown>, actorId: string, quotation?: Quotation): Transfer {
   const row = value as Transfer | null;
   const expectedQuote = expected.quote as Transfer["quote"];
+  const paymentValid = () => {
+    if (!expected.payment) return true;
+    if (!row?.payment) return false;
+    try {
+      const calculated = paymentAmounts(row.totalAmount, expected.payment as RemittancePaymentInput);
+      return row.payment.version === 1 && row.payment.confirmedBy === actorId && row.payment.confirmedAt === row.createdAt &&
+        Object.entries(calculated).every(([key, value]) => row.payment?.[key as keyof NonNullable<Transfer["payment"]>] === value);
+    } catch { return false; }
+  };
   const contactValid = (contact: RemittanceContact | undefined, id: string) => contact === undefined ||
     Boolean(contact && contact.id === id && [contact.code, contact.name, contact.phone, contact.cellular, contact.address].every((field) => typeof field === "string"));
   const clientValid = (side: "sender" | "recipient") => {
@@ -44,14 +54,16 @@ export function confirmedCreatedTransfer(value: unknown, expected: Record<string
     ["sourceCurrency", "destinationCurrency", "amount", "commissionBps"].every((field) => row[field as keyof Transfer] === expected[field]) &&
     [row.amount, row.commissionBps, row.commissionAmount, row.totalAmount, row.receiveAmount].every((amount) => Number.isSafeInteger(amount) && amount >= 0) &&
     typeof row.createdAt === "string" && Number.isFinite(Date.parse(row.createdAt)) && typeof row.note === "string" &&
-    row.quote && ["date", "sourceRate", "destinationRate"].every((field) => typeof row.quote[field as keyof Transfer["quote"]] === "string" && row.quote[field as keyof Transfer["quote"]] === expectedQuote?.[field as keyof Transfer["quote"]]) &&
+    row.quote && ["date", "sourceRate", "destinationRate"].every((field) => typeof row.quote[field as keyof Transfer["quote"]] === "string") &&
+    // The API stamps quotedAt again when accepting. Prices, revisions, effective dates and policy must still match.
+    Object.entries(expectedQuote ?? {}).filter(([field]) => field !== "quotedAt").every(([field, value]) => row.quote[field as keyof Transfer["quote"]] === value) &&
     contactValid(row.senderContact, row.senderClientId) && contactValid(row.recipientContact, row.recipientClientId) &&
     (!quotation || (
       ["amountDop", "requestedReceiveAmount", "receiveRoundingDifference", "receiveAmount", "commissionAmount", "totalAmount"].every((key) => row[key as keyof Transfer] === quotation[key as keyof Quotation]) &&
       (!quotation.commissionAllocation || (row.commissionAllocation?.managerId === row.sendingUserId && typeof row.commissionAllocation?.managerName === "string" &&
         Object.entries(quotation.commissionAllocation).every(([key, value]) => row.commissionAllocation?.[key as keyof NonNullable<Transfer["commissionAllocation"]>] === value)))
     )) &&
-    managerCommissionMatches(expected.managerCommission as Transfer["managerCommission"], row.managerCommission));
+    paymentValid() && managerCommissionMatches(expected.managerCommission as Transfer["managerCommission"], row.managerCommission));
   // An answer 200 means the API finished this operation, and a retry with the same key repeats the same answer:
   // the window does not wait for another one. It names the saved reference so the operator checks it in the list.
   if (!valid) {

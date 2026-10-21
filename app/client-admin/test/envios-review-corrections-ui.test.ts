@@ -138,7 +138,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
     };
     const confirmIn = async (page: any, title: string) => {
       const dialog = page.getByRole("dialog", { name: title, exact: true });
-      await dialog.getByRole("button", { name: "Confirmar", exact: true }).click(); await dialog.waitFor({ state: "detached" });
+      await dialog.getByRole("button", { name: title === "Confirmar envío" ? "Aceptar" : "Confirmar", exact: true }).click(); await dialog.waitFor({ state: "detached" });
     };
     const box = async (locator: any) => { const value = await locator.boundingBox(); assert.ok(value, "the element is painted"); return value as { x: number; y: number; width: number; height: number }; };
     const inside = (part: { y: number; height: number }, frame: { y: number; height: number }) => part.y >= frame.y - 0.5 && part.y + part.height <= frame.y + frame.height + 0.5;
@@ -267,7 +267,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
       try {
         const { detail } = await receiptDetail(page);
         const summary = await detail.locator("section").filter({ has: page.getByRole("heading", { name: "Registro del recibo", exact: true }) }).innerText();
-        assert.match(summary, /Operador\s+Administración/); assert.match(summary, /Registrado por\s+Administración/);
+        assert.match(summary, /Operador del envío\s+Administración/); assert.match(summary, /Registrado por\s+Administración/);
         const popupReady = context.waitForEvent("page");
         await detail.getByRole("button", { name: "Imprimir comprobante", exact: true }).click();
         const popup = await popupReady; await popup.waitForLoadState();

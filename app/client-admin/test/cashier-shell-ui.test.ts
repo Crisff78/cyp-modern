@@ -140,7 +140,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
       await region.getByRole("button", { name: "Calcular cotización", exact: true }).click();
       await region.getByRole("button", { name: "Revisar y confirmar envío", exact: true }).click();
       const saved = page.waitForResponse((reply: any) => reply.request().method() === "POST" && new URL(reply.url()).pathname === "/api/envios");
-      await page.getByRole("dialog", { name: "Confirmar envío", exact: true }).getByRole("button", { name: "Confirmar", exact: true }).click();
+      await page.getByRole("dialog", { name: "Confirmar envío", exact: true }).getByRole("button", { name: "Aceptar", exact: true }).click();
       const reply = await saved; assert.equal(reply.status(), 200);
       const print = page.getByRole("dialog", { name: "¿Quieres imprimir el recibo?", exact: true }); await print.waitFor();
       await print.getByRole("button", { name: "No imprimir", exact: true }).click();

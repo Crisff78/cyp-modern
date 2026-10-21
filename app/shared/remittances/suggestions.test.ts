@@ -65,10 +65,14 @@ test("rate moments display Dominican day/hour and retain unavailable history wit
   assert.equal(rateMoment(), "Hora no disponible");
   assert.equal(rateMoment("not-a-date"), "Hora no disponible");
   const legacy = quoteHistoryRows({ date: "2026-10-04", sourceRate: "1.000000", destinationRate: "0.500000" }, "DOP", "EUR");
-  assert.deepEqual(legacy[0], ["Fecha de tasa", "2026-10-04"]);
+  assert.deepEqual(legacy[0], ["Fecha de cotización", "2026-10-04"]);
   assert.equal(legacy[1][1], "Hora no disponible");
   assert.equal(legacy[2][1], "DOP: sin hora registrada");
   assert.equal(legacy[3][1], "Hora no disponible");
+  assert.equal(legacy[4][1], "Moneda base fija");
+  assert.equal(legacy[5][1], "No disponible");
+  const carried = quoteHistoryRows({ date: "2026-10-21", sourceRate: "60.000000", destinationRate: "75.000000", sourceRateDate: "2026-10-20", destinationRateDate: "2026-10-19" }, "USD", "EUR");
+  assert.deepEqual(carried.slice(4), [["Fecha de registro de tasa de origen", "2026-10-20"], ["Fecha de registro de tasa de destino", "2026-10-19"]]);
 });
 
 test("receipts take contact values from the confirmed transfer, and legacy receipts do not invent contacts", () => {
