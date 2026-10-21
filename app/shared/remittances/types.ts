@@ -1,10 +1,14 @@
 export type Currency = "DOP" | "USD" | "EUR";
 import type { EffectiveAccess } from "../access.mjs";
+import type { ReceiptIssuer, RemittancePayment, RemittanceRefund } from "./payment.mjs";
+import type { RateKind } from "./appliedRate.mjs";
 export type NewRemittanceClient = { name: string; identification: string; phone: string; address: string; routeId: string; preferredCurrency: Currency };
 export type Quote = {
   date: string; sourceRate: string; destinationRate: string; quotedAt?: string;
   sourceRateChangeId?: string; destinationRateChangeId?: string;
   sourceRateChangedAt?: string; destinationRateChangedAt?: string;
+  sourceRateDate?: string; destinationRateDate?: string;
+  sourceRateKind?: RateKind; destinationRateKind?: RateKind;
   commissionPolicyRevision?: string; managerCommissionBps?: number;
 };
 export type CommissionPolicy = { revision: string; transactionCommissionBps: number; managerCommissionBps: number; updatedAt?: string; updatedBy?: string };
@@ -27,6 +31,7 @@ export type Transfer = Quotation & {
   canPay: boolean; canCancel: boolean;
   senderContact?: RemittanceContact; recipientContact?: RemittanceContact;
   managerCommission?: ManagerCommission;
+  payment?: RemittancePayment; receiptIssuer?: ReceiptIssuer; refund?: RemittanceRefund;
 };
 export type Cash = {
   id: string; operatorId: string; currency: Currency; date: string; openingAmount: number;
@@ -38,6 +43,7 @@ export type RemittanceSnapshot = {
   clientRoutes?: { id: string; name: string }[];
   businessDate: string; currencies: Currency[];
   receiptFooterNote?: string;
+  receiptIssuer?: ReceiptIssuer;
   commissionPolicy?: CommissionPolicy;
   clients: { id: string; code: string; name: string; routeId: string; active: boolean; preferredCurrency?: Currency; canSendFrom: boolean; canReceive: boolean }[];
   operators: { id: string; name: string; role: "admin" | "collector" | "cashier"; collectorId?: string }[];

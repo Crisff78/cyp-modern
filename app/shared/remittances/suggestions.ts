@@ -50,10 +50,12 @@ export function rateMoment(value?: string) {
 
 export function quoteHistoryRows(quote: Quote, sourceCurrency: Currency, destinationCurrency: Currency): (string | number)[][] {
   return [
-    ["Fecha de tasa", quote.date],
+    ["Fecha de cotización", quote.date],
     ["Cotización confirmada", rateMoment(quote.quotedAt)],
     ["Cambio de tasa de origen", sourceCurrency === "DOP" && !quote.sourceRateChangedAt ? "DOP: sin hora registrada" : rateMoment(quote.sourceRateChangedAt)],
     ["Cambio de tasa de destino", destinationCurrency === "DOP" && !quote.destinationRateChangedAt ? "DOP: sin hora registrada" : rateMoment(quote.destinationRateChangedAt)],
+    ["Fecha de registro de tasa de origen", quote.sourceRateDate ?? (sourceCurrency === "DOP" ? "Moneda base fija" : "No disponible")],
+    ["Fecha de registro de tasa de destino", quote.destinationRateDate ?? (destinationCurrency === "DOP" ? "Moneda base fija" : "No disponible")],
   ];
 }
 

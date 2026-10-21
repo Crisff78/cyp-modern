@@ -12,6 +12,7 @@ import {
 import { boundedId, freeText, phone, singleLine } from "./input-validation.js";
 import { remittanceClientDraft } from "./client-schema.js";
 import { registerRemittanceClient } from "./remittance-client-registration.js";
+import { paymentMethods } from "../../shared/remittances/payment.mjs";
 
 type Mutate = <T, P = Record<string, string>>(
   path: string, summary: string, schema: z.ZodType<T>,
@@ -49,7 +50,7 @@ export function registerRemittanceRoutes(
       const state = await store.read(), actor = user(req);
       return state.remittances.transfers.filter((t) => filter(state, actor, t)).map((t) => transferView(state, actor, t));
     });
-  get("/api/envios/cotizacion", "Cotizar envío con la tasa del día", async (req) => {
+  get("/api/envios/cotizacion", "Cotizar envío con la última tasa vigente por moneda", async (req) => {
     const input = z.object({ ...quoteFields,
       amount: z.string().max(16).regex(/^[0-9]+$/, "El importe en centavos debe contener solo dígitos.").transform(Number).pipe(amount.positive()),
       commissionBps: z.string().regex(/^\d{1,5}$/).transform(Number).pipe(bps).optional(),
@@ -69,9 +70,12 @@ export function registerRemittanceRoutes(
     newSenderClient: remittanceClientDraft.optional(), newRecipientClient: remittanceClientDraft.optional(),
     sendingUserId: id.optional(), recipientPhone: phone.optional(),
     requestedReceiveAmount: amount.positive().optional(),
+    payment: z.object({ method: z.enum(paymentMethods), tenderedAmount: amount.optional(), reference: singleLine(160, 1).optional(), bank: singleLine(160).optional(), verified: z.literal(true).optional() }).strict().optional(),
     quote: z.object({ date: z.iso.date(), sourceRate: z.string().max(19), destinationRate: z.string().max(19),
       quotedAt: z.iso.datetime().optional(), sourceRateChangeId: id.optional(), destinationRateChangeId: id.optional(),
       sourceRateChangedAt: z.iso.datetime().optional(), destinationRateChangedAt: z.iso.datetime().optional(),
+      sourceRateDate: z.iso.date().optional(), destinationRateDate: z.iso.date().optional(),
+      sourceRateKind: z.enum(["base", "purchase", "sale", "operative"]).optional(), destinationRateKind: z.enum(["base", "purchase", "sale", "operative"]).optional(),
       commissionPolicyRevision: id.optional(), managerCommissionBps: bps.optional(),
     }).strict(),
     managerCommission: z.object({
@@ -95,8 +99,8 @@ export function registerRemittanceRoutes(
   mutate("/api/envios/:id/pagar", "Pagar recibo completo", z.object({}).strict(),
     (state, actor, _input, params) => payRemittance(state, actor, params.id));
   mutate("/api/envios/:id/cancelar", "Cancelar envío pendiente y devolver principal más comisión",
-    z.object({ reason: freeText(500, 1) }).strict(),
-    (state, actor, input, params) => cancelRemittance(state, actor, params.id, input.reason));
+    z.object({ reason: freeText(500, 1), refund: z.object({ reference: singleLine(160, 1), verified: z.literal(true) }).strict().optional() }).strict(),
+    (state, actor, input, params) => cancelRemittance(state, actor, params.id, input.reason, new Date(), input.refund));
   mutate("/api/envios/cajas/abrir", "Abrir caja de remesas por operador y moneda", z.object({
     operatorId: id, currency, openingAmount: amount,
   }).strict(), (state, actor, input) => openRemittanceCash(state, actor, input, systemOperators));

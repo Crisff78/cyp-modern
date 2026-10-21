@@ -3,7 +3,8 @@
 El flujo de captura continua, el alta transaccional de clientes y la autorización
 individual están documentados en [DIONEL-REMESAS-PERMISOS.md](DIONEL-REMESAS-PERMISOS.md).
 Esta versión requiere también las migraciones aditivas **034** y **035** (rol
-Cajero) antes de iniciar el servidor con PostgreSQL. Tasas y comisiones se
+Cajero) y **037–039** (tasas aplicadas, medios de pago y recibos) antes de iniciar el servidor
+con PostgreSQL. Tasas y comisiones se
 mantienen desde Administración, fuera de la captura de envíos.
 
 La comisión de los envíos nuevos se toma de la configuración central de Admin,
@@ -54,6 +55,9 @@ type Currency = 'DOP' | 'USD' | 'EUR';
 type Quote = { date: string; sourceRate: string; destinationRate: string;
   quotedAt?: string; sourceRateChangeId?: string; destinationRateChangeId?: string;
   sourceRateChangedAt?: string; destinationRateChangedAt?: string;
+  sourceRateDate?: string; destinationRateDate?: string;
+  sourceRateKind?: 'base'|'purchase'|'sale'|'operative';
+  destinationRateKind?: 'base'|'purchase'|'sale'|'operative';
   commissionPolicyRevision?: string; managerCommissionBps?: number };
 type Rate = { id: string; currency: Currency; rate: string; date: string;
   purchaseRate?: string; saleRate?: string; changeId?: string; updatedAt?: string;
@@ -77,6 +81,10 @@ type Transfer = {
   amountDop?: number; requestedReceiveAmount?: number; receiveRoundingDifference?: number;
   commissionAllocation?: CommissionAllocation; // ver REMESAS-COTIZACION-REPARTO.md
   managerCommission?: { managerName: string; amount: number; currency: Currency };
+  payment?: {version:1;method:'cash'|'card'|'transfer'|'deposit';tenderedAmount:number;
+    changeAmount:number;reference?:string;bank?:string;confirmedBy:string;confirmedAt:string};
+  receiptIssuer?: {name:string;address:string;phone:string;email:string;footerNote:string;logoDataUrl?:string};
+  refund?: {method:'card'|'transfer'|'deposit';reference:string;confirmedBy:string;confirmedAt:string};
 };
 type TransferView = Transfer & {canPay: boolean; canCancel: boolean};
 type CashSession = {
@@ -106,8 +114,20 @@ type Snapshot = {
 ```
 
 La tasa es DOP por unidad de moneda, string decimal con seis posiciones; DOP
-siempre vale `1.000000`. Se exige tasa de la fecha exacta para cada moneda usada;
-no se arrastra la del día anterior. Comisión: BPS enteros 0..10000 (100 BPS=1%).
+siempre vale `1.000000`. Para cada moneda se usa la última tasa registrada con
+fecha menor o igual a la fecha de negocio: sigue vigente si hoy no se ha registrado
+otra. Nunca se usa una tasa futura ni se inventa una tasa de USD/EUR cuando no
+hay registros. La fecha de cotización (`quote.date`) es la de la operación;
+`sourceRateDate` y `destinationRateDate` conservan las fechas reales de las tasas
+aplicadas. Las fechas de tasas históricas desconocidas permanecen ausentes.
+Desde 039, `sourceRateKind` / `destinationRateKind` identifican `purchase`, `sale`,
+`base` o `operative`. Se compra la moneda de origen y se vende la de destino;
+si son iguales no se aplica un doble cambio (ambos usan la misma referencia).
+Sin pareja compra/venta en un registro antiguo, `operative` conserva su valor
+único, identificado como tal. Los envíos aceptados nunca se recalculan al cambiar
+la tasa. La pantalla nueva registra Compra/Venta; el campo compatible `rate`
+se envía con Compra y sigue disponible para consumidores anteriores.
+Comisión: BPS enteros 0..10000 (100 BPS=1%).
 Remitente paga `amount + commissionAmount` en origen. Destinatario recibe
 `round_half_up(amount * sourceRate / destinationRate)` en destino; la comisión
 no se descuenta de su principal. Para repartirla entre empresa y gestor, la
@@ -199,8 +219,9 @@ Visibilidad de las operaciones, igual en `snapshot`, listados y reportes:
   `amountMode=destination` cotiza desde el importe a recibir; ver
   [REMESAS-COTIZACION-REPARTO.md](REMESAS-COTIZACION-REPARTO.md).
 - `POST /envios`:
-  `{senderClientId | newSenderClient, recipientClientId | newRecipientClient, sendingUserId?, recipientPhone?, sourceCurrency, destinationCurrency, amount, requestedReceiveAmount?, commissionBps?, managerCommission?, quote, note?}`
-  → `TransferView`, con `senderContact` y `recipientContact` congelados.
+  `{senderClientId | newSenderClient, recipientClientId | newRecipientClient, sendingUserId?, recipientPhone?, sourceCurrency, destinationCurrency, amount, requestedReceiveAmount?, commissionBps?, managerCommission?, quote, note?, payment?}`
+  → `TransferView`, con `senderContact`, `recipientContact`, `payment` y
+  `receiptIssuer` congelados. Ver [REMESAS-PAGOS-RECIBOS.md](REMESAS-PAGOS-RECIBOS.md).
   - Por cada participante va **exactamente una** alternativa: el ID de un cliente
     existente o una ficha nueva `{name, identification, phone, address, routeId,
     preferredCurrency?}`. Las dos o ninguna devuelve 400 `VALIDATION`.
@@ -262,11 +283,13 @@ para volver a imprimir, sin otro POST.
   `TRANSFER_NOT_FOUND` 404 o `FORBIDDEN` 403. Usa la caja abierta del usuario
   autenticado en moneda destino y fecha actual (`CASH_NOT_OPEN` 409); requiere
   saldo suficiente (`INSUFFICIENT_CASH` 409).
-- `POST /envios/:id/cancelar` con `{reason:string}` (1..500) → `TransferView`.
+- `POST /envios/:id/cancelar` con `{reason:string,refund?:{reference:string,verified:true}}` (motivo 1..500) → `TransferView`.
   Solo pendiente, con `remittances.cancel` y `remittances.view`; Admin o el
   operador `sendingUserId` (otro operador: `FORBIDDEN` 403). Devuelve principal
   más comisión contra la caja actual abierta de `sendingUserId` en moneda origen,
-  con saldo suficiente. No modifica una caja cerrada ni el día del envío original.
+  con saldo suficiente para efectivo. Si se pagó por tarjeta/banco, exige una
+  devolución externa comprobada (`refund`) y no retira efectivo. No ejecuta el
+  reembolso bancario. No modifica una caja cerrada ni el día del envío original.
 
 En Administración el pago se registra en Envíos → Pagos de Envíos («Registrar
 pago completo») y la cancelación en el detalle de Envíos → Envíos de Dinero. La
