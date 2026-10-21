@@ -400,7 +400,7 @@ export function ConnectedCatalog({ page, snapshot, actorId, canManagePermissions
   const relationContent = (): ReactNode => {
     if (!relationRow) return null;
     if (relation === "clients") return <><LegacyDenseTable columns={["Nro.", "Código", "Cliente", "Teléfono"]} rows={relatedClients.map((row, index) => [index + 1, row.code, row.name, row.phone ?? ""])} /><p className="catalog-scope-note">La asignación de cada cliente se modifica desde Clientes.</p></>;
-    if (relation === "balances") return <><LegacyDenseTable columns={["Jornada", "Moneda", "Efectivo actual"]} rows={collector ? [[snapshot.businessDate, "DOP", formatMoney(collector.cashInHand, "DOP")]] : []} /><p className="catalog-scope-note">Saldo actual registrado. El detalle de cada jornada se consulta en Cuadres diarios.</p></>;
+    if (relation === "balances") return <><LegacyDenseTable columns={["Jornada", "Moneda", "Efectivo actual"]} rows={collector ? [[snapshot.businessDate, "DOP", formatMoney(collector.cashInHand, "DOP")]] : []} /><p className="catalog-scope-note">Saldo actual registrado. El detalle de cada jornada se consulta en Cuadres Diarios.</p></>;
     return null;
   };
   const clientOptions = snapshot.clients.filter((row) => [row.code, row.identification, row.name].join(" ").toLocaleLowerCase().includes(clientQuery.toLocaleLowerCase()));

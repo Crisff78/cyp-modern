@@ -27,7 +27,7 @@ export function DailySettlementsWindow({ snapshot, user, isAdmin, showCollectors
   }, [requested?.id, requested?.section]);
   const shown = section && available.includes(section) ? section : available[0];
   return <div className="daily-settlements-window">
-    {available.length > 1 && <div className="legacy-mdi-toolbar settlement-sections" role="group" aria-label="Secciones de Cuadres diarios">
+    {available.length > 1 && <div className="legacy-mdi-toolbar settlement-sections" role="group" aria-label="Secciones de Cuadres Diarios">
       <button type="button" aria-pressed={shown === "collectors"} onClick={() => setSection("collectors")}>Cuadres de cobradores</button>
       <button type="button" aria-pressed={shown === "remittanceCash"} onClick={() => setSection("remittanceCash")}>Caja de remesas</button>
     </div>}
@@ -36,6 +36,6 @@ export function DailySettlementsWindow({ snapshot, user, isAdmin, showCollectors
       <RemittancesWorkspace api={remittancesApi} user={user} isAdmin={isAdmin} sections={["caja"]} heading="Caja de remesas"
         cashRequest={sectionRequest?.section === "remittanceCash" && sectionRequest.opening ? { id: sectionRequest.id, ...sectionRequest.opening } : undefined} />
     </div>}
-    {!shown && <p className="connected-report-feedback" role="status">Tu cuenta no tiene permisos para Cuadres diarios.</p>}
+    {!shown && <p className="connected-report-feedback" role="status">Tu cuenta no tiene permisos para Cuadres Diarios.</p>}
   </div>;
 }

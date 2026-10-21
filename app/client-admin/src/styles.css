@@ -253,6 +253,11 @@ input::placeholder {
   font-weight: 500;
   white-space: nowrap;
 }
+/* A long option name («Entregas de Dinero a Cobradores») goes on to a second line instead of being cut. */
+.sidebar .nav-item > span {
+  white-space: normal;
+  line-height: 1.25;
+}
 .nav-item:hover {
   background: var(--cyp-surface-muted, #f5f8f7);
   color: var(--cyp-success-text, #1c5346);
