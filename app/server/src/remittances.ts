@@ -8,6 +8,7 @@ export type Quote = {
   date: string; sourceRate: string; destinationRate: string; quotedAt?: string;
   sourceRateChangeId?: string; destinationRateChangeId?: string;
   sourceRateChangedAt?: string; destinationRateChangedAt?: string;
+  sourceRateDate?: string; destinationRateDate?: string;
   commissionPolicyRevision?: string; managerCommissionBps?: number;
 };
 export type CommissionPolicy = { revision: string; transactionCommissionBps: number; managerCommissionBps: number; updatedAt?: string; updatedBy?: string };
@@ -118,12 +119,17 @@ function manualManagerCommission(value: ManagerCommission | undefined): ManagerC
     return fail("INVALID_MANAGER_COMMISSION", "Indica el gestor (hasta 160 caracteres), la moneda y una comisión manual en centavos enteros seguros.");
   return { managerName: value.managerName.trim(), amount: value.amount, currency: value.currency };
 }
-function dailyRate(state: State, currency: Currency, date: string) {
+function latestRate(state: State, currency: Currency, date: string) {
+  return state.remittances.rates.filter((rate) => rate.currency === currency && rate.date <= date)
+    .sort((a, b) => b.date.localeCompare(a.date) || (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "") || b.id.localeCompare(a.id))[0];
+}
+function effectiveRate(state: State, currency: Currency, date: string) {
   assertCurrency(currency);
-  const rate = state.remittances.rates.find((r) => r.currency === currency && r.date === date);
-  if (currency === "DOP") return { rate: "1.000000", changeId: rate?.changeId, changedAt: rate?.updatedAt };
-  if (!rate) return fail("RATE_MISSING", `Falta la tasa de ${currency} para ${date}.`, 409);
-  return { rate: normalizeRate(rate.rate), changeId: rate.changeId, changedAt: rate.updatedAt };
+  // DOP is the accounting bridge, not a foreign currency with a fallback price.
+  const rate = latestRate(state, currency, date);
+  if (currency === "DOP") return { rate: "1.000000", date: rate?.date ?? date, changeId: rate?.changeId, changedAt: rate?.updatedAt };
+  if (!rate) return fail("RATE_MISSING", `No hay una tasa registrada de ${currency} vigente al ${date}. Registra una tasa antes de cotizar.`, 409);
+  return { rate: normalizeRate(rate.rate), date: rate.date, changeId: rate.changeId, changedAt: rate.updatedAt };
 }
 export function quoteRemittance(state: State, input: QuoteInput, now = new Date()) {
   const requested = integerMoney(input.amount, true);
@@ -132,8 +138,8 @@ export function quoteRemittance(state: State, input: QuoteInput, now = new Date(
   if (input.commissionBps !== undefined && (!Number.isInteger(input.commissionBps) || input.commissionBps < 0 || input.commissionBps > 10000))
     fail("INVALID_COMMISSION", "La comisión debe estar entre 0 y 10000 BPS.");
   const date = businessDate(now);
-  const source = dailyRate(state, input.sourceCurrency, date);
-  const destination = dailyRate(state, input.destinationCurrency, date);
+  const source = effectiveRate(state, input.sourceCurrency, date);
+  const destination = effectiveRate(state, input.destinationCurrency, date);
   const sourceRate = source.rate, destinationRate = destination.rate;
   const amount = input.amountMode === "destination" ? roundHalfUp(requested * scaledRate(destinationRate), scaledRate(sourceRate)) : requested;
   integerMoney(safeMoney(amount), true);
@@ -161,6 +167,7 @@ export function quoteRemittance(state: State, input: QuoteInput, now = new Date(
     ...(input.amountMode === "destination" ? { requestedReceiveAmount: input.amount, receiveRoundingDifference: receiveAmount - input.amount } : {}),
     commissionAmount, totalAmount: safeMoney(amount + BigInt(commissionAmount)),
     receiveAmount, quote: { date, sourceRate, destinationRate, quotedAt: now.toISOString(),
+      sourceRateDate: source.date, destinationRateDate: destination.date,
       commissionPolicyRevision: policy.revision, managerCommissionBps: policy.managerCommissionBps,
       ...(source.changeId ? { sourceRateChangeId: source.changeId } : {}),
       ...(destination.changeId ? { destinationRateChangeId: destination.changeId } : {}),
@@ -330,7 +337,9 @@ export function createRemittance(state: State, user: User, input: CreateRemittan
     sourceCurrency: input.sourceCurrency, destinationCurrency: input.destinationCurrency,
   }, now);
   if (input.quote.date !== calculated.quote.date || input.quote.sourceRate !== calculated.quote.sourceRate || input.quote.destinationRate !== calculated.quote.destinationRate ||
-      input.quote.sourceRateChangeId !== calculated.quote.sourceRateChangeId || input.quote.destinationRateChangeId !== calculated.quote.destinationRateChangeId)
+      input.quote.sourceRateChangeId !== calculated.quote.sourceRateChangeId || input.quote.destinationRateChangeId !== calculated.quote.destinationRateChangeId ||
+      (input.quote.sourceRateDate !== undefined && input.quote.sourceRateDate !== calculated.quote.sourceRateDate) ||
+      (input.quote.destinationRateDate !== undefined && input.quote.destinationRateDate !== calculated.quote.destinationRateDate))
     fail("QUOTE_CHANGED", "La fecha o la tasa cambió. Vuelve a cotizar antes de guardar.", 409);
   if (calculated.amount !== input.amount) fail("QUOTE_CHANGED", "El principal no coincide con el cálculo del importe de destino. Vuelve a cotizar.", 409);
   const cash = currentCash(state, sendingUser.id, input.sourceCurrency, now);
@@ -419,6 +428,8 @@ function visibleOperatorNames(state: State, user: User, systemOperators: User[],
 }
 export function remittanceSnapshot(state: State, user: User, systemOperators: User[] = [], now = new Date()) {
   const date = businessDate(now);
+  const canViewRates = hasRemittancePermission(user, "remittances.rates.view");
+  const effectiveRateIds = canViewRates ? undefined : new Set(currencies.map((currency) => latestRate(state, currency, date)?.id));
   const transfers = state.remittances.transfers.filter((t) => canSeeOutgoing(state, user, t) || canSeeReceipt(state, user, t));
   const cashSessions = hasRemittancePermission(user, "remittances.cash.view") ? state.remittances.cashSessions.filter((c) => readsAllOperations(user) || c.operatorId === user.id) : [];
   const operators = remittanceOperators(state, user, systemOperators);
@@ -439,7 +450,8 @@ export function remittanceSnapshot(state: State, user: User, systemOperators: Us
     // The others stay in `operators` because administration may still open their cash box to pay receipts.
     sendingOperatorIds: operators.filter((operator) => hasRemittancePermission(operator, "remittances.create")).map(({ id }) => id),
     operatorNames: visibleOperatorNames(state, user, systemOperators, transfers, cashSessions),
-    rates: [state.remittances.rates.find((r) => r.currency === "DOP" && r.date === date) ?? { id: `DOP-${date}`, currency: "DOP" as Currency, rate: "1.000000", date }, ...state.remittances.rates.filter((r) => r.currency !== "DOP" && (hasRemittancePermission(user, "remittances.rates.view") || r.date === date))]
+    rates: [latestRate(state, "DOP", date) ?? { id: `DOP-${date}`, currency: "DOP" as Currency, rate: "1.000000", date },
+      ...state.remittances.rates.filter((r) => r.currency !== "DOP" && (canViewRates || effectiveRateIds?.has(r.id)))]
       .sort((a, b) => b.date.localeCompare(a.date) || (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "") || a.currency.localeCompare(b.currency))
       .map(({ updatedBy, ...row }) => ({ ...row, ...(user.role === "admin" && updatedBy ? { updatedBy } : {}) })),
     rateHistory: user.role === "admin" && hasRemittancePermission(user, "remittances.rates.view") ? [...(state.remittances.rateHistory ?? [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.date.localeCompare(a.date) || b.id.localeCompare(a.id)) : [],

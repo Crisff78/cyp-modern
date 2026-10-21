@@ -49,7 +49,7 @@ export function registerRemittanceRoutes(
       const state = await store.read(), actor = user(req);
       return state.remittances.transfers.filter((t) => filter(state, actor, t)).map((t) => transferView(state, actor, t));
     });
-  get("/api/envios/cotizacion", "Cotizar envío con la tasa del día", async (req) => {
+  get("/api/envios/cotizacion", "Cotizar envío con la última tasa vigente por moneda", async (req) => {
     const input = z.object({ ...quoteFields,
       amount: z.string().max(16).regex(/^[0-9]+$/, "El importe en centavos debe contener solo dígitos.").transform(Number).pipe(amount.positive()),
       commissionBps: z.string().regex(/^\d{1,5}$/).transform(Number).pipe(bps).optional(),
@@ -72,6 +72,7 @@ export function registerRemittanceRoutes(
     quote: z.object({ date: z.iso.date(), sourceRate: z.string().max(19), destinationRate: z.string().max(19),
       quotedAt: z.iso.datetime().optional(), sourceRateChangeId: id.optional(), destinationRateChangeId: id.optional(),
       sourceRateChangedAt: z.iso.datetime().optional(), destinationRateChangedAt: z.iso.datetime().optional(),
+      sourceRateDate: z.iso.date().optional(), destinationRateDate: z.iso.date().optional(),
       commissionPolicyRevision: id.optional(), managerCommissionBps: bps.optional(),
     }).strict(),
     managerCommission: z.object({

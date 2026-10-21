@@ -59,10 +59,12 @@ test("quote uses exact half-up, fees in source currency and safe BigInt intermed
   assert.throws(() => normalizeRate("1e3"), code("INVALID_RATE"));
 });
 
-test("rates require exact date and quotes reject changed rate or day", () => {
+test("rates carry forward while quotes still reject changed rate or business day", () => {
   const state = fixture(); open(state, sender.id, "USD");
   const quote = quoteRemittance(state, { sourceCurrency: "USD", destinationCurrency: "DOP", amount: 10000, commissionBps: 100 }, now).quote;
-  assert.throws(() => quoteRemittance(state, { sourceCurrency: "USD", destinationCurrency: "DOP", amount: 1, commissionBps: 0 }, tomorrow), code("RATE_MISSING"));
+  const continued = quoteRemittance(state, { sourceCurrency: "USD", destinationCurrency: "DOP", amount: 1, commissionBps: 100 }, tomorrow);
+  assert.equal(continued.quote.sourceRate, "60.000000"); assert.equal(continued.quote.sourceRateDate, businessDate(now));
+  assert.equal(continued.quote.date, businessDate(tomorrow));
   setDailyRate(state, admin, { currency: "USD", rate: "61", date: businessDate(now) }, now);
   assert.throws(() => create(state, { quote }), code("QUOTE_CHANGED"));
   assert.throws(() => createRemittance(state, sender, { senderClientId: "cli-1", recipientClientId: "cli-5", sourceCurrency: "USD", destinationCurrency: "DOP", amount: 10000, commissionBps: 100, quote }, operators, tomorrow), code("QUOTE_CHANGED"));

@@ -5,6 +5,7 @@ export type Quote = {
   date: string; sourceRate: string; destinationRate: string; quotedAt?: string;
   sourceRateChangeId?: string; destinationRateChangeId?: string;
   sourceRateChangedAt?: string; destinationRateChangedAt?: string;
+  sourceRateDate?: string; destinationRateDate?: string;
   commissionPolicyRevision?: string; managerCommissionBps?: number;
 };
 export type CommissionPolicy = { revision: string; transactionCommissionBps: number; managerCommissionBps: number; updatedAt?: string; updatedBy?: string };

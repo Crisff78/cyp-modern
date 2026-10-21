@@ -3,7 +3,8 @@
 El flujo de captura continua, el alta transaccional de clientes y la autorización
 individual están documentados en [DIONEL-REMESAS-PERMISOS.md](DIONEL-REMESAS-PERMISOS.md).
 Esta versión requiere también las migraciones aditivas **034** y **035** (rol
-Cajero) antes de iniciar el servidor con PostgreSQL. Tasas y comisiones se
+Cajero) y **037** (fecha real de las tasas aplicadas) antes de iniciar el servidor
+con PostgreSQL. Tasas y comisiones se
 mantienen desde Administración, fuera de la captura de envíos.
 
 La comisión de los envíos nuevos se toma de la configuración central de Admin,
@@ -54,6 +55,7 @@ type Currency = 'DOP' | 'USD' | 'EUR';
 type Quote = { date: string; sourceRate: string; destinationRate: string;
   quotedAt?: string; sourceRateChangeId?: string; destinationRateChangeId?: string;
   sourceRateChangedAt?: string; destinationRateChangedAt?: string;
+  sourceRateDate?: string; destinationRateDate?: string;
   commissionPolicyRevision?: string; managerCommissionBps?: number };
 type Rate = { id: string; currency: Currency; rate: string; date: string;
   purchaseRate?: string; saleRate?: string; changeId?: string; updatedAt?: string;
@@ -106,8 +108,13 @@ type Snapshot = {
 ```
 
 La tasa es DOP por unidad de moneda, string decimal con seis posiciones; DOP
-siempre vale `1.000000`. Se exige tasa de la fecha exacta para cada moneda usada;
-no se arrastra la del día anterior. Comisión: BPS enteros 0..10000 (100 BPS=1%).
+siempre vale `1.000000`. Para cada moneda se usa la última tasa registrada con
+fecha menor o igual a la fecha de negocio: sigue vigente si hoy no se ha registrado
+otra. Nunca se usa una tasa futura ni se inventa una tasa de USD/EUR cuando no
+hay registros. La fecha de cotización (`quote.date`) es la de la operación;
+`sourceRateDate` y `destinationRateDate` conservan las fechas reales de las tasas
+aplicadas. Las fechas de tasas históricas desconocidas permanecen ausentes.
+Comisión: BPS enteros 0..10000 (100 BPS=1%).
 Remitente paga `amount + commissionAmount` en origen. Destinatario recibe
 `round_half_up(amount * sourceRate / destinationRate)` en destino; la comisión
 no se descuenta de su principal. Para repartirla entre empresa y gestor, la

@@ -26,7 +26,8 @@ y no queda acreditada por el UUID interno del catálogo.
 `amount` (centavos seguros) y `commissionBps` opcional, que solo puede coincidir
 con la tasa central. Acepta `amountMode=source|destination`
 (por defecto `source`). En modo destino, `amount` es el importe solicitado para
-el destinatario. El servidor convierte inversamente con las tasas del día y
+el destinatario. El servidor convierte inversamente con las últimas tasas
+registradas de cada moneda cuya fecha no sea posterior a la operación y
 redondea al centavo de origen, mitad hacia arriba. Después calcula el importe
 real de destino usando el mismo principal de origen. Puede diferir del solicitado
 porque no todos los centavos de destino son representables en origen; la UI debe
