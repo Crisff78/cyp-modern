@@ -68,7 +68,7 @@ export const enrichUserRole = <T extends User>(user: T): T => {
 };
 export const canAccessAdmin = (user: User) =>
   ["SUPERADMIN", "ADMIN", "SUPERVISOR"].includes(normalizeRole(user.role)) ||
-  (["USER", "CASHIER"].includes(normalizeRole(user.role)) && hasRemittanceAccess(user));
+  (normalizeRole(user.role) === "CASHIER" && hasRemittanceAccess(user));
 export const canAccessCollector = (user: User) =>
   ["COLLECTOR", "SUPERADMIN"].includes(normalizeRole(user.role));
 export const isSuspendedUser = (user: User) =>

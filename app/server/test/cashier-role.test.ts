@@ -72,11 +72,10 @@ test("shared access gives the Cajero its own profile, ceiling and pages without 
     remittancePermissions: [...REMITTANCE_PERMISSION_KEYS] });
   assert.deepEqual(everything.legacy, [1, 2]);
   assert.deepEqual([...everything.remittances].sort(), [...cashierKeys, "remittances.reports"].sort());
-  // Opening a cash box stays out of the Collector profile and of the Usuario ceiling.
+  // Opening a cash box stays out of the Collector profile; a Cliente gets no access at all, even personalized.
   assert.equal(roleRemittancePermissions("collector").includes("remittances.cash.open"), false);
-  const user = effectiveAccess("user", { permissionMode: "custom", permissionIds: [1, 2], remittancePermissions: [...REMITTANCE_PERMISSION_KEYS] });
-  assert.equal(user.remittances.includes("remittances.cash.open"), false);
-  assert.equal(user.remittances.includes("remittances.rates.view"), true, "Usuario keeps its personalized path");
+  const client = effectiveAccess("client", { permissionMode: "custom", permissionIds: [1, 2], remittancePermissions: [...REMITTANCE_PERMISSION_KEYS] });
+  assert.deepEqual(client, { mode: "custom", revision: 0, legacy: [], remittances: [] });
 
   const cashier = { role: "cashier" };
   for (const page of ["remittances", "remittancePayouts", "dailySettlements"]) assert.equal(canOpenPage(cashier, page), true, page);
@@ -86,7 +85,7 @@ test("shared access gives the Cajero its own profile, ceiling and pages without 
   assert.equal(canOpenPage(withReports, "reports"), true); assert.equal(canOpenPage(withReports, "reportRemittanceCommissions"), true);
   const custom = (role: string, permissionIds: number[], keys: RemittancePermission[]) => ({ role, access: effectiveAccess(role, { permissionMode: "custom", permissionIds, remittancePermissions: keys }) });
   // Envíos de dinero needs view; Entregas de dinero needs receipts.
-  const payoutsOnly = custom("user", [1, 2], ["remittances.receipts", "remittances.pay"]);
+  const payoutsOnly = custom("cashier", [1, 2], ["remittances.receipts", "remittances.pay"]);
   assert.equal(canOpenPage(payoutsOnly, "remittances"), false); assert.equal(canOpenPage(payoutsOnly, "remittancePayouts"), true);
   assert.equal(canOpenPage(payoutsOnly, "dailySettlements"), false);
   // Daily settlements: collector settlements (401) or the remittance cash box (cash.view).
@@ -96,7 +95,7 @@ test("shared access gives the Cajero its own profile, ceiling and pages without 
   assert.equal(canOpenPage(custom("admin", [1], ["remittances.cash.view"]), "dailySettlements"), true);
   assert.equal(canOpenPage(custom("admin", [1, 10], ["remittances.view"]), "dailySettlements"), false);
   assert.equal(canOpenPage({ role: "admin" }, "clients"), true);
-  assert.equal(canOpenPage({ role: "user" }, "remittances"), false);
+  assert.equal(canOpenPage({ role: "client" }, "remittances"), false);
 });
 
 test("a Cajero starts with its role profile, needs permission 106 and is never linked to a collector", async (t) => {
@@ -113,12 +112,12 @@ test("a Cajero starts with its role profile, needs permission 106 and is never l
   const { token: _token, ...profile } = cashier;
   const edited = await post(`/api/usuarios/${cashier.id}`, { name: profile.name, email: profile.email, role: "cashier", collectorId: "col-1" }, admin);
   assert.equal(edited.statusCode, 422); assert.equal(code(edited), "COLLECTOR_NOT_ALLOWED");
-  // A Usuario linked to a collector must be unlinked before becoming a Cajero.
-  const user = await create("user");
+  // A Supervisor linked to a collector must be unlinked before becoming a Cajero.
+  const user = await create("supervisor");
   assert.equal((await post("/api/cobradores/col-1", { name: "Cobrador", accountId: user.id }, admin)).statusCode, 200);
   const promoted = await post(`/api/usuarios/${user.id}`, { name: user.name, email: user.email, role: "cashier" }, admin);
   assert.equal(promoted.statusCode, 409); assert.equal(code(promoted), "ACCOUNT_LINKED_COLLECTOR");
-  assert.equal((await store.read()).accounts.find(({ id }) => id === user.id)?.role, "user");
+  assert.equal((await store.read()).accounts.find(({ id }) => id === user.id)?.role, "supervisor");
   // Limited account administration cannot create or promote a Cajero without 106.
   const limited = await create("admin");
   await grant(limited.id, [1, 101, 102], []);
@@ -142,7 +141,7 @@ test("the Cajero opens only his own cash box; Cobrador and Usuario still cannot 
     assert.equal(opened.statusCode, 200, opened.body);
     assert.equal(opened.json().operatorId, cashier.id); assert.equal(opened.json().openedBy, cashier.id); assert.equal(opened.json().canClose, true);
   }
-  const user = await create("user");
+  const user = await create("client");
   await grant(user.id, [1, 2], [...REMITTANCE_PERMISSION_KEYS]);
   const before = await store.read();
   const foreign = await openCash(cashier.token, "demo-collector", "EUR");

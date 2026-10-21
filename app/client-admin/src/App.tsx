@@ -156,7 +156,7 @@ import {
 // Each section is named after what it holds, so someone new finds a screen without knowing the
 // program. A section with one screen is a single button that opens it straight away.
 const groupOrder = [
-  "ADMINISTRACIÓN",
+  "CONFIGURACIÓN DE ADMINISTRACIÓN",
   "CLIENTES",
   "COBROS",
   "PAGOS",
@@ -165,7 +165,7 @@ const groupOrder = [
   "MONITOREO",
 ] as const;
 type NavGroup = (typeof groupOrder)[number];
-const directGroups: readonly NavGroup[] = ["CLIENTES", "ADMINISTRACIÓN"];
+const directGroups: readonly NavGroup[] = ["CLIENTES", "CONFIGURACIÓN DE ADMINISTRACIÓN"];
 const groupShortLabel: Record<NavGroup, string> = {
   CLIENTES: "CL",
   COBROS: "CO",
@@ -173,7 +173,7 @@ const groupShortLabel: Record<NavGroup, string> = {
   REMESAS: "RE",
   "CUADRES Y REPORTES": "CR",
   MONITOREO: "MO",
-  ADMINISTRACIÓN: "AD",
+  "CONFIGURACIÓN DE ADMINISTRACIÓN": "AD",
 };
 // The menu each account left on this computer: the sections it had open and whether it was narrow.
 // The first time, every section starts closed.
@@ -302,7 +302,7 @@ const navigation: {
   },
   { key: "monitor-zones", page: "monitorZones", label: "Monitor de zonas", hint: "Cómo va cada zona hoy.", icon: MapPinned, group: "MONITOREO" },
   { key: "monitor-routes", page: "monitorRoutes", label: "Monitor de rutas", hint: "Cómo va cada ruta hoy.", icon: MapPinned, group: "MONITOREO" },
-  { key: "admin-panel", action: "controlPanel", label: "Administración", hint: "Usuarios, cobradores, rutas, zonas, tasas, comisiones y configuración.", icon: ServerCog, group: "ADMINISTRACIÓN" },
+  { key: "admin-panel", action: "controlPanel", label: "Configuración de administración", hint: "Usuarios, cobradores, rutas, zonas, tasas, comisiones y configuración.", icon: ServerCog, group: "CONFIGURACIÓN DE ADMINISTRACIÓN" },
 ];
 const pageFromHash = (): Page => {
   const requested = location.hash.slice(1);
@@ -375,7 +375,7 @@ function useOperationalPermissions(user: User): AdminPermissions {
 // The role in plain Spanish ("Cajero", not CASHIER), for the account card and the menu.
 const roleName = (user: User | null) => {
   const role = user ? normalizeRole(user.role) : "";
-  return role in ROLE_DEFINITIONS ? ROLE_DEFINITIONS[role as keyof typeof ROLE_DEFINITIONS].label : role === "USER" ? "Usuario" : "Mi cuenta";
+  return role in ROLE_DEFINITIONS ? ROLE_DEFINITIONS[role as keyof typeof ROLE_DEFINITIONS].label : "Mi cuenta";
 };
 // Why an account cannot use this panel: checked at sign-in and on every refresh of the session.
 function adminSessionRejection(user: User) {
@@ -489,7 +489,7 @@ const isMdiOperationPage = (page: MdiPage): page is Page =>
 const isMdiMonitoringPage = (page: MdiPage): page is Page =>
   page !== "controlPanel" && !isReportPage(page) && !isRemittanceReportPage(page) && mdiMonitoringPages.includes(page);
 const mdiTitle = (page: MdiPage) => {
-  if (page === "controlPanel") return "Administración";
+  if (page === "controlPanel") return "Configuración de administración";
   if (isReportPage(page)) return reportTitle(page);
   if (isRemittanceReportPage(page)) return remittanceReportForPage(page).label;
   return pageTitles[page];
@@ -3180,7 +3180,7 @@ type LegacyUserRecord = {
   id: string;
   name: string;
   username: string;
-  role: "No definido" | "Cliente" | "Usuario" | "Supervisor" | "Admin" | "Cajero";
+  role: "No definido" | "Cliente" | "Supervisor" | "Admin" | "Cajero";
   alias: string;
   active: boolean;
 };
@@ -3195,7 +3195,7 @@ type UserPermissionRecord = {
   permission: string;
 };
 
-const userRoleOptions: LegacyUserRecord["role"][] = ["No definido", "Cliente", "Usuario", "Supervisor", "Admin", "Cajero"];
+const userRoleOptions: LegacyUserRecord["role"][] = ["No definido", "Cliente", "Supervisor", "Admin", "Cajero"];
 const permissionCategoryOptions = ["No definido", "Sistema", "Archivos", "Edición", "Reportes y Procesamiento", "Monitoreo y Otros"];
 const permissionCatalogByCategory: Record<string, string[]> = {
   "No definido": ["No definido"],
@@ -3206,7 +3206,7 @@ const permissionCatalogByCategory: Record<string, string[]> = {
   "Monitoreo y Otros": ["Monitor de cobradores", "Monitor de zonas", "Ver trazas del sistema"],
 };
 
-const accountRoleLabel = (role: PublicAccount["role"]): LegacyUserRecord["role"] => role === "admin" ? "Admin" : role === "cashier" ? "Cajero" : "Usuario";
+const accountRoleLabel = (role: PublicAccount["role"]): LegacyUserRecord["role"] => role === "admin" ? "Admin" : role === "cashier" ? "Cajero" : role === "client" ? "Cliente" : role === "supervisor" ? "Supervisor" : "No definido";
 
 const defaultLegacyUsers = (accounts: PublicAccount[]): LegacyUserRecord[] => {
   const source = accounts.length ? accounts : [
@@ -5707,7 +5707,7 @@ export default function App() {
                 { icon: HandCoins, title: "REMESAS", text: "Envíos de dinero: registrar una remesa. Entregas de dinero: darle el dinero a la persona que lo recibe. Para las dos hace falta tener abierta tu caja de remesas del día." },
                 { icon: FileCheck2, title: "CUADRES Y REPORTES", text: "Cuadres diarios: cuadrar el dinero del día de cada cobrador y de cada caja de remesas. Cobrado − depositado + entregado − pagado = dinero en mano; la diferencia debe dar cero. Reportes: listados para revisar o imprimir." },
                 { icon: LayoutDashboard, title: "MONITOREO", text: "Ver en el momento cómo va cada cobrador, cada zona y cada ruta." },
-                { icon: ServerCog, title: "ADMINISTRACIÓN", text: "Usuarios y permisos, cobradores, rutas, zonas, tasas de cambio, comisiones y configuración." },
+                { icon: ServerCog, title: "CONFIGURACIÓN DE ADMINISTRACIÓN", text: "Usuarios y permisos, cobradores, rutas, zonas, tasas de cambio, comisiones y configuración." },
               ].map((item) => (
                 <div key={item.title}>
                   <item.icon size={23} />
@@ -5739,7 +5739,7 @@ export default function App() {
                 index={3}
               />
               <h3>{user?.name ?? "Administración"}</h3>
-              <Badge status="active">{ROLE_DEFINITIONS[normalizeRole(effectiveUser.role) as keyof typeof ROLE_DEFINITIONS]?.label ?? (normalizeRole(effectiveUser.role) === "USER" ? "Usuario" : "No definido")}</Badge>
+              <Badge status="active">{ROLE_DEFINITIONS[normalizeRole(effectiveUser.role) as keyof typeof ROLE_DEFINITIONS]?.label ?? "No definido"}</Badge>
               <p>Los módulos y las acciones disponibles corresponden a los permisos de tu cuenta.</p>
               <button className="btn full" disabled={!canChangeOwnPassword(effectiveUser)} onClick={() => { setAccountOpen(false); setOwnPasswordOpen(true); }}><KeyRound size={17} />Cambiar mi clave</button>
               <button className="btn full" onClick={logout}>
@@ -6308,7 +6308,7 @@ function SupportContact({ open }: Readonly<{ open: boolean }>) {
           {email && <li><span>Correo:</span> <a href={`mailto:${email}`}>{email}</a></li>}
         </ul>
       ) : (
-        <p className="support-contact-empty">Todavía no se ha escrito el teléfono ni el correo de soporte. Un administrador puede ponerlos en Administración → Configuración general → pestaña General → «Soporte técnico».</p>
+        <p className="support-contact-empty">Todavía no se ha escrito el teléfono ni el correo de soporte. Un administrador puede ponerlos en Configuración de administración → Configuración general → pestaña General → «Soporte técnico».</p>
       )}
       <p>Al llamar o escribir, indica tu usuario, la ventana donde ocurrió el problema y la hora aproximada.</p>
       {demo && <p className="support-contact-demo">Esta es una demostración: los datos que ves son ficticios, salvo las estaciones validadas con RRAA (su código, su ID de dispositivo y su licencia).</p>}
@@ -8200,7 +8200,7 @@ function DepositDataDialog({ actorId, snapshot, movement, initialDraft, onClose,
         : bankCatalog.length
         ? <select aria-label={`Banco componente ${index + 1}`} value={line.bank} onChange={(event) => setNonCash((lines) => lines.map((item) => item.id === line.id ? { ...item, bank: event.target.value } : item))}><option value="">Seleccione el banco…</option>{line.bank && !bankCatalog.some((bank) => bank.name === line.bank) ? <option value={line.bank}>{line.bank}</option> : null}{bankCatalog.map((bank) => <option key={bank.id} value={bank.name}>{bank.name}</option>)}</select>
         : <input aria-label={`Banco componente ${index + 1}`} maxLength={160} placeholder="Nombre del banco" value={line.bank} onChange={(event) => setNonCash((lines) => lines.map((item) => item.id === line.id ? { ...item, bank: event.target.value } : item))} />}</td><td><input aria-label={`Referencia componente ${index + 1}`} maxLength={160} value={line.reference} onChange={(event) => setNonCash((lines) => lines.map((item) => item.id === line.id ? { ...item, reference: event.target.value } : item))} /></td><td><button type="button" aria-label={`Eliminar componente ${index + 1}`} onClick={() => setNonCash((lines) => lines.filter((item) => item.id !== line.id))}>Eliminar</button></td></tr>)}</tbody></table></div>}
-      {nonCash.length > 0 && <p className="deposit-bank-hint">{bankStatus === "loading" ? "Cargando el catálogo de bancos…" : bankStatus === "error" ? "No se pudo leer el catálogo de bancos. Puedes escribir el nombre del banco; revísalo luego en Administración → Bancos." : bankCatalog.length ? "Los bancos salen del catálogo: Administración → Bancos." : "Aún no hay bancos en el catálogo. Créalos en Administración → Bancos para elegirlos de una lista; mientras tanto puedes escribir el nombre."}</p>}
+      {nonCash.length > 0 && <p className="deposit-bank-hint">{bankStatus === "loading" ? "Cargando el catálogo de bancos…" : bankStatus === "error" ? "No se pudo leer el catálogo de bancos. Puedes escribir el nombre del banco; revísalo luego en Configuración de administración → Bancos." : bankCatalog.length ? "Los bancos salen del catálogo: Configuración de administración → Bancos." : "Aún no hay bancos en el catálogo. Créalos en Configuración de administración → Bancos para elegirlos de una lista; mientras tanto puedes escribir el nombre."}</p>}
       <p className="deposit-form-kind">Forma de depósito: <strong>{depositFormLabel([...(cashAmount > 0 ? ["cash" as const] : []), ...(movement?.depositComponents ? movement.depositComponents.filter((line) => line.method !== "cash").map((line) => line.method) : nonCash.map((line) => line.method))])}</strong> · Efectivo: {Number.isSafeInteger(cashAmount) ? depositMoney(cashAmount, currency) : "Desglose no válido"}. Los componentes forman un solo depósito en esta moneda.</p>
       {movement?.depositComponents && cashAmount > 0 && !movement.denominations?.length && <p>Las denominaciones del efectivo no fueron registradas.</p>}
     </section>

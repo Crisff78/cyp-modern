@@ -1,5 +1,7 @@
 # Mejoras de Dionel: captura de envíos y permisos efectivos
 
+> **Cambio del 2026-10-20:** el rol Usuario ya no existe. Lo reemplaza **Cliente**, sin acceso por ahora, y las cuentas que eran Usuario pasaron a **Cajero**. Ver `docs/MENU-SIMPLE.md`.
+
 Alcance aprobado el 18 de octubre de 2026, a partir de la transcripción de la
 revisión. Se conservan los registros históricos, la separación entre el libro
 de cobros/pagos y la caja de envíos, y la aritmética monetaria del servidor.

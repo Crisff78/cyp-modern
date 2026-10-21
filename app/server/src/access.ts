@@ -144,7 +144,7 @@ export function guardCatalogChanges(state: State, actor: User, route: string): (
 
 export function filterOperationalSnapshot<T extends ReturnType<typeof import("./domain.js").snapshot>>(data: T, actor: User): T {
   // Remittance desks never receive the operational catalogs, whatever their permission mode.
-  const desk = actor.role === "user" || actor.role === "cashier";
+  const desk = actor.role === "cashier";
   if (actor.access?.mode !== "custom" && !desk) return data;
   const result = structuredClone(data);
   if (desk) result.banks = [];

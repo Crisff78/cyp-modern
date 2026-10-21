@@ -47,7 +47,7 @@ El menú y los nombres de las pantallas se simplificaron el 2026-10-20 para que 
 3. En Pagos, entregar la remesa autorizada de RD$ 2,000.00 a María. La demo incluye ese anticipo inicial de oficina.
 4. En Cuadre administrativo, confirmar depósito de RD$ 4,500.00 para Cobrador. La fórmula resulta `(4,500 - 4,500) + (2,000 - 2,000) = 0`.
 5. Cerrar la jornada. Intentar un nuevo cobro de Cobrador devuelve `DAY_CLOSED`. Los demás cobradores mantienen sus jornadas independientes.
-6. Entrar como `cajero@cyp.local`: abrir su caja en Cuadres y reportes → Cuadres diarios → Caja de remesas, registrar un envío en Remesas → Envíos de dinero, entregar el dinero de una remesa pendiente en Remesas → Entregas de dinero y cerrar la caja con el contado exacto. Hay una sola caja por operador, moneda y día, y la cuenta de práctica es la misma para todos: en una demo compartida, cerrar su caja la deja sin caja en esa moneda para los demás evaluadores hasta la jornada siguiente. Para practicar el cierre sin afectarles, crea un Cajero propio en Administración → Usuarios con la cuenta de Administración. El recorrido detallado está en [docs/DEMO-PUBLICA.md](docs/DEMO-PUBLICA.md#recorrido-del-cajero).
+6. Entrar como `cajero@cyp.local`: abrir su caja en Cuadres y reportes → Cuadres diarios → Caja de remesas, registrar un envío en Remesas → Envíos de dinero, entregar el dinero de una remesa pendiente en Remesas → Entregas de dinero y cerrar la caja con el contado exacto. Hay una sola caja por operador, moneda y día, y la cuenta de práctica es la misma para todos: en una demo compartida, cerrar su caja la deja sin caja en esa moneda para los demás evaluadores hasta la jornada siguiente. Para practicar el cierre sin afectarles, crea un Cajero propio en Configuración de administración → Usuarios con la cuenta de Administración. El recorrido detallado está en [docs/DEMO-PUBLICA.md](docs/DEMO-PUBLICA.md#recorrido-del-cajero).
 
 Un recibo es operacional, no fiscal. Descargar ESC/POS produce bytes para un puente/controlador local compatible; no instala ni conecta una impresora. La impresión web abre el diálogo del navegador. El tamaño, corte y caracteres deben verificarse con la impresora física.
 
@@ -75,10 +75,10 @@ Las identidades `admin@cyp.local`, `collector@cyp.local` y `cajero@cyp.local` so
 ficticias y solo se crean con `DEMO_MODE=true`; fuera del modo demo la clave demo no
 abre ninguna de ellas, tampoco el Cajero de práctica que quedó guardado en la base. Para que el jefe, los cobradores
 y los cajeros entren con su propia cuenta, desde el portal administrativo:
-**Administración → Usuarios**, botón **Nuevo**. Una cuenta de cobrador se vincula
+**Configuración de administración → Usuarios**, botón **Nuevo**. Una cuenta de cobrador se vincula
 a un cobrador existente (y por tanto a su ruta y sus clientes); una de
 administración o de cajero no lleva cobrador asignado. Los roles son Administrador,
-Supervisor, Cobrador, Usuario, Cajero y No definido; el rol fija el perfil inicial
+Supervisor, Cobrador, Cliente, Cajero y No definido (Cliente todavía no tiene acceso; desde el 2026-10-20 reemplaza a Usuario, cuyas cuentas pasaron a Cajero); el rol fija el perfil inicial
 de permisos y **Usuarios → Permisos** permite limitarlo (ver
 [docs/DIONEL-REMESAS-PERMISOS.md](docs/DIONEL-REMESAS-PERMISOS.md) y
 [docs/ROLES-Y-CUENTAS-COBRADORES.md](docs/ROLES-Y-CUENTAS-COBRADORES.md)). La
