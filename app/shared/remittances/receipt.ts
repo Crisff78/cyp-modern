@@ -31,7 +31,7 @@ export function remittanceReceipt(transfer: Transfer, fallback?: ReceiptIssuer, 
   const payment = transfer.payment;
   return { reference: transfer.reciboReference, date: formatDate(transfer.createdAt), status: transfer.status, issuer, footer: issuer.footerNote || defaultReceiptFooter,
     sections: [
-      { title: "Registro del recibo", columns: ["Dato", "Valor"], rows: [["Envío", transfer.envioReference], ["Estado", status[transfer.status]], ["Operador del envío", operator], ["Registrado por", registeredBy]] },
+      { title: "Registro del recibo", columns: ["Dato", "Valor"], rows: [["Envío", transfer.envioReference], ["Código de operación", transfer.operatingCode], ["Estado", status[transfer.status]], ["Operador del envío", operator], ["Registrado por", registeredBy]] },
       party("sender", "Remitente"), party("recipient", "Destinatario"),
       { title: "Importes del envío", columns: ["Dato", "Valor"], rows: [["Monto a enviar", formatMoney(transfer.amount, transfer.sourceCurrency)],
         ...(transfer.amountDop === undefined ? [] : [["Equivalente del principal en pesos", formatMoney(transfer.amountDop, "DOP")]]),

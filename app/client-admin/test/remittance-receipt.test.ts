@@ -5,7 +5,7 @@ import type { Transfer } from "../../shared/remittances/types";
 import { confirmedCreatedTransfer } from "../../shared/remittances/createdTransferResponse";
 
 const transfer: Transfer = {
-  id: "qa-send", sequence: 1, envioReference: "ENV00000001", reciboReference: "REC00000001", operatingCode: "INTERNAL-CODE",
+  id: "qa-send", sequence: 1, envioReference: "ENV00000001", reciboReference: "REC00000001", operatingCode: "OP-QA-123",
   senderClientId: "sender", recipientClientId: "recipient", sendingUserId: "office", registeredBy: "office", status: "pending", canPay: true, canCancel: true,
   createdAt: "2026-10-21T16:00:00.000Z", note: "Prueba & validación", sourceCurrency: "DOP", destinationCurrency: "DOP",
   amount: 90000, commissionBps: 1000, commissionAmount: 9000, totalAmount: 99000, receiveAmount: 90000,
@@ -19,8 +19,8 @@ const transfer: Transfer = {
 test("customer receipt contains identifiers first, frozen parties, rates, payment, tender/change and company footer without internal commissions", () => {
   const model = remittanceReceipt(transfer, { ...transfer.receiptIssuer!, name: "Changed later" }, "Operador"), html = receiptHtml(model);
   assert.equal(model.issuer.name, "Empresa de prueba"); assert.ok(html.indexOf("REC00000001") < html.indexOf("Empresa de prueba"));
-  for (const text of ["ENV00000001", "O&#39;Connor &lt;sender&gt;", "QA-1", "8095550101", "Total pagado", "DOP 990.00", "DOP 1,000.00", "Devuelta", "DOP 10.00", "Efectivo", "1.000000", "Conserve este recibo"]) assert.ok(html.includes(text), text);
-  for (const forbidden of ["Comisión", "comisión", "companyAmount", "managerAmount", "commissionAllocation", "INTERNAL-CODE"]) assert.equal(html.includes(forbidden), false, forbidden);
+  for (const text of ["ENV00000001", "OP-QA-123", "O&#39;Connor &lt;sender&gt;", "QA-1", "8095550101", "Total pagado", "DOP 990.00", "DOP 1,000.00", "Devuelta", "DOP 10.00", "Efectivo", "1.000000", "Conserve este recibo"]) assert.ok(html.includes(text), text);
+  for (const forbidden of ["Comisión", "comisión", "companyAmount", "managerAmount", "commissionAllocation"]) assert.equal(html.includes(forbidden), false, forbidden);
   assert.equal(html.includes("<sender>"), false); assert.equal(html.includes("<script"), false);
 });
 test("bank receipt shows its method/reference, no cash change and no card credentials; legacy method remains unknown", () => {
