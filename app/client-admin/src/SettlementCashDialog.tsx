@@ -73,7 +73,7 @@ export function SettlementCashDialog({ actorId, collectorId, date, onClose, onRe
         (result) => result?.collectorId === collectorId && Array.isArray(result.records) && result.records.length === draft.preview.rows.length
           && result.records.every((row) => typeof row.id === "string" && row.collectorId === collectorId)
           && currencies.every((currency) => result.amounts?.[currency] === amounts[currency]), "POST", "api");
-      setSaved(true); toast.success("Devolución registrada y cuadre guardado en Cuadres diarios.");
+      setSaved(true); toast.success("Devolución registrada y cuadre guardado en Cuadres Diarios.");
       await finish();
     } catch { /* The request retains its immutable intent if confirmation was lost. */ }
   };
@@ -89,7 +89,7 @@ export function SettlementCashDialog({ actorId, collectorId, date, onClose, onRe
       {preview && <>
         <div className="legacy-mdi-table-wrap previous-cash-table"><table className="legacy-mdi-table"><thead><tr><th>Fecha</th><th>Moneda</th><th>Cobros por devolver</th><th>Entregas sin usar</th><th>Total pendiente</th></tr></thead><tbody>
           {preview.rows.map((row) => <tr key={`${row.date}:${row.currency}`}><td>{row.date}</td><td>{row.currency}</td><td>{cashMoney(row.returnedCollection, row.currency)}</td><td>{cashMoney(row.returnedPayout, row.currency)}</td><td>{cashMoney(row.amount, row.currency)}</td></tr>)}
-          {!preview.rows.length && <tr><td colSpan={5}>Esta jornada no tiene efectivo pendiente de devolución. Revisa su cierre en Cuadres diarios.</td></tr>}
+          {!preview.rows.length && <tr><td colSpan={5}>Esta jornada no tiene efectivo pendiente de devolución. Revisa su cierre en Cuadres Diarios.</td></tr>}
         </tbody></table></div>
         {preview.issues.map((issue) => <p role="alert" key={issue}>{issue}</p>)}
         {preview.rows.length > 0 && <fieldset disabled={locked || !preview.canReconcile} className="previous-cash-fields">

@@ -211,7 +211,7 @@ const navigation: {
   {
     key: "direct-charges",
     page: "charges",
-    label: "Cargos por cobrar",
+    label: "Cargos",
     hint: "Lo que cada cliente debe pagar. El número indica cuántos están pendientes.",
     icon: ReceiptText,
     group: "COBROS",
@@ -220,15 +220,15 @@ const navigation: {
   {
     key: "recurring-charges",
     page: "recurringCharges",
-    label: "Cargos que se repiten",
-    hint: "Cargos que se crean solos cada semana o cada mes (antes «Cargos Recurrentes»).",
+    label: "Cargos Recurrentes",
+    hint: "Cargos que se crean solos cada semana o cada mes.",
     icon: RefreshCw,
     group: "COBROS",
   },
   {
     key: "collections",
     page: "collections",
-    label: "Cobros realizados",
+    label: "Cobros",
     hint: "El dinero ya cobrado a los clientes, en la calle o en la oficina.",
     icon: ArrowDownLeft,
     group: "COBROS",
@@ -236,7 +236,7 @@ const navigation: {
   {
     key: "deposits",
     page: "deposits",
-    label: "Depósitos de cobradores",
+    label: "Depósitos por Cobradores",
     hint: "El dinero cobrado que cada cobrador entrega en la oficina.",
     icon: Wallet,
     group: "COBROS",
@@ -244,23 +244,23 @@ const navigation: {
   {
     key: "payouts",
     page: "payouts",
-    label: "Órdenes de pago",
-    hint: "Lo que hay que pagarle a cada cliente (antes «Descargos»).",
+    label: "Descargos",
+    hint: "Lo que hay que pagarle a cada cliente.",
     icon: ArrowUpRight,
     group: "PAGOS",
   },
   ...(SHOW_RECURRING_PAYOUTS ? [{
     key: "recurring-payouts",
     page: "recurringPayouts" as const,
-    label: "Órdenes que se repiten",
-    hint: "Órdenes de pago que se crean solas (antes «Descargos Recurrentes»).",
+    label: "Descargos Rec.",
+    hint: "Descargos que se crean solos cada semana o cada mes.",
     icon: RefreshCw,
     group: "PAGOS" as const,
   }] : []),
   {
     key: "payments",
     page: "payments",
-    label: "Pagos realizados",
+    label: "Pagos",
     hint: "Los pagos ya hechos a los clientes.",
     icon: ArrowUpRight,
     group: "PAGOS",
@@ -268,7 +268,7 @@ const navigation: {
   {
     key: "cash-delivery",
     page: "cashDeliveries",
-    label: "Efectivo a cobradores",
+    label: "Entregas de Dinero a Cobradores",
     hint: "El efectivo que la oficina le da al cobrador para pagar en la calle.",
     icon: Wallet,
     group: "PAGOS",
@@ -289,19 +289,19 @@ const navigation: {
     icon: HandCoins,
     group: "REMESAS",
   },
-  { key: "daily-settlements", page: "dailySettlements", label: "Cuadres diarios", hint: "Cuadrar el dinero del día: de los cobradores y de la caja de remesas.", icon: FileCheck2, group: "CUADRES Y REPORTES" },
+  { key: "daily-settlements", page: "dailySettlements", label: "Cuadres Diarios", hint: "Cuadrar el dinero del día: de los cobradores y de la caja de remesas.", icon: FileCheck2, group: "CUADRES Y REPORTES" },
   { key: "general-reports", page: "reports", label: "Reportes", hint: "Listados para revisar o imprimir: cargos, cobros, pagos y remesas.", icon: ChartNoAxesCombined, group: "CUADRES Y REPORTES" },
   {
     key: "monitor-collectors",
     page: "monitorCollectors",
-    label: "Monitor de cobradores",
+    label: "Monitor C",
     hint: "Cómo va cada cobrador hoy: lo cobrado, lo pagado y su efectivo.",
     icon: LayoutDashboard,
     group: "MONITOREO",
     primary: true,
   },
-  { key: "monitor-zones", page: "monitorZones", label: "Monitor de zonas", hint: "Cómo va cada zona hoy.", icon: MapPinned, group: "MONITOREO" },
-  { key: "monitor-routes", page: "monitorRoutes", label: "Monitor de rutas", hint: "Cómo va cada ruta hoy.", icon: MapPinned, group: "MONITOREO" },
+  { key: "monitor-zones", page: "monitorZones", label: "Monitor Z", hint: "Cómo va cada zona hoy.", icon: MapPinned, group: "MONITOREO" },
+  { key: "monitor-routes", page: "monitorRoutes", label: "Monitor R", hint: "Cómo va cada ruta hoy.", icon: MapPinned, group: "MONITOREO" },
   { key: "admin-panel", action: "controlPanel", label: "Configuración de administración", hint: "Usuarios, cobradores, rutas, zonas, tasas, comisiones y configuración.", icon: ServerCog, group: "CONFIGURACIÓN DE ADMINISTRACIÓN" },
 ];
 const pageFromHash = (): Page => {
@@ -313,36 +313,36 @@ const pageFromHash = (): Page => {
 const pageTitles: Record<Page, string> = {
   collectors: "Cobradores",
   clients: "Clientes",
-  routesZones: "Rutas y zonas",
-  stations: "Estaciones (equipos)",
-  groups: "Grupos de puntos de cobro",
-  pcps: "Puntos de cobro y pago",
+  routesZones: "Rutas y Zonas",
+  stations: "Estaciones de PCP",
+  groups: "Grupos de PCPs",
+  pcps: "Puntos de Cobros y Pagos",
   routes: "Rutas",
   zones: "Zonas",
-  servicesProducts: "Servicios y productos",
-  delayReasons: "Motivos de atraso",
-  exchangeRates: "Tasas de cambio",
+  servicesProducts: "Servicios y Productos",
+  delayReasons: "Motivos de Atraso",
+  exchangeRates: "Tasas de Cambio",
   banks: "Bancos",
   remittances: "Envíos de dinero",
   remittancePayouts: "Entregas de dinero",
   remittanceCommissions: "Comisiones de remesas",
-  sessions: "Sesiones abiertas",
-  traces: "Historial del sistema",
+  sessions: "Listado de Sesiones",
+  traces: "Trazas del Sistema",
   users: "Usuarios",
-  generalConfig: "Configuración general",
-  authorizationRequests: "Solicitudes de autorización",
-  charges: "Cargos por cobrar",
-  recurringCharges: "Cargos que se repiten",
-  recurringPayouts: "Órdenes de pago que se repiten",
-  collections: "Cobros realizados",
-  deposits: "Depósitos de cobradores",
-  payouts: "Órdenes de pago",
-  payments: "Pagos realizados",
-  cashDeliveries: "Efectivo a cobradores",
-  monitorCollectors: "Monitor de cobradores",
-  monitorZones: "Monitor de zonas",
-  monitorRoutes: "Monitor de rutas",
-  dailySettlements: "Cuadres diarios",
+  generalConfig: "Configuración General",
+  authorizationRequests: "Solicitudes de Autorización",
+  charges: "Cargos",
+  recurringCharges: "Cargos Recurrentes",
+  recurringPayouts: "Descargos Recurrentes",
+  collections: "Cobros",
+  deposits: "Depósitos por Cobradores",
+  payouts: "Descargos",
+  payments: "Pagos",
+  cashDeliveries: "Entregas de Dinero a Cobradores",
+  monitorCollectors: "Monitor de Cobradores",
+  monitorZones: "Monitor de Zonas",
+  monitorRoutes: "Monitor de Rutas",
+  dailySettlements: "Cuadres Diarios",
   reports: "Reportes",
 };
 type Station = {
@@ -442,31 +442,40 @@ type ReportPageId =
 type ReportDefinition = {
   id: ReportPageId;
   label: string;
-  category: "Cargos" | "Cobros" | "Pagos" | "Servicios";
+  category: "-- Cargos --" | "-- Cobros --" | "-- Pagos --" | "-- Servicios --";
   filters: ("route" | "zone" | "service" | "collectorCheck")[];
 };
 type MdiPage = Page | "controlPanel" | ReportPageId | RemittanceReportPage;
 const reportDefinitions: ReportDefinition[] = [
-  { id: "reportClientPendingCharges", label: "Cargos pendientes por cliente", category: "Cargos", filters: [] },
-  { id: "reportClientPendingChargesByRoutes", label: "Cargos pendientes por cliente y ruta", category: "Cargos", filters: ["route"] },
-  { id: "reportClientPendingChargesByZones", label: "Cargos pendientes por cliente y zona", category: "Cargos", filters: ["zone"] },
-  { id: "reportPendingChargesByRoutes", label: "Total de cargos pendientes por ruta", category: "Cargos", filters: [] },
-  { id: "reportPendingChargesByZones", label: "Total de cargos pendientes por zona", category: "Cargos", filters: [] },
-  { id: "reportClientChargesByZoneService", label: "Cargos por zona y servicio", category: "Cargos", filters: ["zone", "service"] },
-  { id: "reportCollectionsSummary", label: "Resumen de cobros", category: "Cobros", filters: ["collectorCheck"] },
-  { id: "reportCollectionsGeneralSummary", label: "Resumen general de cobros", category: "Cobros", filters: ["collectorCheck"] },
-  { id: "reportCollectionsByService", label: "Cobros por servicio", category: "Cobros", filters: ["zone", "service"] },
-  { id: "reportPaymentsDetailed", label: "Pagos realizados (detalle)", category: "Pagos", filters: ["collectorCheck"] },
-  { id: "reportClientPendingPayouts", label: "Pagos pendientes por cliente", category: "Pagos", filters: [] },
-  { id: "reportPendingPayoutsByRoutes", label: "Pagos pendientes por ruta", category: "Pagos", filters: ["route"] },
-  { id: "reportPendingPayoutsByZones", label: "Pagos pendientes por zona", category: "Pagos", filters: ["zone"] },
-  { id: "reportPaymentsByServiceDetailed", label: "Pagos por servicio (detalle)", category: "Pagos", filters: ["zone", "service"] },
-  { id: "reportPaymentsByServiceSummary", label: "Pagos por servicio (resumen)", category: "Pagos", filters: ["zone", "service"] },
-  { id: "reportServicesByZone", label: "Servicios por zona", category: "Servicios", filters: ["zone"] },
+  { id: "reportClientPendingCharges", label: "Cargos pendientes de cobros de los clientes", category: "-- Cargos --", filters: [] },
+  { id: "reportClientPendingChargesByRoutes", label: "Cargos pendientes de clientes por rutas.", category: "-- Cargos --", filters: ["route"] },
+  { id: "reportClientPendingChargesByZones", label: "Cargos pendientes de clientes por zonas.", category: "-- Cargos --", filters: ["zone"] },
+  { id: "reportPendingChargesByRoutes", label: "Cargos pendientes por rutas.", category: "-- Cargos --", filters: [] },
+  { id: "reportPendingChargesByZones", label: "Cargos pendientes por zonas.", category: "-- Cargos --", filters: [] },
+  { id: "reportClientChargesByZoneService", label: "Cargos de clientes por zona por servicio.", category: "-- Cargos --", filters: ["zone", "service"] },
+  { id: "reportCollectionsSummary", label: "Cobros Res.", category: "-- Cobros --", filters: ["collectorCheck"] },
+  { id: "reportCollectionsGeneralSummary", label: "Cobros Gen. Resumido", category: "-- Cobros --", filters: ["collectorCheck"] },
+  { id: "reportCollectionsByService", label: "Cobros x Servicio", category: "-- Cobros --", filters: ["zone", "service"] },
+  { id: "reportPaymentsDetailed", label: "Pagos detallado.", category: "-- Pagos --", filters: ["collectorCheck"] },
+  { id: "reportClientPendingPayouts", label: "Pagos pendientes de clientes.", category: "-- Pagos --", filters: [] },
+  { id: "reportPendingPayoutsByRoutes", label: "Pagos pendientes por rutas.", category: "-- Pagos --", filters: ["route"] },
+  { id: "reportPendingPayoutsByZones", label: "Pagos pendientes por zonas.", category: "-- Pagos --", filters: ["zone"] },
+  { id: "reportPaymentsByServiceDetailed", label: "Pagos x servicio detallado.", category: "-- Pagos --", filters: ["zone", "service"] },
+  { id: "reportPaymentsByServiceSummary", label: "Pagos x servicio resumido.", category: "-- Pagos --", filters: ["zone", "service"] },
+  { id: "reportServicesByZone", label: "Servicios por zona.", category: "-- Servicios --", filters: ["zone"] },
 ];
-// The window carries the same name as the button that opened it.
+const reportWindowTitles: Partial<Record<ReportPageId, string>> = {
+  reportClientPendingChargesByRoutes: "Reporte de Cobros Pendientes de Clientes por Ruta",
+  reportClientPendingChargesByZones: "Reporte de Cobros Pendientes de Clientes por Zona",
+  reportPendingChargesByRoutes: "Reporte de Cobros Pendientes por Rutas",
+  reportPendingChargesByZones: "Reporte de Cobros Pendientes por Zonas",
+  reportClientChargesByZoneService: "Cargos de clientes por zona por servicio",
+  reportCollectionsSummary: "Reporte de Cobros Resumido",
+  reportCollectionsGeneralSummary: "Reporte Resumido General",
+  reportCollectionsByService: "Reporte de Cobros por Servicios",
+};
 const reportTitle = (page: ReportPageId) =>
-  reportDefinitions.find((report) => report.id === page)?.label ?? "Reporte";
+  reportWindowTitles[page] ?? reportDefinitions.find((report) => report.id === page)?.label.replace(/\.$/, "") ?? "Reporte";
 const isReportPage = (page: MdiPage): page is ReportPageId =>
   reportDefinitions.some((report) => report.id === page);
 const mdiOperationPages: Page[] = [
@@ -568,24 +577,24 @@ const adaptedMapForEntity = (entityType: MonitorEntity, title: string, data: Map
 
 const codifierTiles: ControlPanelTile[] = [
   { label: "Cobradores", page: "collectors", navKey: "control-collectors", icon: Users },
-  { label: "Estaciones (equipos)", page: "stations", navKey: "control-stations", icon: Building2 },
-  { label: "Grupos de puntos", page: "groups", navKey: "control-groups", icon: Users },
-  { label: "Motivos de atraso", page: "delayReasons", navKey: "control-delay-reasons", icon: CircleAlert },
-  { label: "Puntos de cobro", page: "pcps", navKey: "control-pcps", icon: MapPinned },
+  { label: "Estaciones", page: "stations", navKey: "control-stations", icon: Building2 },
+  { label: "Grupos", page: "groups", navKey: "control-groups", icon: Users },
+  { label: "Motivos Atraso", page: "delayReasons", navKey: "control-delay-reasons", icon: CircleAlert },
+  { label: "PCPs", page: "pcps", navKey: "control-pcps", icon: MapPinned },
   { label: "Rutas", page: "routes", navKey: "control-routes", icon: MapPinned },
-  { label: "Servicios y productos", page: "servicesProducts", navKey: "control-services", icon: ListFilter },
-  { label: "Sesiones abiertas", page: "sessions", navKey: "control-sessions", icon: Activity },
+  { label: "Servicios y Prods.", page: "servicesProducts", navKey: "control-services", icon: ListFilter },
+  { label: "Sesiones", page: "sessions", navKey: "control-sessions", icon: Activity },
   { label: "Tasas de cambio", page: "exchangeRates", navKey: "control-exchange", icon: RefreshCw },
   { label: "Comisiones de remesas", page: "remittanceCommissions", navKey: "control-remittance-commissions", icon: ReceiptText },
   { label: "Bancos", page: "banks", navKey: "control-banks", icon: Building2 },
-  { label: "Historial", page: "traces", navKey: "control-traces", icon: ClipboardCheck },
+  { label: "Trazas", page: "traces", navKey: "control-traces", icon: ClipboardCheck },
   { label: "Usuarios", page: "users", navKey: "control-users", icon: ShieldCheck },
   { label: "Zonas", page: "zones", navKey: "control-zones", icon: MapPinned },
 ];
 
 const toolTiles: ControlPanelTile[] = [
-  { label: "Configuración general", page: "generalConfig", navKey: "control-general-config", icon: Settings },
-  { label: "Solicitudes de autorización", page: "authorizationRequests", navKey: "control-authorizations", icon: FileCheck2 },
+  { label: "Configuración General", page: "generalConfig", navKey: "control-general-config", icon: Settings },
+  { label: "Solicitudes de Autoriz.", page: "authorizationRequests", navKey: "control-authorizations", icon: FileCheck2 },
 ];
 
 function ControlPanelContent({ onLaunch }: Readonly<{ onLaunch: (page: Page, navKey: string) => void }>) {
@@ -598,8 +607,8 @@ function ControlPanelContent({ onLaunch }: Readonly<{ onLaunch: (page: Page, nav
   );
   return (
     <div className="control-panel-body in-mdi">
-      <section className="control-panel-section"><div className="control-panel-section-heading"><span>Datos del negocio</span><small>Personas, lugares y precios que usa el sistema</small></div><div className="control-panel-grid">{codifierTiles.filter((tile) => canOpenPage(actor, tile.page)).map(renderTile)}</div></section>
-      <section className="control-panel-section tools-section"><div className="control-panel-section-heading"><span>Herramientas</span><small>Configuración y permisos</small></div><div className="control-panel-grid tools-grid">{toolTiles.filter((tile) => canOpenPage(actor, tile.page)).map(renderTile)}</div></section>
+      <section className="control-panel-section"><div className="control-panel-section-heading"><span>Codificadores</span><small>Accesos rápidos</small></div><div className="control-panel-grid">{codifierTiles.filter((tile) => canOpenPage(actor, tile.page)).map(renderTile)}</div></section>
+      <section className="control-panel-section tools-section"><div className="control-panel-section-heading"><span>Herramientas</span><small>Control interno</small></div><div className="control-panel-grid tools-grid">{toolTiles.filter((tile) => canOpenPage(actor, tile.page)).map(renderTile)}</div></section>
     </div>
   );
 }
@@ -612,7 +621,7 @@ function ReportesLauncher({ onLaunch }: Readonly<{ onLaunch: (page: ReportPageId
     const reports = reportDefinitions.filter((report) => report.category === category && canOpenPage(actor, report.id));
     return reports.length > 0 && (
       <section className="reports-launcher-section" key={category}>
-        <div className="control-panel-section-heading"><span>{category}</span><small>Elige un reporte</small></div>
+        <div className="control-panel-section-heading"><span>{category}</span><small>Seleccione un reporte</small></div>
         <div className="reports-launcher-grid">
           {reports.map((report) => (
             <button
@@ -631,11 +640,11 @@ function ReportesLauncher({ onLaunch }: Readonly<{ onLaunch: (page: ReportPageId
   };
   return (
     <div className="reports-launcher">
-      {renderGroup("Cargos")}
-      {renderGroup("Cobros")}
-      {renderGroup("Pagos")}
+      {renderGroup("-- Cargos --")}
+      {renderGroup("-- Cobros --")}
+      {renderGroup("-- Pagos --")}
       {remittanceReports.length > 0 && <section className="reports-launcher-section" aria-label="Reportes de remesas">
-        <div className="control-panel-section-heading"><span>Remesas</span><small>Elige un reporte</small></div>
+        <div className="control-panel-section-heading"><span>-- Remesas --</span><small>Seleccione un reporte</small></div>
         <div className="reports-launcher-grid">
           {remittanceReports.map((report) => <button type="button" key={report.page} className="report-launcher-tile" title={report.scope} onClick={() => onLaunch(report.page, `reports-${report.page}`)}>
             <ChartNoAxesCombined size={18} aria-hidden="true" />
@@ -643,7 +652,7 @@ function ReportesLauncher({ onLaunch }: Readonly<{ onLaunch: (page: ReportPageId
           </button>)}
         </div>
       </section>}
-      {renderGroup("Servicios")}
+      {renderGroup("-- Servicios --")}
     </div>
   );
 }
@@ -2378,9 +2387,9 @@ type ClientLegacyRecord = {
 type ClientLegacyDraft = Omit<ClientLegacyRecord, "id" | "active"> & { active: boolean; reservationId?: string };
 
 type ClientFilterMode = "all" | "identification" | "name" | "zone" | "route" | "search";
-type ClientFinanceTab = "Cargos" | "Cargos que se repiten" | "Cobros" | "Órdenes de pago" | "Órdenes que se repiten" | "Pagos";
+type ClientFinanceTab = "Cargos" | "Cargos Rec." | "Cobros" | "Descargos" | "Descargos Rec." | "Pagos";
 
-const clientFinanceTabs: ClientFinanceTab[] = ["Cargos", "Cargos que se repiten", "Cobros", "Órdenes de pago", ...(SHOW_RECURRING_PAYOUTS ? ["Órdenes que se repiten" as const] : []), "Pagos"];
+const clientFinanceTabs: ClientFinanceTab[] = ["Cargos", "Cargos Rec.", "Cobros", "Descargos", ...(SHOW_RECURRING_PAYOUTS ? ["Descargos Rec." as const] : []), "Pagos"];
 
 const clientRecordFromSnapshot = (client: Client): ClientLegacyRecord => ({
   preferredCurrency: client.preferredCurrency ?? "DOP",
@@ -2580,14 +2589,14 @@ function ClientFinancialDialog({ client, snapshot, onClose, onRefresh }: Readonl
     <LegacyDialog title="Datos de Cobros y Pagos del Cliente..." onClose={onClose} className="client-finance-dialog">
       <div className="client-finance-view">{[...clientCharges, ...clientPayouts].some((item) => item.currencyConflict) && <p role="alert">Hay registros antiguos cuya moneda no coincide con su libro original. Sus recibos conservan la moneda registrada; revisa el saldo antes de operar.</p>}
         <div className="client-finance-header"><span>Código: <strong>{client.code}</strong></span><span>Cliente: <strong>{client.name}</strong></span><label>Moneda:<select value={currency} onChange={(event) => setCurrency(event.target.value)}><option>No definido</option><option>Peso Dominicano</option><option>Dólar Americano</option><option>Euro</option></select></label></div>
-        <div className="legacy-tabs client-finance-tabs" role="tablist" aria-label="Cobros y Pagos del Cliente">{clientFinanceTabs.filter((item) => SHOW_RECURRING_PAYOUTS || item !== "Órdenes que se repiten").map((item) => <button type="button" key={item} className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{item}</button>)}</div>
-        {(tab === "Cargos" || tab === "Cobros" || tab === "Órdenes de pago" || tab === "Pagos") && <div className="client-finance-filters"><label>Fecha Inicial:<input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} /></label><label>Fecha Final:<input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} /></label>{refreshButton}</div>}
-        {(tab === "Cargos que se repiten" || (SHOW_RECURRING_PAYOUTS && tab === "Órdenes que se repiten")) && <div className="client-finance-filters compact-only">{refreshButton}</div>}
+        <div className="legacy-tabs client-finance-tabs" role="tablist" aria-label="Cobros y Pagos del Cliente">{clientFinanceTabs.filter((item) => SHOW_RECURRING_PAYOUTS || item !== "Descargos Rec.").map((item) => <button type="button" key={item} className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{item}</button>)}</div>
+        {(tab === "Cargos" || tab === "Cobros" || tab === "Descargos" || tab === "Pagos") && <div className="client-finance-filters"><label>Fecha Inicial:<input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} /></label><label>Fecha Final:<input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} /></label>{refreshButton}</div>}
+        {(tab === "Cargos Rec." || (SHOW_RECURRING_PAYOUTS && tab === "Descargos Rec.")) && <div className="client-finance-filters compact-only">{refreshButton}</div>}
         {tab === "Cargos" && <ClientFinanceTable key={`${tab}-${fromDate}-${toDate}-${currency}`} columns={["Nro.", "Fecha", "Servicio", "Concepto", "Importe", "Recibos", "Pendiente", "Activo"]} rows={clientCharges.map((charge, index) => [index + 1, safeDateLabel(charge.dueDate), charge.service, charge.concept ?? charge.service, nativeMoney(charge.amount, charge.currency), nativeTotals(obligationReceived(charge), charge.currency), charge.currencyConflict ? "Revisar moneda" : nativeMoney(Math.max(0, charge.amount - charge.collected), charge.currency), <LegacyCheck checked={charge.status !== "cancelled"} />])} />}
-        {tab === "Cargos que se repiten" && <ClientFinanceTable columns={["Nro.", "Fecha", "Servicio", "Concepto", "Importe", "Activo"]} rows={clientRecurringCharges.map((item, index) => [index + 1, safeDateLabel(item.startDate), item.service, item.concept, nativeMoney(item.amount, (item as typeof item & { currency?: string }).currency), <LegacyCheck checked={item.active} />])} />}
+        {tab === "Cargos Rec." && <ClientFinanceTable columns={["Nro.", "Fecha", "Servicio", "Concepto", "Importe", "Activo"]} rows={clientRecurringCharges.map((item, index) => [index + 1, safeDateLabel(item.startDate), item.service, item.concept, nativeMoney(item.amount, (item as typeof item & { currency?: string }).currency), <LegacyCheck checked={item.active} />])} />}
         {tab === "Cobros" && <ClientFinanceTable key={`${tab}-${fromDate}-${toDate}-${currency}`} columns={["Nro.", "Fecha", "En Linea", "En Cen.", "Importe", "Activo", "Cobrador"]} rows={clientCollections.map((movement, index) => [index + 1, safeDateLabel(businessDate(movement.createdAt)), "Sí", "No", nativeMoney(movement.amount, (movement as Movement & { currency?: string }).currency), <LegacyCheck checked={!movement.cancelledAt} />, snapshot.collectors.find((collector) => collector.id === movement.collectorId)?.name ?? ""]) } />}
-        {tab === "Órdenes de pago" && <ClientFinanceTable key={`${tab}-${fromDate}-${toDate}-${currency}`} columns={["Nro.", "Fecha", "Servicio", "Concepto", "Importe", "Activo"]} rows={clientPayouts.map((payout, index) => [index + 1, safeDateLabel((payout as Payout & { dueDate?: string }).dueDate ?? ""), (payout as Payout & { service?: string }).service ?? "Descargo", payout.concept, nativeMoney(payout.amount, (payout as Payout & { currency?: string }).currency), <LegacyCheck checked={payout.status !== "cancelled"} />])} />}
-        {SHOW_RECURRING_PAYOUTS && tab === "Órdenes que se repiten" && <ClientFinanceTable columns={["Nro.", "Fecha", "Servicio", "Concepto", "Importe", "Activo"]} rows={snapshot.payoutRecurring.filter((item) => item.clientId === client.id).map((item, index) => [index + 1, safeDateLabel(item.nextRunDate), "Descargo", item.concept, nativeMoney(item.amount, (item as typeof item & { currency?: string }).currency), <LegacyCheck checked={item.status === "active"} />])} />}
+        {tab === "Descargos" && <ClientFinanceTable key={`${tab}-${fromDate}-${toDate}-${currency}`} columns={["Nro.", "Fecha", "Servicio", "Concepto", "Importe", "Activo"]} rows={clientPayouts.map((payout, index) => [index + 1, safeDateLabel((payout as Payout & { dueDate?: string }).dueDate ?? ""), (payout as Payout & { service?: string }).service ?? "Descargo", payout.concept, nativeMoney(payout.amount, (payout as Payout & { currency?: string }).currency), <LegacyCheck checked={payout.status !== "cancelled"} />])} />}
+        {SHOW_RECURRING_PAYOUTS && tab === "Descargos Rec." && <ClientFinanceTable columns={["Nro.", "Fecha", "Servicio", "Concepto", "Importe", "Activo"]} rows={snapshot.payoutRecurring.filter((item) => item.clientId === client.id).map((item, index) => [index + 1, safeDateLabel(item.nextRunDate), "Descargo", item.concept, nativeMoney(item.amount, (item as typeof item & { currency?: string }).currency), <LegacyCheck checked={item.status === "active"} />])} />}
         {tab === "Pagos" && <ClientFinanceTable key={`${tab}-${fromDate}-${toDate}-${currency}`} columns={["Nro.", "Fecha", "EnLinea", "En Cen.", "Importe", "Activo", "Cobrador"]} rows={clientPayments.map((movement, index) => [index + 1, safeDateLabel(businessDate(movement.createdAt)), "Sí", "No", nativeMoney(movement.amount, (movement as Movement & { currency?: string }).currency), <LegacyCheck checked={!movement.cancelledAt} />, snapshot.collectors.find((collector) => collector.id === movement.collectorId)?.name ?? ""]) } />}
       </div>
     </LegacyDialog>
@@ -4445,7 +4454,7 @@ function LegacyCodifierView({ page, snapshot, onRefresh, onAccount }: Readonly<{
           {configTab === "Soporte técnico" && (
             <fieldset className="legacy-config-fieldset support-config-fieldset">
               <legend>Soporte técnico</legend>
-              <p className="support-config-hint">Estos datos se muestran en la ventana «Ayuda» del menú de la izquierda.</p>
+              <p className="support-config-hint">Estos datos se muestran en la ventana «Soporte Técnico» del menú de la izquierda.</p>
               <label>Soporte a cargo de:<input {...fld("soporte.nombre")} /></label>
               <div className="legacy-config-row">
                 <label>Teléfono de soporte:<input {...fld("soporte.telefono")} /></label>
@@ -5174,12 +5183,12 @@ export default function App() {
               </div>}
               <button
                 className="nav-item help-button"
-                aria-label="Ayuda"
+                aria-label="Soporte Técnico"
                 title="Dónde está cada cosa y a quién llamar"
                 onClick={() => setHelpOpen(true)}
               >
                 <CircleHelp size={19} />
-                <span>Ayuda</span>
+                <span>Soporte Técnico</span>
                 <ArrowUpRight size={15} />
               </button>
               <div className="system-status">
@@ -5231,7 +5240,7 @@ export default function App() {
                   {snapshot?.totals.activeCollectors ?? 0} cobradores en calle
                 </span>}
                 {/* The state of the collector settlements (401), not the box of envíos. */}
-                {hasPermission(effectiveUser, 401) && <button type="button" onClick={openCollectorSettlements} title="Abrir Cuadres diarios"
+                {hasPermission(effectiveUser, 401) && <button type="button" onClick={openCollectorSettlements} title="Abrir Cuadres Diarios"
                   className={`status-badge ${
                     snapshot?.totals.difference ? "warning" : "ok"
                   }`}
@@ -5694,20 +5703,20 @@ export default function App() {
           <Modal
             open={helpOpen}
             onClose={() => setHelpOpen(false)}
-            title="Ayuda"
+            title="Soporte Técnico"
             description="Dónde está cada cosa y a quién llamar si necesitas ayuda."
           >
             <div className="help-content">
               <SupportContact open={helpOpen} />
               {/* Where each thing is: the same names as the menu, in the same order. */}
               {[
-                { icon: FolderOpen, title: "CLIENTES", text: "Buscar, registrar y cambiar los datos de los clientes." },
-                { icon: ReceiptText, title: "COBROS", text: "Cargos por cobrar: lo que cada cliente debe. Cobros realizados: el dinero ya cobrado. Depósitos de cobradores: lo que el cobrador entrega en la oficina." },
-                { icon: ArrowUpRight, title: "PAGOS", text: "Órdenes de pago: lo que hay que pagarle a un cliente. Pagos realizados: lo que ya se pagó. Efectivo a cobradores: el dinero que se le da al cobrador para pagar en la calle." },
-                { icon: HandCoins, title: "REMESAS", text: "Envíos de dinero: registrar una remesa. Entregas de dinero: darle el dinero a la persona que lo recibe. Para las dos hace falta tener abierta tu caja de remesas del día." },
-                { icon: FileCheck2, title: "CUADRES Y REPORTES", text: "Cuadres diarios: cuadrar el dinero del día de cada cobrador y de cada caja de remesas. Cobrado − depositado + entregado − pagado = dinero en mano; la diferencia debe dar cero. Reportes: listados para revisar o imprimir." },
-                { icon: LayoutDashboard, title: "MONITOREO", text: "Ver en el momento cómo va cada cobrador, cada zona y cada ruta." },
                 { icon: ServerCog, title: "CONFIGURACIÓN DE ADMINISTRACIÓN", text: "Usuarios y permisos, cobradores, rutas, zonas, tasas de cambio, comisiones y configuración." },
+                { icon: FolderOpen, title: "CLIENTES", text: "Buscar, registrar y cambiar los datos de los clientes." },
+                { icon: ReceiptText, title: "COBROS", text: "Cargos: lo que cada cliente debe. Cargos Recurrentes: los que se crean solos. Cobros: el dinero ya cobrado. Depósitos por Cobradores: lo que el cobrador entrega en la oficina." },
+                { icon: ArrowUpRight, title: "PAGOS", text: "Descargos: lo que hay que pagarle a un cliente. Pagos: lo que ya se pagó. Entregas de Dinero a Cobradores: el efectivo que se le da al cobrador para pagar en la calle." },
+                { icon: HandCoins, title: "REMESAS", text: "Envíos de dinero: registrar una remesa. Entregas de dinero: darle el dinero a la persona que lo recibe. Para las dos hace falta tener abierta tu caja de remesas del día." },
+                { icon: FileCheck2, title: "CUADRES Y REPORTES", text: "Cuadres Diarios: cuadrar el dinero del día de cada cobrador y de cada caja de remesas. Cobrado − depositado + entregado − pagado = dinero en mano; la diferencia debe dar cero. Reportes: listados para revisar o imprimir." },
+                { icon: LayoutDashboard, title: "MONITOREO", text: "Monitor C, Monitor Z y Monitor R: ver en el momento cómo va cada cobrador, cada zona y cada ruta." },
               ].map((item) => (
                 <div key={item.title}>
                   <item.icon size={23} />
@@ -6308,7 +6317,7 @@ function SupportContact({ open }: Readonly<{ open: boolean }>) {
           {email && <li><span>Correo:</span> <a href={`mailto:${email}`}>{email}</a></li>}
         </ul>
       ) : (
-        <p className="support-contact-empty">Todavía no se ha escrito el teléfono ni el correo de soporte. Un administrador puede ponerlos en Configuración de administración → Configuración general → pestaña General → «Soporte técnico».</p>
+        <p className="support-contact-empty">Todavía no se ha escrito el teléfono ni el correo de soporte. Un administrador puede ponerlos en Configuración de administración → Configuración General → pestaña General → «Soporte técnico».</p>
       )}
       <p>Al llamar o escribir, indica tu usuario, la ventana donde ocurrió el problema y la hora aproximada.</p>
       {demo && <p className="support-contact-demo">Esta es una demostración: los datos que ves son ficticios, salvo las estaciones validadas con RRAA (su código, su ID de dispositivo y su licencia).</p>}

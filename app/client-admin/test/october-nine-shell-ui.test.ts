@@ -130,8 +130,8 @@ test("October nine shell changes work in actual App with isolated synthetic APIs
     await run("dashboard modules, visible SVGs, support and clickable daily settlement", async () => {
       // No quick buttons above the desktop (removed 2026-10-20): the desktop starts right under the top bar.
       await reset(); assert.equal(await page.locator(".desktop-launchers").count(), 0);
-      assert.equal(await page.getByRole("button", { name: "Ayuda", exact: true }).isVisible(), true);
-      await page.getByTitle("Abrir Cuadres diarios", { exact: true }).click(); await page.getByRole("dialog", { name: "Cuadres diarios", exact: true }).waitFor();
+      assert.equal(await page.getByRole("button", { name: "Soporte Técnico", exact: true }).isVisible(), true);
+      await page.getByTitle("Abrir Cuadres Diarios", { exact: true }).click(); await page.getByRole("dialog", { name: "Cuadres Diarios", exact: true }).waitFor();
       await page.screenshot({ path: path.join(output, "dashboard.png") });
     });
     let bankId = "";
@@ -148,7 +148,7 @@ test("October nine shell changes work in actual App with isolated synthetic APIs
     });
     const footer = "Pie sintético octubre\nSegunda línea <texto>";
     await run("company logo is bounded and configurable receipt footer saves literal text", async () => {
-      const view = await openAdmin("Configuración general", ".legacy-config-layout");
+      const view = await openAdmin("Configuración General", ".legacy-config-layout");
       await page.waitForFunction(() => !(document.querySelector(".legacy-config-actions .ok-button") as HTMLButtonElement)?.disabled);
       const upload = view.locator('input[type="file"]'); await upload.waitFor();
       await upload.setInputFiles({ name: "synthetic-logo.png", mimeType: "image/png", buffer: Buffer.from(logo.split(",")[1], "base64") });
@@ -222,7 +222,7 @@ test("October nine shell changes work in actual App with isolated synthetic APIs
       } finally { failMainSnapshots = false; }
     });
     await run("deliveries search actual collector and actor data, retain current week and open ledger detail on double click", async () => {
-      const view = await openNav("Efectivo a cobradores", ".cash-deliveries-legacy-view");
+      const view = await openNav("Entregas de Dinero a Cobradores", ".cash-deliveries-legacy-view");
       assert.deepEqual(await view.locator('input[type="date"]').evaluateAll((nodes: HTMLInputElement[]) => nodes.map((node) => node.value)), [currentOperationalWeek().from, currentOperationalWeek().to]);
       const searches = [["Serie / referencia", delivery.id], ["Celular del cobrador", "5550101"], ["Nombre del cobrador", "sintético octubre"], ["Identificación del cobrador", "QA-COL-OCT"], ["Registrado por", delivery.createdByName], ["Nota", "Nota entrega octubre"]];
       for (const [label, value] of searches) { await view.getByLabel(label, { exact: true }).fill(value); assert.equal(await view.locator("tbody tr").filter({ hasText: "Cobrador sintético octubre" }).count(), 1); await view.getByLabel(label, { exact: true }).fill(""); }
@@ -232,11 +232,11 @@ test("October nine shell changes work in actual App with isolated synthetic APIs
       assert.ok((await detail.innerText()).includes(delivery.createdByName)); await page.screenshot({ path: path.join(output, "delivery-detail.png") });
     });
     await run("charges import and collection print/map tools sit together at left; deposit denominations ascend without changing greedy refresh", async () => {
-      const charges = await openNav("Cargos por cobrar", ".charges-view");
+      const charges = await openNav("Cargos", ".charges-view");
       const refresh = await charges.getByTitle("Refrescar", { exact: true }).boundingBox(), upload = await charges.locator(".mdi-toolbar-extra").getByTitle("Subir", { exact: true }).boundingBox(); assert(refresh && upload); assert(upload.x - (refresh.x + refresh.width) < 24);
       assert.equal(await charges.locator(".mdi-toolbar-extra").getByTitle("Subir", { exact: true }).locator("svg").evaluate((node: SVGElement) => getComputedStyle(node).display), "block");
       await charges.getByTitle("Nuevo", { exact: true }).click(); const chargeDialog = page.getByRole("dialog", { name: "Datos del Cargo...", exact: true }); await chargeDialog.waitFor(); assert.equal(await chargeDialog.getByLabel("Cantidad", { exact: true }).count(), 1); assert.equal(await chargeDialog.getByText("Tasa / Cantidad", { exact: true }).count(), 0);
-      const deposits = await openNav("Depósitos de cobradores", ".deposits-legacy-view"); await deposits.getByTitle("Nuevo", { exact: true }).click();
+      const deposits = await openNav("Depósitos por Cobradores", ".deposits-legacy-view"); await deposits.getByTitle("Nuevo", { exact: true }).click();
       const deposit = page.getByRole("dialog", { name: "Datos del Depósito...", exact: true }); await deposit.waitFor();
       const names = await deposit.locator(".deposit-denominations-table input").evaluateAll((nodes: HTMLInputElement[]) => nodes.map((node) => node.getAttribute("aria-label")));
       assert.deepEqual(names, [1, 100, 500, 1000, 2000, 2500, 5000, 10000, 20000, 50000, 100000, 200000].map((value) => `Cantidad ${value / 100}`));
@@ -245,7 +245,7 @@ test("October nine shell changes work in actual App with isolated synthetic APIs
       await page.screenshot({ path: path.join(output, "deposit-denominations.png") });
     });
     await run("collection bank reference and note persist; selected row highlights; list printing is a single table and current receipt uses configured footer", async () => {
-      const view = await openNav("Cobros realizados", ".collections-legacy-view");
+      const view = await openNav("Cobros", ".collections-legacy-view");
       const refresh = await view.getByTitle("Refrescar", { exact: true }).boundingBox(), print = await view.getByTitle("Imprimir", { exact: true }).boundingBox(), map = await view.getByTitle("Mapa", { exact: true }).boundingBox(); assert(refresh && print && map); assert(print.x - (refresh.x + refresh.width) < 24); assert(map.x - (print.x + print.width) < 16);
       await view.getByTitle("Nuevo", { exact: true }).click(); const dialog = page.getByRole("dialog", { name: "Datos del Cobro...", exact: true });
       await dialog.locator("#receipt-client-code").fill("QA-CLIENT-OCT"); await dialog.locator("#receipt-bank").selectOption(bankId);

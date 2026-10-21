@@ -29,9 +29,9 @@ const canRunBrowser = process.platform === "win32" && fs.existsSync(edge) && Boo
 const knownBlockedOrigins = ["http://me.kis.v2.scr.kaspersky-labs.com", "https://fonts.googleapis.com", "https://fonts.gstatic.com"];
 
 // Actual Admin shell and collector terminal, styles, API and MemoryStore with synthetic data:
-// Envíos de dinero only sends, Entregas de dinero pays and the box of envíos lives in Cuadres diarios.
+// Envíos de dinero only sends, Entregas de dinero pays and the box of envíos lives in Cuadres Diarios.
 // No .env, shared data, browser download or external HTTP.
-test("Envíos de dinero, Entregas de dinero and Cuadres diarios work for Admin and Cajero; the collector terminal keeps its sections", { skip: canRunBrowser ? false : "Installed Windows Edge and Playwright required; no download attempted." }, async (t) => {
+test("Envíos de dinero, Entregas de dinero and Cuadres Diarios work for Admin and Cajero; the collector terminal keeps its sections", { skip: canRunBrowser ? false : "Installed Windows Edge and Playwright required; no download attempted." }, async (t) => {
   const output = fs.mkdtempSync(path.join(os.tmpdir(), "cyp-cashier-shell-"));
   const state = seed(), now = new Date(), today = businessDate(now);
   const admin = { id: "demo-admin", name: "Administración", role: "admin" as const };
@@ -150,20 +150,20 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
       const dialog = page.getByRole("dialog", { name: title, exact: true });
       await dialog.getByRole("button", { name: "Confirmar", exact: true }).click(); await dialog.waitFor({ state: "detached" });
     };
-    const cashPlace = "Cuadres y reportes → Cuadres diarios → Caja de remesas";
+    const cashPlace = "Cuadres y reportes → Cuadres Diarios → Caja de remesas";
     let adminSent: { id: string; envioReference: string; reciboReference: string };
 
-    await t.test("Admin: the REMESAS group, a sending window without sections and its box notice leading to Cuadres diarios → Caja de remesas", async () => {
+    await t.test("Admin: the REMESAS group, a sending window without sections and its box notice leading to Cuadres Diarios → Caja de remesas", async () => {
       const { context, page } = await open(adminToken);
       try {
         const groups = await menu(page);
         // Remesas holds only the two remittance windows; the cash for collectors goes with Pagos.
         assert.deepEqual(groups.find(([name]: [string]) => name === "REMESAS")?.[1], ["Envíos de dinero", "Entregas de dinero"]);
-        assert.deepEqual(groups.find(([name]: [string]) => name === "PAGOS")?.[1], ["Órdenes de pago", "Pagos realizados", "Efectivo a cobradores"]);
+        assert.deepEqual(groups.find(([name]: [string]) => name === "PAGOS")?.[1], ["Descargos", "Pagos", "Entregas de Dinero a Cobradores"]);
         const trigger = page.locator(".sidebar").getByRole("button", { name: "REMESAS", exact: true });
         assert.equal(await trigger.getAttribute("data-short-label"), "RE"); assert.equal(await trigger.getAttribute("aria-expanded"), "false", "every section starts closed");
         assert.equal(await launchers(page), 0, "no quick buttons above the desktop");
-        assert.equal(await page.getByTitle("Abrir Cuadres diarios", { exact: true }).count(), 1, "the settlement badge stays for 401");
+        assert.equal(await page.getByTitle("Abrir Cuadres Diarios", { exact: true }).count(), 1, "the settlement badge stays for 401");
         assert.equal(await page.getByText(/cobradores en calle$/).count(), 1);
         await openFromMenu(page, "Envíos de dinero");
         const envios = page.getByRole("region", { name: "Envíos de dinero", exact: true });
@@ -176,8 +176,8 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         const warning = envios.locator(".remittance-cash-warning");
         assert.equal(await warning.locator("p").innerText(), `No hay caja de remesas abierta hoy en DOP para Administración. Sin caja abierta no se puede registrar el envío. Ábrela en ${cashPlace}. Si ya está abierta, pulsa Actualizar.`);
         await warning.getByRole("button", { name: "Ir a Caja de remesas", exact: true }).click();
-        const settlements = page.getByRole("dialog", { name: "Cuadres diarios", exact: true });
-        const sections = settlements.getByRole("group", { name: "Secciones de Cuadres diarios", exact: true });
+        const settlements = page.getByRole("dialog", { name: "Cuadres Diarios", exact: true });
+        const sections = settlements.getByRole("group", { name: "Secciones de Cuadres Diarios", exact: true });
         assert.equal(await sections.getByRole("button", { name: "Caja de remesas", exact: true }).getAttribute("aria-pressed"), "true");
         assert.equal(await sections.getByRole("button", { name: "Cuadres de cobradores", exact: true }).getAttribute("aria-pressed"), "false");
         const cash = settlements.getByRole("region", { name: "Caja de remesas", exact: true });
@@ -284,7 +284,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
       const pending = await adminTransfer(10_000);
       const { context, page } = await open(cashierToken);
       try {
-        assert.deepEqual(await menu(page), [["REMESAS", ["Envíos de dinero", "Entregas de dinero"]], ["CUADRES Y REPORTES", ["Cuadres diarios"]]]);
+        assert.deepEqual(await menu(page), [["REMESAS", ["Envíos de dinero", "Entregas de dinero"]], ["CUADRES Y REPORTES", ["Cuadres Diarios"]]]);
         // The first time every section is closed; the account finds them as it left them.
         const section = (name: string) => page.locator(".sidebar").getByRole("button", { name, exact: true });
         for (const name of ["REMESAS", "CUADRES Y REPORTES"]) assert.equal(await section(name).getAttribute("aria-expanded"), "false", name);
@@ -294,7 +294,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         assert.equal(await section("CUADRES Y REPORTES").getAttribute("aria-expanded"), "false");
         assert.equal(await launchers(page), 0, "no quick buttons above the desktop");
         assert.equal(await page.getByText(/cobradores en calle$/).count(), 0);
-        assert.equal(await page.getByTitle("Abrir Cuadres diarios", { exact: true }).count(), 0, "no collector settlement badge without 401");
+        assert.equal(await page.getByTitle("Abrir Cuadres Diarios", { exact: true }).count(), 0, "no collector settlement badge without 401");
         for (const name of ["Buscar en tu operación", "Configuración de administración", "Facturas", "Ventana de Pagos", "Hacer copia de respaldo"]) assert.equal(await page.getByRole("button", { name, exact: true }).count(), 0, name);
         await page.locator("body").press("Control+k");
         assert.equal(await page.getByRole("dialog", { name: "Encuentra lo que necesitas", exact: true }).count(), 0, "nothing to search");
@@ -309,10 +309,10 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         const warning = envios.locator(".remittance-cash-warning");
         assert.equal(await warning.locator("p").innerText(), `No hay caja de remesas abierta hoy en DOP para Cajero de práctica. Sin caja abierta no se puede registrar el envío. Ábrela en ${cashPlace}. Si ya está abierta, pulsa Actualizar.`);
         await warning.getByRole("button", { name: "Ir a Caja de remesas", exact: true }).click();
-        const settlements = page.getByRole("dialog", { name: "Cuadres diarios", exact: true });
+        const settlements = page.getByRole("dialog", { name: "Cuadres Diarios", exact: true });
         const cash = settlements.getByRole("region", { name: "Caja de remesas", exact: true });
         await cash.getByText("No hay cajas de envíos. Abre tu caja antes de operar.", { exact: true }).waitFor();
-        assert.equal(await settlements.getByRole("group", { name: "Secciones de Cuadres diarios", exact: true }).count(), 0, "a single section has no switch");
+        assert.equal(await settlements.getByRole("group", { name: "Secciones de Cuadres Diarios", exact: true }).count(), 0, "a single section has no switch");
         assert.equal(await settlements.locator(".connected-settlements-mdi").count(), 0, "no collector settlements without 401");
         const operator = cash.getByLabel("Operador");
         assert.equal(await operator.inputValue(), "Cajero de práctica"); assert.equal(await operator.getAttribute("readonly"), "");
@@ -337,7 +337,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         assert.equal((await store.read()).remittances.transfers.find((row) => row.id === pending.id)?.paidBy, "demo-cashier", "the Cajero pays a receipt of another operator");
         await detail.getByRole("button", { name: `Cerrar ${pending.envioReference} · ${pending.reciboReference}`, exact: true }).click();
 
-        await openFromMenu(page, "Cuadres diarios");
+        await openFromMenu(page, "Cuadres Diarios");
         await cash.getByRole("button", { name: "Actualizar", exact: true }).click();
         await page.waitForFunction(() => document.querySelector('section[aria-label="Caja de remesas"] .remittance-heading button')?.textContent === "Actualizar");
         const expected = (await box.locator(".remittance-total dd").innerText()).replace(/^DOP /, "").replaceAll(",", "");
@@ -362,12 +362,12 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
       const { context, page } = await open(cashierToken);
       try {
         await page.locator(".sidebar").getByRole("button", { name: "CUADRES Y REPORTES", exact: true }).waitFor();
-        assert.deepEqual((await menu(page)).find(([name]: [string]) => name === "CUADRES Y REPORTES")?.[1], ["Cuadres diarios", "Reportes"]);
+        assert.deepEqual((await menu(page)).find(([name]: [string]) => name === "CUADRES Y REPORTES")?.[1], ["Cuadres Diarios", "Reportes"]);
         await page.locator(".sidebar").getByRole("button", { name: "CUADRES Y REPORTES", exact: true }).click();
         await page.locator(".sidebar").getByRole("button", { name: "Reportes", exact: true }).click();
         const launcher = page.getByRole("dialog", { name: "Reportes", exact: true });
         await launcher.getByRole("button", { name: "Reporte consolidado de comisiones", exact: true }).waitFor();
-        assert.deepEqual(await launcher.locator(".control-panel-section-heading > span").allTextContents(), ["Remesas"]);
+        assert.deepEqual(await launcher.locator(".control-panel-section-heading > span").allTextContents(), ["-- Remesas --"]);
       } finally { await context.close(); }
     });
 

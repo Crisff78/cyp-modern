@@ -19,7 +19,7 @@ try { playwright = require.resolve("playwright"); } catch {
   const cache = path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData/Local"), "npm-cache/_npx");
   playwright = fs.existsSync(cache) ? fs.readdirSync(cache).map((folder) => path.join(cache, folder, "node_modules/playwright/index.mjs")).find((file) => fs.existsSync(file)) : undefined;
 }
-test("actual Cuadres diarios UI exclusively closes synthetic cash, preserves history and recovers confirmations safely", {
+test("actual Cuadres Diarios UI exclusively closes synthetic cash, preserves history and recovers confirmations safely", {
   skip: process.platform !== "win32" || !fs.existsSync(edge) || !playwright ? "Installed Edge and Playwright required; no download attempted." : false,
 }, async (t) => {
   const output = fs.mkdtempSync(path.join(os.tmpdir(), "cyp-previous-cash-ui-"));
@@ -87,7 +87,7 @@ test("actual Cuadres diarios UI exclusively closes synthetic cash, preserves his
     page.on("pageerror", (error: Error) => { if (!/kaspersky|\.kis\./i.test(error.stack ?? "")) errors.push(error.message); });
     await page.goto(origin); await page.getByRole("button", { name: "Abrir cuenta", exact: true }).waitFor();
     await page.locator(".sidebar").getByRole("button", { name: "PAGOS", exact: true }).click();
-    await page.locator(".sidebar").getByRole("button", { name: "Efectivo a cobradores", exact: true }).click();
+    await page.locator(".sidebar").getByRole("button", { name: "Entregas de Dinero a Cobradores", exact: true }).click();
     const view = page.locator(".cash-deliveries-legacy-view"); await view.waitFor();
     const oldDate = businessDate(new Date(old)), today = businessDate(new Date());
     const receipt = () => page.getByRole("dialog", { name: "Devolución de efectivo del cuadre...", exact: true });
@@ -104,12 +104,12 @@ test("actual Cuadres diarios UI exclusively closes synthetic cash, preserves his
       await option.click();
     };
     const openDelivery = async (collector = "col-1") => {
-      await navigate("Efectivo a cobradores"); await view.getByTitle("Nuevo", { exact: true }).click(); await delivery().waitFor();
+      await navigate("Entregas de Dinero a Cobradores"); await view.getByTitle("Nuevo", { exact: true }).click(); await delivery().waitFor();
       await delivery().getByLabel("Cobrad.:").selectOption(collector);
       await delivery().getByLabel("Cantidad a entregar 10", { exact: true }).fill("5");
     };
     const openClosing = async (collector = "col-1", date = oldDate) => {
-      await navigate("Cuadres diarios"); await settlementGrid().waitFor();
+      await navigate("Cuadres Diarios"); await settlementGrid().waitFor();
       await settlementGrid().getByLabel("Cobrador:", { exact: true }).selectOption(collector);
       const name = state.collectors.find((row) => row.id === collector)!.name;
       const row = settlementGrid().locator("tbody tr").filter({ has: page.getByRole("cell", { name: `${name} · DOP`, exact: true }) })
@@ -120,11 +120,11 @@ test("actual Cuadres diarios UI exclusively closes synthetic cash, preserves his
       await closing().getByRole("button", { name: "Registrar devolución y cerrar", exact: true }).click();
       await receipt().getByRole("button", { name: /^(Registrar devolución y cerrar|Reintentar devolución)$/ }).waitFor();
     };
-    await t.test("delivery only saves a delivery; an earlier balance directs the operator to Cuadres diarios", async () => {
+    await t.test("delivery only saves a delivery; an earlier balance directs the operator to Cuadres Diarios", async () => {
       await openDelivery();
       assert.equal(await delivery().getByRole("button", { name: "Resolver saldo anterior", exact: true }).count(), 0);
       await delivery().getByRole("button", { name: "Guardar", exact: true }).click();
-      await delivery().getByRole("alert").filter({ hasText: "Cuadres diarios" }).waitFor(); assert.equal(writes.at(-1)?.status, 409);
+      await delivery().getByRole("alert").filter({ hasText: "Cuadres Diarios" }).waitFor(); assert.equal(writes.at(-1)?.status, 409);
       await delivery().getByRole("button", { name: "Cancelar", exact: true }).click();
       assert.equal(writes.filter((row) => row.url.startsWith("/api/cuadres")).length, 0);
       await openClosing(); await openReceipt();
@@ -202,7 +202,7 @@ test("actual Cuadres diarios UI exclusively closes synthetic cash, preserves his
       await delivery().getByRole("button", { name: "Cancelar", exact: true }).click();
     });
     await t.test("zero balance closing recovers a lost response and a failed refresh without duplicating the stored closure", async () => {
-      await navigate("Cuadres diarios"); await settlementGrid().getByRole("button", { name: "Generar cuadre", exact: true }).click();
+      await navigate("Cuadres Diarios"); await settlementGrid().getByRole("button", { name: "Generar cuadre", exact: true }).click();
       const generation = page.getByRole("dialog", { name: "Generar cuadre...", exact: true });
       await generation.getByLabel("Cobrador:", { exact: true }).selectOption("col-2"); await generation.getByLabel("Jornada:", { exact: true }).fill(today);
       await generation.getByRole("button", { name: "Calcular cuadre", exact: true }).click(); await closing().waitFor();
@@ -218,7 +218,7 @@ test("actual Cuadres diarios UI exclusively closes synthetic cash, preserves his
       const count = writes.filter((row) => row.url === "/api/cuadres").length;
       await generation.getByRole("button", { name: "Actualizar vista", exact: true }).click(); await generation.waitFor({ state: "hidden" });
       assert.equal(writes.filter((row) => row.url === "/api/cuadres").length, count); assert.equal((await store.read()).settlements.length, 1);
-      await page.reload(); await page.getByRole("button", { name: "Abrir cuenta", exact: true }).waitFor(); await navigate("Cuadres diarios");
+      await page.reload(); await page.getByRole("button", { name: "Abrir cuenta", exact: true }).waitFor(); await navigate("Cuadres Diarios");
       // The reloaded window starts on the current operational week (from Monday): the closures of two days ago need the range.
       await settlementGrid().getByLabel("Fecha Inicial:", { exact: true }).fill(oldDate);
       assert.equal(await settlementGrid().getByRole("cell", { name: "Conciliado", exact: true }).count(), 4);
@@ -226,7 +226,7 @@ test("actual Cuadres diarios UI exclusively closes synthetic cash, preserves his
     });
     await t.test("stored settlement and monitor retain original gross totals while showing returned cash and zero net balance", async () => {
       assert.deepEqual((await store.read()).movements.filter((row) => oldMovements.some((old) => old.id === row.id)), oldMovements);
-      await navigate("Monitor de cobradores"); const monitor = page.locator(".collector-monitor-mdi"); await monitor.waitFor();
+      await navigate("Monitor C"); const monitor = page.locator(".collector-monitor-mdi"); await monitor.waitFor();
       const collector = monitor.locator("tbody tr").filter({ has: page.getByRole("cell", { name: state.collectors[0].name, exact: true }) });
       assert.equal(await collector.locator("td").nth(5).innerText(), "RD$ 1,100.00"); assert.equal(await collector.locator("td").nth(7).innerText(), "RD$ 0.00");
       assert.match(await collector.locator("td").nth(7).locator("span").getAttribute("title"), /devuelto y conciliado/);

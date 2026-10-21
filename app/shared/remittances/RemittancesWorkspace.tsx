@@ -27,7 +27,7 @@ const captureSections: readonly RemittanceSection[] = ["envios", "recibos", "caj
 const reportsOnlySections: readonly RemittanceSection[] = ["reportes"];
 // Every window of the workspace announces a saved operation; the others reload what they show.
 export const REMITTANCES_CHANGED_EVENT = "cyp-remittances-changed";
-const cashPlace = "Cuadres y reportes → Cuadres diarios → Caja de remesas";
+const cashPlace = "Cuadres y reportes → Cuadres Diarios → Caja de remesas";
 const tabPermission: Record<Tab, RemittancePermission> = { envios: "remittances.view", recibos: "remittances.receipts", caja: "remittances.cash.view", reportes: "remittances.reports" };
 // A phone matches however it was typed: with spaces, dashes, parentheses or country code.
 const digitsOf = (value: string) => value.replace(/\D/g, "");

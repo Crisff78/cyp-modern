@@ -30,7 +30,7 @@ const password = "Clave-ficticia-revision-ventana-2026!";
 
 // Corrections of the review of the Envíos and Cajero branch, with the actual Admin shell and collector terminal,
 // styles, API and MemoryStore with synthetic data: the box named by a notice, quotes and errors kept while another
-// window saves, operator names, a box closed today, the sections of Cuadres diarios, the menu after a sign-out,
+// window saves, operator names, a box closed today, the sections of Cuadres Diarios, the menu after a sign-out,
 // the fixed sending window at common laptop sizes and the client field that never moves.
 // No .env, shared data, browser download or external HTTP.
 test("review of Envíos and Cajero: windows, notices, names and fields", { skip: canRunBrowser ? false : "Installed Windows Edge and Playwright required; no download attempted." }, async (t) => {
@@ -144,18 +144,18 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
     const inside = (part: { y: number; height: number }, frame: { y: number; height: number }) => part.y >= frame.y - 0.5 && part.y + part.height <= frame.y + frame.height + 0.5;
     // Position inside its window of Envíos, so a scroll of the page does not count as a move of the field.
     const top = (locator: any) => locator.evaluate((element: HTMLElement) => Math.round((element.getBoundingClientRect().top - element.closest(".remittances")!.getBoundingClientRect().top) * 10) / 10);
-    const cashPlace = "Cuadres y reportes → Cuadres diarios → Caja de remesas";
+    const cashPlace = "Cuadres y reportes → Cuadres Diarios → Caja de remesas";
     const sendingWindow = async (page: any) => {
       await (await menuOption(page, "Envíos de dinero")).click();
       const envios = page.getByRole("region", { name: "Envíos de dinero", exact: true });
       await envios.getByRole("combobox", { name: "Remitente", exact: true }).waitFor();
       return envios;
     };
-    // Opens a box from Cuadres diarios → Caja de remesas, choosing its operator and currency by hand.
+    // Opens a box from Cuadres Diarios → Caja de remesas, choosing its operator and currency by hand.
     const openBox = async (page: any, operatorId: string, currency: string) => {
-      await (await menuOption(page, "Cuadres diarios")).click();
-      const settlements = page.getByRole("dialog", { name: "Cuadres diarios", exact: true });
-      await settlements.getByRole("group", { name: "Secciones de Cuadres diarios", exact: true }).getByRole("button", { name: "Caja de remesas", exact: true }).click();
+      await (await menuOption(page, "Cuadres Diarios")).click();
+      const settlements = page.getByRole("dialog", { name: "Cuadres Diarios", exact: true });
+      await settlements.getByRole("group", { name: "Secciones de Cuadres Diarios", exact: true }).getByRole("button", { name: "Caja de remesas", exact: true }).click();
       const cash = settlements.getByRole("region", { name: "Caja de remesas", exact: true });
       await cash.getByLabel("Operador").selectOption(operatorId); await cash.getByLabel("Moneda").selectOption(currency);
       await cash.getByRole("button", { name: "Revisar apertura", exact: true }).click();
@@ -170,14 +170,14 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         const warning = envios.locator(".remittance-cash-warning");
         assert.equal(await warning.locator("p").innerText(), `No hay caja de remesas abierta hoy en USD para Cajero de práctica. Sin caja abierta no se puede registrar el envío. Ábrela en ${cashPlace}. Si ya está abierta, pulsa Actualizar.`);
         await warning.getByRole("button", { name: "Ir a Caja de remesas", exact: true }).click();
-        const cash = page.getByRole("dialog", { name: "Cuadres diarios", exact: true }).getByRole("region", { name: "Caja de remesas", exact: true });
+        const cash = page.getByRole("dialog", { name: "Cuadres Diarios", exact: true }).getByRole("region", { name: "Caja de remesas", exact: true });
         await cash.getByRole("button", { name: "Revisar apertura", exact: true }).waitFor();
         assert.deepEqual([await cash.getByLabel("Operador").inputValue(), await cash.getByLabel("Moneda").inputValue()], ["demo-cashier", "USD"]);
         await waitForFocus(page, "[data-cash-opening-amount]");
       } finally { await context.close(); }
     });
 
-    await t.test("Admin: a quote calculated in Envíos stays while the box is opened in Cuadres diarios", async () => {
+    await t.test("Admin: a quote calculated in Envíos stays while the box is opened in Cuadres Diarios", async () => {
       const { context, page } = await open(adminToken);
       try {
         const envios = await sendingWindow(page);
@@ -214,15 +214,15 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
       } finally { await context.close(); }
     });
 
-    await t.test("Admin: the badge of the collector settlements (401) shows them although Cuadres diarios was on Caja de remesas", async () => {
+    await t.test("Admin: the badge of the collector settlements (401) shows them although Cuadres Diarios was on Caja de remesas", async () => {
       const { context, page } = await open(adminToken);
       try {
-        await (await menuOption(page, "Cuadres diarios")).click();
-        const settlements = page.getByRole("dialog", { name: "Cuadres diarios", exact: true });
-        const sections = settlements.getByRole("group", { name: "Secciones de Cuadres diarios", exact: true });
+        await (await menuOption(page, "Cuadres Diarios")).click();
+        const settlements = page.getByRole("dialog", { name: "Cuadres Diarios", exact: true });
+        const sections = settlements.getByRole("group", { name: "Secciones de Cuadres Diarios", exact: true });
         await sections.getByRole("button", { name: "Caja de remesas", exact: true }).click();
         await settlements.getByRole("region", { name: "Caja de remesas", exact: true }).waitFor();
-        await page.getByTitle("Abrir Cuadres diarios", { exact: true }).click();
+        await page.getByTitle("Abrir Cuadres Diarios", { exact: true }).click();
         await settlements.locator(".connected-settlements-mdi").waitFor({ timeout: 5000 });
         assert.equal(await sections.getByRole("button", { name: "Cuadres de cobradores", exact: true }).getAttribute("aria-pressed"), "true");
         assert.equal(await settlements.getByRole("region", { name: "Caja de remesas", exact: true }).count(), 0);
@@ -238,8 +238,8 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         const warning = envios.locator(".remittance-cash-warning"); await warning.waitFor();
         assert.equal(await warning.locator("p").innerText(), "La caja de remesas de hoy en DOP de Cajero de práctica ya se cerró y no admite más movimientos: no se pueden registrar más envíos en DOP hasta la jornada siguiente.");
         assert.equal(await warning.getByRole("button").count(), 0, "no way to a box that cannot be opened");
-        await (await menuOption(page, "Cuadres diarios")).click();
-        const cash = page.getByRole("dialog", { name: "Cuadres diarios", exact: true }).getByRole("region", { name: "Caja de remesas", exact: true });
+        await (await menuOption(page, "Cuadres Diarios")).click();
+        const cash = page.getByRole("dialog", { name: "Cuadres Diarios", exact: true }).getByRole("region", { name: "Caja de remesas", exact: true });
         await cash.locator("article").filter({ hasText: "DOP · Cajero de práctica" }).getByText(`${today} · Cerrada`, { exact: true }).waitFor();
         assert.equal(await cash.getByLabel("Moneda").inputValue(), "DOP");
         await cash.getByText("La caja de remesas de hoy en DOP de Cajero de práctica ya se cerró. Hay una sola caja por operador, moneda y día: no se puede abrir otra hasta la jornada siguiente.", { exact: true }).waitFor({ timeout: 5000 });
@@ -285,7 +285,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         await detail.locator(".remittance-cash-warning").getByText(`No tienes caja de remesas abierta hoy en EUR. Sin caja abierta no se puede registrar la entrega. Ábrela en ${cashPlace}.`, { exact: true }).waitFor();
         await detail.getByRole("button", { name: "Ir a Caja de remesas", exact: true }).click();
         await detail.waitFor({ state: "detached" });
-        const cash = page.getByRole("dialog", { name: "Cuadres diarios", exact: true }).getByRole("region", { name: "Caja de remesas", exact: true });
+        const cash = page.getByRole("dialog", { name: "Cuadres Diarios", exact: true }).getByRole("region", { name: "Caja de remesas", exact: true });
         await cash.getByRole("button", { name: "Revisar apertura", exact: true }).waitFor();
         await page.waitForTimeout(300);
         assert.equal(await reference.evaluate((element: Element) => element === document.activeElement), false, "the receipt behind does not take the keyboard back");
@@ -297,12 +297,12 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
       } finally { await context.close(); }
     });
 
-    await t.test("Supervisor: every box of Cuadres diarios → Caja de remesas names its operator", async () => {
+    await t.test("Supervisor: every box of Cuadres Diarios → Caja de remesas names its operator", async () => {
       const { context, page } = await open(supervisorToken);
       try {
-        await (await menuOption(page, "Cuadres diarios")).click();
-        const settlements = page.getByRole("dialog", { name: "Cuadres diarios", exact: true });
-        await settlements.getByRole("group", { name: "Secciones de Cuadres diarios", exact: true }).getByRole("button", { name: "Caja de remesas", exact: true }).click();
+        await (await menuOption(page, "Cuadres Diarios")).click();
+        const settlements = page.getByRole("dialog", { name: "Cuadres Diarios", exact: true });
+        await settlements.getByRole("group", { name: "Secciones de Cuadres Diarios", exact: true }).getByRole("button", { name: "Caja de remesas", exact: true }).click();
         const cash = settlements.getByRole("region", { name: "Caja de remesas", exact: true });
         await cash.locator("article").first().waitFor();
         const titles = (await cash.locator("article h2").allTextContents()).sort();

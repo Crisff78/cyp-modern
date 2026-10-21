@@ -1,8 +1,8 @@
-# Menú sencillo y nombres nuevos (2026-10-20)
+# Menú sencillo (2026-10-20) y nombres (2026-10-21)
 
 Pedido del jefe: el sistema tiene que poder usarlo alguien que nunca lo ha visto, sin
 perderse. Esta es la regla número uno del proyecto (ver `AGENTS.md`). Este documento
-dice dónde quedó cada cosa y cómo se llamaba antes.
+dice dónde quedó cada cosa y con qué nombre.
 
 ## Inicio de sesión
 
@@ -20,52 +20,53 @@ dice dónde quedó cada cosa y cómo se llamaba antes.
 - La primera vez, todas las secciones aparecen cerradas.
 - Cada cuenta encuentra el menú como lo dejó: las secciones abiertas y si estaba
   estrecho. Se guarda en ese navegador y por cuenta (`cyp-admin-menu:<id>`).
-- Al pasar el puntero por una opción aparece para qué sirve; si cambió de nombre,
-  dice el nombre anterior.
+- Al pasar el puntero por una opción aparece para qué sirve.
 - CONFIGURACIÓN DE ADMINISTRACIÓN va de primera (PR #44). Ella y CLIENTES tienen una sola
   pantalla: el botón la abre directo.
 
-| Sección | Opción | Antes |
-| --- | --- | --- |
-| CONFIGURACIÓN DE ADMINISTRACIÓN | Configuración de administración (antes «Panel de Control») | ARCHIVOS → Admin. |
-| CLIENTES | Clientes | ARCHIVOS → Clientes |
-| COBROS | Cargos por cobrar | Cargos |
-| COBROS | Cargos que se repiten | Cargos Recurrentes |
-| COBROS | Cobros realizados | Cobros |
-| COBROS | Depósitos de cobradores | Depósitos por Cobradores |
-| PAGOS | Órdenes de pago | Descargos |
-| PAGOS | Pagos realizados | Pagos |
-| PAGOS | Efectivo a cobradores | ENVÍOS → Entregas de Dinero (efectivo que la oficina da al cobrador) |
-| REMESAS | Envíos de dinero | ENVÍOS → Envíos de Dinero |
-| REMESAS | Entregas de dinero | ENVÍOS → Pagos de Envíos (entregar la remesa a quien la recibe) |
-| CUADRES Y REPORTES | Cuadres diarios | REPORTES & MONITOREO → Cuadres Diarios |
-| CUADRES Y REPORTES | Reportes | REPORTES & MONITOREO → Reportes |
-| MONITOREO | Monitor de cobradores, de zonas y de rutas | Monitor C, Monitor Z, Monitor R |
+## Nombres (decisión de Rardiel, 2026-10-21)
 
-La ventana «Efectivo a cobradores» ya no tiene el buscador de remesas: para entregar
-una remesa se usa REMESAS → Entregas de dinero.
+Las **secciones** (títulos grandes del menú) usan nombres claros. Las **opciones** de
+dentro, las ventanas, los reportes, las pestañas y la pantalla de administración
+**vuelven a los nombres de siempre**, salvo Remesas y Configuración de administración.
 
-## Otros nombres
+| Sección | Opciones |
+| --- | --- |
+| CONFIGURACIÓN DE ADMINISTRACIÓN | Configuración de administración (antes «Admin.» / «Panel de Control») |
+| CLIENTES | Clientes |
+| COBROS | Cargos · Cargos Recurrentes · Cobros · Depósitos por Cobradores |
+| PAGOS | Descargos · (Descargos Rec., oculto) · Pagos · Entregas de Dinero a Cobradores |
+| REMESAS | Envíos de dinero · Entregas de dinero (antes «Pagos de Envíos») |
+| CUADRES Y REPORTES | Cuadres Diarios · Reportes |
+| MONITOREO | Monitor C · Monitor Z · Monitor R |
+
+- «Entregas de Dinero a Cobradores» es el efectivo que la oficina le da al cobrador
+  (antes «Entregas de Dinero»): se le añade «a Cobradores» para que no se confunda con
+  REMESAS → Entregas de dinero. Ya no tiene el buscador de remesas.
+- Ventanas con su título de siempre: «Monitor de Cobradores/Zonas/Rutas», «Listado de
+  Sesiones», «Trazas del Sistema», «Puntos de Cobros y Pagos», «Reporte de Cobros
+  Resumido», etc.
+- Reportes: «Cobros Res.», «Cobros Gen. Resumido», «Cobros x Servicio», «Pagos
+  detallado.», «Pagos x servicio detallado.», … en grupos «-- Cargos --», «-- Cobros --»,
+  «-- Pagos --», «-- Remesas --» y «-- Servicios --».
+- Configuración de administración: Codificadores (Estaciones, Grupos, Motivos Atraso,
+  PCPs, Servicios y Prods., Sesiones, Trazas…) y Herramientas (Configuración General,
+  Solicitudes de Autoriz.).
+- Ficha del cliente: pestañas Cargos · Cargos Rec. · Cobros · Descargos · Pagos.
+- El botón de abajo del menú vuelve a ser **Soporte Técnico** (contacto y qué hay en cada
+  sección).
+
+## Lo que se queda nuevo
 
 - Sin botones rápidos encima del escritorio (CARGOS, COBROS, DESCARGOS…): el jefe pidió
   quitarlos el 2026-10-20. Todo se abre desde el menú lateral, que es un solo camino.
-- Caja de envíos → **Caja de remesas**; Comisiones de envíos → **Comisiones de
-  remesas**; pestaña Recibos de remesas → **Entregas**; botón «Registrar pago
-  completo» → **Registrar entrega**.
-- Administración: Codificadores → **Datos del negocio**; PCPs → **Puntos de cobro**;
-  Grupos → **Grupos de puntos**; Sesiones → **Sesiones abiertas**; Trazas →
-  **Historial**; Estaciones → **Estaciones (equipos)**.
-- Reportes con nombres completos («Cobros Res.» → «Resumen de cobros», «Pagos x
-  servicio detallado.» → «Pagos por servicio (detalle)», etc.). La ventana de cada
-  reporte se llama igual que su botón.
-- Columnas sin cortar («Imp. Ch...» → «Monto en cheques», «Lim. de C...» → «Límite
-  de cobro», «EnL...»/«En...» → «En línea»/«En oficina»).
-- Botones «oK» → **Aceptar**. Ventanas «Entre un valor...» → «¿Por qué se cancela?»
-  o «Motivo de atraso».
+- Remesas: Caja de remesas, Comisiones de remesas, pestaña Entregas y botón «Registrar
+  entrega».
+- Columnas sin cortar («Monto en cheques», «Límite de cobro», «En línea»/«En oficina»).
+- Botones **Aceptar** (no «oK»). Ventanas «¿Por qué se cancela?» o «Motivo de atraso»
+  (antes «Entre un valor...»).
 - El rol aparece en español («Administrador», «Cajero»), no como código (ADMIN,
-  CASHIER). En la lista de roles, «Admin» pasa a «Administrador».
-- Ayuda (antes «Soporte Técnico»): además del contacto, explica qué hay en cada
-  sección del menú, con los mismos nombres.
+  CASHIER).
 
 ## Roles (2026-10-20)
 

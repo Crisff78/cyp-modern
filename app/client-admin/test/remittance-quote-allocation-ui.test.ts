@@ -189,9 +189,9 @@ createRoot(document.getElementById("root")).render(<App />);`);
         await workspace.getByLabel("Nota (opcional)", { exact: true }).fill(note);
         assert.equal(await workspace.getByLabel("Nota (opcional)", { exact: true }).inputValue(), note);
         if (surface === "admin") {
-          await (await menuOption(page, "Cuadres diarios")).click();
-          const settlements = page.getByRole("dialog", { name: "Cuadres diarios", exact: true });
-          await settlements.getByRole("group", { name: "Secciones de Cuadres diarios", exact: true }).getByRole("button", { name: "Caja de remesas", exact: true }).click();
+          await (await menuOption(page, "Cuadres Diarios")).click();
+          const settlements = page.getByRole("dialog", { name: "Cuadres Diarios", exact: true });
+          await settlements.getByRole("group", { name: "Secciones de Cuadres Diarios", exact: true }).getByRole("button", { name: "Caja de remesas", exact: true }).click();
           const cash = settlements.getByRole("region", { name: "Caja de remesas", exact: true });
           const opening = cash.getByLabel("Efectivo inicial", { exact: true });
           await opening.fill("15.50"); await opening.fill("abc"); assert.equal(await opening.inputValue(), "15.50");
@@ -416,7 +416,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
         assert.equal(await page.getByRole("button", { name: "Configuración de administración", exact: true }).count(), 0);
         for (const name of ["Facturas", "Ventana de Pagos", "Hacer copia de respaldo"])
           assert.equal(await page.getByRole("button", { name, exact: true }).count(), 0, `${name} is not a cashier shortcut`);
-        assert.equal(await page.getByTitle("Abrir Cuadres diarios", { exact: true }).count(), 0);
+        assert.equal(await page.getByTitle("Abrir Cuadres Diarios", { exact: true }).count(), 0);
         for (const label of ["Tasas", "Comisiones"]) assert.equal(await workspace.getByRole("button", { name: label, exact: true }).count(), 0);
         const before = await store.read(); const routeId = before.routes[0].id;
         const capture = async (side: "remitente" | "destinatario", name: string, identification: string) => {
