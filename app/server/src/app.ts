@@ -317,7 +317,7 @@ export async function buildApp(config: Config) {
     req.user = accessedUser;
     if (!isOperationalRole(u.role)) {
       const ownSession = path === "/api/auth/me" || path === "/api/auth/logout" || path === `/api/usuarios/${u.id}/clave`;
-      const remittanceOperator = (u.role === "user" || u.role === "cashier") && hasRemittanceAccess(accessedUser) && (path.startsWith("/api/envios") || path === "/api/snapshot");
+      const remittanceOperator = u.role === "cashier" && hasRemittanceAccess(accessedUser) && (path.startsWith("/api/envios") || path === "/api/snapshot");
       if (!ownSession && !remittanceOperator && !(u.role === "supervisor" && req.method === "GET"))
         throw new DomainError("FORBIDDEN", "Este rol no tiene permiso para realizar esta operación.", 403);
     }
@@ -563,7 +563,7 @@ export async function buildApp(config: Config) {
     accountBody,
     (state, u, body) => {
       assertAdmin(u);
-      if (!["undefined", "user"].includes(body.role)) requirePermission(u, 106);
+      if (!["undefined", "client"].includes(body.role)) requirePermission(u, 106);
       const email = body.email.trim().toLowerCase();
       if (bootstrapIdForLogin(email))
         throw new DomainError("DUPLICATE_EMAIL", "Ese usuario de inicio corresponde a una cuenta existente.", 409);
@@ -617,13 +617,13 @@ export async function buildApp(config: Config) {
     if (!account) throw new DomainError("NOT_FOUND", "La cuenta no existe.", 404);
     assertBootstrapManagedBySelf(actor, account.id);
     // A role change grants, changes or withdraws operational access, so it needs 106, also towards
-    // Usuario or No definido. Only moving between those two without access on either side keeps 103.
+    // Cliente or No definido. Only moving between those two without access on either side keeps 103.
     const withoutAccess = (role: string) => { const access = effectiveAccess(role, account); return !access.legacy.length && !access.remittances.length; };
-    if (body.role !== account.role && !([account.role, body.role].every((role) => role === "undefined" || role === "user") && withoutAccess(account.role) && withoutAccess(body.role)))
+    if (body.role !== account.role && !([account.role, body.role].every((role) => role === "undefined" || role === "client") && withoutAccess(account.role) && withoutAccess(body.role)))
       requirePermission(actor, 106);
     if (actor.id === account.id && body.role !== "admin") throw new DomainError("FORBIDDEN", "No puedes retirar tu propio acceso administrativo.", 403);
     if (body.role !== account.role && !isCollectorAccountRole(body.role) && state.collectors.some((collector) => collector.accountId === account.id))
-      throw new DomainError("ACCOUNT_LINKED_COLLECTOR", `Retira la cuenta del cobrador antes de cambiar su rol a ${body.role === "admin" ? "Admin" : "Cajero"}.`, 409);
+      throw new DomainError("ACCOUNT_LINKED_COLLECTOR", `Retira la cuenta del cobrador antes de cambiar su rol a ${body.role === "admin" ? "Admin" : body.role === "client" ? "Cliente" : "Cajero"}.`, 409);
     if (body.role === "collector" && !body.collectorId) throw new DomainError("COLLECTOR_REQUIRED", "Una cuenta de cobrador necesita un cobrador asignado.", 422);
     if (!isCollectorAccountRole(body.role) && body.collectorId) throw collectorNotAllowed(body.role);
     if (body.collectorId && !state.collectors.some((item) => item.id === body.collectorId && item.active !== false))

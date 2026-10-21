@@ -46,7 +46,7 @@ test("six explicit roles create/edit with unchanged legacy codes and safe OpenAP
     assert.ok(omitted);
   }
   const before = await store.read();
-  for (const invalid of ["ADMIN", "superadmin", "client", "No definido", "", 1, null]) {
+  for (const invalid of ["ADMIN", "superadmin", "user", "No definido", "", 1, null]) {
     const result = await post("/api/usuarios", { name: "Cuenta inválida", email: "invalid@example.invalid", password: "Qa3", role: invalid });
     assert.equal(result.statusCode, 400, result.body);
   }
@@ -61,7 +61,7 @@ test("six explicit roles create/edit with unchanged legacy codes and safe OpenAP
 
 test("new roles cannot acquire financial writes; Supervisor has administrative read access", async (t) => {
   const { store, login, account, post, get } = await setup(t);
-  for (const role of ["undefined", "user", "supervisor"] as const) {
+  for (const role of ["undefined", "client", "supervisor"] as const) {
     const row = await account(role), token = await login(row.email, row.body.password);
     assert.equal((await get("/api/auth/me", token)).json().role, role);
     const before = await store.read();
@@ -91,34 +91,35 @@ test("collector accounts persist eligible IDs and reject new Admin/Cajero/unknow
   const legacy = await post(`/api/cobradores/${collector.id}`, { name: "Nombre legítimo editado", accountId: collector.accountId });
   assert.equal(legacy.statusCode, 200, legacy.body);
   assert.equal(legacy.json().accountId, "LEGACY-ACCOUNT-CODE");
-  for (const role of ["undefined", "supervisor", "collector", "user"] as const) {
+  for (const role of ["undefined", "supervisor", "collector"] as const) {
     const row = await account(role);
     const result = await post(`/api/cobradores/${collector.id}`, { name: collector.name, accountId: row.id });
     assert.equal(result.statusCode, 200, result.body);
     assert.equal((await store.read()).collectors.find((item) => item.id === collector.id)?.accountId, row.id);
   }
-  const admin = await account("admin"), cashier = await account("cashier"), assignedCollector = await account("collector");
+  // A client account is never a collector account either.
+  const admin = await account("admin"), cashier = await account("cashier"), client = await account("client"), assignedCollector = await account("collector");
   const before = await store.read();
-  for (const accountId of [admin.id, cashier.id, "UNKNOWN'; SELECT 1--"]) {
+  for (const accountId of [admin.id, cashier.id, client.id, "UNKNOWN'; SELECT 1--"]) {
     const result = await post(`/api/cobradores/${collector.id}`, { name: collector.name, accountId });
     assert.equal(result.statusCode, 422, result.body);
   }
   assert.equal((await post("/api/cobradores", { name: "Cobrador con cuenta de caja", accountId: cashier.id })).statusCode, 422);
   assert.equal((await post("/api/cobradores/col-2", { name: "Segundo cobrador", accountId: assignedCollector.id })).statusCode, 409);
   assert.deepEqual(await store.read(), before);
-  const row = await account("user");
+  const row = await account("undefined");
   const created = await post("/api/cobradores", { name: "Nuevo cobrador con cuenta", accountId: row.id });
   assert.equal(created.statusCode, 200, created.body); assert.equal(created.json().accountId, row.id);
 });
 
 test("linked accounts require explicit unlink before Admin promotion; role edits still revoke sessions", async (t) => {
   const { account, login, post, get, store } = await setup(t);
-  const row = await account("user"), token = await login(row.email, row.body.password);
+  const row = await account("supervisor"), token = await login(row.email, row.body.password);
   const { password: omitted, ...profile } = row.body;
   assert.ok(omitted);
   assert.equal((await post("/api/cobradores/col-1", { name: "Cobrador", accountId: row.id })).statusCode, 200);
   assert.equal((await post(`/api/usuarios/${row.id}`, { ...profile, role: "admin" })).statusCode, 409);
-  assert.equal((await store.read()).accounts.find((item) => item.id === row.id)?.role, "user");
+  assert.equal((await store.read()).accounts.find((item) => item.id === row.id)?.role, "supervisor");
   assert.equal((await post("/api/cobradores/col-1", { name: "Cobrador", accountId: "" })).statusCode, 200);
   assert.equal((await post(`/api/usuarios/${row.id}`, { ...profile, role: "admin" })).statusCode, 200);
   assert.equal((await get("/api/auth/me", token)).statusCode, 401);

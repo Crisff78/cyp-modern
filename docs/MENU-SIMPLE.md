@@ -22,7 +22,7 @@ dice dónde quedó cada cosa y cómo se llamaba antes.
   estrecho. Se guarda en ese navegador y por cuenta (`cyp-admin-menu:<id>`).
 - Al pasar el puntero por una opción aparece para qué sirve; si cambió de nombre,
   dice el nombre anterior.
-- CLIENTES y ADMINISTRACIÓN tienen una sola pantalla: el botón la abre directo.
+- CLIENTES y CONFIGURACIÓN DE ADMINISTRACIÓN tienen una sola pantalla: el botón la abre directo.
 
 | Sección | Opción | Antes |
 | --- | --- | --- |
@@ -39,7 +39,7 @@ dice dónde quedó cada cosa y cómo se llamaba antes.
 | CUADRES Y REPORTES | Cuadres diarios | REPORTES & MONITOREO → Cuadres Diarios |
 | CUADRES Y REPORTES | Reportes | REPORTES & MONITOREO → Reportes |
 | MONITOREO | Monitor de cobradores, de zonas y de rutas | Monitor C, Monitor Z, Monitor R |
-| ADMINISTRACIÓN | Administración (antes «Panel de Control») | ARCHIVOS → Admin. |
+| CONFIGURACIÓN DE ADMINISTRACIÓN | Configuración de administración (antes «Panel de Control») | ARCHIVOS → Admin. |
 
 La ventana «Efectivo a cobradores» ya no tiene el buscador de remesas: para entregar
 una remesa se usa REMESAS → Entregas de dinero.
@@ -66,4 +66,12 @@ una remesa se usa REMESAS → Entregas de dinero.
 - Ayuda (antes «Soporte Técnico»): además del contacto, explica qué hay en cada
   sección del menú, con los mismos nombres.
 
-Las reglas de negocio, los permisos y las validaciones del servidor no cambiaron.
+## Roles (2026-10-20)
+
+- El rol **Usuario** desaparece y entra **Cliente**: una cuenta de un cliente del negocio que por ahora
+  no puede entrar a la oficina ni a la app del cobrador, ni recibir permisos.
+- Las cuentas que eran Usuario pasan a **Cajero**, que atiende remesas igual (migración
+  `036_client_role.sql`; la demo con archivo hace lo mismo al abrirse). Sus sesiones abiertas se cierran.
+- El menú **Administración** se llama ahora **Configuración de administración**.
+
+Fuera del cambio de roles, las reglas de negocio, los permisos y las validaciones del servidor no cambiaron.

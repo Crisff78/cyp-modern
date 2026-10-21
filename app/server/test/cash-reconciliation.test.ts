@@ -65,7 +65,7 @@ test("cash receipt rejects stale data, altered totals, missing confirmation and 
     assert.throws(() => reconcilePreviousCash(state, admin, payload, now)); assert.deepEqual(state, before);
   }
   assert.throws(() => reconcilePreviousCash(state, admin, { ...input, confirmReceived: false } as unknown as typeof input, now), { code: "CASH_RECEIPT_CONFIRMATION_REQUIRED" });
-  for (const role of ["collector", "supervisor", "user"] as const) assert.throws(() => reconcilePreviousCash(state, { ...admin, role }, input, now), { code: "FORBIDDEN" });
+  for (const role of ["collector", "supervisor", "client"] as const) assert.throws(() => reconcilePreviousCash(state, { ...admin, role }, input, now), { code: "FORBIDDEN" });
   assert.deepEqual(state, before);
   state.movements.push({ ...state.movements[0], id: "additional-old", amount: 100 });
   assert.throws(() => reconcilePreviousCash(state, admin, input, now), { code: "CASH_RECONCILIATION_CHANGED" });

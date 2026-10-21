@@ -20,7 +20,7 @@ Cómo se aplica en cada cambio:
   explicación de la opción dice el nombre anterior («antes Descargos»).
 - Cada opción va en la sección del menú que lleva su nombre; lo que no encaja en
   ninguna va solo. Menú actual: CLIENTES · COBROS · PAGOS · REMESAS (Envíos de
-  dinero, Entregas de dinero) · CUADRES Y REPORTES · MONITOREO · ADMINISTRACIÓN.
+  dinero, Entregas de dinero) · CUADRES Y REPORTES · MONITOREO · CONFIGURACIÓN DE ADMINISTRACIÓN.
 - Cada opción del menú explica para qué sirve al pasar el puntero, y la ventana se
   llama igual que la opción o el botón que la abre.
 - Una sola página de inicio de sesión para todas las cuentas; cada cuenta llega sola

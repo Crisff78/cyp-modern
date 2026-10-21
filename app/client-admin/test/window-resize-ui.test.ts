@@ -176,10 +176,10 @@ createRoot(document.getElementById("root")).render(<App />);
       now = await box(reopened);
       near(now.width, left.width, "width after reload"); near(now.height, left.height, "height after reload");
       // Another screen keeps its own default size.
-      await page.locator(".sidebar").getByRole("button", { name: "Administración", exact: true }).click();
-      const panel = await box(page.getByRole("dialog", { name: "Administración", exact: true }));
+      await page.locator(".sidebar").getByRole("button", { name: "Configuración de administración", exact: true }).click();
+      const panel = await box(page.getByRole("dialog", { name: "Configuración de administración", exact: true }));
       near(panel.width, 600, "control panel width"); near(panel.height, 390, "control panel height");
-      await page.getByRole("button", { name: "Cerrar Administración", exact: true }).click();
+      await page.getByRole("button", { name: "Cerrar Configuración de administración", exact: true }).click();
     });
 
     await t.test("a window is maximized and restored with its button or a double click on its title", async () => {

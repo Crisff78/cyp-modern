@@ -40,7 +40,7 @@ export type RemittanceSnapshot = {
   receiptFooterNote?: string;
   commissionPolicy?: CommissionPolicy;
   clients: { id: string; code: string; name: string; routeId: string; active: boolean; preferredCurrency?: Currency; canSendFrom: boolean; canReceive: boolean }[];
-  operators: { id: string; name: string; role: "admin" | "collector" | "user" | "cashier"; collectorId?: string }[];
+  operators: { id: string; name: string; role: "admin" | "collector" | "cashier"; collectorId?: string }[];
   /** The operators that can register a transfer (remittances.create); the boxes use all the operators. */
   sendingOperatorIds?: string[];
   /** Name of every operator that appears in the visible operations, boxes and reports, also of disabled accounts. */

@@ -50,7 +50,9 @@ test("user permission checkboxes, categories, cancel and backend saves work in t
       const result = await post("/api/usuarios", { name, email: `qa-${randomUUID()}@example.invalid`, role, password: "Synthetic-Permissions-2026!" });
       assert.equal(result.statusCode, 200, result.body); return result.json();
     };
-    const first = await create("Usuario de prueba uno"), second = await create("Usuario de prueba dos"), supervisor = await create("Supervisor de prueba", "supervisor"), cashier = await create("Cajero de prueba", "user");
+    const first = await create("Usuario de prueba uno"), second = await create("Usuario de prueba dos"), supervisor = await create("Supervisor de prueba", "supervisor"), cashier = await create("Cajero de prueba", "cashier");
+    // A Cajero personalized down to «Entrar al sistema», as an office account with nothing granted yet.
+    await store.transaction((state) => { const account = state.accounts.find(({ id }) => id === cashier.id)!; account.permissionMode = "custom"; account.permissionIds = [1]; account.remittancePermissions = []; });
     const cashierRole = await create("Cajero con perfil de rol", "cashier");
     // An account carried over by the 034 migration: «Perfil del rol» with its earlier, referential list.
     const migrated = await create("Cuenta migrada", "supervisor");
@@ -207,7 +209,7 @@ createRoot(document.getElementById("root")).render(<Fixture />);`, "utf8");
       const profile = await getProfile(cashier.id);
       assert.deepEqual(profile.permissionIds, [1]); assert.equal(profile.mode, "custom");
       assert.deepEqual(profile.remittancePermissions, ["remittances.create", "remittances.view"]);
-      assert.equal((await store.read()).accounts.find(({ id }) => id === cashier.id)?.role, "user");
+      assert.equal((await store.read()).accounts.find(({ id }) => id === cashier.id)?.role, "cashier");
     });
     await t.test("a Cajero in Perfil del rol shows its initial profile and can only add the reports of Envíos", async () => {
       await open(cashierRole.name);

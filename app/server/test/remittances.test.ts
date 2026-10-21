@@ -140,7 +140,7 @@ test("a Cajero opens only his own cash box and must close an earlier one first; 
   assert.equal(openRemittanceCash(state, cashier, { operatorId: cashier.id, currency: "DOP", openingAmount: 0 }, operators, tomorrow).date, businessDate(tomorrow));
   const withoutOpening: User = { ...cashier, access: effectiveAccess("cashier", { permissionMode: "custom", permissionIds: [1, 2], remittancePermissions: ["remittances.view", "remittances.cash.view", "remittances.cash.close"] }) };
   assert.throws(() => openRemittanceCash(state, withoutOpening, { operatorId: cashier.id, currency: "USD", openingAmount: 0 }, operators, now), code("FORBIDDEN"));
-  const user: User = { id: "user-remittance", name: "Usuario", role: "user", access: effectiveAccess("user", { permissionMode: "custom", permissionIds: [1, 2], remittancePermissions: ["remittances.view", "remittances.cash.view", "remittances.cash.close"] }) };
+  const user: User = { id: "user-remittance", name: "Usuario", role: "client", access: effectiveAccess("client", { permissionMode: "custom", permissionIds: [1, 2], remittancePermissions: ["remittances.view", "remittances.cash.view", "remittances.cash.close"] }) };
   assert.throws(() => openRemittanceCash(state, user, { operatorId: user.id, currency: "USD", openingAmount: 0 }, operators, now), code("FORBIDDEN"));
   assert.throws(() => openRemittanceCash(state, receiver, { operatorId: receiver.id, currency: "USD", openingAmount: 0 }, operators, now), code("FORBIDDEN"));
 });

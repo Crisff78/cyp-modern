@@ -14,8 +14,8 @@ import { MemoryStore } from "../../server/src/store.js";
 import { randomUUID } from "node:crypto";
 
 test("role options and portal guards distinguish eligible accounts without granting Admin", () => {
-  assert.deepEqual(ACCOUNT_ROLE_OPTIONS.map((row) => row.label), ["No definido", "Administrador", "Supervisor", "Cobrador", "Usuario", "Cajero"]);
-  for (const role of ["undefined", "user"]) {
+  assert.deepEqual(ACCOUNT_ROLE_OPTIONS.map((row) => row.label), ["No definido", "Administrador", "Supervisor", "Cobrador", "Cliente", "Cajero"]);
+  for (const role of ["undefined", "client"]) {
     const actor = enrichUserRole({ id: "QA", name: "QA", role });
     assert.equal(canAccessAdmin(actor), false); assert.equal(canAccessCollector(actor), false);
   }
@@ -27,8 +27,8 @@ test("role options and portal guards distinguish eligible accounts without grant
   }
   const withoutEnvios = enrichUserRole({ id: "QA", name: "QA", role: "cashier", access: { mode: "custom", revision: 1, legacy: [1, 2], remittances: [] } });
   assert.equal(canAccessAdmin(withoutEnvios), false, "a cashier without any permission of Envíos cannot enter");
-  for (const role of ["undefined", "supervisor", "collector", "user"]) assert.equal(isCollectorAccountRole(role), true);
-  for (const role of ["admin", "cashier", "ADMIN", "SUPERADMIN", "ROLE_ADMIN", "unknown", "", "__proto__", undefined, null, 1, {}, []]) assert.equal(isCollectorAccountRole(role), false);
+  for (const role of ["undefined", "supervisor", "collector"]) assert.equal(isCollectorAccountRole(role), true);
+  for (const role of ["admin", "cashier", "client", "user", "ADMIN", "SUPERADMIN", "ROLE_ADMIN", "unknown", "", "__proto__", undefined, null, 1, {}, []]) assert.equal(isCollectorAccountRole(role), false);
 });
 
 const adminRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -48,17 +48,17 @@ test("actual user forms and collector picker persist real API references in an i
   const app = await buildApp({ store, demo: true, secret: "synthetic-role-ui-secret-at-least-32-characters", origins: [], collectorUrl: "http://localhost:5174" });
   const { token, user } = (await app.inject({ method: "POST", url: "/api/auth/login", payload: { email: "admin@cyp.local", password: "Demo-CyP-2026!" } })).json();
   const samples: Record<string, { id: string; name: string; email: string }> = {};
-  for (const role of ["admin", "supervisor", "collector", "user", "undefined", "cashier"]) {
+  for (const role of ["admin", "supervisor", "collector", "client", "undefined", "cashier"]) {
     const result = await app.inject({ method: "POST", url: "/api/usuarios", headers: { authorization: `Bearer ${token}`, "idempotency-key": randomUUID() }, payload: { name: `Cuenta QA ${role}`, email: `qa-${role}@example.invalid`, role, password: "Qa3+#'", ...(role === "collector" ? { collectorId: "col-1" } : {}) } });
     assert.equal(result.statusCode, 200, result.body); samples[role] = result.json();
   }
   const otherAccount = await app.inject({ method: "POST", url: "/api/usuarios", headers: { authorization: `Bearer ${token}`, "idempotency-key": randomUUID() }, payload: { name: "Cuenta de otro cobrador QA", email: "qa-other@example.invalid", role: "collector", collectorId: "col-2", password: "Qa3+#'" } });
   assert.equal(otherAccount.statusCode, 200, otherAccount.body);
-  const disabledAccount = await app.inject({ method: "POST", url: "/api/usuarios", headers: { authorization: `Bearer ${token}`, "idempotency-key": randomUUID() }, payload: { name: "Cuenta inactiva QA", email: "qa-disabled@example.invalid", role: "user", password: "Qa3+#'" } });
+  const disabledAccount = await app.inject({ method: "POST", url: "/api/usuarios", headers: { authorization: `Bearer ${token}`, "idempotency-key": randomUUID() }, payload: { name: "Cuenta inactiva QA", email: "qa-disabled@example.invalid", role: "supervisor", password: "Qa3+#'" } });
   assert.equal(disabledAccount.statusCode, 200, disabledAccount.body);
   const disabled = await app.inject({ method: "POST", url: `/api/usuarios/${disabledAccount.json().id}/estado`, headers: { authorization: `Bearer ${token}`, "idempotency-key": randomUUID() }, payload: { status: "disabled" } });
   assert.equal(disabled.statusCode, 200, disabled.body);
-  await store.transaction((current) => { current.collectors[0].accountId = samples.user.id; });
+  await store.transaction((current) => { current.collectors[0].accountId = samples.undefined.id; });
   let browser: any, context: any, server: ReturnType<typeof createServer> | undefined;
   const pageErrors: string[] = [], external: string[] = [], writes: string[] = [];
   try {
@@ -143,9 +143,9 @@ remittancesApi("/snapshot").then(initial=>createRoot(document.getElementById("ro
     await t.test("account picker excludes Admin, blocks the parent, and Cancel/OK keep draft and persisted state separate", async () => {
       await open("collectors"); await page.getByRole("row").filter({ hasText: "Cobrador QA" }).click(); await page.getByTitle("Editar", { exact: true }).click();
       const parent = page.getByRole("dialog", { name: "Datos de Cobrador...", exact: true }), field = parent.getByLabel("Cuenta", { exact: true });
-      await parent.getByText(samples.user.email, { exact: true }).waitFor();
+      await parent.getByText(samples.undefined.email, { exact: true }).waitFor();
       assert.ok(await parent.getByText(/El usuario o correo, rol y contraseña/).isVisible());
-      assert.equal(await field.inputValue(), samples.user.name); assert.equal(await field.getAttribute("readonly"), "");
+      assert.equal(await field.inputValue(), samples.undefined.name); assert.equal(await field.getAttribute("readonly"), "");
       const launch = () => parent.getByRole("button", { name: "Seleccionar cuenta", exact: true }).click();
       const picker = page.getByRole("dialog", { name: "Seleccionar cuenta del cobrador...", exact: true });
       await launch(); await picker.getByText(samples.supervisor.email, { exact: true }).waitFor();
@@ -153,20 +153,21 @@ remittancesApi("/snapshot").then(initial=>createRoot(document.getElementById("ro
       assert.equal(await picker.getByText(samples.cashier.email, { exact: true }).count(), 0, "a Cajero account is never linked to a collector");
       assert.equal(await picker.getByText("qa-other@example.invalid", { exact: true }).count(), 0);
       assert.equal(await picker.getByText("qa-disabled@example.invalid", { exact: true }).count(), 0);
-      for (const role of ["undefined", "supervisor", "collector", "user"]) assert.equal(await picker.getByText(samples[role].email, { exact: true }).count(), 1);
+      for (const role of ["undefined", "supervisor", "collector"]) assert.equal(await picker.getByText(samples[role].email, { exact: true }).count(), 1);
+      assert.equal(await picker.getByText(samples.client.email, { exact: true }).count(), 0, "a Cliente account is never linked to a collector");
       const before = writes.length;
       await parent.getByLabel("Nombre", { exact: true }).evaluate((node: HTMLInputElement) => node.focus());
       assert.equal(await picker.evaluate((node: HTMLElement) => node.contains(document.activeElement)), true);
       await picker.getByRole("row").filter({ hasText: samples.supervisor.email }).click();
       await picker.getByRole("button", { name: "Cancelar", exact: true }).click(); await picker.waitFor({ state: "detached" });
-      assert.equal(await field.inputValue(), samples.user.name); assert.equal(writes.length, before);
+      assert.equal(await field.inputValue(), samples.undefined.name); assert.equal(writes.length, before);
       await launch(); await picker.getByText(samples.supervisor.email, { exact: true }).waitFor();
       await picker.getByLabel("Buscar:", { exact: true }).fill("Cuenta QA supervisor");
       await picker.getByRole("row").filter({ hasText: samples.supervisor.email }).click();
       await page.screenshot({ path: path.join(output, "collector-account-picker.png") });
       await picker.getByRole("button", { name: "OK", exact: true }).click(); await picker.waitFor({ state: "detached" });
       assert.equal(await field.inputValue(), samples.supervisor.name); assert.equal(await field.getAttribute("title"), samples.supervisor.id);
-      assert.equal((await store.read()).collectors[0].accountId, samples.user.id); assert.equal(writes.length, before);
+      assert.equal((await store.read()).collectors[0].accountId, samples.undefined.id); assert.equal(writes.length, before);
       await parent.getByRole("button", { name: "Aceptar", exact: true }).click(); await parent.waitFor({ state: "detached" });
       assert.equal((await store.read()).collectors[0].accountId, samples.supervisor.id);
       await page.getByRole("row").filter({ hasText: "Cobrador QA" }).click(); await page.getByTitle("Editar", { exact: true }).click();

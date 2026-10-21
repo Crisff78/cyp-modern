@@ -36,7 +36,7 @@ async function setup(t: TestContext, mode: "demo" | "configured" = "demo") {
     return reply.json().token as string;
   };
   const admin = mode === "demo" ? await login("admin@cyp.local", DEMO_PASSWORD) : await login(configured.adminEmail, configured.adminPassword);
-  const account = async (role = "user", extra: Record<string, unknown> = {}) => {
+  const account = async (role = "client", extra: Record<string, unknown> = {}) => {
     const email = `${role}-${randomUUID()}@example.invalid`;
     const reply = await post("/api/usuarios", { name: `Cuenta ${role} sintética`, email, role, password, ...extra }, admin);
     assert.equal(reply.statusCode, 200, reply.body);
@@ -68,17 +68,17 @@ test("S1 107, 103, 104, 106 and 116 cannot take over, demote, lock out or sign o
   const m106 = await limitedAdmin([101, 103, 106]), m116 = await limitedAdmin([115, 116]);
   // Each attempt has its own target, so one result never hides another.
   const targets = { password: await account("admin"), demote: await account("admin"), supervisor: await account("supervisor"), signIn: await account("admin"),
-    demote106: await account("admin"), disable: await account("admin"), reactivate: await account("admin"), session: await account("admin"), plain: await account("user") };
+    demote106: await account("admin"), disable: await account("admin"), reactivate: await account("admin"), session: await account("admin"), plain: await account("client") };
   assert.equal((await post(`/api/usuarios/${targets.reactivate.id}/estado`, { status: "disabled" }, admin)).statusCode, 200);
   const ids = Object.values(targets).map(({ id }) => id), before = await accountRows(ids), session = await activeSession(targets.session.id);
   const profile = (row: { name: string; email: string }, role: string, name = row.name) => ({ name, email: row.email, role });
   const attempts = {
     "107 resets its password": await post(`/api/usuarios/${targets.password.id}/clave`, { password: "Tomada-ficticia-2026" }, m107.token),
-    "103 demotes an Admin": await post(`/api/usuarios/${targets.demote.id}`, profile(targets.demote, "user"), m103.token),
+    "103 demotes an Admin": await post(`/api/usuarios/${targets.demote.id}`, profile(targets.demote, "client"), m103.token),
     "103 demotes a Supervisor": await post(`/api/usuarios/${targets.supervisor.id}`, profile(targets.supervisor, "undefined"), m103.token),
     "103 promotes a Usuario to Admin": await post(`/api/usuarios/${targets.plain.id}`, profile(targets.plain, "admin"), m103.token),
     "103 changes its sign-in data": await post(`/api/usuarios/${targets.signIn.id}`, profile(targets.signIn, "admin", "Nombre cambiado"), m103.token),
-    "106 demotes it": await post(`/api/usuarios/${targets.demote106.id}`, profile(targets.demote106, "user"), m106.token),
+    "106 demotes it": await post(`/api/usuarios/${targets.demote106.id}`, profile(targets.demote106, "client"), m106.token),
     "104 disables it": await post(`/api/usuarios/${targets.disable.id}/estado`, { status: "disabled" }, m104.token),
     "104 reactivates it": await post(`/api/usuarios/${targets.reactivate.id}/estado`, { status: "active" }, m104.token),
     "116 closes its session": await post(`/api/sesiones/${session.id}/cerrar`, {}, m116.token),
@@ -102,10 +102,10 @@ test("S1 107, 103, 104, 106 and 116 cannot take over, demote, lock out or sign o
 test("S1 accounts within the actor's own access, and administrators with full access, stay manageable", async (t) => {
   const { post, account, limitedAdmin, activeSession } = await setup(t);
   const m107 = await limitedAdmin([101, 107]), m103 = await limitedAdmin([101, 103]), m104 = await limitedAdmin([101, 104]), m116 = await limitedAdmin([115, 116]);
-  const plain = await account("user"), narrower = await limitedAdmin([115]), broader = await account("admin"), peer = await account("admin");
+  const plain = await account("client"), narrower = await limitedAdmin([115]), broader = await account("admin"), peer = await account("admin");
   const attempts = {
     "107 resets a Usuario password": await post(`/api/usuarios/${plain.id}/clave`, { password: "Reiniciada-ficticia-2026" }, m107.token),
-    "103 renames a Usuario": await post(`/api/usuarios/${plain.id}`, { name: "Usuario renombrado", email: plain.email, role: "user" }, m103.token),
+    "103 renames a Usuario": await post(`/api/usuarios/${plain.id}`, { name: "Usuario renombrado", email: plain.email, role: "client" }, m103.token),
     // Informative fields do not revoke sessions and stay with 103.
     "103 sets the nickname of a broader account": await post(`/api/usuarios/${m107.id}`, { name: m107.name, email: m107.email, role: "admin", nickname: "Apodo" }, m103.token),
     "104 disables a Usuario": await post(`/api/usuarios/${plain.id}/estado`, { status: "disabled" }, m104.token),
@@ -115,7 +115,7 @@ test("S1 accounts within the actor's own access, and administrators with full ac
     "a full Admin reactivates it": await post(`/api/usuarios/${broader.id}/estado`, { status: "active" }, peer.token),
     "a full Admin resets its password": await post(`/api/usuarios/${broader.id}/clave`, { password: "Reiniciada-ficticia-2026" }, peer.token),
     "a full Admin closes another session": await post(`/api/sesiones/${(await activeSession(m116.id)).id}/cerrar`, {}, peer.token),
-    "a full Admin demotes it": await post(`/api/usuarios/${broader.id}`, { name: broader.name, email: broader.email, role: "user" }, peer.token),
+    "a full Admin demotes it": await post(`/api/usuarios/${broader.id}`, { name: broader.name, email: broader.email, role: "client" }, peer.token),
   };
   for (const [label, reply] of Object.entries(attempts)) assert.equal(reply.statusCode, 200, `${label}: ${reply.body}`);
 });
@@ -129,7 +129,7 @@ test("S1 the demo bootstrap administrator is changed only by itself", async (t) 
   const attempts = {
     password: await post("/api/usuarios/demo-admin/clave", { password: "Robada-ficticia-2026" }, other.token),
     profile: await post("/api/usuarios/demo-admin", { name: "Administración", email: "admin@cyp.local", role: "admin", nickname: "Cambiado" }, other.token),
-    role: await post("/api/usuarios/demo-admin", { name: "Administración", email: "admin@cyp.local", role: "user" }, other.token),
+    role: await post("/api/usuarios/demo-admin", { name: "Administración", email: "admin@cyp.local", role: "client" }, other.token),
     status: await post("/api/usuarios/demo-admin/estado", { status: "disabled" }, other.token),
     permissions: await post("/api/usuarios/demo-admin/permisos", { mode: "custom", permissionIds: [1], remittancePermissions: [], revision: 0 }, other.token),
     session: await post(`/api/sesiones/${session.id}/cerrar`, {}, other.token),
@@ -153,7 +153,7 @@ test("S1 the configured bootstrap administrator is changed only by itself", asyn
   const bootstrap = await login(configured.adminEmail, changed), session = await activeSession("configured-admin");
   const attempts = {
     password: await post("/api/usuarios/configured-admin/clave", { password: "Robada-ficticia-2026" }, other.token),
-    role: await post("/api/usuarios/configured-admin", { name: "Administración", email: configured.adminEmail, role: "user" }, other.token),
+    role: await post("/api/usuarios/configured-admin", { name: "Administración", email: configured.adminEmail, role: "client" }, other.token),
     status: await post("/api/usuarios/configured-admin/estado", { status: "disabled" }, other.token),
     session: await post(`/api/sesiones/${session.id}/cerrar`, {}, other.token),
   };
@@ -164,31 +164,31 @@ test("S1 the configured bootstrap administrator is changed only by itself", asyn
   assert.equal((await post(`/api/usuarios/${other.id}/estado`, { status: "disabled" }, bootstrap)).statusCode, 200, "it still manages the others");
 });
 
-test("S2 a role change without 106 cannot turn a personalized Cobrador into an unrestricted Usuario, nor change any other access", async (t) => {
+test("S2 a role change without 106 cannot turn a personalized Cobrador or a Cajero into a Cliente, nor change any other access", async (t) => {
   const { admin, post, account, grant, limitedAdmin, accountRows } = await setup(t);
   const collector = await account("collector", { collectorId: "col-2" });
   await grant(collector.id, rolePermissionIds("collector"), ["remittances.view", "remittances.create", "remittances.receipts", "remittances.pay"]);
-  const cashier = await account("cashier"), desk = await account("user");
+  const cashier = await account("cashier"), desk = await account("cashier");
   await grant(desk.id, [1, 2], ["remittances.view"]);
   const m103 = await limitedAdmin([101, 103]), ids = [collector.id, cashier.id, desk.id], before = await accountRows(ids);
   const change = (target: { id: string; name: string; email: string }, role: string, token = m103.token) =>
     post(`/api/usuarios/${target.id}`, { name: target.name, email: target.email, role }, token);
   assert.deepEqual({
-    "personalized Cobrador → Usuario": outcome(await change(collector, "user")),
-    "Cajero → Usuario": outcome(await change(cashier, "user")),
-    "Usuario with access → No definido": outcome(await change(desk, "undefined")),
+    "personalized Cobrador → Cliente": outcome(await change(collector, "client")),
+    "Cajero → Cliente": outcome(await change(cashier, "client")),
+    "personalized Cajero → No definido": outcome(await change(desk, "undefined")),
   }, {
-    "personalized Cobrador → Usuario": denied("PERMISSION_REQUIRED"),
-    "Cajero → Usuario": denied("PERMISSION_REQUIRED"),
-    "Usuario with access → No definido": denied("PERMISSION_REQUIRED"),
+    "personalized Cobrador → Cliente": denied("PERMISSION_REQUIRED"),
+    "Cajero → Cliente": denied("PERMISSION_REQUIRED"),
+    "personalized Cajero → No definido": denied("PERMISSION_REQUIRED"),
   });
   assert.deepEqual(await accountRows(ids), before);
-  // Only moving between «No definido» and «Usuario» without access on either side stays with 103.
+  // Only moving between «No definido» and «Cliente», neither of which has access, stays with 103.
   const blank = await account("undefined");
-  assert.equal((await change(blank, "user")).statusCode, 200);
+  assert.equal((await change(blank, "client")).statusCode, 200);
   assert.equal((await change(blank, "undefined")).statusCode, 200);
   // With 106 the change is allowed.
-  assert.equal((await change(collector, "user", admin)).statusCode, 200);
+  assert.equal((await change(collector, "client", admin)).statusCode, 200);
 });
 
 test("S3 a personalized Cobrador keeps his own record, routes, movements, closed days and totals", async (t) => {
@@ -214,24 +214,24 @@ test("S3 a personalized Cobrador keeps his own record, routes, movements, closed
   assert.deepEqual(minimal.charges, []); assert.deepEqual(minimal.clients, []);
 });
 
-test("S4 Usuario and No definido accounts on their role profile change their own password", async (t) => {
+test("S4 Cliente and No definido accounts on their role profile change their own password", async (t) => {
   const { post, login, account, grant } = await setup(t);
-  for (const role of ["user", "undefined"]) {
+  for (const role of ["client", "undefined"]) {
     const row = await account(role);
     const reply = await post(`/api/usuarios/${row.id}/clave`, { currentPassword: password, password: "Otra-ficticia-propia-2026" }, row.token);
     assert.equal(reply.statusCode, 200, `${role}: ${reply.body}`);
     await login(row.email, "Otra-ficticia-propia-2026");
   }
   // Personalized permissions can still withdraw it through code 2.
-  const desk = await account("user");
+  const desk = await account("cashier");
   await grant(desk.id, [1], ["remittances.view"]);
   const withdrawn = await post(`/api/usuarios/${desk.id}/clave`, { currentPassword: password, password: "Otra-ficticia-propia-2026" }, desk.token);
   assert.equal(withdrawn.statusCode, 403); assert.equal(code(withdrawn), "PERMISSION_REQUIRED");
   // The interface reads the same rule from the shared module.
   const canChange = (role: string, selection?: Parameters<typeof access.effectiveAccess>[1]) => access.canChangeOwnPassword({ role, access: access.effectiveAccess(role, selection) });
-  assert.deepEqual(["user", "undefined", "cashier", "collector", "supervisor", "admin"].map((role) => canChange(role)), [true, true, true, true, true, true]);
-  assert.equal(canChange("user", { permissionMode: "custom", permissionIds: [1], remittancePermissions: ["remittances.view"] }), false);
-  assert.equal(canChange("user", { permissionMode: "custom", permissionIds: [1, 2], remittancePermissions: ["remittances.view"] }), true);
+  assert.deepEqual(["client", "undefined", "cashier", "collector", "supervisor", "admin"].map((role) => canChange(role)), [true, true, true, true, true, true]);
+  assert.equal(canChange("cashier", { permissionMode: "custom", permissionIds: [1], remittancePermissions: ["remittances.view"] }), false);
+  assert.equal(canChange("cashier", { permissionMode: "custom", permissionIds: [1, 2], remittancePermissions: ["remittances.view"] }), true);
 });
 
 test("S5 the full edit of a collector cannot change his limits without 156", async (t) => {
@@ -367,7 +367,7 @@ test("S12 Supervisor consults every remittance, receipt, cash box and report wit
 
 test("S13 consultation-only accounts receive the names of their remittances without the client catalog", async (t) => {
   const { store, get, account, grant, send, openCash } = await setup(t);
-  const desk = await account("user");
+  const desk = await account("cashier");
   await grant(desk.id, [1, 2], ["remittances.view", "remittances.create"]);
   assert.equal((await openCash(desk.id)).statusCode, 200);
   for (const [senderClientId, recipientClientId] of [["cli-1", "cli-2"], ["cli-3", "cli-4"]])
@@ -381,7 +381,7 @@ test("S13 consultation-only accounts receive the names of their remittances with
   assert.deepEqual(snapshot.clients.map(({ id, name }: { id: string; name: string }) => [id, name]),
     [["cli-1", "Colmado La Esquina"], ["cli-2", "María Rodríguez"], ["cli-3", "Taller Don Pedro"], ["cli-4", "Farmacia Central"]]);
   for (const row of snapshot.clients) assert.equal(Object.hasOwn(row, "phone"), false);
-  const unrelated = await account("user");
+  const unrelated = await account("cashier");
   await grant(unrelated.id, [1, 2], ["remittances.view"]);
   assert.deepEqual((await get("/api/envios/snapshot", unrelated.token)).json().clients, [], "no operations, no clients");
 });
@@ -403,7 +403,7 @@ test("S15 a new recipient without its own phone keeps the phone written for the 
 
 test("S16 the snapshot says which operators can register a remittance", async (t) => {
   const { admin, get, account, grant, send, openCash } = await setup(t);
-  const receiptsOnly = await account("user"), viewOnlyCollector = await account("collector", { collectorId: "col-2" }), cashier = await account("cashier");
+  const receiptsOnly = await account("cashier"), viewOnlyCollector = await account("collector", { collectorId: "col-2" }), cashier = await account("cashier");
   await grant(receiptsOnly.id, [1, 2], ["remittances.receipts"]);
   await grant(viewOnlyCollector.id, rolePermissionIds("collector"), ["remittances.view"]);
   const snapshot = (await get("/api/envios/snapshot", admin)).json();
