@@ -156,13 +156,13 @@ import {
 // Each section is named after what it holds, so someone new finds a screen without knowing the
 // program. A section with one screen is a single button that opens it straight away.
 const groupOrder = [
+  "ADMINISTRACIÓN",
   "CLIENTES",
   "COBROS",
   "PAGOS",
   "REMESAS",
   "CUADRES Y REPORTES",
   "MONITOREO",
-  "ADMINISTRACIÓN",
 ] as const;
 type NavGroup = (typeof groupOrder)[number];
 const directGroups: readonly NavGroup[] = ["CLIENTES", "ADMINISTRACIÓN"];
