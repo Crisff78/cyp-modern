@@ -22,24 +22,24 @@ export async function readRemittances(client: pg.PoolClient): Promise<Remittance
     t.sending_user_id AS "sendingUserId",t.registered_by AS "registeredBy",t.source_currency AS "sourceCurrency",
     t.destination_currency AS "destinationCurrency",t.amount,t.commission_bps AS "commissionBps",t.commission_amount AS "commissionAmount",
     t.total_amount AS "totalAmount",t.receive_amount AS "receiveAmount",t.quote_date::text AS "quoteDate",
-    t.source_rate::text AS "sourceRate",t.destination_rate::text AS "destinationRate",t.note,t.created_at AS "createdAt",
+    t.source_rate::text AS "sourceRate",t.destination_rate::text AS "destinationRate",t.source_rate_kind AS "sourceRateKind",t.destination_rate_kind AS "destinationRateKind",t.note,t.created_at AS "createdAt",
     t.quote_recorded_at AS "quotedAt",t.source_rate_change_id AS "sourceRateChangeId",t.destination_rate_change_id AS "destinationRateChangeId",
     sh.created_at AS "sourceRateChangedAt",dh.created_at AS "destinationRateChangedAt",
     COALESCE(t.source_rate_date,sh.effective_date)::text AS "sourceRateDate",COALESCE(t.destination_rate_date,dh.effective_date)::text AS "destinationRateDate",
     t.sender_contact AS "senderContact",t.recipient_contact AS "recipientContact",t.manager_commission AS "managerCommission",
-    t.commission_allocation AS "commissionAllocation",t.amount_dop AS "amountDop",t.requested_receive_amount AS "requestedReceiveAmount"
+    t.commission_allocation AS "commissionAllocation",t.amount_dop AS "amountDop",t.requested_receive_amount AS "requestedReceiveAmount",t.payment,t.receipt_issuer AS "receiptIssuer"
     FROM remittance_transfers t LEFT JOIN remittance_rate_history sh ON sh.id=t.source_rate_change_id
     LEFT JOIN remittance_rate_history dh ON dh.id=t.destination_rate_change_id ORDER BY t.sequence`)).rows.map((row) => {
-      const { quoteDate, sourceRate, destinationRate, quotedAt, sourceRateChangeId, destinationRateChangeId, sourceRateChangedAt, destinationRateChangedAt, sourceRateDate, destinationRateDate, ...rest } = row;
+      const { quoteDate, sourceRate, destinationRate, sourceRateKind, destinationRateKind, quotedAt, sourceRateChangeId, destinationRateChangeId, sourceRateChangedAt, destinationRateChangedAt, sourceRateDate, destinationRateDate, ...rest } = row;
       const allocation = rest.commissionAllocation as Remittance["commissionAllocation"];
       return { ...clean<Remittance>(rest), ...(rest.requestedReceiveAmount === null ? {} : { receiveRoundingDifference: Number(rest.receiveAmount) - Number(rest.requestedReceiveAmount) }),
         status: "pending" as const, quote: clean<Remittance["quote"]>({ date: quoteDate, sourceRate, destinationRate,
         quotedAt, sourceRateChangeId, destinationRateChangeId, sourceRateChangedAt, destinationRateChangedAt,
-        sourceRateDate, destinationRateDate,
+        sourceRateDate, destinationRateDate, sourceRateKind, destinationRateKind,
         ...(allocation ? { commissionPolicyRevision: allocation.policyRevision, managerCommissionBps: allocation.managerCommissionBps } : {}) }) };
     });
   const events = (await client.query(`SELECT id,type,transfer_id AS "transferId",cash_session_id AS "cashSessionId",
-    operator_id AS "operatorId",currency,amount,actor_id AS "actorId",created_at AS "createdAt",reason
+    operator_id AS "operatorId",currency,amount,actor_id AS "actorId",created_at AS "createdAt",reason,refund_confirmation AS refund
     FROM remittance_events ORDER BY created_at,id`)).rows.map((row) => clean<RemittanceEvent>(row));
   for (const event of events) {
     if (event.type === "closed") {
@@ -50,7 +50,7 @@ export async function readRemittances(client: pg.PoolClient): Promise<Remittance
       const transfer = transfers.find((t) => t.id === event.transferId);
       if (transfer) Object.assign(transfer, event.type === "paid"
         ? { status: "paid", paidAt: event.createdAt, paidBy: event.actorId }
-        : { status: "cancelled", cancelledAt: event.createdAt, cancelledBy: event.actorId, cancelReason: event.reason });
+        : { status: "cancelled", cancelledAt: event.createdAt, cancelledBy: event.actorId, cancelReason: event.reason, ...(event.refund ? { refund: event.refund } : {}) });
     }
   }
   const policy = (await client.query(`SELECT revision,transaction_commission_bps AS "transactionCommissionBps",manager_commission_bps AS "managerCommissionBps",updated_at AS "updatedAt",updated_by AS "updatedBy" FROM remittance_commission_policy WHERE id=1`)).rows[0];
@@ -90,8 +90,8 @@ export async function saveRemittances(client: pg.PoolClient, state: RemittanceSt
     await client.query(`INSERT INTO remittance_transfers(id,sequence,envio_reference,recibo_reference,operating_code,
       sender_client_id,recipient_client_id,sending_user_id,registered_by,source_currency,destination_currency,
       amount,commission_bps,commission_amount,total_amount,receive_amount,quote_date,source_rate,destination_rate,note,created_at,
-      quote_recorded_at,source_rate_change_id,destination_rate_change_id,sender_contact,recipient_contact,manager_commission,commission_allocation,amount_dop,requested_receive_amount,source_rate_date,destination_rate_date)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)`,
+      quote_recorded_at,source_rate_change_id,destination_rate_change_id,sender_contact,recipient_contact,manager_commission,commission_allocation,amount_dop,requested_receive_amount,source_rate_date,destination_rate_date,payment,receipt_issuer,source_rate_kind,destination_rate_kind)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36)`,
       [t.id,t.sequence,t.envioReference,t.reciboReference,t.operatingCode,t.senderClientId,t.recipientClientId,
         t.sendingUserId,t.registeredBy,t.sourceCurrency,t.destinationCurrency,t.amount,t.commissionBps,
         t.commissionAmount,t.totalAmount,t.receiveAmount,t.quote.date,t.quote.sourceRate,t.quote.destinationRate,t.note,t.createdAt,
@@ -99,12 +99,12 @@ export async function saveRemittances(client: pg.PoolClient, state: RemittanceSt
         t.senderContact ? JSON.stringify(t.senderContact) : null,t.recipientContact ? JSON.stringify(t.recipientContact) : null,
         t.managerCommission ? JSON.stringify(t.managerCommission) : null,
         t.commissionAllocation ? JSON.stringify(t.commissionAllocation) : null,t.amountDop ?? null,t.requestedReceiveAmount ?? null,
-        t.quote.sourceRateDate ?? null,t.quote.destinationRateDate ?? null]);
+        t.quote.sourceRateDate ?? null,t.quote.destinationRateDate ?? null,t.payment ? JSON.stringify(t.payment) : null,t.receiptIssuer ? JSON.stringify(t.receiptIssuer) : null,t.quote.sourceRateKind ?? null,t.quote.destinationRateKind ?? null]);
   }
   for (const event of state.events) {
     if (before.events.some((old) => old.id === event.id)) continue;
-    await client.query(`INSERT INTO remittance_events(id,type,transfer_id,cash_session_id,operator_id,currency,amount,actor_id,created_at,reason)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-      [event.id,event.type,event.transferId ?? null,event.cashSessionId,event.operatorId,event.currency,event.amount,event.actorId,event.createdAt,event.reason ?? null]);
+    await client.query(`INSERT INTO remittance_events(id,type,transfer_id,cash_session_id,operator_id,currency,amount,actor_id,created_at,reason,refund_confirmation)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+      [event.id,event.type,event.transferId ?? null,event.cashSessionId,event.operatorId,event.currency,event.amount,event.actorId,event.createdAt,event.reason ?? null,event.refund ? JSON.stringify(event.refund) : null]);
   }
 }

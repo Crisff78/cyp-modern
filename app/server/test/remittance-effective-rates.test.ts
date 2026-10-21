@@ -90,7 +90,7 @@ test("legacy rate dates and DOP dates are frozen in SQL as bound values and rest
   const connection = { query: async (sql: string, values?: unknown[]) => { calls.push({ sql, values }); return { rows: [] }; } } as unknown as pg.PoolClient;
   await saveRemittances(connection, state.remittances, before);
   const insert = calls.find(({ sql }) => sql.startsWith("INSERT INTO remittance_transfers"))!;
-  assert.match(insert.sql, /source_rate_date,destination_rate_date/); assert.deepEqual(insert.values?.slice(-2), ["2026-10-16", "2026-10-17"]);
+  assert.match(insert.sql, /source_rate_date,destination_rate_date/); assert.deepEqual(insert.values?.slice(30, 32), ["2026-10-16", "2026-10-17"]);
   const dbRows = [{ id: saved.id, sequence: saved.sequence, amount: saved.amount, receiveAmount: saved.receiveAmount, quoteDate: saved.quote.date,
     sourceRate: saved.quote.sourceRate, destinationRate: saved.quote.destinationRate, sourceRateDate: "2026-10-16", destinationRateDate: "2026-10-17" },
     { id: "legacy-unknown", quoteDate: "2020-01-01", sourceRate: "60.000000", destinationRate: "75.000000", sourceRateDate: null, destinationRateDate: null }];

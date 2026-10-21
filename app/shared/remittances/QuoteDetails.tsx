@@ -3,6 +3,7 @@ import { formatMoney as money } from "./output";
 import { formatCrossRate } from "./crossRate";
 import { rateMoment } from "./suggestions";
 import { allocationRows } from "./commissionOutput";
+import { rateKindLabel } from "./appliedRate.mjs";
 
 /** Presentation only: every amount and the frozen rates come from the server. */
 export function QuoteDetails({ quote }: { quote: Quotation }) {
@@ -39,12 +40,12 @@ export function QuoteDetails({ quote }: { quote: Quotation }) {
         <li><span>Monto en destino</span><strong>{money(quote.receiveAmount, quote.destinationCurrency)}</strong></li>
       </ol>
       <dl className="remittance-summary remittance-quote-rates">
-        <div><dt>Valor de 1 {quote.sourceCurrency} en pesos</dt><dd>1 {quote.sourceCurrency} = {quote.quote.sourceRate} DOP<small>{rateDate(quote.sourceCurrency, quote.quote.sourceRateDate)}</small></dd></div>
-        <div><dt>Valor de 1 {quote.destinationCurrency} en pesos</dt><dd>1 {quote.destinationCurrency} = {quote.quote.destinationRate} DOP<small>{rateDate(quote.destinationCurrency, quote.quote.destinationRateDate)}</small></dd></div>
+        <div><dt>{rateKindLabel[quote.quote.sourceRateKind ?? "operative"]} · {quote.sourceCurrency}</dt><dd>1 {quote.sourceCurrency} = {quote.quote.sourceRate} DOP<small>{rateDate(quote.sourceCurrency, quote.quote.sourceRateDate)}</small></dd></div>
+        <div><dt>{rateKindLabel[quote.quote.destinationRateKind ?? "operative"]} · {quote.destinationCurrency}</dt><dd>1 {quote.destinationCurrency} = {quote.quote.destinationRate} DOP<small>{rateDate(quote.destinationCurrency, quote.quote.destinationRateDate)}</small></dd></div>
         <div><dt>Tasa de origen a destino</dt><dd>1 {quote.sourceCurrency} {crossRate.approximate ? "≈" : "="} {crossRate.text} {quote.destinationCurrency}{crossRate.approximate && <small> (tasa mostrada redondeada)</small>}</dd></div>
         <div><dt>Hora de cotización</dt><dd>{rateMoment(quote.quote.quotedAt)}</dd></div>
       </dl>
-      <p className="remittance-help">El principal se multiplica por la tasa de origen y se divide entre la tasa de destino. El equivalente en pesos es informativo; los importes finales se redondean a centavos.</p>
+      <p className="remittance-help">Compramos la moneda de origen y vendemos la de destino, pasando por pesos. Si ambas son iguales no se cambia de moneda. El equivalente en pesos es informativo; los importes finales se redondean a centavos. Las tasas antiguas sin compra y venta conservan su tasa única registrada.</p>
     </section>
     {quote.commissionAllocation && <details className="remittance-commission-details"><summary>Reparto de la comisión entre empresa y gestor</summary><dl className="remittance-summary">{allocationRows(quote.commissionAllocation, saved ? (quote as Transfer).status : undefined).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl><p className="remittance-help">Este reparto sale de la comisión ya cobrada. No es otro cargo al remitente ni un descuento al destinatario.</p></details>}
   </div>;

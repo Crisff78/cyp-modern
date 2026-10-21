@@ -70,7 +70,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
           // Added browser scenarios use fixed synthetic clients, so their own legitimate traffic does not
           // exhaust the earlier scenarios' IP budget. The real API authentication and limits still run.
           const qaClient = request.headers["x-qa-rate-refresh-client"];
-          const remoteAddress = qaClient === "admin" ? "192.0.2.20" : qaClient === "collector" ? "192.0.2.21" : qaClient === "cashier" ? "192.0.2.22" : qaClient === "commission-policy" ? "192.0.2.23" : "127.0.0.1";
+          const remoteAddress = qaClient === "admin" ? "192.0.2.20" : qaClient === "collector" ? "192.0.2.21" : qaClient === "cashier" ? "192.0.2.22" : qaClient === "commission-policy" ? "192.0.2.23" : qaClient === "payments-admin" ? "192.0.2.24" : qaClient === "payments-collector" ? "192.0.2.25" : "127.0.0.1";
           const result = await app.inject({ method: request.method as "GET" | "POST", url: url.pathname + url.search, remoteAddress,
             headers: { authorization: request.headers.authorization ?? "", "idempotency-key": String(request.headers["idempotency-key"] ?? ""), ...(request.headers["content-type"] ? { "content-type": request.headers["content-type"] } : {}) },
             ...(chunks.length ? { payload: Buffer.concat(chunks).toString() } : {}) });
@@ -145,6 +145,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
       try {
         await context.addInitScript(({ token, surface }: { token: string; surface: string }) => {
           if (surface === "admin") localStorage.setItem("cyp-admin-token", token); else sessionStorage.setItem("cyp-collector-token", token);
+          (window as any).__qaPrinted = false; window.print = () => { (window as any).__qaPrinted = true; };
         }, { token: tokens[surface], surface });
         await context.route("**/*", routeLocalOnly);
         const page = await context.newPage(); page.setDefaultTimeout(15000); page.on("pageerror", (error: Error) => errors.push(error.message));
@@ -215,6 +216,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
     });
     for (const surface of ["admin", "collector"]) await t.test(`${surface} active render: readonly DOP, inverse rounding, save and cancellation`, async () => {
       const context = await browser.newContext({ viewport: surface === "admin" ? { width: 1440, height: 1000 } : { width: 390, height: 844 }, locale: "es-DO", serviceWorkers: "block" });
+      await context.addInitScript(() => { (window as any).__qaPrinted = false; window.print = () => { (window as any).__qaPrinted = true; }; });
       try {
         await context.addInitScript(({ token, surface }: { token: string; surface: string }) => {
           if (surface === "admin") localStorage.setItem("cyp-admin-token", token); else sessionStorage.setItem("cyp-collector-token", token);
@@ -281,10 +283,20 @@ createRoot(document.getElementById("root")).render(<App />);`);
         await page.screenshot({ path: path.join(output, `${surface}-quote.png`) });
         await workspace.getByRole("button", { name: "Revisar y confirmar envío", exact: true }).click();
         const confirmation = page.getByRole("dialog", { name: "Confirmar envío", exact: true });
+        const countBeforeReview = (await store.read()).remittances.transfers.length;
+        await confirmation.getByLabel("Dinero recibido (USD)", { exact: true }).fill("104");
+        await confirmation.getByRole("button", { name: "Aceptar", exact: true }).click();
+        await confirmation.getByRole("alert").filter({ hasText: "no cubre" }).waitFor();
+        assert.equal((await store.read()).remittances.transfers.length, countBeforeReview, "insufficient tender does not save");
+        await confirmation.getByRole("button", { name: "Cancelar", exact: true }).click();
+        assert.equal((await store.read()).remittances.transfers.length, countBeforeReview, "cancelling the review creates no transfer");
+        await workspace.getByRole("button", { name: "Revisar y confirmar envío", exact: true }).click();
+        await confirmation.getByLabel("Dinero recibido (USD)", { exact: true }).fill("110");
+        assert.equal(await confirmation.getByLabel("Devuelta (USD)", { exact: true }).inputValue(), "USD 5.00");
         await confirmation.getByText("Reparto de la comisión entre empresa y gestor", { exact: true }).click();
         assert.match(await confirmation.innerText(), /EUR 1\.60/); assert.match(await confirmation.innerText(), /EUR 2\.40/);
         const savedReply = page.waitForResponse((reply: any) => reply.request().method() === "POST" && new URL(reply.url()).pathname === "/api/envios");
-        await confirmation.getByRole("button", { name: "Confirmar", exact: true }).click();
+        await confirmation.getByRole("button", { name: "Aceptar", exact: true }).click();
         const registered = await savedReply;
         assert.equal(registered.status(), 200);
         const registeredTransfer = await registered.json();
@@ -303,10 +315,24 @@ createRoot(document.getElementById("root")).render(<App />);`);
         assert.equal(saved.quote.sourceRateDate, sourceRateDate, "the source rate retains its actual prior registration date");
         assert.equal(saved.quote.destinationRateDate, destinationRateDate, "currencies retain their distinct registration dates");
         assert.equal(saved.requestedReceiveAmount, 8000); assert.equal(saved.commissionAllocation!.managerAmount, 160);
+        assert.equal(saved.payment?.tenderedAmount, 11000); assert.equal(saved.payment?.changeAmount, 500);
         assert.equal(saved.sendingUserId, surface === "admin" ? admin.id : collector.id);
         await workspace.getByRole("button", { name: saved.envioReference, exact: true }).click();
         const detail = page.getByRole("dialog", { name: `${saved.envioReference} · ${saved.reciboReference}`, exact: true });
         await detail.getByLabel("Motivo de cancelación", { exact: true }).waitFor();
+        const customerReceipt = detail.getByRole("article", { name: "Recibo del envío de dinero", exact: true });
+        assert.match(await customerReceipt.innerText(), /USD 110\.00/); assert.match(await customerReceipt.innerText(), /USD 5\.00/);
+        assert.equal((await customerReceipt.innerText()).includes("Comisión"), false);
+        const receiptPopupPromise = page.waitForEvent("popup");
+        await detail.getByRole("button", { name: "Imprimir comprobante", exact: true }).click();
+        const receiptPopup = await receiptPopupPromise;
+        await receiptPopup.waitForFunction(() => (window as any).__qaPrinted === true);
+        assert.equal((await receiptPopup.locator("body").innerText()).includes("Comisión"), false);
+        assert.match(await receiptPopup.locator("body").innerText(), /Devuelta/);
+        assert.equal(await receiptPopup.locator("nav,aside,button,input,select").count(), 0);
+        await receiptPopup.close();
+        await detail.locator(".remittance-receipt-body").evaluate((node: HTMLElement) => { node.scrollTop = 0; });
+        await page.screenshot({ path: path.join(output, `${surface}-customer-receipt.png`) });
         // Administración pays only in «Entregas de dinero»: its sending window just cancels.
         if (surface === "admin") assert.equal(await detail.getByRole("button", { name: "Registrar entrega", exact: true }).count(), 0);
         await detail.getByLabel("Motivo de cancelación", { exact: true }).fill("Cancelación sintética QA");
@@ -505,7 +531,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
         const title = confirm.locator("header"), box = await title.boundingBox(), initial = await confirm.boundingBox(); assert(box && initial);
         await page.mouse.move(box.x + 60, box.y + 12); await page.mouse.down(); await page.mouse.move(box.x + 100, box.y + 25); await page.mouse.up();
         const moved = await confirm.boundingBox(); assert(moved && moved.x > initial.x + 20, "only the modal title drags");
-        await confirm.getByRole("button", { name: "Confirmar", exact: true }).click();
+        await confirm.getByRole("button", { name: "Aceptar", exact: true }).click();
         const print = page.getByRole("dialog", { name: "¿Quieres imprimir el recibo?", exact: true }); await print.waitFor();
         await print.getByRole("button", { name: "No imprimir", exact: true }).click();
         const after = await store.read(); assert.equal(after.clients.length, before.clients.length + 2);
@@ -560,6 +586,65 @@ createRoot(document.getElementById("root")).render(<App />);`);
         await sender.waitFor({ state: "detached" });
         for (const name of ["Nuevo envío", "Limpiar formulario", "Calcular cotización"]) assert.equal(await workspace.getByRole("button", { name, exact: true }).count(), 0, name);
         await page.screenshot({ path: path.join(output, "cashier-after-permission-revocation.png") });
+      } finally { await context.close(); }
+    });
+    for (const surface of ["admin", "collector"]) await t.test(`${surface} records only verified external payments and refunds without changing physical cash`, async () => {
+      const actor = surface === "admin" ? admin : collector;
+      await store.transaction((state) => {
+        if (!state.remittances.cashSessions.some((cash) => cash.operatorId === actor.id && cash.currency === "DOP" && cash.date === businessDate(now)))
+          openRemittanceCash(state, admin, { operatorId: actor.id, currency: "DOP", openingAmount: 0 }, [collector], now);
+      });
+      const context = await browser.newContext({ viewport: surface === "admin" ? { width: 1440, height: 1000 } : { width: 390, height: 844 }, locale: "es-DO", serviceWorkers: "block", extraHTTPHeaders: { "x-qa-rate-refresh-client": `payments-${surface}` } });
+      try {
+        await context.addInitScript(({ token, surface }: { token: string; surface: string }) => {
+          if (surface === "admin") localStorage.setItem("cyp-admin-token", token); else sessionStorage.setItem("cyp-collector-token", token);
+        }, { token: tokens[surface], surface });
+        await context.route("**/*", routeLocalOnly);
+        const page = await context.newPage(); page.setDefaultTimeout(15000); page.on("pageerror", (error: Error) => errors.push(error.message));
+        await page.goto(`${origin}/${surface}/?view=remittances`);
+        if (surface === "admin") await (await menuOption(page, "Envíos de dinero")).click();
+        const workspace = page.getByRole("region", { name: "Envíos de dinero", exact: true });
+        for (const method of ["card", "transfer", "deposit"]) {
+          const choose = async (label: string, code: string) => {
+            await workspace.getByRole("combobox", { name: label, exact: true }).fill(code);
+            await workspace.getByRole("option").filter({ hasText: code }).first().click();
+          };
+          await choose("Remitente", "CL-0001"); await choose("Destinatario", "CL-0002");
+          await workspace.getByLabel("Moneda del remitente").selectOption("DOP");
+          await workspace.getByLabel("Moneda del destinatario").selectOption("DOP");
+          await workspace.getByLabel("Monto a enviar (DOP)", { exact: true }).fill("900");
+          await workspace.getByRole("button", { name: "Calcular cotización", exact: true }).click();
+          await workspace.getByRole("button", { name: "Revisar y confirmar envío", exact: true }).click();
+          const review = page.getByRole("dialog", { name: "Confirmar envío", exact: true });
+          await review.getByLabel("Forma de pago", { exact: true }).selectOption(method);
+          const before = (await store.read()).remittances.transfers.length;
+          await review.getByRole("button", { name: "Aceptar", exact: true }).click();
+          await review.getByRole("alert").waitFor();
+          assert.equal((await store.read()).remittances.transfers.length, before);
+          await review.getByLabel("Referencia del comprobante", { exact: true }).fill(`QA-${surface}-${method}`);
+          await review.getByLabel("Banco o proveedor (opcional)", { exact: true }).fill("Banco ficticio");
+          await review.getByLabel("Comprobé que el pago fue recibido", { exact: true }).check();
+          await page.screenshot({ path: path.join(output, `${surface}-${method}-confirmation.png`) });
+          await review.getByRole("button", { name: "Aceptar", exact: true }).click();
+          const print = page.getByRole("dialog", { name: "¿Quieres imprimir el recibo?", exact: true }); await print.waitFor();
+          await print.getByRole("button", { name: "No imprimir", exact: true }).click();
+          const saved = (await store.read()).remittances.transfers.at(-1)!;
+          assert.equal(saved.payment?.method, method);
+          assert.equal((await store.read()).remittances.events.find((event) => event.transferId === saved.id && event.type === "sent")?.amount, 0);
+          await workspace.getByRole("button", { name: saved.envioReference, exact: true }).click();
+          const detail = page.getByRole("dialog", { name: `${saved.envioReference} · ${saved.reciboReference}`, exact: true });
+          const receipt = detail.getByRole("article", { name: "Recibo del envío de dinero", exact: true });
+          assert.match(await receipt.innerText(), new RegExp(`QA-${surface}-${method}`)); assert.equal((await receipt.innerText()).includes("Devuelta"), false);
+          await detail.getByLabel("Motivo de cancelación", { exact: true }).fill("Prueba de devolución externa");
+          await detail.getByLabel("Referencia de devolución", { exact: true }).fill(`QA-REFUND-${surface}-${method}`);
+          await detail.getByLabel("Comprobé la devolución al remitente", { exact: true }).check();
+          await detail.getByRole("button", { name: "Revisar cancelación", exact: true }).click();
+          await page.getByRole("dialog", { name: "Cancelar envío pendiente", exact: true }).getByRole("button", { name: "Confirmar", exact: true }).click();
+          await detail.locator(".remittance-status.cancelled").waitFor();
+          const after = await store.read(); assert.equal(after.remittances.events.find((event) => event.transferId === saved.id && event.type === "cancelled")?.amount, 0);
+          assert.equal(after.remittances.transfers.find(({ id }) => id === saved.id)?.refund?.reference, `QA-REFUND-${surface}-${method}`);
+          await detail.getByRole("button", { name: `Cerrar ${saved.envioReference} · ${saved.reciboReference}`, exact: true }).click();
+        }
       } finally { await context.close(); }
     });
     assert.deepEqual(errors, []); assert.equal(unexpectedExternalAttempts, 0, "The application must not attempt any unexpected external request.");

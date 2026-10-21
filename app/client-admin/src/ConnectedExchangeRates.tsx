@@ -46,7 +46,7 @@ export function ConnectedExchangeRates({ actorId, isAdmin }: { actorId: string; 
   const review = (event: FormEvent) => {
     event.preventDefault();
     if (!draft || request.locked) return;
-    try { setDraft({ ...draft, rate: confirmedRateInput(draft.rate), purchaseRate: confirmedRateInput(draft.purchaseRate), saleRate: confirmedRateInput(draft.saleRate) }); }
+    try { setDraft({ ...draft, rate: confirmedRateInput(draft.purchaseRate), purchaseRate: confirmedRateInput(draft.purchaseRate), saleRate: confirmedRateInput(draft.saleRate) }); }
     catch (failure) { setFormError(failure instanceof Error ? failure.message : "Revisa la tasa."); return; }
     setFormError(""); setReviewing(true);
   };
@@ -83,10 +83,10 @@ export function ConnectedExchangeRates({ actorId, isAdmin }: { actorId: string; 
       <div className="legacy-mdi-table-wrap"><table className="legacy-mdi-table"><thead><tr><th>Fecha de operación</th><th>Moneda</th><th>Tasa de remesas</th><th>Compra</th><th>Venta</th><th>Fecha y hora (hora de Santo Domingo)</th><th>Registrado por</th></tr></thead><tbody>{[...(snapshot?.rateHistory ?? [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map((row) => <tr key={row.id}><td>{row.date}</td><td>{row.currency}</td><td>{row.rate}</td><td>{row.purchaseRate ?? "Sin configurar"}</td><td>{row.saleRate ?? "Sin configurar"}</td><td>{rateMoment(row.createdAt)}</td><td>{snapshot?.operators.find(({ id }) => id === row.actorId)?.name ?? row.actorId}</td></tr>)}{!snapshot?.rateHistory?.length && <tr><td colSpan={7}>No hay cambios registrados.</td></tr>}</tbody></table></div>
     </details>
     <div className="legacy-footerbar"><span>Registros: {rates.length}</span><span>Jornada: {snapshot?.businessDate ?? "—"}</span></div>
-    <p className="catalog-scope-note">Valores en DOP por una unidad de la moneda. Compra y venta se configuran por separado. Los envíos de dinero utilizan la última tasa de remesas registrada de cada moneda, aunque sea de días anteriores. Sus operaciones anteriores conservan la tasa guardada. DOP siempre vale 1.</p>
+    <p className="catalog-scope-note">Escribe cuántos pesos vale una unidad de cada moneda. Compra: recibimos esa moneda del remitente. Venta: la entregamos al destinatario. Se usa la última tasa registrada, aunque sea de días anteriores. Cada envío conserva sus tasas. Si envías y recibes la misma moneda no se realiza otro cambio. DOP siempre vale 1.</p>
     {draft && <LegacyDialog title={reviewing ? "Confirmar Tasa de Cambio..." : "Datos de la Tasa de Cambio..."} className="exchange-rate-dialog" onClose={close}>
       {reviewing ? <div className="legacy-dialog-form">
-        <p>Guardar <strong>1 {draft.currency} = {draft.rate} DOP</strong> para {draft.date}.</p>
+        <p>Guardar tasas de <strong>{draft.currency}</strong> para {draft.date}.</p>
         <p>Compra: <strong>{draft.purchaseRate} DOP</strong>. Venta: <strong>{draft.saleRate} DOP</strong>.</p>
         <RateRegistrationTime rate={rates.find((row) => row.currency === draft.currency && row.date === draft.date)} className="exchange-rate-row" labelClassName="exchange-rate-label" />
         <p>Los envíos anteriores conservan su tasa. La tasa de DOP es siempre 1.</p>
@@ -98,10 +98,10 @@ export function ConnectedExchangeRates({ actorId, isAdmin }: { actorId: string; 
         <label className="exchange-rate-row"><span className="exchange-rate-label">Moneda:</span><select value={draft.currency} onChange={(event) => { const value = event.target.value === "DOP" ? "1.000000" : ""; setDraft({ ...draft, currency: event.target.value as Currency, rate: value, purchaseRate: value, saleRate: value }); }}>{(snapshot?.currencies ?? []).map((code) => <option key={code} value={code}>{names[code]}</option>)}</select></label>
         <label className="exchange-rate-row exchange-date-row"><span className="exchange-rate-label">Fecha:</span><input type="date" value={draft.date} readOnly /></label>
         <RateRegistrationTime rate={rates.find((row) => row.currency === draft.currency && row.date === draft.date)} className="exchange-rate-row" labelClassName="exchange-rate-label" />
-        {([['rate', 'Tasa de remesas'], ['purchaseRate', 'Compra'], ['saleRate', 'Venta']] as const).map(([key, label]) => <label className="exchange-rate-row" key={key}><span className="exchange-rate-label">{label}:</span><input aria-label={label} required inputMode="decimal" maxLength={RATE_INPUT_MAX_LENGTH} value={draft[key] ?? ""} readOnly={draft.currency === "DOP"} onChange={(event) => { setDraft({ ...draft, [key]: rateInputDraft(event.target.value) }); setFormError(""); }} /></label>)}
+        {([['purchaseRate', 'Compra'], ['saleRate', 'Venta']] as const).map(([key, label]) => <label className="exchange-rate-row" key={key}><span className="exchange-rate-label">{label}:</span><input aria-label={label} required inputMode="decimal" maxLength={RATE_INPUT_MAX_LENGTH} value={draft[key] ?? ""} readOnly={draft.currency === "DOP"} onChange={(event) => { setDraft({ ...draft, [key]: rateInputDraft(event.target.value) }); setFormError(""); }} /></label>)}
         <p className="exchange-rate-hint" role="note">{draft.currency === "DOP"
           ? "El peso dominicano es la moneda base: siempre vale 1 y por eso aquí no se puede cambiar. Para registrar una tasa, elige Dólar Americano o Euro en «Moneda»."
-          : `Escribe cuántos pesos dominicanos (DOP) vale 1 ${draft.currency}. Los tres valores se pueden editar.`}</p>
+          : `Escribe cuántos pesos dominicanos (DOP) vale 1 ${draft.currency}. Compra cuando recibimos la moneda; venta cuando la entregamos.`}</p>
         {formError && <p role="alert">{formError}</p>}
         <div className="legacy-dialog-actions centered exchange-rate-actions"><button type="submit">Revisar tasa</button><button type="button" onClick={close}>Cancelar</button></div>
       </form>}

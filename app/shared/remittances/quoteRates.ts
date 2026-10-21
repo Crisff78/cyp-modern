@@ -1,4 +1,5 @@
 import type { Currency, Quotation, Rate, RemittanceSnapshot } from "./types";
+import { appliedRate } from "./appliedRate.mjs";
 
 /** Match the server: the most recent registered date that is not in the future. */
 export function effectiveRate(rates: Rate[], currency: Currency, date: string) {
@@ -20,8 +21,10 @@ export function quoteStillCurrent(quotation: Quotation, snapshot: RemittanceSnap
     const currency = quotation[`${side}Currency`];
     const rate = effectiveRate(snapshot.rates, currency, snapshot.businessDate);
     if (currency !== "DOP" && !rate) return false;
-    const value = currency === "DOP" ? "1.000000" : rate!.rate;
+    const applied = appliedRate(rate, currency, side, quotation.sourceCurrency === quotation.destinationCurrency);
+    const value = applied.rate;
     return normalized(value) === normalized(quote[`${side}Rate`]) && rate?.changeId === quote[`${side}RateChangeId`] &&
+      (!quote[`${side}RateKind`] || quote[`${side}RateKind`] === applied.kind) &&
       (currency === "DOP" || !quote[`${side}RateDate`] || rate?.date === quote[`${side}RateDate`]);
   });
 }

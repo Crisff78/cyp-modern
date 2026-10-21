@@ -210,6 +210,26 @@ dialog.remittances-dialog { position: fixed; inset: 0; margin: auto; }
   }
 }
 
+.remittance-payment { margin: 12px 0; padding: 12px; border: 1px solid var(--rem-edge); border-radius: 5px; display: grid; gap: 10px; }
+.remittance-payment legend { font-weight: 700; padding: 0 6px; }
+.remittance-payment-total { margin: 0; font-size: 15px; }
+.remittance-payment-cash { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.remittance-payment-cash .remittance-help { grid-column: 1 / -1; }
+.remittances .remittance-payment-check, .remittances-dialog .remittance-payment-check { display: flex; flex-direction: row; align-items: center; gap: 8px; }
+.remittance-payment-check input[type="checkbox"] { width: 18px; height: 18px; flex: 0 0 18px; }
+.remittance-customer-receipt { color: var(--cyp-text, #172a45); }
+.remittance-receipt-reference { display: flex; justify-content: space-between; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--rem-edge); flex-wrap: wrap; }
+.remittance-receipt-company { text-align: center; padding: 14px 0; }
+.remittance-receipt-company img { max-width: 130px; max-height: 65px; }
+.remittance-receipt-company h2 { margin: 4px 0; font-size: 18px; }
+.remittance-receipt-company p { margin: 4px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.remittance-receipt-sections { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 20px; }
+.remittance-receipt-sections section { min-width: 0; }
+.remittance-receipt-sections h3 { font-size: 13px; margin: 8px 0; padding: 6px 0; border-bottom: 1px solid var(--rem-edge); }
+.remittance-receipt-sections dd { overflow-wrap: anywhere; white-space: pre-wrap; }
+.remittance-customer-receipt footer { margin-top: 18px; padding: 14px 0; border-top: 1px solid var(--rem-edge); white-space: pre-wrap; overflow-wrap: anywhere; }
+@container (max-width: 600px) { .remittance-receipt-sections, .remittance-payment-cash { grid-template-columns: 1fr; } }
+
 /* Modeless receipt window (detail of a send or receipt). */
 .remittance-receipt-window { flex-direction: column; container-type: inline-size; margin: 0; max-width: none; max-height: none; overflow: hidden; border-radius: 5px; box-shadow: 0 10px 35px #152c4b40; }
 .remittance-receipt-window > .remittance-receipt-titlebar { flex: 0 0 36px; min-height: 36px; padding: 0 7px 0 12px; gap: 8px; color: #f8fafc; background: linear-gradient(180deg, #0f766e, #065f46); cursor: move; user-select: none; touch-action: none; }

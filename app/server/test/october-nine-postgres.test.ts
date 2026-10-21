@@ -72,7 +72,7 @@ test("PostgreSQL 001–029 preserve new contracts, serialized reservations and i
     const rate = await post("/api/envios/tasas", rateBody); assert.equal(rate.statusCode, 200, rate.body);
     const rateRead = await parallel.read(), currentRate = rateRead.remittances.rates.find((row) => row.currency === "USD" && row.date === date)!;
     assert.equal(currentRate.purchaseRate, "58.000000"); assert.equal(currentRate.saleRate, "62.000000");
-    assert.equal(quoteRemittance(rateRead, { sourceCurrency: "USD", destinationCurrency: "DOP", amount: 1000 }, now).receiveAmount, 60000);
+    assert.equal(quoteRemittance(rateRead, { sourceCurrency: "USD", destinationCurrency: "DOP", amount: 1000 }, now).receiveAmount, 58000);
     const history = rateRead.remittances.rateHistory!.find((row) => row.id === currentRate.changeId)!;
     assert.equal(history.purchaseRate, "58.000000"); assert.equal(history.saleRate, "62.000000");
     await assert.rejects(sql.query("UPDATE remittance_rate_history SET sale_rate=63 WHERE id=$1", [history.id]), /append-only/);

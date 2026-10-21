@@ -80,7 +80,7 @@ remittancesApi('/snapshot').then(snapshot=>createRoot(document.getElementById('r
     await t.test("buy/sell survive a missing successful acknowledgement and retry keeps one idempotent write", async () => {
       await page.getByRole("button", { name: "Nuevo", exact: true }).click();
       let dialog = page.getByRole("dialog", { name: "Datos de la Tasa de Cambio...", exact: true });
-      await dialog.getByLabel("Tasa de remesas", { exact: true }).fill("60"); await dialog.getByLabel("Compra", { exact: true }).fill("59.25"); await dialog.getByLabel("Venta", { exact: true }).fill("61.75");
+      await dialog.getByLabel("Compra", { exact: true }).fill("59.25"); await dialog.getByLabel("Venta", { exact: true }).fill("61.75");
       await dialog.getByRole("button", { name: "Revisar tasa", exact: true }).click();
       dialog = page.getByRole("dialog", { name: "Confirmar Tasa de Cambio...", exact: true });
       const before = (await store.read()).remittances.rateHistory?.length ?? 0;
@@ -95,10 +95,10 @@ remittancesApi('/snapshot').then(snapshot=>createRoot(document.getElementById('r
       const row = page.locator(".exchange-rates-grid tbody tr").filter({ hasText: "59.250000" }); await row.waitFor(); assert.ok((await row.innerText()).includes("61.750000"));
       await page.screenshot({ path: path.join(output, "rates.png"), fullPage: true });
     });
-    await t.test("editing the DOP reference shows three readonly values of one", async () => {
+    await t.test("editing the DOP reference shows two readonly values of one", async () => {
       await page.locator("tbody tr").filter({ hasText: "Peso Dominicano" }).dblclick();
       const dialog = page.getByRole("dialog", { name: "Datos de la Tasa de Cambio...", exact: true });
-      for (const name of ["Tasa de remesas", "Compra", "Venta"]) { const input = dialog.getByLabel(name, { exact: true }); assert.equal(await input.inputValue(), "1.000000"); assert.equal(await input.getAttribute("readonly"), ""); }
+      for (const name of ["Compra", "Venta"]) { const input = dialog.getByLabel(name, { exact: true }); assert.equal(await input.inputValue(), "1.000000"); assert.equal(await input.getAttribute("readonly"), ""); }
       await dialog.getByRole("button", { name: "Revisar tasa", exact: true }).click();
       await page.getByRole("dialog", { name: "Confirmar Tasa de Cambio...", exact: true }).getByRole("button", { name: "Cerrar Confirmar Tasa de Cambio...", exact: true }).click();
     });

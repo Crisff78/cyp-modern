@@ -84,7 +84,7 @@ test("collection bank reference and note are captured once, survive renaming, an
   } finally { await env.app.close(); }
 });
 
-test("commercial purchase/sale settings retain operational conversion, historical revisions and no-op timestamps", async () => {
+test("commercial purchase/sale settings price new conversions and preserve historical revisions and no-op timestamps", async () => {
   const state = seed(), actor = { id: "demo-admin", name: "Admin", role: "admin" as const }, now = new Date();
   const date = businessDate(now);
   setDailyRate(state, actor, { currency: "USD", date, rate: "60" }, now);
@@ -93,7 +93,8 @@ test("commercial purchase/sale settings retain operational conversion, historica
   const rate = setDailyRate(state, actor, { currency: "USD", date, rate: "60", purchaseRate: "58.5", saleRate: "62" }, now);
   assert.equal(rate.purchaseRate, "58.500000"); assert.equal(rate.saleRate, "62.000000");
   const quote = quoteRemittance(state, { sourceCurrency: "USD", destinationCurrency: "DOP", amount: 1000 }, now);
-  assert.equal(quote.receiveAmount, original.receiveAmount); assert.equal(quote.quote.sourceRate, "60.000000");
+  assert.equal(original.receiveAmount, 60000); assert.equal(quote.receiveAmount, 58500); assert.equal(quote.quote.sourceRate, "58.500000");
+  assert.equal(quote.quote.sourceRateKind, "purchase");
   assert.deepEqual(state.remittances.rateHistory!.slice(0, oldHistory.length), oldHistory);
   const current = structuredClone(rate), historyCount = state.remittances.rateHistory!.length;
   assert.deepEqual(setDailyRate(state, actor, { currency: "USD", date, rate: "60", purchaseRate: "58.5", saleRate: "62" }, new Date(now.getTime() + 1000)), current);
