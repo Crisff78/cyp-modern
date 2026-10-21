@@ -18,7 +18,7 @@ async function setup(t: TestContext) {
   const get = (path: string, token = admin) => app.inject({ url: path, headers: { authorization: `Bearer ${token}` } });
   const post = (path: string, body: unknown, token = admin, key = randomUUID()) => app.inject({ method: "POST", url: path, payload: body as object,
     headers: { authorization: `Bearer ${token}`, "idempotency-key": key } });
-  const account = async (role = "user") => {
+  const account = async (role = "cashier") => {
     const email = `qa-${randomUUID()}@example.invalid`;
     const response = await post("/api/usuarios", { role, name: "Operador sintético", email, password: "Ficticia-segura-2026!" });
     assert.equal(response.statusCode, 200, response.body); return { ...response.json(), email } as { id: string; email: string };
@@ -42,9 +42,9 @@ test("role profiles retain old referential selections until personalized; ceilin
   const personalized = { role: "cashier", access: effectiveAccess("cashier", { permissionMode: "custom", permissionIds: [1, 2, 140, 401],
     remittancePermissions: ["remittances.view", "remittances.reports", "remittances.rates.view", "remittances.commissions.view", "remittances.rates.manage"] }) };
   assert.deepEqual(personalized.access.legacy, [1, 2]); assert.deepEqual(personalized.access.remittances, ["remittances.view", "remittances.reports"]);
-  // Collector and Usuario still never open a cash box.
+  // Collector and Cliente still never open a cash box.
   assert.equal(hasRemittancePermission({ role: "collector", access: effectiveAccess("collector") }, "remittances.cash.open"), false);
-  const user = { role: "user", access: effectiveAccess("user", { permissionMode: "custom", permissionIds: [1, 2], remittancePermissions: ["remittances.cash.view", "remittances.cash.open"] }) };
+  const user = { role: "client", access: effectiveAccess("client", { permissionMode: "custom", permissionIds: [1, 2], remittancePermissions: ["remittances.cash.view", "remittances.cash.open"] }) };
   assert.equal(hasRemittancePermission(user, "remittances.cash.open"), false);
 });
 
@@ -168,8 +168,8 @@ test("limited account administration cannot bypass individual restrictions by cr
     const forbidden = await post("/api/usuarios", { role, name: "No autorizado", email: `blocked-${role}@example.invalid`, password: "Ficticia-2026!" }, token);
     assert.equal(forbidden.statusCode, 403, role); assert.deepEqual(await store.read(), before);
   }
-  const allowed = await post("/api/usuarios", { role: "user", name: "Sin permisos iniciales", email: "unprivileged-user@example.invalid", password: "Ficticia-2026!" }, token);
-  assert.equal(allowed.statusCode, 200, allowed.body); assert.equal(allowed.json().role, "user");
+  const allowed = await post("/api/usuarios", { role: "client", name: "Sin permisos iniciales", email: "unprivileged-user@example.invalid", password: "Ficticia-2026!" }, token);
+  assert.equal(allowed.statusCode, 200, allowed.body); assert.equal(allowed.json().role, "client");
 });
 
 test("editing a catalog record cannot hide an unauthorized activation change inside its full payload", async (t) => {

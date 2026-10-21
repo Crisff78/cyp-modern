@@ -462,7 +462,7 @@ test("C5.4 invalid support phone, WhatsApp and e-mail are rejected without chang
 
 test("login answers 'Usuario o contraseña incorrectos.' for every kind of wrong credentials", async (t) => {
   const env = await setup(t);
-  const user = await env.account("user", "Usuario Sintético");
+  const user = await env.account("client", "Usuario Sintético");
   const disabled = await env.account("supervisor", "Cuenta Desactivada");
   assert.equal((await env.post(`/api/usuarios/${disabled.id}/estado`, { status: "disabled" })).statusCode, 200);
   const expected = { error: { code: "INVALID_CREDENTIALS", message: "Usuario o contraseña incorrectos." } };

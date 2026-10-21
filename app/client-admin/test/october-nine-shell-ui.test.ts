@@ -122,7 +122,7 @@ test("October nine shell changes work in actual App with isolated synthetic APIs
       await option.or(folded).first().waitFor({ state: "attached" });
       if (!await option.isVisible()) await page.locator(".sidebar .nav-group").filter({ has: page.locator(`.nav-item[aria-label="${name}"]`) }).locator(".nav-group-trigger").click();
       await option.click(); const view = page.locator(selector); await view.waitFor(); return view; };
-    const openAdmin = async (name: string, selector: string) => { await reset(); await page.getByRole("button", { name: "Administración", exact: true }).click(); await page.getByRole("dialog", { name: "Administración", exact: true }).getByRole("button", { name, exact: true }).click(); const view = page.locator(selector); await view.waitFor(); return view; };
+    const openAdmin = async (name: string, selector: string) => { await reset(); await page.getByRole("button", { name: "Configuración de administración", exact: true }).click(); await page.getByRole("dialog", { name: "Configuración de administración", exact: true }).getByRole("button", { name, exact: true }).click(); const view = page.locator(selector); await view.waitFor(); return view; };
     const run = async (name: string, action: () => Promise<void>) => t.test(name, async () => {
       try { await action(); cases.push({ name, status: "PASS" }); }
       catch (error) { cases.push({ name, status: "FAIL" }); await page.screenshot({ path: path.join(output, `failure-${cases.length}.png`) }).catch(() => {}); throw error; }

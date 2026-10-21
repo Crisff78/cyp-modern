@@ -23,7 +23,7 @@ async function setup(t: TestContext, store: Store = new MemoryStore(seed())) {
   const token = await login();
   const get = (path: string, actor = token) => app.inject({ url: path, headers: { authorization: `Bearer ${actor}` } });
   const post = (path: string, payload: unknown, actor = token, key = randomUUID()) => app.inject({ method: "POST", url: path, payload: payload as object, headers: { authorization: `Bearer ${actor}`, "idempotency-key": key } });
-  const account = async (role: AccountRole = "user") => {
+  const account = async (role: AccountRole = "client") => {
     const body = { name: `María O'Connor & Hijos ${randomUUID()}`, email: `qa-${randomUUID()}@example.invalid`, role, password: "Clave-legítima+#'☃", ...(role === "collector" ? { collectorId: "col-1" } : {}) };
     const result = await post("/api/usuarios", body);
     assert.equal(result.statusCode, 200, result.body);
@@ -118,16 +118,17 @@ test("catalog assignments never elevate roles; only Admin can save and Superviso
     "remittances.cash.open", "remittances.cash.close", "remittances.reports", "remittances.rates.view", "remittances.rates.manage", "remittances.commissions.view", "remittances.commissions.manage"];
   const keysWithout = (...left: string[]) => keys.filter((key) => !left.includes(key));
   // The most each role can reach with every code and every key of Envíos personalized, written out apart from
-  // access.mjs so a leak there is caught here. Without «Entrar al sistema» (No definido) nothing applies.
-  const ceilings: Record<"undefined" | "user" | "collector" | "supervisor" | "cashier", { legacy: number[]; remittances: string[] }> = {
+  // access.mjs so a leak there is caught here. Without «Entrar al sistema» (No definido, Cliente) nothing applies.
+  const ceilings: Record<"undefined" | "client" | "collector" | "supervisor" | "cashier", { legacy: number[]; remittances: string[] }> = {
     undefined: { legacy: [], remittances: [] },
-    user: { legacy: [1, 2], remittances: keysWithout("remittances.cash.open", "remittances.rates.manage", "remittances.commissions.manage") },
+    // A Cliente has no access at all, not even personalized.
+    client: { legacy: [], remittances: [] },
     collector: { legacy: rolePermissionIds("collector"), remittances: keysWithout("remittances.cash.open", "remittances.rates.manage", "remittances.commissions.view", "remittances.commissions.manage") },
     supervisor: { legacy: rolePermissionIds("supervisor"), remittances: ["remittances.view", "remittances.receipts", "remittances.cash.view", "remittances.reports", "remittances.rates.view", "remittances.commissions.view"] },
     cashier: { legacy: [1, 2], remittances: keysWithout("remittances.rates.view", "remittances.rates.manage", "remittances.commissions.view", "remittances.commissions.manage") },
   };
   const sorted = <T extends string | number>(values: readonly T[]) => [...values].sort((a, b) => String(a).localeCompare(String(b), "en", { numeric: true }));
-  for (const role of ["undefined", "user", "collector", "supervisor", "cashier"] as const) {
+  for (const role of ["undefined", "client", "collector", "supervisor", "cashier"] as const) {
     const target = await account(role), actor = await login(target.email, target.body.password);
     // An explicit personalized mode: a body without `mode` would only store the lists (S9).
     const assigned = await post(`/api/usuarios/${target.id}/permisos`, { permissionIds: all, mode: "custom", remittancePermissions: keys, revision: 0 });

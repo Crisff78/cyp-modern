@@ -331,7 +331,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
     });
 
     await t.test("S16 «Operador del envío» offers only the operators that can register a transfer", async () => {
-      const payer = await account("user"); await grant(payer.id, [1, 2], ["remittances.receipts"]);
+      const payer = await account("cashier"); await grant(payer.id, [1, 2], ["remittances.receipts"]);
       const desk = await cashier();
       const { context, workspace } = await open(admin);
       try {

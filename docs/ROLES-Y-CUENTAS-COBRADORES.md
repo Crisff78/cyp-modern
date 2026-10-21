@@ -1,5 +1,7 @@
 # Roles y selección de cuentas de cobradores
 
+> **Cambio del 2026-10-20:** el rol Usuario ya no existe. Lo reemplaza **Cliente**, sin acceso por ahora, y las cuentas que eran Usuario pasaron a **Cajero**. Ver `docs/MENU-SIMPLE.md`.
+
 Los formularios de usuarios y las solicitudes `POST /api/usuarios` y
 `POST /api/usuarios/:id` comparten los valores `undefined` (No definido), `admin`
 (Admin), `supervisor` (Supervisor), `collector` (Cobrador), `user` (Usuario) y

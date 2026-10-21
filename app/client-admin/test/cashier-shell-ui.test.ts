@@ -295,7 +295,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         assert.equal(await launchers(page), 0, "no quick buttons above the desktop");
         assert.equal(await page.getByText(/cobradores en calle$/).count(), 0);
         assert.equal(await page.getByTitle("Abrir Cuadres diarios", { exact: true }).count(), 0, "no collector settlement badge without 401");
-        for (const name of ["Buscar en tu operación", "Administración", "Facturas", "Ventana de Pagos", "Hacer copia de respaldo"]) assert.equal(await page.getByRole("button", { name, exact: true }).count(), 0, name);
+        for (const name of ["Buscar en tu operación", "Configuración de administración", "Facturas", "Ventana de Pagos", "Hacer copia de respaldo"]) assert.equal(await page.getByRole("button", { name, exact: true }).count(), 0, name);
         await page.locator("body").press("Control+k");
         assert.equal(await page.getByRole("dialog", { name: "Encuentra lo que necesitas", exact: true }).count(), 0, "nothing to search");
         await page.getByRole("button", { name: "Abrir cuenta", exact: true }).click();

@@ -136,8 +136,8 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
     };
     const windowNamed = (page: any, name: string) => page.getByRole("dialog", { name, exact: true });
     const controlPanelTile = async (page: any, tile: string) => {
-      await menuItem(page, "ADMINISTRACIÓN", "Administración");
-      await windowNamed(page, "Administración").getByRole("button", { name: tile, exact: true }).click();
+      await menuItem(page, "CONFIGURACIÓN DE ADMINISTRACIÓN", "Configuración de administración");
+      await windowNamed(page, "Configuración de administración").getByRole("button", { name: tile, exact: true }).click();
     };
     // Reads the account again as the 30-second refresh does.
     const refresh = async (page: any) => {
@@ -317,7 +317,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
     });
 
     await t.test("U9: an account that loses its access during the session is signed out with the reason", async () => {
-      const desk = await account([1], "user", ["remittances.view"]);
+      const desk = await account([1], "cashier", ["remittances.view"]);
       const { context, page } = await open(desk.token);
       try {
         await grant(desk.id, [1], []);

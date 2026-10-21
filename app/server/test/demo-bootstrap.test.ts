@@ -154,7 +154,7 @@ test("demo mode adds the practice Cajero once, in its role profile, and never re
   } finally { await store.close(); }
   // An account that already uses the address is never duplicated.
   const taken = seed();
-  taken.accounts.push({ id: "qa-existing-cashier", name: "Cuenta existente", email: DEMO_CASHIER_EMAIL.toUpperCase(), role: "user",
+  taken.accounts.push({ id: "qa-existing-cashier", name: "Cuenta existente", email: DEMO_CASHIER_EMAIL.toUpperCase(), role: "client",
     salt: "synthetic-not-an-authentication-salt", passwordHash: "synthetic-not-a-password-hash", credentialVersion: 1,
     status: "active", createdAt: now.toISOString(), updatedAt: now.toISOString() });
   const kept = new MemoryStore(taken);

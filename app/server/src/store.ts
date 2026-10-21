@@ -62,6 +62,12 @@ export class FileStore extends MemoryStore {
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
     }
+    // The Usuario role gave way to Cliente (as migration 036 does in PostgreSQL): a saved Usuario
+    // account attends remittances as Cajero, and its old sessions no longer match the account.
+    const fromUser = <T extends { role: string }>(row: T): T => row.role === "user" ? { ...row, role: "cashier" } : row;
+    data = { ...data, accounts: data.accounts.map((account) => fromUser(account as typeof account & { role: string })) };
+    const tools = (data as State & { adminTools?: { sessions?: { role: string }[] } }).adminTools;
+    if (tools?.sessions) tools.sessions = tools.sessions.map(fromUser);
     const store = new FileStore(path, data);
     await store.persist(data);
     return store;

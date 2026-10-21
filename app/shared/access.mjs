@@ -60,11 +60,10 @@ export function roleRemittancePermissions(role) {
 }
 export function effectiveAccess(role, selection) {
   const normalized = accessRole(role), mode = selection?.permissionMode ?? "role";
-  const ceiling = normalized === "user" ? [1, 2] : rolePermissionIds(role);
+  const ceiling = rolePermissionIds(role);
   const legacy = mode === "role" ? rolePermissionIds(role) : [...new Set(selection?.permissionIds ?? [])].filter((id) => ceiling.includes(id));
   // A cashier may additionally be granted the reports of his own operations.
-  const allowed = normalized === "user" ? REMITTANCE_PERMISSION_KEYS.filter((key) => !maintenance.has(key))
-    : normalized === "cashier" ? [...cashierKeys, "remittances.reports"] : roleRemittancePermissions(role);
+  const allowed = normalized === "cashier" ? [...cashierKeys, "remittances.reports"] : roleRemittancePermissions(role);
   const remittances = mode === "role" ? roleRemittancePermissions(role)
     : [...new Set(selection?.remittancePermissions ?? [])].filter((key) => allowed.includes(key));
   return { mode, revision: selection?.permissionRevision ?? 0,
@@ -101,6 +100,6 @@ export function canOpenPage(actor, page) {
   if (page === "reports") return hasPermission(actor, 400) || hasRemittancePermission(actor, "remittances.reports");
   if (page.startsWith("reportRemittance")) return hasRemittancePermission(actor, "remittances.reports");
   if (page.startsWith("report")) return hasPermission(actor, 400);
-  if (["user", "undefined", "cashier"].includes(accessRole(actor.role))) return false;
+  if (["client", "undefined", "cashier"].includes(accessRole(actor.role))) return false;
   return hasPermission(actor, PAGE_PERMISSIONS[page] ?? 10);
 }

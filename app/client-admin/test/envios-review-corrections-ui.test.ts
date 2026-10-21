@@ -329,7 +329,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         await signIn("admin@cyp.local");
         await page.waitForFunction(() => document.querySelectorAll('nav[aria-label="Navegación principal"] .nav-group-trigger').length === 7, undefined, { timeout: 5000 });
         // The two sections with a single screen are buttons that open it: they never unfold.
-        assert.deepEqual(await groups(), [["Clientes", null], ["COBROS", "false"], ["PAGOS", "false"], ["REMESAS", "false"], ["CUADRES Y REPORTES", "false"], ["MONITOREO", "false"], ["Administración", null]]);
+        assert.deepEqual(await groups(), [["Configuración de administración", null], ["Clientes", null], ["COBROS", "false"], ["PAGOS", "false"], ["REMESAS", "false"], ["CUADRES Y REPORTES", "false"], ["MONITOREO", "false"]]);
         await page.locator(".sidebar").getByRole("button", { name: "COBROS", exact: true }).click();
         await signIn(DEMO_CASHIER_EMAIL);
         await page.waitForFunction(() => document.querySelectorAll('nav[aria-label="Navegación principal"] .nav-group-trigger').length === 2, undefined, { timeout: 5000 });

@@ -108,7 +108,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
         const workspace = page.getByRole("region", { name: "Configuración de comisiones de remesas", exact: true });
         // The fields fill in once the saved policy arrives; reading them before would see the empty draft.
         const openWorkspace = async () => {
-          await page.goto(`${origin}/admin/`); await page.getByRole("button", { name: "Administración", exact: true }).click(); await page.getByRole("button", { name: "Comisiones de remesas", exact: true }).click();
+          await page.goto(`${origin}/admin/`); await page.getByRole("button", { name: "Configuración de administración", exact: true }).click(); await page.getByRole("button", { name: "Comisiones de remesas", exact: true }).click();
           await workspace.waitFor(); await workspace.getByText("Cargando configuración…", { exact: true }).waitFor({ state: "detached" });
         };
         await openWorkspace();
@@ -396,7 +396,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
     });
     await t.test("office Usuario with remittance permissions, atomic quick customers, keyboard capture and continuous focus in the actual Admin shell", async () => {
       const post = (url: string, payload: object, token = tokens.admin) => app.inject({ method: "POST", url, payload, headers: { authorization: `Bearer ${token}`, "idempotency-key": randomUUID() } });
-      const account = await post("/api/usuarios", { role: "user", name: "Cajero sintético", email: "cashier-dionel@example.invalid", password: "Ficticia-2026!" });
+      const account = await post("/api/usuarios", { role: "cashier", name: "Cajero sintético", email: "cashier-dionel@example.invalid", password: "Ficticia-2026!" });
       assert.equal(account.statusCode, 200, account.body);
       const cashier = account.json();
       const keys = ["remittances.view", "remittances.create", "remittances.clients.create", "remittances.receipts", "remittances.pay"];
@@ -413,7 +413,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
         const workspace = page.getByRole("region", { name: "Envíos de dinero", exact: true });
         const sender = workspace.getByRole("combobox", { name: "Remitente", exact: true }); await sender.waitFor();
         assert.equal(await sender.evaluate((element: Element) => element === document.activeElement), true);
-        assert.equal(await page.getByRole("button", { name: "Administración", exact: true }).count(), 0);
+        assert.equal(await page.getByRole("button", { name: "Configuración de administración", exact: true }).count(), 0);
         for (const name of ["Facturas", "Ventana de Pagos", "Hacer copia de respaldo"])
           assert.equal(await page.getByRole("button", { name, exact: true }).count(), 0, `${name} is not a cashier shortcut`);
         assert.equal(await page.getByTitle("Abrir Cuadres diarios", { exact: true }).count(), 0);

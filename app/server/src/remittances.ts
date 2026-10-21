@@ -195,7 +195,7 @@ export function setDailyRate(state: State, user: User, input: Pick<ExchangeRate,
   return row;
 }
 // Office desks (Usuario, Cajero) serve any client and see only their own business.
-const isRemittanceDesk = (role: string) => role === "user" || role === "cashier";
+const isRemittanceDesk = (role: string) => role === "cashier";
 export function remittanceOperators(state: State, user: User, systemOperators: User[] = []) {
   const account = state.accounts.find((a) => a.id === user.id);
   if (account && (account.status !== "active" || account.role !== user.role || account.collectorId !== user.collectorId))

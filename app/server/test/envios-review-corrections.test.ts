@@ -126,16 +126,10 @@ test("«Perfil del rol» keeps the personalized keys of Envíos as a reference t
   await savePermissions(cashier.id, { mode: "custom", permissionIds: kept.permissionIds, remittancePermissions: kept.remittancePermissions });
   assert.equal((await access(cashier.token)).remittances.includes("remittances.reports"), true);
 
-  // A Usuaria has no keys on its role profile: adopting its earlier selection gives back its access to the panel.
-  const desk = await account("user");
-  const keys = sorted(["remittances.view", "remittances.receipts"]);
-  await savePermissions(desk.id, { mode: "custom", permissionIds: [1, 2], remittancePermissions: keys });
-  await savePermissions(desk.id, { mode: "role", permissionIds: [1, 2], remittancePermissions: keys });
-  assert.deepEqual((await access(desk.token)).remittances, [], "nothing applies on the role profile of Usuario");
-  const earlier = await permissions(desk.id);
-  assert.deepEqual([earlier.mode, earlier.permissionIds, sorted(earlier.remittancePermissions)], ["role", [1, 2], keys]);
-  await savePermissions(desk.id, { mode: "custom", permissionIds: earlier.permissionIds, remittancePermissions: earlier.remittancePermissions });
-  assert.deepEqual(sorted((await access(desk.token)).remittances), keys);
+  // A Cliente gets no access, not even through a personalized selection.
+  const client = await account("client");
+  await savePermissions(client.id, { mode: "custom", permissionIds: [1, 2], remittancePermissions: sorted(["remittances.view", "remittances.receipts"]) });
+  assert.deepEqual((await access(client.token)).remittances, [], "a Cliente never attends remittances");
 
   // An account that never kept keys of its own still reads the keys of its role profile.
   const plain = await account("cashier");
@@ -152,7 +146,7 @@ test("a role change drops a saved copy of the old role profile, so it is never s
   const promoted = await permissions(supervisor.id);
   assert.deepEqual([promoted.mode, promoted.permissionIds, sorted(promoted.remittancePermissions)], ["role", [1, 2], sorted(cashierKeys)]);
   // A list that is not the old profile (for example one kept by the 034 migration) is a real earlier selection.
-  const migrated = await account("user");
+  const migrated = await account("client");
   await savePermissions(migrated.id, { mode: "role", permissionIds: [2, 140, 501], remittancePermissions: ["remittances.view"] });
   assert.equal((await edit(migrated, "supervisor")).statusCode, 200);
   const kept = await permissions(migrated.id);
@@ -160,7 +154,7 @@ test("a role change drops a saved copy of the old role profile, so it is never s
   // A personalized account keeps the selection that applies.
   const custom = await account("cashier");
   await savePermissions(custom.id, { mode: "custom", permissionIds: [1, 2], remittancePermissions: ["remittances.view"] });
-  assert.equal((await edit(custom, "user")).statusCode, 200);
+  assert.equal((await edit(custom, "client")).statusCode, 200);
   const applied = await permissions(custom.id);
   assert.deepEqual([applied.mode, applied.permissionIds, applied.remittancePermissions], ["custom", [1, 2], ["remittances.view"]]);
 });
