@@ -47,13 +47,30 @@ El contrato de solicitudes también está publicado en `/api/openapi.json`.
 
 El modal carga las asignaciones del servidor y mantiene un borrador. Seleccionar
 o desmarcar todos afecta solo la categoría visible; cambiar de categoría conserva
-las demás selecciones. Guardar reemplaza el conjunto del usuario elegido y envía
-siempre `mode`. Cancelar, Escape y X descartan el borrador. Si el resultado de un
+las demás selecciones. Guardar reemplaza el conjunto del usuario elegido, envía
+siempre `mode` y mantiene abierta la ventana. La respuesta confirmada actualiza
+la revisión del borrador para poder guardar otro cambio sin cerrar ni reabrir.
+Cancelar, Escape y X descartan solo los cambios posteriores al último guardado.
+Si el resultado de un
 guardado es incierto, el formulario conserva la solicitud y permite reintentar
 antes de cerrarse. Si ese reintento se rechaza porque la cuenta perdió el permiso
 (403), el diálogo y su ventana se pueden cerrar: el intento se conserva, con su
 clave y sus datos, y al recuperar el permiso «Reintentar guardado» recupera el
 resultado sin escribir dos veces.
+
+El catálogo muestra **Asignado** para la selección de cada permiso; no es el
+estado activo/inactivo de la cuenta de usuario. Clicar una fila, su nombre o su
+casilla cambia esa selección una sola vez; Enter o Espacio funcionan sobre la
+fila. Los permisos que el rol no permite y los que protegen el acceso propio
+siguen bloqueados y explican el motivo.
+
+El panel **Permisos asignados** permanece visible al cambiar de categoría. Muestra
+los nombres, categoría y estado: **Guardado**, **Del perfil del rol**, **Por
+agregar** o **Por quitar**. Permite quitar una selección y restaurar una retirada
+pendiente. El catálogo marca los permisos guardados como **Ya asignado**, evitando
+confundirlos con uno nuevo. Nada del borrador se aplica hasta pulsar Guardar;
+guardar una asignación no activa automáticamente una cuenta inactiva ni supera
+los límites de su rol.
 
 En «Perfil del rol», si la cuenta tiene guardada una lista distinta del perfil, el
 diálogo la muestra en el grupo «Selección anterior de permisos», sin efecto, con
