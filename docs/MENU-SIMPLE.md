@@ -22,10 +22,12 @@ dice dónde quedó cada cosa y cómo se llamaba antes.
   estrecho. Se guarda en ese navegador y por cuenta (`cyp-admin-menu:<id>`).
 - Al pasar el puntero por una opción aparece para qué sirve; si cambió de nombre,
   dice el nombre anterior.
-- CLIENTES y CONFIGURACIÓN DE ADMINISTRACIÓN tienen una sola pantalla: el botón la abre directo.
+- CONFIGURACIÓN DE ADMINISTRACIÓN va de primera (PR #44). Ella y CLIENTES tienen una sola
+  pantalla: el botón la abre directo.
 
 | Sección | Opción | Antes |
 | --- | --- | --- |
+| CONFIGURACIÓN DE ADMINISTRACIÓN | Configuración de administración (antes «Panel de Control») | ARCHIVOS → Admin. |
 | CLIENTES | Clientes | ARCHIVOS → Clientes |
 | COBROS | Cargos por cobrar | Cargos |
 | COBROS | Cargos que se repiten | Cargos Recurrentes |
@@ -39,7 +41,6 @@ dice dónde quedó cada cosa y cómo se llamaba antes.
 | CUADRES Y REPORTES | Cuadres diarios | REPORTES & MONITOREO → Cuadres Diarios |
 | CUADRES Y REPORTES | Reportes | REPORTES & MONITOREO → Reportes |
 | MONITOREO | Monitor de cobradores, de zonas y de rutas | Monitor C, Monitor Z, Monitor R |
-| CONFIGURACIÓN DE ADMINISTRACIÓN | Configuración de administración (antes «Panel de Control») | ARCHIVOS → Admin. |
 
 La ventana «Efectivo a cobradores» ya no tiene el buscador de remesas: para entregar
 una remesa se usa REMESAS → Entregas de dinero.

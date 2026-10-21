@@ -19,8 +19,9 @@ Cómo se aplica en cada cambio:
   inglés (ADMIN, CASHIER) ni botones «oK». Si se renombra algo conocido, la
   explicación de la opción dice el nombre anterior («antes Descargos»).
 - Cada opción va en la sección del menú que lleva su nombre; lo que no encaja en
-  ninguna va solo. Menú actual: CLIENTES · COBROS · PAGOS · REMESAS (Envíos de
-  dinero, Entregas de dinero) · CUADRES Y REPORTES · MONITOREO · CONFIGURACIÓN DE ADMINISTRACIÓN.
+  ninguna va solo. Menú actual: CONFIGURACIÓN DE ADMINISTRACIÓN (primera, PR #44) ·
+  CLIENTES · COBROS · PAGOS · REMESAS (Envíos de dinero, Entregas de dinero) · CUADRES
+  Y REPORTES · MONITOREO.
 - Cada opción del menú explica para qué sirve al pasar el puntero, y la ventana se
   llama igual que la opción o el botón que la abre.
 - Una sola página de inicio de sesión para todas las cuentas; cada cuenta llega sola
