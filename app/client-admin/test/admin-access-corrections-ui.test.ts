@@ -178,7 +178,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         await monitors.click(); assert.equal(await monitors.getAttribute("aria-expanded"), "true");
         await refresh(page); await refresh(page);
         assert.equal(await monitors.getAttribute("aria-expanded"), "true");
-        assert.equal(await sidebar(page).getByRole("button", { name: "Monitor de cobradores", exact: true }).isVisible(), true);
+        assert.equal(await sidebar(page).getByRole("button", { name: "Monitor C", exact: true }).isVisible(), true);
       } finally { await context.close(); }
     });
 
@@ -206,8 +206,8 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
     await t.test("U3: Supervisor consults a PCP read-only from Admin.", async () => {
       const { context, page } = await open(supervisorToken);
       try {
-        await controlPanelTile(page, "Puntos de cobro");
-        const pcps = windowNamed(page, "Puntos de cobro y pago");
+        await controlPanelTile(page, "PCPs");
+        const pcps = windowNamed(page, "Puntos de Cobros y Pagos");
         await pcps.getByRole("row").filter({ hasText: "PCP sintético" }).click();
         await pcps.getByTitle("Consultar", { exact: true }).click();
         const ficha = page.getByRole("dialog", { name: "Datos del PCP...", exact: true });
@@ -223,8 +223,8 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
       const editor = await account([1, 10, 170, 172]);
       const { context, page } = await open(editor.token);
       try {
-        await controlPanelTile(page, "Puntos de cobro");
-        const pcps = windowNamed(page, "Puntos de cobro y pago");
+        await controlPanelTile(page, "PCPs");
+        const pcps = windowNamed(page, "Puntos de Cobros y Pagos");
         await pcps.getByRole("row").filter({ hasText: "PCP sintético" }).waitFor();
         assert.equal(await pcps.getByRole("alert").count(), 0, "a missing auxiliary list does not break the window");
         await pcps.getByText("Sin «Visualizar Grupos de PCPs» (160) no se muestran los grupos de los PCPs.", { exact: false }).waitFor();
@@ -248,8 +248,8 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
       const viewer = await account([1, 10, 115]);
       const { context, page } = await open(viewer.token);
       try {
-        await controlPanelTile(page, "Sesiones abiertas");
-        const sessions = windowNamed(page, "Sesiones abiertas");
+        await controlPanelTile(page, "Sesiones");
+        const sessions = windowNamed(page, "Listado de Sesiones");
         await sessions.getByRole("row").filter({ hasText: "Activa" }).filter({ hasNotText: "(esta sesión)" }).first().click();
         assert.equal(await sessions.getByTitle("Cerrar sesión", { exact: true }).isDisabled(), true);
       } finally { await context.close(); }
@@ -259,8 +259,8 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
       const acceptor = await account([1, 10, 330, 334]);
       const { context, page } = await open(acceptor.token);
       try {
-        await menuItem(page, "COBROS", "Depósitos de cobradores");
-        const deposits = windowNamed(page, "Depósitos de cobradores");
+        await menuItem(page, "COBROS", "Depósitos por Cobradores");
+        const deposits = windowNamed(page, "Depósitos por Cobradores");
         await deposits.locator("tbody tr").filter({ hasText: /200.00/ }).first().click();
         const accept = deposits.getByTitle("Aceptar depósito", { exact: true });
         assert.equal(await accept.isDisabled(), false);
@@ -281,8 +281,8 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         const importer = await account([...ids]);
         const { context, page } = await open(importer.token);
         try {
-          await menuItem(page, "COBROS", "Cargos por cobrar");
-          const upload = windowNamed(page, "Cargos por cobrar").getByRole("button", { name: "Subir archivo de cargos", exact: true });
+          await menuItem(page, "COBROS", "Cargos");
+          const upload = windowNamed(page, "Cargos").getByRole("button", { name: "Subir archivo de cargos", exact: true });
           assert.equal(await upload.isDisabled(), !enabled, `codes ${ids.join(",")}`);
         } finally { await context.close(); }
       }
@@ -294,8 +294,8 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         const { context, page } = await open(token);
         try {
           await menuItem(page, "CUADRES Y REPORTES", "Reportes");
-          await windowNamed(page, "Reportes").getByRole("button", { name: "Resumen de cobros", exact: true }).click();
-          const report = windowNamed(page, "Resumen de cobros");
+          await windowNamed(page, "Reportes").getByRole("button", { name: "Cobros Res.", exact: true }).click();
+          const report = windowNamed(page, "Reporte de Cobros Resumido");
           await report.getByRole("button", { name: /Refrescar/ }).first().waitFor();
           const note = report.getByText("Este reporte usa datos que tu cuenta no tiene permiso para consultar: «Visualizar Cobros» (320). Se muestra sin esos datos.", { exact: true });
           assert.equal(await note.count(), expected ? 1 : 0);

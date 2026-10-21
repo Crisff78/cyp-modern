@@ -13,17 +13,21 @@ pequeño»**. Nosotros sabemos dónde está cada cosa porque lo hicimos; el clie
 
 Cómo se aplica en cada cambio:
 
-- Nombres sencillos para un dominicano, que digan qué hace la pantalla: técnicos
-  pero fáciles («Cargos por cobrar», «Órdenes de pago», «Entregas de dinero»). Nada
-  de abreviaturas («Cobros Res.», «Imp. Ch...», «PCPs»), claves internas, códigos en
-  inglés (ADMIN, CASHIER) ni botones «oK». Si se renombra algo conocido, la
-  explicación de la opción dice el nombre anterior («antes Descargos»).
+- **Nombres (decisión de Rardiel, 2026-10-21; no cambiarlos sin que lo pida):** las
+  secciones del menú usan nombres claros (CLIENTES, COBROS, PAGOS, REMESAS, CUADRES Y
+  REPORTES, MONITOREO, CONFIGURACIÓN DE ADMINISTRACIÓN). Las opciones, ventanas,
+  reportes, pestañas y la pantalla de administración conservan **los nombres de
+  siempre**, los que los usuarios ya conocen (Cargos, Descargos, Monitor C, Cobros
+  Res., PCPs, Trazas, Soporte Técnico…). Solo Remesas (Envíos de dinero, Entregas de
+  dinero, Caja y Comisiones de remesas) y «Configuración de administración» usan los
+  nombres nuevos. Lista completa en `docs/MENU-SIMPLE.md`.
+- Sin claves internas ni códigos en inglés (ADMIN, CASHIER), botones «Aceptar» (no
+  «oK») y columnas con el texto completo.
 - Cada opción va en la sección del menú que lleva su nombre; lo que no encaja en
   ninguna va solo. Menú actual: CONFIGURACIÓN DE ADMINISTRACIÓN (primera, PR #44) ·
   CLIENTES · COBROS · PAGOS · REMESAS (Envíos de dinero, Entregas de dinero) · CUADRES
   Y REPORTES · MONITOREO.
-- Cada opción del menú explica para qué sirve al pasar el puntero, y la ventana se
-  llama igual que la opción o el botón que la abre.
+- Cada opción del menú explica para qué sirve al pasar el puntero.
 - Una sola página de inicio de sesión para todas las cuentas; cada cuenta llega sola
   a su portal (oficina o app del cobrador), sin elegir antes.
 - El menú lateral empieza con todas las secciones cerradas y recuerda, por cuenta,
