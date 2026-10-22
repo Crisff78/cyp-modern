@@ -1,6 +1,24 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { isPhoneDraft, isRemittanceDocumentDraft, isTextDraft, validatePhone, validateRemittanceClientName, validateRemittanceDocument } from "../../shared/inputRules";
+import { isMoneyDraft } from "../../shared/remittances/moneyInput";
+import { decimalCents } from "../../shared/remittances/output";
+import { isPaymentTextDraft, paymentAmounts } from "../../shared/remittances/payment.mjs";
+
+test("all remittance money fields have the same exact decimal and safe-cent boundaries", () => {
+  for (const value of ["", ".", "0", "0.", "0.00", "0001.25", "90071992547409.91"]) assert.equal(isMoneyDraft(value), true, value);
+  for (const value of ["1e3", "0x10", "-2", "+2", "1,25", "1 000", "2.001", "１２", "1\n", " 1", "1\u200b", "90071992547409.92", "99999999999999", "1".repeat(18), "0".repeat(18)]) assert.equal(isMoneyDraft(value), false, value);
+  assert.equal(decimalCents("90071992547409.91"), Number.MAX_SAFE_INTEGER);
+  assert.throws(() => decimalCents("90071992547409.92"));
+});
+
+test("payment references keep alphanumeric banking data but reject controls and invisible separators", () => {
+  for (const value of ["", "0001-REF/2026.10", "Banco O'Connor & Hijos #2", "Ref: (A)_B+2", "a".repeat(160)]) assert.equal(isPaymentTextDraft(value), true, value);
+  for (const value of ["REF\n001", "REF\t001", "REF\u2028001", "REF\u2029001", "REF\u200b001", "REF\u202e001", "a".repeat(161)]) {
+    assert.equal(isPaymentTextDraft(value), false, value);
+    assert.throws(() => paymentAmounts(100, { method: "transfer", reference: value, verified: true }));
+  }
+});
 
 test("remittance phone drafts restrict typing while final validation requires a complete phone", () => {
   for (const value of ["", "+", "(", "+1 (809) 555-0101", "  +509 4123 4567  ", "123456789012345"]) assert.equal(isPhoneDraft(value), true, value);

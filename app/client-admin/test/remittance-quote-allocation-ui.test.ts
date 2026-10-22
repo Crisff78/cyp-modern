@@ -161,7 +161,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
         }, value);
         const amount = workspace.getByLabel("Monto a enviar (DOP)", { exact: true });
         await amount.fill("12.34");
-        for (const invalid of ["1e3", "12a", "12.345", "-2", "12,34", "１２"]) {
+        for (const invalid of ["1e3", "12a", "12.345", "-2", "12,34", "１２", "90071992547409.92"]) {
           await amount.fill(invalid); assert.equal(await amount.inputValue(), "12.34", invalid);
         }
         assert.equal(await pasteRejected(amount, "123456789012345678"), true, "an oversized amount cannot be truncated into a different amount");
@@ -284,6 +284,19 @@ createRoot(document.getElementById("root")).render(<App />);`);
         await workspace.getByRole("button", { name: "Revisar y confirmar envío", exact: true }).click();
         const confirmation = page.getByRole("dialog", { name: "Confirmar envío", exact: true });
         const countBeforeReview = (await store.read()).remittances.transfers.length;
+        const tendered = confirmation.getByLabel("Dinero recibido (USD)", { exact: true });
+        await tendered.fill("110");
+        for (const invalid of ["abc", "1e3", "-100", "110.001", "90071992547409.92"]) {
+          await tendered.fill(invalid); assert.equal(await tendered.inputValue(), "110", invalid);
+        }
+        assert.equal(await tendered.evaluate((node: HTMLInputElement) => {
+          node.setSelectionRange(0, node.value.length);
+          const data = new DataTransfer(); data.setData("text/plain", "100000000000000000000000.001");
+          return !node.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
+        }), true);
+        await confirmation.getByRole("button", { name: "Aceptar", exact: true }).click();
+        await confirmation.getByRole("alert").filter({ hasText: "Corrige el campo señalado" }).waitFor();
+        assert.equal((await store.read()).remittances.transfers.length, countBeforeReview, "invalid entry cannot submit the previous valid cash value");
         await confirmation.getByLabel("Dinero recibido (USD)", { exact: true }).fill("104");
         await confirmation.getByRole("button", { name: "Aceptar", exact: true }).click();
         await confirmation.getByRole("alert").filter({ hasText: "no cubre" }).waitFor();
@@ -624,6 +637,14 @@ createRoot(document.getElementById("root")).render(<App />);`);
           await review.getByLabel("Referencia del comprobante", { exact: true }).fill(`QA-${surface}-${method}`);
           await review.getByLabel("Banco o proveedor (opcional)", { exact: true }).fill("Banco ficticio");
           await review.getByLabel("Comprobé que el pago fue recibido", { exact: true }).check();
+          const reference = review.getByLabel("Referencia del comprobante", { exact: true });
+          const bank = review.getByLabel("Banco o proveedor (opcional)", { exact: true });
+          await reference.fill("QA\u200bREF"); assert.equal(await reference.inputValue(), `QA-${surface}-${method}`);
+          await bank.fill("Banco\u202eoculto"); assert.equal(await bank.inputValue(), "Banco ficticio");
+          await review.getByRole("button", { name: "Aceptar", exact: true }).click();
+          await review.getByRole("alert").filter({ hasText: "Corrige el campo señalado" }).waitFor();
+          assert.equal((await store.read()).remittances.transfers.length, before);
+          await reference.fill(`QA-${surface}-${method}/0001`); await bank.fill("Banco O'Connor & Hijos #2");
           await page.screenshot({ path: path.join(output, `${surface}-${method}-confirmation.png`) });
           await review.getByRole("button", { name: "Aceptar", exact: true }).click();
           const print = page.getByRole("dialog", { name: "¿Quieres imprimir el recibo?", exact: true }); await print.waitFor();

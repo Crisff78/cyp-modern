@@ -12,7 +12,7 @@ import {
 import { boundedId, freeText, phone, singleLine } from "./input-validation.js";
 import { remittanceClientDraft } from "./client-schema.js";
 import { registerRemittanceClient } from "./remittance-client-registration.js";
-import { paymentMethods } from "../../shared/remittances/payment.mjs";
+import { isPaymentTextDraft, paymentMethods } from "../../shared/remittances/payment.mjs";
 
 type Mutate = <T, P = Record<string, string>>(
   path: string, summary: string, schema: z.ZodType<T>,
@@ -23,6 +23,8 @@ const id = boundedId;
 const currency = z.enum(currencies);
 const amount = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const bps = z.number().int().min(0).max(10000);
+// Check the raw text before trim: invisible marks or an overlong paste must not become valid after normalization.
+const paymentText = z.string().refine(isPaymentTextDraft, "Usa hasta 160 caracteres en una sola línea, sin caracteres de control ni marcas invisibles.").trim();
 const quoteFields = {
   sourceCurrency: currency, destinationCurrency: currency,
   amount: amount.positive(), commissionBps: bps.optional(),
@@ -70,7 +72,7 @@ export function registerRemittanceRoutes(
     newSenderClient: remittanceClientDraft.optional(), newRecipientClient: remittanceClientDraft.optional(),
     sendingUserId: id.optional(), recipientPhone: phone.optional(),
     requestedReceiveAmount: amount.positive().optional(),
-    payment: z.object({ method: z.enum(paymentMethods), tenderedAmount: amount.optional(), reference: singleLine(160, 1).optional(), bank: singleLine(160).optional(), verified: z.literal(true).optional() }).strict().optional(),
+    payment: z.object({ method: z.enum(paymentMethods), tenderedAmount: amount.optional(), reference: paymentText.min(1).optional(), bank: paymentText.optional(), verified: z.literal(true).optional() }).strict().optional(),
     quote: z.object({ date: z.iso.date(), sourceRate: z.string().max(19), destinationRate: z.string().max(19),
       quotedAt: z.iso.datetime().optional(), sourceRateChangeId: id.optional(), destinationRateChangeId: id.optional(),
       sourceRateChangedAt: z.iso.datetime().optional(), destinationRateChangedAt: z.iso.datetime().optional(),
@@ -99,7 +101,7 @@ export function registerRemittanceRoutes(
   mutate("/api/envios/:id/pagar", "Pagar recibo completo", z.object({}).strict(),
     (state, actor, _input, params) => payRemittance(state, actor, params.id));
   mutate("/api/envios/:id/cancelar", "Cancelar envío pendiente y devolver principal más comisión",
-    z.object({ reason: freeText(500, 1), refund: z.object({ reference: singleLine(160, 1), verified: z.literal(true) }).strict().optional() }).strict(),
+    z.object({ reason: freeText(500, 1), refund: z.object({ reference: paymentText.min(1), verified: z.literal(true) }).strict().optional() }).strict(),
     (state, actor, input, params) => cancelRemittance(state, actor, params.id, input.reason, new Date(), input.refund));
   mutate("/api/envios/cajas/abrir", "Abrir caja de remesas por operador y moneda", z.object({
     operatorId: id, currency, openingAmount: amount,

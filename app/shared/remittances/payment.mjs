@@ -10,10 +10,12 @@ export class PaymentValidationError extends Error {
     }
 }
 const invalid = (message) => { throw new PaymentValidationError("INVALID_PAYMENT", message); };
+// References and bank names are text, not numbers; keep their punctuation and leading zeroes.
+export const isPaymentTextDraft = (value) => typeof value === "string" && value.length <= 160 && !/[\p{Cc}\p{Cf}\u2028\u2029]/u.test(value);
 const text = (value, label) => {
     if (value === undefined)
         return "";
-    if (typeof value !== "string" || value.length > 160 || /[\p{Cc}\p{Cf}]/u.test(value))
+    if (!isPaymentTextDraft(value))
         return invalid(`${label} admite hasta 160 caracteres en una sola línea.`);
     return value.trim();
 };

@@ -77,6 +77,40 @@ remittancesApi('/snapshot').then(snapshot=>createRoot(document.getElementById('r
     await context.route("**/*", (route: any) => { const target = new URL(route.request().url()); if (target.origin === origin || target.protocol === "about:") return route.continue(); blockedExternal.add(target.hostname); return route.abort("blockedbyclient"); });
     const page = await context.newPage(); page.setDefaultTimeout(15000); page.on("pageerror", (error: Error) => errors.push(error.message));
     await page.goto(origin);
+    await t.test("rate typing and whole pastes cannot change precision or silently confirm the previous value", async () => {
+      const before = await store.read(), writesBefore = writes.length;
+      await page.getByRole("button", { name: "Nuevo", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Datos de la Tasa de Cambio...", exact: true });
+      await dialog.getByLabel("Compra", { exact: true }).fill("59");
+      await dialog.getByLabel("Venta", { exact: true }).fill("61");
+      const pasteRejected = (input: any, value: string) => input.evaluate((node: HTMLInputElement, pasted: string) => {
+        node.setSelectionRange(0, node.value.length);
+        const data = new DataTransfer(); data.setData("text/plain", pasted);
+        return !node.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
+      }, value);
+      for (const name of ["Compra", "Venta"]) {
+        const input = dialog.getByLabel(name, { exact: true });
+        assert.equal(await input.getAttribute("inputmode"), "decimal");
+        await input.fill("60.123456");
+        for (const invalid of ["abc", "1e3", "0x10", "-60", "+60", "60%", "60.1234567", "1000000000000", "６０"]) {
+          await input.fill(invalid); assert.equal(await input.inputValue(), "60.123456", invalid);
+        }
+        for (const invalid of ["60\n", "1,234.50", "999999999999.9999999", "0".repeat(200) + "60"]) {
+          assert.equal(await pasteRejected(input, invalid), true, invalid);
+          assert.equal(await input.inputValue(), "60.123456");
+        }
+        await dialog.getByRole("button", { name: "Revisar tasa", exact: true }).click();
+        assert.equal(await dialog.isVisible(), true, "rejected entry must be corrected before reviewing");
+        assert.equal(await input.getAttribute("aria-invalid"), "true");
+        await input.fill(name === "Compra" ? "59,25" : "61,75");
+        assert.equal(await input.inputValue(), name === "Compra" ? "59.25" : "61.75");
+      }
+      await dialog.getByRole("button", { name: "Revisar tasa", exact: true }).click();
+      const review = page.getByRole("dialog", { name: "Confirmar Tasa de Cambio...", exact: true }); await review.waitFor();
+      await review.getByRole("button", { name: "Cerrar Confirmar Tasa de Cambio...", exact: true }).click();
+      assert.equal(writes.length, writesBefore);
+      assert.deepEqual(await store.read(), before);
+    });
     await t.test("buy/sell survive a missing successful acknowledgement and retry keeps one idempotent write", async () => {
       await page.getByRole("button", { name: "Nuevo", exact: true }).click();
       let dialog = page.getByRole("dialog", { name: "Datos de la Tasa de Cambio...", exact: true });

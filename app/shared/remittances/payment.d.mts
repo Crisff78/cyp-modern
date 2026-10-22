@@ -1,6 +1,7 @@
 export declare const paymentMethods: readonly ["cash", "card", "transfer", "deposit"];
 export type PaymentMethod = typeof paymentMethods[number];
 export declare const paymentMethodLabels: Record<PaymentMethod, string>;
+export declare const isPaymentTextDraft: (value: unknown) => value is string;
 export type RemittancePaymentInput = {
     method: PaymentMethod;
     tenderedAmount?: number;

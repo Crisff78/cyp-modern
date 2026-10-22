@@ -38,6 +38,7 @@ test("invalid payment values are rejected before any transfer or cash event is c
     { method: "cash", tenderedAmount: 1.5 }, { method: "cash", tenderedAmount: Number.MAX_SAFE_INTEGER + 1 },
     { method: "cash", tenderedAmount: 98999 }, { method: "cash", tenderedAmount: 100000, changeAmount: 0 },
     { method: "card", reference: "QA-123", verified: false }, { method: "card", reference: "", verified: true },
+    { method: "transfer", reference: "QA\u2028REF", verified: true }, { method: "transfer", reference: "QA", bank: "Bank\u2029Name", verified: true },
     { method: "transfer", reference: "x\nsecret", verified: true }, { method: "deposit", reference: "QA", verified: true, tenderedAmount: 100000 }]) {
     const state = fixture(), before = structuredClone(state.remittances);
     assert.throws(() => send(state, payment as never));
@@ -52,6 +53,7 @@ test("verified card/bank payments and refunds never add or remove physical cash"
     assert.equal(cashBalance(state, state.remittances.cashSessions[0]).expected, 0);
     assert.equal(state.remittances.events.find((e) => e.type === "sent")?.amount, 0);
     assert.throws(() => cancelRemittance(state, admin, t.id, "Synthetic cancellation", now), code("REFUND_NOT_VERIFIED"));
+    for (const reference of ["QA\u2028REF", "QA\u2029REF", "QA\u200bREF"]) assert.throws(() => cancelRemittance(state, admin, t.id, "Synthetic cancellation", now, { reference, verified: true }), code("REFUND_NOT_VERIFIED"));
     assert.equal(t.status, "pending");
     const cancelled = cancelRemittance(state, admin, t.id, "Synthetic cancellation", now, { reference: "QA-REFUND-123", verified: true });
     assert.equal(cancelled.refund?.reference, "QA-REFUND-123"); assert.equal(cancelled.refund?.method, method);
