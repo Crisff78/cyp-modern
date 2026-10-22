@@ -668,6 +668,90 @@ createRoot(document.getElementById("root")).render(<App />);`);
         }
       } finally { await context.close(); }
     });
+    // The operator's exact 59/61 example: test the same fields and real API traffic in both portals.
+    await store.transaction((state) => {
+      setDailyRate(state, admin, { currency: "USD", rate: "59", purchaseRate: "59", saleRate: "61", date: businessDate(now) }, now);
+      setCommissionPolicy(state, admin, { transactionCommissionBps: 0, managerCommissionBps: 0 }, now);
+    });
+    const exactResults: object[] = [];
+    for (const surface of ["admin", "collector"]) await t.test(`${surface} exact 59/61 example shows 100 USD to 5900 DOP and 2950 DOP from 50 USD`, async () => {
+      const context = await browser.newContext({ viewport: surface === "admin" ? { width: 1440, height: 1100 } : { width: 390, height: 844 }, locale: "es-DO", serviceWorkers: "block", extraHTTPHeaders: { "x-qa-rate-refresh-client": surface } });
+      const before = await store.read();
+      try {
+        await context.addInitScript(({ token, surface }: { token: string; surface: string }) => {
+          if (surface === "admin") localStorage.setItem("cyp-admin-token", token); else sessionStorage.setItem("cyp-collector-token", token);
+        }, { token: tokens[surface], surface });
+        await context.route("**/*", routeLocalOnly);
+        const page = await context.newPage(); page.setDefaultTimeout(15000); page.on("pageerror", (error: Error) => errors.push(error.message));
+        await page.goto(`${origin}/${surface}/?view=remittances`);
+        if (surface === "admin") {
+          await (await menuOption(page, "Envíos de dinero")).click();
+          await page.getByRole("button", { name: "Maximizar Envíos de dinero", exact: true }).click();
+        }
+        const workspace = page.getByRole("region", { name: "Envíos de dinero", exact: true });
+        if (surface === "collector") await workspace.getByRole("button", { name: "Nuevo envío", exact: true }).click();
+        for (const [label, id] of [["Remitente", "cli-1"], ["Destinatario", "cli-5"]]) {
+          const client = before.clients.find((row) => row.id === id)!;
+          await workspace.getByRole("combobox", { name: label, exact: true }).fill(client.code);
+          await workspace.getByRole("option").filter({ hasText: client.code }).first().click();
+        }
+        await workspace.getByText("Cargando teléfono y dirección…", { exact: true }).waitFor({ state: "hidden" });
+        await workspace.getByLabel("Moneda del remitente").selectOption("USD");
+        await workspace.getByLabel("Moneda del destinatario").selectOption("DOP");
+        const calculate = async (mode: "source" | "destination", text: string) => {
+          const reply = page.waitForResponse((response: any) => {
+            const url = new URL(response.url());
+            return url.pathname === "/api/envios/cotizacion" && url.searchParams.get("amountMode") === mode;
+          });
+          await workspace.getByRole("button", { name: "Calcular cotización", exact: true }).click();
+          const response = await reply; assert.equal(response.status(), 200);
+          const result = await response.json();
+          exactResults.push({ surface, mode, text, sourceCurrency: result.sourceCurrency, destinationCurrency: result.destinationCurrency,
+            amount: result.amount, receiveAmount: result.receiveAmount, sourceRate: result.quote.sourceRate, destinationRate: result.quote.destinationRate });
+          return result;
+        };
+        const mode = workspace.getByLabel("Ingresar importe de");
+        await mode.selectOption("source");
+        await workspace.getByLabel("Monto a enviar (USD)", { exact: true }).fill("100");
+        const source = await calculate("source", "100");
+        assert.equal(source.amount, 10000); assert.equal(source.receiveAmount, 590000);
+        assert.equal(source.quote.sourceRate, "59.000000"); assert.equal(source.quote.sourceRateKind, "purchase");
+        const receive = workspace.getByLabel("Monto a recibir calculado (DOP)", { exact: true });
+        await page.waitForFunction(() => Array.from(document.querySelectorAll<HTMLInputElement>("input[readonly]")).some((input) => input.value === "DOP 5,900.00"));
+        assert.equal(await receive.inputValue(), "DOP 5,900.00");
+        await receive.scrollIntoViewIfNeeded(); await page.screenshot({ path: path.join(output, `${surface}-exact-origin-100-usd.png`) });
+
+        await mode.selectOption("destination");
+        const desired = workspace.getByLabel("Monto a recibir (DOP)", { exact: true });
+        assert.equal(await desired.inputValue(), "", "changing mode clears the old amount so USD 100 cannot become DOP 100");
+        const send = workspace.getByLabel("Monto a enviar calculado (USD)", { exact: true });
+        assert.equal(await send.inputValue(), "Calcula la cotización");
+        await desired.fill("2950");
+        const destination = await calculate("destination", "2950");
+        assert.equal(destination.amount, 5000); assert.equal(destination.receiveAmount, 295000);
+        assert.equal(destination.quote.sourceRate, "59.000000"); assert.equal(destination.quote.sourceRateKind, "purchase");
+        await page.waitForFunction(() => Array.from(document.querySelectorAll<HTMLInputElement>("input[readonly]")).some((input) => input.value === "USD 50.00"));
+        assert.equal(await send.inputValue(), "USD 50.00"); assert.equal(await desired.inputValue(), "2950");
+        assert.match(await workspace.getByRole("region", { name: "Recibe el destinatario", exact: true }).innerText(), /DOP 2,950\.00/);
+        await send.scrollIntoViewIfNeeded(); await page.screenshot({ path: path.join(output, `${surface}-exact-destination-2950-dop.png`) });
+        await workspace.getByRole("button", { name: "Revisar y confirmar envío", exact: true }).click();
+        const review = page.getByRole("dialog", { name: "Confirmar envío", exact: true }); await review.waitFor();
+        assert.equal(await review.getByLabel("Dinero recibido (USD)", { exact: true }).inputValue(), "50.00");
+        assert.match(await review.getByRole("region", { name: "Recibe el destinatario", exact: true }).innerText(), /DOP 2,950\.00/);
+        await review.getByRole("button", { name: "Cancelar", exact: true }).click();
+
+        await workspace.getByLabel("Moneda del remitente").selectOption("DOP");
+        await workspace.getByLabel("Moneda del destinatario").selectOption("USD");
+        await workspace.getByLabel("Monto a recibir (USD)", { exact: true }).fill("100");
+        const reverse = await calculate("destination", "100");
+        assert.equal(reverse.amount, 610000); assert.equal(reverse.receiveAmount, 10000);
+        assert.equal(reverse.quote.destinationRate, "61.000000"); assert.equal(reverse.quote.destinationRateKind, "sale");
+        await page.waitForFunction(() => Array.from(document.querySelectorAll<HTMLInputElement>("input[readonly]")).some((input) => input.value === "DOP 6,100.00"));
+        assert.equal(await workspace.getByLabel("Monto a enviar calculado (DOP)", { exact: true }).inputValue(), "DOP 6,100.00");
+        assert.deepEqual(await store.read(), before, "all three quotations and a cancelled review leave the ledger unchanged");
+      } finally { await context.close(); }
+    });
+    fs.writeFileSync(path.join(output, "exact-origin-destination.json"), JSON.stringify(exactResults, null, 2));
     assert.deepEqual(errors, []); assert.equal(unexpectedExternalAttempts, 0, "The application must not attempt any unexpected external request.");
     t.diagnostic(`Blocked known antivirus attempts: ${blockedAntivirusAttempts}; blocked existing font attempts: ${blockedFontAttempts}; unexpected external attempts: ${unexpectedExternalAttempts}; no external URLs recorded or requests sent.`);
     t.diagnostic(`QA screenshots: ${output}`);

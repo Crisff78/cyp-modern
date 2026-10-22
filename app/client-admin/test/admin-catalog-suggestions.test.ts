@@ -430,7 +430,7 @@ remittancesApi("/snapshot").then(snapshot => { if (new URLSearchParams(location.
       await open("authorizationRequests"); await page.getByText(/Solicitudes de revisión administrativa de un cliente/).waitFor();
       assert.match(await page.locator("main").innerText(), /no registra cobros o pagos ni amplía límites o permisos/);
       await open("users"); await page.getByRole("button", { name: "Permisos", exact: true }).click();
-      assert.match(await page.getByRole("dialog").innerText(), /Se aplica el perfil inicial del rol\. Al marcar o desmarcar una acción pasarás a permisos personalizados/);
+      assert.match(await page.getByRole("dialog").innerText(), /Se aplica el perfil inicial del rol\. Al agregar o quitar un permiso pasarás a permisos personalizados/);
       assert.equal(writes.length, count);
       await page.getByRole("button", { name: "Cerrar Permisos del Usuario...", exact: true }).click();
     });

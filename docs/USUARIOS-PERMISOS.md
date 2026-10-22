@@ -19,9 +19,9 @@ administración solo los cambia ella misma (403 `ACCOUNT_PROTECTED`), y un
 administrador no puede retirarse los códigos 1, 10, 101 y 106 (409
 `OWN_ADMIN_ACCESS`).
 
-Además de las categorías del catálogo, el diálogo ofrece la categoría **Envíos de
-Dinero** con las claves `remittances.*`; cada casilla se anuncia como «Envíos de
-Dinero: {nombre}». Las acciones que superan el máximo del rol aparecen
+Además de las categorías del catálogo, el diálogo ofrece la categoría **Remesas**
+con las claves `remittances.*`; cada opción se anuncia como «Remesas: {nombre}».
+Las acciones que superan el máximo del rol aparecen
 desactivadas. El Cajero parte de los códigos 1 y 2 y de nueve claves de envíos
 (consultar, registrar, recibos, pagar, cancelar, alta de clientes, y consultar,
 abrir y cerrar su caja); en permisos personalizados solo puede ganar además
@@ -45,12 +45,31 @@ Si se omite `mode`, la cuenta conserva su modo actual: en modo `role` la lista s
 guarda como referencia sin efecto, y solo `mode: "custom"` explícito la aplica.
 El contrato de solicitudes también está publicado en `/api/openapi.json`.
 
-El modal carga las asignaciones del servidor y mantiene un borrador. Seleccionar
-o desmarcar todos afecta solo la categoría visible; cambiar de categoría conserva
-las demás selecciones. Guardar reemplaza el conjunto del usuario elegido, envía
-siempre `mode` y mantiene abierta la ventana. La respuesta confirmada actualiza
-la revisión del borrador para poder guardar otro cambio sin cerrar ni reabrir.
-Cancelar, Escape y X descartan solo los cambios posteriores al último guardado.
+El modal carga las asignaciones del servidor y mantiene un borrador. El flujo es
+**seleccionar un permiso → Agregar → revisar Permisos asignados → Guardar**:
+
+- Un clic en la fila, su nombre o su opción circular solo selecciona un candidato.
+  Enter y Espacio también lo seleccionan; no agregan ni guardan por sí solos.
+- **Agregar** pasa ese único permiso al borrador y limpia la selección. No hay
+  selección masiva. Los requisitos de una acción de Remesas se incorporan juntos,
+  como exige el contrato de autorización. Cambiar de categoría conserva la lista.
+- Los permisos que ya están en la lista no pueden agregarse por duplicado.
+  **Agregar** sin un candidato y **Guardar** con una lista inicial vacía muestran
+  un aviso, sin escribir en el servidor.
+- **Quitar** pide confirmación antes de modificar el borrador. Si la acción tiene
+  dependientes, el aviso identifica también los permisos que se retirarán.
+- **Guardar** pide confirmación antes de reemplazar el conjunto del usuario elegido;
+  envía siempre `mode` y mantiene abierta la ventana. La respuesta confirmada
+  actualiza la revisión para poder guardar otro cambio sin cerrar ni reabrir.
+  Retirar todos los permisos previamente guardados sigue siendo posible, pero el
+  aviso de guardado advierte expresamente que la cuenta quedará sin acceso.
+- **Cancelar**, Escape, **X** y **Refrescar** piden confirmación si hay cambios sin
+  guardar. Declinar o cerrar el aviso conserva el borrador. Si nada cambió, Cancelar
+  o X cierran directamente aunque la cuenta tenga permisos guardados.
+
+Las advertencias son subventanas MDI arrastrables; bloquean el formulario inferior
+y enfocan **No** por defecto en las confirmaciones.
+
 Si el resultado de un
 guardado es incierto, el formulario conserva la solicitud y permite reintentar
 antes de cerrarse. Si ese reintento se rechaza porque la cuenta perdió el permiso
@@ -58,17 +77,16 @@ antes de cerrarse. Si ese reintento se rechaza porque la cuenta perdió el permi
 clave y sus datos, y al recuperar el permiso «Reintentar guardado» recupera el
 resultado sin escribir dos veces.
 
-El catálogo muestra **Asignado** para la selección de cada permiso; no es el
-estado activo/inactivo de la cuenta de usuario. Clicar una fila, su nombre o su
-casilla cambia esa selección una sola vez; Enter o Espacio funcionan sobre la
-fila. Los permisos que el rol no permite y los que protegen el acceso propio
+El catálogo muestra **Seleccionar** para elegir un candidato; el estado
+activo/inactivo de la cuenta se administra por separado. Los permisos que el rol
+no permite y los que protegen el acceso propio
 siguen bloqueados y explican el motivo.
 
 El panel **Permisos asignados** permanece visible al cambiar de categoría. Muestra
 los nombres, categoría y estado: **Guardado**, **Del perfil del rol**, **Por
 agregar** o **Por quitar**. Permite quitar una selección y restaurar una retirada
 pendiente. El catálogo marca los permisos guardados como **Ya asignado**, evitando
-confundirlos con uno nuevo. Nada del borrador se aplica hasta pulsar Guardar;
+confundirlos con uno nuevo. Nada del borrador se aplica hasta confirmar Guardar;
 guardar una asignación no activa automáticamente una cuenta inactiva ni supera
 los límites de su rol.
 

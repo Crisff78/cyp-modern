@@ -153,7 +153,7 @@
 }
 .connected-permissions-controls > button:hover:not(:disabled) { background: var(--cyp-success-surface, #ecfdf5); border-color: var(--cyp-success-text, #059669); }
 .connected-permissions-controls > button:disabled { opacity: .5; cursor: not-allowed; }
-.connected-user-permissions-table input[type="checkbox"] { width: 14px; height: 14px; accent-color: #059669; }
+.connected-user-permissions-table input[type="radio"] { width: 14px; height: 14px; accent-color: #059669; }
 .connected-permissions-name { font: inherit; color: inherit; cursor: pointer; }
 .connected-permissions-feedback { flex-shrink: 0; margin: 0; padding: 6px 12px; font-size: 12px; color: var(--cyp-text-muted, #64748b); }
 .connected-permissions-stored {
@@ -274,3 +274,7 @@
   color: var(--cyp-danger-text, #be123c);
   font-size: 12px;
 }
+
+.legacy-dialog-overlay.connected-permission-prompt-overlay { z-index: 2147483010; }
+.connected-permission-confirm { width: min(460px, calc(100vw - 48px)); }
+.connected-permission-confirm .legacy-confirm-content p { overflow-wrap: anywhere; }
