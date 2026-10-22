@@ -31,6 +31,42 @@
   font-size: 12px;
 }
 .connected-permissions-mode select { min-width: 0; flex: 1; }
+.connected-permissions-role {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 10px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--cyp-border, #e2e8f0);
+  background: var(--cyp-surface-muted, #f8fafc);
+  color: var(--cyp-text, #334155);
+  font-size: 11px;
+}
+.connected-permissions-role > div { min-width: 0; flex: 1; }
+.connected-permissions-role p { margin: 3px 0 0; overflow-wrap: anywhere; }
+.connected-permissions-role.needs-role strong { color: var(--cyp-danger-text, #be123c); }
+.connected-permissions-role button {
+  flex-shrink: 0;
+  padding: 5px 10px;
+  border: 1px solid var(--cyp-border-strong, #cbd5e1);
+  border-radius: 4px;
+  background: var(--cyp-surface, #fff);
+  color: var(--cyp-text, #334155);
+  cursor: pointer;
+}
+.connected-permissions-role button:disabled { opacity: .5; cursor: not-allowed; }
+.connected-permissions-selection-feedback {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 5px 12px;
+  background: var(--cyp-success-surface, #ecfdf5);
+  color: var(--cyp-success-text, #065f46);
+  font-size: 12px;
+}
+.connected-permissions-selection-feedback.is-unavailable {
+  background: var(--cyp-surface-muted, #f8fafc);
+  color: var(--cyp-danger-text, #be123c);
+}
 .connected-permissions-workspace {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(260px, 32%);
@@ -154,6 +190,7 @@
 .connected-permissions-controls > button:hover:not(:disabled) { background: var(--cyp-success-surface, #ecfdf5); border-color: var(--cyp-success-text, #059669); }
 .connected-permissions-controls > button:disabled { opacity: .5; cursor: not-allowed; }
 .connected-user-permissions-table input[type="radio"] { width: 14px; height: 14px; accent-color: #059669; }
+.connected-user-permissions-table input[type="radio"]:disabled { pointer-events: none; }
 .connected-permissions-name { font: inherit; color: inherit; cursor: pointer; }
 .connected-permissions-feedback { flex-shrink: 0; margin: 0; padding: 6px 12px; font-size: 12px; color: var(--cyp-text-muted, #64748b); }
 .connected-permissions-stored {
@@ -188,6 +225,10 @@
   border-top: 1px solid var(--cyp-border-strong, #cbd5e1);
   font-size: 11px;
   color: var(--cyp-text-muted, #64748b);
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  background: var(--cyp-surface-muted, #f8fafc);
 }
 .connected-permissions-footer .connected-permission-actions { padding: 0; }
 .connected-permissions-footer button[type="submit"] { background: #047857; border-color: var(--cyp-success-text, #065f46); color: #fff; }

@@ -32,6 +32,19 @@ tasas o comisiones.
 
 ## Contrato
 
+La ventana muestra el **rol real del usuario** y explica su alcance. El nombre
+de la cuenta no le asigna un rol: una cuenta llamada «Supervisor demo» con rol
+«No definido» sigue sin acceso. En ese caso **Definir rol** abre la ficha de esa
+cuenta, sin elegir un rol ni guardar automáticamente. Un administrador con los
+permisos 103 y 106 debe escoger el rol y confirmar los datos de usuario antes de
+volver a Permisos. El rol Cliente tampoco habilita acceso a la aplicación.
+
+Al pulsar una opción del catálogo se muestra el nombre seleccionado y la
+indicación **Pulsa Agregar**. Si ya está asignada o su rol no la permite, aparece
+el motivo en la misma ventana; el clic no cambia la asignación ni evita los
+límites del servidor. Editar el rol desde Permisos también pide confirmación si
+se van a descartar cambios pendientes.
+
 - `GET /api/permisos`: `{ categories, permissions: [{ id, name, category }] }`.
 - `GET /api/usuarios/:id/permisos`: `{ userId, permissionIds, revision, mode, remittancePermissions }`.
 - `POST /api/usuarios/:id/permisos`: `{ permissionIds: number[], revision: number, mode?, remittancePermissions? }`,
