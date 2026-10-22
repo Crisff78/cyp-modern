@@ -1,10 +1,16 @@
 import { INPUT_LIMITS, isPositiveRate } from "../inputRules";
 
-// Leave one excess character visible: truncating at the valid limit can turn
-// an invalid seven-decimal value into a different, valid six-decimal rate.
+// Let one excess character reach validation: native truncation at the valid
+// limit could turn a seven-decimal entry into a different, valid rate.
 export const RATE_INPUT_MAX_LENGTH = INPUT_LIMITS.rate + 1;
+export const RATE_INPUT_MESSAGE = "Usa solo números y un punto o una coma decimal, con hasta doce dígitos enteros y seis decimales, sin separadores de miles.";
 
-/** Keep invalid input visible so confirmation can reject the entire value. */
+/** Incomplete decimals can be edited, but letters, grouping and excess precision cannot be entered. */
+export function isRateDraft(value: string): boolean {
+  return value.length <= INPUT_LIMITS.rate && value === value.trim() && /^[0-9]{0,12}(?:[.,][0-9]{0,6})?$/.test(value);
+}
+
+/** Normalize only an unambiguous decimal comma; never strip invalid characters. */
 export function rateInputDraft(value: string): string {
   return /^\d*,\d*$/.test(value) ? value.replace(",", ".") : value;
 }

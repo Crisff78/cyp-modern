@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { confirmedRateInput, rateInputDraft, RATE_INPUT_MAX_LENGTH } from "./rateInput";
+import { confirmedRateInput, isRateDraft, rateInputDraft, RATE_INPUT_MAX_LENGTH } from "./rateInput";
+
+test("rate entry accepts only editable decimal drafts without truncation or coercion", () => {
+  for (const value of ["", ".", ",", "0.", "60", "60.123456", "60,123456", ".5", ",5", "999999999999.999999"])
+    assert.equal(isRateDraft(value), true, value);
+  for (const value of ["abc", "6e1", "0x10", "+60", "-60", "60%", "60 50", "60\n", "60\t", "60\u200b", "６０", "60,50,1", "1,234.56", "60.1234567", "1000000000000", "0".repeat(20)])
+    assert.equal(isRateDraft(value), false, value);
+});
 
 test("rate inputs retain an excess character so typing cannot turn invalid precision into a valid rate", () => {
   assert.equal(RATE_INPUT_MAX_LENGTH, 20);

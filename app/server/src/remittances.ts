@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { assertAdmin, businessDate, DomainError, type State, type User } from "./domain.js";
 import { effectiveAccess, hasRemittancePermission, hasRemittanceAccess } from "../../shared/access.mjs";
-import { cashReceivedForTransfer, paymentAmounts, PaymentValidationError, type ReceiptIssuer, type RemittancePayment, type RemittancePaymentInput, type RemittanceRefund, type RemittanceRefundInput } from "../../shared/remittances/payment.mjs";
+import { cashReceivedForTransfer, isPaymentTextDraft, paymentAmounts, PaymentValidationError, type ReceiptIssuer, type RemittancePayment, type RemittancePaymentInput, type RemittanceRefund, type RemittanceRefundInput } from "../../shared/remittances/payment.mjs";
 import { appliedRate, type RateKind } from "../../shared/remittances/appliedRate.mjs";
 
 export const currencies = ["DOP", "USD", "EUR"] as const;
@@ -430,7 +430,7 @@ export function cancelRemittance(state: State, user: User, id: string, reason: s
   if (!reason.trim() || reason.trim().length > 500) fail("REASON_REQUIRED", "Indica un motivo de cancelación de hasta 500 caracteres.");
   let refund: RemittanceRefund | undefined;
   if (transfer.payment && transfer.payment.method !== "cash") {
-    if (!refundInput || refundInput.verified !== true || typeof refundInput.reference !== "string" || !refundInput.reference.trim() || refundInput.reference.length > 160 || /[\p{Cc}\p{Cf}]/u.test(refundInput.reference))
+    if (!refundInput || refundInput.verified !== true || !isPaymentTextDraft(refundInput.reference) || !refundInput.reference.trim())
       fail("REFUND_NOT_VERIFIED", "Confirma la devolución por el banco o la terminal y escribe su referencia antes de anular este envío.");
     refund = { method: transfer.payment.method, reference: refundInput!.reference.trim(), confirmedBy: user.id, confirmedAt: now.toISOString() };
   } else if (refundInput !== undefined) fail("INVALID_PAYMENT", "La devolución de efectivo no requiere comprobante bancario.");
