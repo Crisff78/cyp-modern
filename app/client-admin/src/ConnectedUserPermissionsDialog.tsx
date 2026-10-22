@@ -5,6 +5,7 @@ import { api, getToken } from "./api";
 import { isMockToken } from "./mock";
 import { pendingMovementDraft, useMovementRequest } from "./useMovementRequest";
 import { PERMISSION_CATALOG, PERMISSION_CATEGORIES, isUserPermissions, type PermissionCategory, type UserPermissions } from "../../shared/permissionCatalog";
+import { accountRoleAccess, accountRoleLabel } from "../../shared/accountRoles";
 import "./connected-user-permissions.css";
 import { effectiveAccess, rolePermissionIds, roleRemittancePermissions, REMITTANCE_PERMISSIONS, REMITTANCE_PERMISSION_KEYS, REMITTANCE_PERMISSION_DEPENDENCIES, type PermissionMode, type RemittancePermission } from "../../shared/access.mjs";
 
@@ -21,15 +22,16 @@ type PermissionPrompt =
   | { kind: "warning"; message: string }
   | { kind: "remove"; key: string; message: string }
   | { kind: "save"; message: string }
-  | { kind: "discard"; action: "close" | "refresh"; message: string };
+  | { kind: "discard"; action: "close" | "refresh" | "edit"; message: string };
 
-export function ConnectedUserPermissionsDialog({ userId, userName, userRole, actorId, canEdit = true, onClose }: Readonly<{
+export function ConnectedUserPermissionsDialog({ userId, userName, userRole, actorId, canEdit = true, onClose, onEditUser }: Readonly<{
   userId: string;
   userName: string;
   userRole: string;
   actorId: string;
   canEdit?: boolean;
   onClose: () => void;
+  onEditUser?: () => void;
 }>) {
   const scope = `user-permissions:${userId}`;
   const controlId = useId();
@@ -47,6 +49,7 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
   const [revision, setRevision] = useState(pending?.revision ?? 0);
   const [category, setCategory] = useState<DialogCategory>("No definido");
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [selectionNotice, setSelectionNotice] = useState("");
   const [prompt, setPrompt] = useState<PermissionPrompt | null>(null);
   const [saveNotice, setSaveNotice] = useState("");
   const [loading, setLoading] = useState(true);
@@ -61,6 +64,7 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
     setReady(false);
     setLoadError("");
     setSaveNotice("");
+    setSelectionNotice("");
     void api<unknown>(`/usuarios/${encodeURIComponent(userId)}/permisos`, { signal: controller.signal }).then((result) => {
       if (controller.signal.aborted) return;
       if (!isUserPermissions(result, userId)) throw new Error("El servidor no devolvió permisos válidos para este usuario.");
@@ -85,6 +89,11 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
   const visible = category === "No definido" ? PERMISSION_CATALOG : category === REMITTANCE_CATEGORY ? [] : PERMISSION_CATALOG.filter((permission) => permission.category === category);
   const visibleRemittances = category === "No definido" || category === REMITTANCE_CATEGORY ? REMITTANCE_PERMISSIONS : [];
   const ceiling = effectiveAccess(userRole, { permissionMode: "custom", permissionIds: PERMISSION_CATALOG.map(({ id }) => id), remittancePermissions: REMITTANCE_PERMISSION_KEYS });
+  const roleLabel = accountRoleLabel(userRole);
+  const roleHasNoAccess = ceiling.legacy.length + ceiling.remittances.length === 0;
+  const roleReason = userRole === "undefined"
+    ? "Esta cuenta tiene el rol «No definido». Primero define su rol en la ficha del usuario y guárdalo; después vuelve a Permisos. El nombre de la cuenta no define su rol."
+    : `El rol «${roleLabel}» no permite acceso a la aplicación. Para asignar permisos de trabajo, primero cambia el rol en la ficha del usuario.`;
   const requiredOwn = userId === actorId ? [1, 10, 101, 106] : [];
   const assigned = new Set(assignedIds);
   // A saved list different from the role profile is shown and can be adopted explicitly, never silently lost.
@@ -103,6 +112,7 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
     if (locked || (!storedIds && !storedKeys)) return;
     setSaveNotice("");
     setSelectedKey(null);
+    setSelectionNotice("");
     setMode("custom");
     setAssignedIds(adoptedIds);
     setRemittanceKeys(adoptedKeys);
@@ -135,25 +145,32 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
   const entryStatus = (entry: PermissionEntry, catalog = false) => !entry.allowed ? "No disponible para el rol"
     : !entry.selected && entry.saved ? "Por quitar" : entry.selected && !entry.saved ? "Por agregar"
     : !entry.selected ? "Sin asignar" : catalog ? "Ya asignado" : mode === "role" && loadedMode === "role" ? "Del perfil del rol" : "Guardado";
-  const entryHint = (entry: PermissionEntry) => !entry.allowed ? "El rol de esta cuenta no permite activar este permiso."
+  const entryHint = (entry: PermissionEntry) => !entry.allowed ? roleHasNoAccess ? roleReason : `El rol «${roleLabel}» no permite activar este permiso.`
     : entry.protected ? "No puedes retirar tu propio acceso ni la administración de permisos."
     : entry.selected ? "Este permiso ya está en la lista de asignados. Puedes quitarlo desde esa lista." : "Selecciona este permiso y pulsa Agregar para pasarlo a la lista de asignados.";
   const selectEntry = (entry: PermissionEntry) => {
-    if (locked || !entry.allowed || entry.protected || entry.selected) return;
+    if (locked) return;
+    if (!entry.allowed || entry.protected || entry.selected) {
+      setSelectedKey(null);
+      setSelectionNotice(entryHint(entry));
+      return;
+    }
     setSelectedKey(entry.key);
+    setSelectionNotice(`Seleccionado: ${entry.name}. Pulsa Agregar para pasarlo a la lista de asignados.`);
     setSaveNotice("");
   };
   const add = () => {
     if (locked) return;
     const entry = entryFor.get(selectedKey ?? "");
-    if (!entry) { setPrompt({ kind: "warning", message: "Selecciona un permiso del catálogo antes de pulsar Agregar." }); return; }
+    if (!entry) { setPrompt({ kind: "warning", message: roleHasNoAccess ? roleReason : "Selecciona un permiso del catálogo antes de pulsar Agregar." }); return; }
     if (entry.selected) { setPrompt({ kind: "warning", message: "Este permiso ya está en la lista de asignados." }); return; }
     entry.add();
     setSelectedKey(null);
+    setSelectionNotice("");
   };
   const remove = (entry: PermissionEntry) => {
     if (locked || !entry.allowed || entry.protected) return;
-    if (!entry.selected) { entry.add(); setSelectedKey(null); return; }
+    if (!entry.selected) { entry.add(); setSelectedKey(null); setSelectionNotice(""); return; }
     const dependents = REMITTANCE_PERMISSION_KEYS.includes(entry.key as RemittancePermission)
       ? remittanceKeys.filter((key) => REMITTANCE_PERMISSION_DEPENDENCIES[key]?.includes(entry.key as RemittancePermission)) : [];
     setPrompt({ kind: "remove", key: entry.key, message: `¿Quitar el permiso «${entry.name}» de ${userName}?${dependents.length ? ` También se quitarán los permisos que lo necesitan: ${dependents.map(remittanceName).join(", ")}.` : ""} El cambio se aplicará al confirmar Guardar.` });
@@ -177,12 +194,18 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
   const finishRefresh = () => {
     request.clear();
     setSelectedKey(null);
+    setSelectionNotice("");
     setReload((current) => current + 1);
   };
   const refresh = () => {
     if (request.locked || loading || prompt) return;
     if (hasChanges) setPrompt({ kind: "discard", action: "refresh", message: "Hay cambios de permisos sin guardar. ¿Descartarlos y recargar los permisos guardados?" });
     else finishRefresh();
+  };
+  const editUser = () => {
+    if (locked || !onEditUser) return;
+    if (hasChanges) setPrompt({ kind: "discard", action: "edit", message: "Hay cambios de permisos sin guardar. ¿Descartarlos y abrir la ficha del usuario para editar su rol?" });
+    else { request.clear(); onEditUser(); }
   };
   const save = async () => {
     if (!canEdit || !ready || loading || request.busy) return;
@@ -205,6 +228,7 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
       setAssignedIds(confirmedMode === "role" ? rolePermissionIds(userRole) : result.permissionIds);
       setRemittanceKeys(confirmedMode === "role" ? roleKeys : result.remittancePermissions ?? []);
       setSelectedKey(null);
+      setSelectionNotice("");
       setSaveNotice("Permisos guardados. Puedes seguir agregando o quitando permisos en esta ventana.");
       window.dispatchEvent(new CustomEvent("cyp-user-permissions-updated", { detail: { userId } }));
     } catch {
@@ -218,7 +242,7 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
     if (request.uncertain) { void save(); return; }
     const count = assignedIds.length + remittanceKeys.length;
     if (!count && !entries.some((entry) => entry.saved && !entry.selected)) {
-      setPrompt({ kind: "warning", message: "Agrega al menos un permiso a la lista de asignados antes de guardar." });
+      setPrompt({ kind: "warning", message: roleHasNoAccess ? roleReason : "Agrega al menos un permiso a la lista de asignados antes de guardar." });
       return;
     }
     setPrompt({ kind: "save", message: `¿Guardar los permisos de ${userName}?${count === 0 ? " Esta cuenta quedará sin permisos y no podrá iniciar sesión." : ` Quedarán ${count} permisos en la lista de asignados.`} Los cambios se aplicarán a esta cuenta al confirmar.` });
@@ -228,7 +252,12 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
     const confirmed = prompt;
     setPrompt(null);
     if (confirmed.kind === "save") { void save(); return; }
-    if (confirmed.kind === "discard") { if (confirmed.action === "close") finishClose(); else finishRefresh(); return; }
+    if (confirmed.kind === "discard") {
+      if (confirmed.action === "close") finishClose();
+      else if (confirmed.action === "edit") { request.clear(); onEditUser?.(); }
+      else finishRefresh();
+      return;
+    }
     if (confirmed.kind === "remove") {
       // Recheck every access boundary before applying the confirmed removal to the draft.
       const entry = entryFor.get(confirmed.key);
@@ -236,6 +265,7 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
       setSaveNotice("");
       setMode("custom");
       setSelectedKey(null);
+      setSelectionNotice("");
       if (confirmed.key.startsWith("legacy:")) setAssignedIds((current) => current.filter((id) => `legacy:${id}` !== confirmed.key));
       else setRemittanceKeys((current) => current.filter((key) => key !== confirmed.key && !REMITTANCE_PERMISSION_DEPENDENCIES[key]?.includes(confirmed.key as RemittancePermission)));
     }
@@ -244,9 +274,14 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
   return <><LegacyDialog title="Permisos del Usuario..." onClose={close} className="connected-user-permissions-dialog">
     <form className="connected-user-permissions-content" inert={prompt !== null} onSubmit={requestSave}>
       <div className="connected-permissions-user"><strong>{userName}</strong><span>{userId}</span></div>
+      <div className={`connected-permissions-role${roleHasNoAccess ? " needs-role" : ""}`} role="note" aria-label="Rol del usuario">
+        <div><strong>Rol del usuario: {roleLabel}</strong><p>{roleHasNoAccess ? roleReason : accountRoleAccess(userRole)}</p></div>
+        {canEdit && onEditUser && <button type="button" disabled={locked} onClick={editUser}>{userRole === "undefined" ? "Definir rol" : "Editar rol"}</button>}
+      </div>
       <label className="connected-permissions-mode">Aplicar:<select aria-label="Modo de permisos" value={mode} disabled={locked} onChange={(event) => {
         setSaveNotice("");
         setSelectedKey(null);
+        setSelectionNotice("");
         const next = event.target.value as PermissionMode; setMode(next);
         if (next === "role") { setAssignedIds(rolePermissionIds(userRole)); setRemittanceKeys(roleKeys); }
         // Back to the personalized permissions it was loaded with: that selection, not the role profile.
@@ -254,7 +289,7 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
       }}><option value="role">Perfil del rol</option><option value="custom">Permisos personalizados</option></select></label>
       <div className="connected-permissions-controls">
         <label className="connected-permission-category">Categoría:
-          <select aria-label="Categoría" value={category} disabled={request.busy || prompt !== null} onChange={(event) => { setCategory(event.target.value as DialogCategory); setSelectedKey(null); }}>
+          <select aria-label="Categoría" value={category} disabled={request.busy || prompt !== null} onChange={(event) => { setCategory(event.target.value as DialogCategory); setSelectedKey(null); setSelectionNotice(""); }}>
             {[...PERMISSION_CATEGORIES, REMITTANCE_CATEGORY].map((item) => <option key={item} value={item}>{item}</option>)}
           </select>
         </label>
@@ -262,6 +297,7 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
         <button type="button" disabled={loading || request.locked || prompt !== null} title="Recargar los permisos guardados" onClick={refresh}><RefreshCw size={14} /> Refrescar</button>
       </div>
       <p className="connected-permissions-feedback">Selecciona un permiso y pulsa Agregar. Repite para agregar otros, revisa la lista de asignados y pulsa Guardar. Los permisos necesarios para cada acción se agregan automáticamente.</p>
+      {selectionNotice && <p className={`connected-permissions-selection-feedback${selectedKey === null ? " is-unavailable" : ""}`} role="status">{selectionNotice}</p>}
       {saveNotice && <p className="connected-permissions-saved" role="status">{saveNotice}</p>}
       {loading && <p className="connected-permissions-feedback" role="status">Cargando permisos…</p>}
       {loadError && <p className="connected-permission-error" role="alert">{loadError}</p>}
@@ -281,10 +317,10 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
             {visible.map((permission) => { const entry = entryFor.get(`legacy:${permission.id}`)!; return <tr key={permission.id} className={selectedKey === entry.key ? "is-selected" : ""} aria-selected={selectedKey === entry.key} aria-disabled={locked || !entry.allowed || entry.protected || entry.selected} tabIndex={0} title={entryHint(entry)}
               onClick={(event) => clickRow(event, entry)} onKeyDown={(event) => { if (event.target === event.currentTarget) handleKeyboardActivation(event, () => selectEntry(entry)); }}>
               <td><input id={`${controlId}-${permission.id}`} type="radio" name={`${controlId}-permission`} aria-label={`Permiso ${permission.id}: ${permission.name}`} checked={selectedKey === entry.key} disabled={locked || !entry.allowed || entry.protected || entry.selected} onChange={() => selectEntry(entry)} /></td>
-              <td>{permission.id}</td><td><label htmlFor={`${controlId}-${permission.id}`} className="connected-permissions-name">{permission.name}</label></td><td>{permission.category}</td>
+              <td>{permission.id}</td><td><label htmlFor={entry.allowed && !entry.protected && !entry.selected ? `${controlId}-${permission.id}` : undefined} className="connected-permissions-name" onClick={(event) => { event.preventDefault(); selectEntry(entry); }}>{permission.name}</label></td><td>{permission.category}</td>
               <td className="connected-permission-state">{ready ? entryStatus(entry, true) : "Cargando…"}</td>
             </tr>; })}
-            {visibleRemittances.map((permission) => { const entry = entryFor.get(permission.key)!; return <tr key={permission.key} className={selectedKey === entry.key ? "is-selected" : ""} aria-selected={selectedKey === entry.key} aria-disabled={locked || !entry.allowed || entry.selected} tabIndex={0} title={entryHint(entry)} onClick={(event) => clickRow(event, entry)} onKeyDown={(event) => { if (event.target === event.currentTarget) handleKeyboardActivation(event, () => selectEntry(entry)); }}><td><input id={`${controlId}-${permission.key}`} type="radio" name={`${controlId}-permission`} aria-label={`${REMITTANCE_CATEGORY}: ${permission.name}`} checked={selectedKey === entry.key} disabled={locked || !entry.allowed || entry.selected} onChange={() => selectEntry(entry)} /></td><td>Envíos</td><td><label htmlFor={`${controlId}-${permission.key}`}>{permission.name}</label></td><td>{REMITTANCE_CATEGORY}</td><td className="connected-permission-state">{ready ? entryStatus(entry, true) : "Cargando…"}</td></tr>; })}
+            {visibleRemittances.map((permission) => { const entry = entryFor.get(permission.key)!; return <tr key={permission.key} className={selectedKey === entry.key ? "is-selected" : ""} aria-selected={selectedKey === entry.key} aria-disabled={locked || !entry.allowed || entry.selected} tabIndex={0} title={entryHint(entry)} onClick={(event) => clickRow(event, entry)} onKeyDown={(event) => { if (event.target === event.currentTarget) handleKeyboardActivation(event, () => selectEntry(entry)); }}><td><input id={`${controlId}-${permission.key}`} type="radio" name={`${controlId}-permission`} aria-label={`${REMITTANCE_CATEGORY}: ${permission.name}`} checked={selectedKey === entry.key} disabled={locked || !entry.allowed || entry.selected} onChange={() => selectEntry(entry)} /></td><td>Envíos</td><td><label htmlFor={entry.allowed && !entry.selected ? `${controlId}-${permission.key}` : undefined} onClick={(event) => { event.preventDefault(); selectEntry(entry); }}>{permission.name}</label></td><td>{REMITTANCE_CATEGORY}</td><td className="connected-permission-state">{ready ? entryStatus(entry, true) : "Cargando…"}</td></tr>; })}
             {visible.length + visibleRemittances.length === 0 && <tr><td colSpan={5}>No hay permisos en esta categoría.</td></tr>}
           </tbody>
         </table>
