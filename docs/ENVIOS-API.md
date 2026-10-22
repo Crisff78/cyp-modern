@@ -29,6 +29,11 @@ Este módulo tiene caja propia y no altera el ledger DOP de cobros/entregas.
 ### Formatos de captura y validación
 
 - Los importes de captura admiten dígitos y un punto con hasta dos decimales.
+  Principal, dinero recibido, efectivo inicial y contado comparten el mismo
+  máximo exacto: `90071992547409.91`. La captura rechaza letras, signos,
+  exponentes, separadores de miles y valores fuera de rango, tanto al escribir
+  como al pegar. Una entrada rechazada debe corregirse antes de confirmar;
+  no se confirma silenciosamente el importe anterior.
   La cotización recibe `amount` en centavos como cadena de dígitos ASCII (máximo
   16 y dentro del entero seguro); rechaza signos, exponentes, hexadecimal,
   espacios y decimales. Los POST mantienen importes numéricos enteros en centavos.
@@ -44,6 +49,18 @@ Este módulo tiene caja propia y no altera el ledger DOP de cobros/entregas.
   teléfono o documento. La API valida de nuevo, incluso al omitir la interfaz.
   Los valores de remesas siguen enviándose a PostgreSQL mediante parámetros,
   nunca concatenados dentro de la sentencia SQL.
+- Compra y Venta admiten un decimal positivo de hasta doce dígitos enteros y
+  seis decimales. La captura acepta punto o coma decimal y envía punto a la API;
+  no convierte exponentes ni recorta precisión. Fecha y DOP=1 siguen bloqueados.
+- Referencias de pago/devolución y banco/proveedor son texto alfanumérico de
+  hasta 160 caracteres: conservan ceros iniciales, espacios y puntuación.
+  La interfaz y la API rechazan controles, saltos de línea y marcas invisibles
+  antes de normalizar el texto. No se solicitan datos completos de tarjetas.
+- Las búsquedas admiten texto mixto de hasta 160 caracteres en una sola línea;
+  no se restringen a números porque también localizan nombres y referencias.
+
+Matriz por campo y comprobaciones de este ajuste:
+[REMESAS-VALIDACION-CAMPOS.md](REMESAS-VALIDACION-CAMPOS.md).
 
 ## Tipos compartidos
 

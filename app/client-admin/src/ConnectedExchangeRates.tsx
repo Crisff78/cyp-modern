@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { LegacyDialog, LegacyToolbar, handleKeyboardActivation } from "./LegacyConnectedUi";
 import { pendingMovementDraft, useMovementRequest } from "./useMovementRequest";
 import { remittancesApi } from "./remittancesApi";
-import { confirmedRateInput, rateInputDraft, RATE_INPUT_MAX_LENGTH } from "../../shared/remittances/rateInput";
+import { confirmedRateInput, isRateDraft, rateInputDraft, RATE_INPUT_MAX_LENGTH, RATE_INPUT_MESSAGE } from "../../shared/remittances/rateInput";
+import { restrictPaste } from "../../shared/remittances/fieldInput";
 import { confirmedRateResponse } from "../../shared/remittances/rateResponse";
 import type { Currency, Rate, RemittanceSnapshot } from "../../shared/remittances/types";
 import { RateRegistrationTime } from "../../shared/remittances/RateRegistrationTime";
@@ -22,6 +23,7 @@ export function ConnectedExchangeRates({ actorId, isAdmin }: { actorId: string; 
   const [draft, setDraft] = useState<RateDraft | null>(() => pendingMovementDraft<RateDraft>(actorId, scope) ?? null);
   const [reviewing, setReviewing] = useState(() => Boolean(pendingMovementDraft(actorId, scope)));
   const [formError, setFormError] = useState("");
+  const [entryErrors, setEntryErrors] = useState<Partial<Record<"purchaseRate" | "saleRate", string>>>({});
   const request = useMovementRequest(actorId, scope);
   const refresh = useCallback(async () => {
     setLoading(true); setError("");
@@ -39,13 +41,14 @@ export function ConnectedExchangeRates({ actorId, isAdmin }: { actorId: string; 
   };
   const open = (rate?: Rate) => {
     if (!snapshot || request.locked || !isAdmin) return;
-    request.clear(); setFormError(""); setNotice(""); setReviewing(false);
+    request.clear(); setFormError(""); setEntryErrors({}); setNotice(""); setReviewing(false);
     setDraft({ currency: rate?.currency ?? "USD", rate: rate?.currency === "DOP" ? "1.000000" : rate?.rate ?? "", purchaseRate: rate?.currency === "DOP" ? "1.000000" : rate?.purchaseRate ?? "", saleRate: rate?.currency === "DOP" ? "1.000000" : rate?.saleRate ?? "", date: snapshot.businessDate });
   };
   const close = () => { if (request.closable) { request.clear(); setDraft(null); setReviewing(false); } };
   const review = (event: FormEvent) => {
     event.preventDefault();
     if (!draft || request.locked) return;
+    if (Object.values(entryErrors).some(Boolean)) { setFormError("Corrige el campo señalado antes de revisar la tasa."); return; }
     try { setDraft({ ...draft, rate: confirmedRateInput(draft.purchaseRate), purchaseRate: confirmedRateInput(draft.purchaseRate), saleRate: confirmedRateInput(draft.saleRate) }); }
     catch (failure) { setFormError(failure instanceof Error ? failure.message : "Revisa la tasa."); return; }
     setFormError(""); setReviewing(true);
@@ -95,10 +98,15 @@ export function ConnectedExchangeRates({ actorId, isAdmin }: { actorId: string; 
         {request.uncertain && <p>No se confirmó el resultado. Reintenta la misma operación sin cambiar los datos.</p>}
         <div className="legacy-dialog-actions centered"><button type="button" disabled={request.busy} onClick={() => void save()}>{request.busy ? "Guardando…" : request.uncertain ? "Reintentar misma operación" : "Confirmar"}</button><button type="button" disabled={request.locked} onClick={() => setReviewing(false)}>Volver</button></div>
       </div> : <form className="legacy-dialog-form exchange-rate-form" onSubmit={review}>
-        <label className="exchange-rate-row"><span className="exchange-rate-label">Moneda:</span><select value={draft.currency} onChange={(event) => { const value = event.target.value === "DOP" ? "1.000000" : ""; setDraft({ ...draft, currency: event.target.value as Currency, rate: value, purchaseRate: value, saleRate: value }); }}>{(snapshot?.currencies ?? []).map((code) => <option key={code} value={code}>{names[code]}</option>)}</select></label>
+        <label className="exchange-rate-row"><span className="exchange-rate-label">Moneda:</span><select value={draft.currency} onChange={(event) => { const value = event.target.value === "DOP" ? "1.000000" : ""; setDraft({ ...draft, currency: event.target.value as Currency, rate: value, purchaseRate: value, saleRate: value }); setEntryErrors({}); setFormError(""); }}>{(snapshot?.currencies ?? []).map((code) => <option key={code} value={code}>{names[code]}</option>)}</select></label>
         <label className="exchange-rate-row exchange-date-row"><span className="exchange-rate-label">Fecha:</span><input type="date" value={draft.date} readOnly /></label>
         <RateRegistrationTime rate={rates.find((row) => row.currency === draft.currency && row.date === draft.date)} className="exchange-rate-row" labelClassName="exchange-rate-label" />
-        {([['purchaseRate', 'Compra'], ['saleRate', 'Venta']] as const).map(([key, label]) => <label className="exchange-rate-row" key={key}><span className="exchange-rate-label">{label}:</span><input aria-label={label} required inputMode="decimal" maxLength={RATE_INPUT_MAX_LENGTH} value={draft[key] ?? ""} readOnly={draft.currency === "DOP"} onChange={(event) => { setDraft({ ...draft, [key]: rateInputDraft(event.target.value) }); setFormError(""); }} /></label>)}
+        {([['purchaseRate', 'Compra'], ['saleRate', 'Venta']] as const).map(([key, label]) => <label className="exchange-rate-row" key={key}><span className="exchange-rate-label">{label}:</span><input aria-label={label} required inputMode="decimal" autoComplete="off" spellCheck={false} pattern="[0-9]{0,12}([.,][0-9]{0,6})?" title={RATE_INPUT_MESSAGE} maxLength={RATE_INPUT_MAX_LENGTH} value={draft[key] ?? ""} readOnly={draft.currency === "DOP"} aria-invalid={Boolean(entryErrors[key]) || undefined}
+          onPaste={(event) => restrictPaste(event, isRateDraft, () => { setEntryErrors((current) => ({ ...current, [key]: RATE_INPUT_MESSAGE })); setFormError(RATE_INPUT_MESSAGE); })}
+          onChange={(event) => {
+            if (!isRateDraft(event.target.value)) { setEntryErrors((current) => ({ ...current, [key]: RATE_INPUT_MESSAGE })); setFormError(RATE_INPUT_MESSAGE); return; }
+            setDraft({ ...draft, [key]: rateInputDraft(event.target.value) }); setEntryErrors((current) => ({ ...current, [key]: undefined })); setFormError("");
+          }} /></label>)}
         <p className="exchange-rate-hint" role="note">{draft.currency === "DOP"
           ? "El peso dominicano es la moneda base: siempre vale 1 y por eso aquí no se puede cambiar. Para registrar una tasa, elige Dólar Americano o Euro en «Moneda»."
           : `Escribe cuántos pesos dominicanos (DOP) vale 1 ${draft.currency}. Compra cuando recibimos la moneda; venta cuando la entregamos.`}</p>
