@@ -10,7 +10,7 @@ import { INPUT_LIMITS, isPhoneDraft, isTextDraft, PHONE_INPUT_MESSAGE, validateP
 import { useClientContact } from "./useClientContact";
 import { changedRecipientPhone, confirmedCreatedTransfer, recipientPhoneRecord } from "./createdTransferResponse";
 import { commissionReportStatusLabels } from "./commissionOutput";
-import { accessRole, hasRemittancePermission, type EffectiveAccess, type RemittancePermission } from "../access.mjs";
+import { accessRole, hasRoleExceptions, hasRemittancePermission, type EffectiveAccess, type RemittancePermission } from "../access.mjs";
 import { RemittanceDialog as Dialog } from "./RemittanceDialog";
 import { RemittanceWindow } from "./RemittanceWindow";
 import { QuickClientDialog } from "./QuickClientDialog";
@@ -266,7 +266,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   // What is drawn: the chosen section while it is allowed, otherwise the first allowed one (none: a notice).
   const view = permittedTabs.some(({ id }) => id === tab) ? tab : permittedTabs[0]?.id;
   // Administración opens the box of a cashier only to that cashier; an administrator opens any.
-  const canOpenCash = can("remittances.cash.open") && (isAdmin || accessRole(actor.role) === "cashier");
+  const canOpenCash = can("remittances.cash.open") && (isAdmin || accessRole(actor.role) === "cashier" || hasRoleExceptions(actor));
   const canOpenCashOf = (operatorId: string) => canOpenCash && (isAdmin || operatorId === user.id);
   useEffect(() => {
     if (snapshot && !permittedTabs.some(({ id }) => id === tab) && permittedTabs[0]) setTab(permittedTabs[0].id);

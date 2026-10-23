@@ -7,7 +7,7 @@ import { pendingMovementDraft, useMovementRequest } from "./useMovementRequest";
 import { PERMISSION_CATALOG, PERMISSION_CATEGORIES, isUserPermissions, type PermissionCategory, type UserPermissions } from "../../shared/permissionCatalog";
 import { accountRoleAccess, accountRoleLabel } from "../../shared/accountRoles";
 import "./connected-user-permissions.css";
-import { effectiveAccess, rolePermissionIds, roleRemittancePermissions, REMITTANCE_PERMISSIONS, REMITTANCE_PERMISSION_KEYS, REMITTANCE_PERMISSION_DEPENDENCIES, type PermissionMode, type RemittancePermission } from "../../shared/access.mjs";
+import { effectiveAccess, legacyPermissionDependencies, rolePermissionIds, roleRemittancePermissions, REMITTANCE_PERMISSIONS, REMITTANCE_PERMISSION_KEYS, REMITTANCE_PERMISSION_DEPENDENCIES, type PermissionMode, type RemittancePermission } from "../../shared/access.mjs";
 
 // The keys stay "remittances.*"; the dialog shows the name of the module.
 const REMITTANCE_CATEGORY = "Remesas";
@@ -17,9 +17,17 @@ const sameIds = (left: readonly number[], right: readonly number[]) => JSON.stri
 const sortedKeys = (keys: readonly RemittancePermission[]) => [...new Set(keys)].sort();
 const sameKeys = (left: readonly RemittancePermission[], right: readonly RemittancePermission[]) => JSON.stringify(sortedKeys(left)) === JSON.stringify(sortedKeys(right));
 const remittanceName = (key: RemittancePermission) => REMITTANCE_PERMISSIONS.find((permission) => permission.key === key)?.name ?? key;
-type PermissionEntry = { key: string; code: string; name: string; category: string; selected: boolean; saved: boolean; allowed: boolean; protected: boolean; add: () => void };
+// Display selected grants even when entry (1) has deliberately been withdrawn;
+// the API still makes them ineffective. Old, unconfirmed out-of-role codes stay inactive.
+const displayedSelection = (role: string, selection: Parameters<typeof effectiveAccess>[1]) => {
+  const ids = selection?.permissionIds ?? [];
+  const result = effectiveAccess(role, { ...selection, permissionIds: [...new Set([1, ...ids])] });
+  return { ...result, legacy: selection?.permissionMode === "role" ? result.legacy : result.legacy.filter((id) => ids.includes(id)) };
+};
+type PermissionEntry = { key: string; code: string; name: string; category: string; selected: boolean; saved: boolean; allowed: boolean; protected: boolean; exception: boolean; add: () => void };
 type PermissionPrompt =
   | { kind: "warning"; message: string }
+  | { kind: "exception"; key: string; message: string }
   | { kind: "remove"; key: string; message: string }
   | { kind: "save"; message: string }
   | { kind: "discard"; action: "close" | "refresh" | "edit"; message: string };
@@ -42,6 +50,7 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
   // profile, and saving sends those lists back unchanged, the codes and the keys of Envíos alike.
   const [storedIds, setStoredIds] = useState<readonly number[] | null>(pending?.mode === "role" ? pending.permissionIds : null);
   const [storedKeys, setStoredKeys] = useState<readonly RemittancePermission[] | null>(pending?.mode === "role" ? pending.remittancePermissions ?? null : null);
+  const [storedExceptions, setStoredExceptions] = useState(pending?.roleExceptions === true);
   const [loadedMode, setLoadedMode] = useState<PermissionMode | null>(null);
   const [assignedIds, setAssignedIds] = useState<readonly number[]>(pending ? pending.mode === "role" ? rolePermissionIds(userRole) : pending.permissionIds : []);
   const [mode, setMode] = useState<PermissionMode>(pending?.mode ?? "role");
@@ -74,8 +83,11 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
       setLoadedMode(result.mode ?? "role");
       setStoredIds(submitted?.mode === "role" ? submitted.permissionIds : result.permissionIds);
       setStoredKeys(submitted?.mode === "role" ? submitted.remittancePermissions ?? null : result.remittancePermissions ?? null);
-      setAssignedIds(nextMode === "role" ? rolePermissionIds(userRole) : submitted?.permissionIds ?? result.permissionIds);
-      setRemittanceKeys(nextMode === "role" ? roleRemittancePermissions(userRole) : submitted?.remittancePermissions ?? result.remittancePermissions ?? []);
+      const selection = submitted ?? result;
+      const reach = displayedSelection(userRole, { permissionMode: nextMode, permissionIds: selection.permissionIds, remittancePermissions: selection.remittancePermissions, roleExceptions: selection.roleExceptions });
+      setStoredExceptions(selection.roleExceptions === true);
+      setAssignedIds(reach.legacy);
+      setRemittanceKeys(reach.remittances);
       setRevision(submitted?.revision ?? result.revision);
       setReady(true);
     }).catch((error: unknown) => {
@@ -88,12 +100,10 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
 
   const visible = category === "No definido" ? PERMISSION_CATALOG : category === REMITTANCE_CATEGORY ? [] : PERMISSION_CATALOG.filter((permission) => permission.category === category);
   const visibleRemittances = category === "No definido" || category === REMITTANCE_CATEGORY ? REMITTANCE_PERMISSIONS : [];
-  const ceiling = effectiveAccess(userRole, { permissionMode: "custom", permissionIds: PERMISSION_CATALOG.map(({ id }) => id), remittancePermissions: REMITTANCE_PERMISSION_KEYS });
+  const ceiling = effectiveAccess(userRole, { permissionMode: "custom", permissionIds: PERMISSION_CATALOG.map(({ id }) => id), remittancePermissions: REMITTANCE_PERMISSION_KEYS, roleExceptions: storedExceptions });
   const roleLabel = accountRoleLabel(userRole);
   const roleHasNoAccess = ceiling.legacy.length + ceiling.remittances.length === 0;
-  const roleReason = userRole === "undefined"
-    ? "Esta cuenta tiene el rol «No definido». Primero define su rol en la ficha del usuario y guárdalo; después vuelve a Permisos. El nombre de la cuenta no define su rol."
-    : `El rol «${roleLabel}» no permite acceso a la aplicación. Para asignar permisos de trabajo, primero cambia el rol en la ficha del usuario.`;
+  const roleReason = accountRoleAccess(userRole);
   const requiredOwn = userId === actorId ? [1, 10, 101, 106] : [];
   const assigned = new Set(assignedIds);
   // A saved list different from the role profile is shown and can be adopted explicitly, never silently lost.
@@ -118,36 +128,38 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
     setRemittanceKeys(adoptedKeys);
   };
   const addLegacy = (id: number) => {
-    if (locked || !ceiling.legacy.includes(id) || requiredOwn.includes(id)) return;
+    if (loading || !ready || !canEdit || request.locked || requiredOwn.includes(id)) return;
     setSaveNotice("");
     setMode("custom");
-    setAssignedIds((current) => [...new Set([...current, id])]);
+    setAssignedIds((current) => [...new Set([...current, id, ...(!rolePermissionIds(userRole).includes(id) ? legacyPermissionDependencies(id) : [])])]);
+    if (id === 200 || id === 201) setRemittanceKeys((current) => [...new Set([...current, "remittances.rates.view" as const, ...(id === 201 ? ["remittances.rates.manage" as const] : [])])]);
   };
   const addRemittance = (key: RemittancePermission) => {
-    if (locked || !ceiling.remittances.includes(key)) return;
+    if (loading || !ready || !canEdit || request.locked) return;
     setSaveNotice("");
     setMode("custom");
-    setAssignedIds((current) => [...new Set([...current, 1])]);
+    setAssignedIds((current) => [...new Set([...current, 1, ...(key === "remittances.rates.manage" ? [200, 201] : key === "remittances.rates.view" ? [200] : [])])]);
     setRemittanceKeys((current) => [...new Set([...current, key, ...(REMITTANCE_PERMISSION_DEPENDENCIES[key] ?? [])])]);
   };
   // Compare with the last confirmed save, not with an earlier selection kept only as a reference.
-  const savedIds = new Set(loadedMode === "role" ? rolePermissionIds(userRole) : storedIds ?? []);
-  const savedKeys = new Set(loadedMode === "role" ? roleKeys : storedKeys ?? []);
+  const savedReach = displayedSelection(userRole, { permissionMode: loadedMode ?? "role", permissionIds: storedIds ?? [], remittancePermissions: storedKeys ?? [], roleExceptions: storedExceptions });
+  const savedIds = new Set(savedReach.legacy);
+  const savedKeys = new Set(savedReach.remittances);
   const entries: PermissionEntry[] = [
     ...PERMISSION_CATALOG.map((permission) => ({ key: `legacy:${permission.id}`, code: String(permission.id), name: permission.name, category: permission.category,
-      selected: assigned.has(permission.id), saved: savedIds.has(permission.id), allowed: ceiling.legacy.includes(permission.id), protected: requiredOwn.includes(permission.id), add: () => addLegacy(permission.id) })),
+      selected: assigned.has(permission.id), saved: savedIds.has(permission.id), allowed: true, exception: !rolePermissionIds(userRole).includes(permission.id) || legacyPermissionDependencies(permission.id).some((id) => !rolePermissionIds(userRole).includes(id)), protected: requiredOwn.includes(permission.id), add: () => addLegacy(permission.id) })),
     ...REMITTANCE_PERMISSIONS.map((permission) => ({ key: permission.key, code: "Remesas", name: permission.name, category: REMITTANCE_CATEGORY,
-      selected: remittanceKeys.includes(permission.key), saved: savedKeys.has(permission.key), allowed: ceiling.remittances.includes(permission.key), protected: false, add: () => addRemittance(permission.key) })),
+      selected: remittanceKeys.includes(permission.key), saved: savedKeys.has(permission.key), allowed: true, exception: !roleKeys.includes(permission.key), protected: false, add: () => addRemittance(permission.key) })),
   ];
   const entryFor = new Map(entries.map((entry) => [entry.key, entry]));
   const reviewEntries = ready ? entries.filter((entry) => entry.selected || entry.saved) : [];
   const hasChanges = ready && (mode !== loadedMode || entries.some((entry) => entry.selected !== entry.saved));
   const entryStatus = (entry: PermissionEntry, catalog = false) => !entry.allowed ? "No disponible para el rol"
     : !entry.selected && entry.saved ? "Por quitar" : entry.selected && !entry.saved ? "Por agregar"
-    : !entry.selected ? "Sin asignar" : catalog ? "Ya asignado" : mode === "role" && loadedMode === "role" ? "Del perfil del rol" : "Guardado";
+    : !entry.selected ? entry.exception ? "Requiere advertencia" : "Sin asignar" : catalog ? "Ya asignado" : mode === "role" && loadedMode === "role" ? "Del perfil del rol" : "Guardado";
   const entryHint = (entry: PermissionEntry) => !entry.allowed ? roleHasNoAccess ? roleReason : `El rol «${roleLabel}» no permite activar este permiso.`
     : entry.protected ? "No puedes retirar tu propio acceso ni la administración de permisos."
-    : entry.selected ? "Este permiso ya está en la lista de asignados. Puedes quitarlo desde esa lista." : "Selecciona este permiso y pulsa Agregar para pasarlo a la lista de asignados.";
+    : entry.selected ? "Este permiso ya está en la lista de asignados. Puedes quitarlo desde esa lista." : entry.exception ? "Permiso fuera del perfil inicial. Puedes agregarlo después de confirmar la advertencia." : "Selecciona este permiso y pulsa Agregar para pasarlo a la lista de asignados.";
   const selectEntry = (entry: PermissionEntry) => {
     if (locked) return;
     if (!entry.allowed || entry.protected || entry.selected) {
@@ -162,15 +174,16 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
   const add = () => {
     if (locked) return;
     const entry = entryFor.get(selectedKey ?? "");
-    if (!entry) { setPrompt({ kind: "warning", message: roleHasNoAccess ? roleReason : "Selecciona un permiso del catálogo antes de pulsar Agregar." }); return; }
+    if (!entry) { setPrompt({ kind: "warning", message: "Selecciona un permiso del catálogo antes de pulsar Agregar." }); return; }
     if (entry.selected) { setPrompt({ kind: "warning", message: "Este permiso ya está en la lista de asignados." }); return; }
+    if (entry.exception) { setPrompt({ kind: "exception", key: entry.key, message: `El permiso «${entry.name}» no viene por defecto en el rol «${roleLabel}». ¿Autorizar esta excepción para ${userName}? También se agregarán los permisos necesarios para usar esa función. El rol y las restricciones sobre rutas, cajas y movimientos no cambian. Se aplicará al confirmar Guardar.` }); return; }
     entry.add();
     setSelectedKey(null);
     setSelectionNotice("");
   };
   const remove = (entry: PermissionEntry) => {
     if (locked || !entry.allowed || entry.protected) return;
-    if (!entry.selected) { entry.add(); setSelectedKey(null); setSelectionNotice(""); return; }
+    if (!entry.selected) { setSelectedKey(entry.key); if (entry.exception) setPrompt({ kind: "exception", key: entry.key, message: `¿Restaurar el permiso adicional «${entry.name}» para ${userName}? Está fuera del perfil inicial del rol «${roleLabel}». Se aplicará al guardar.` }); else { entry.add(); setSelectedKey(null); setSelectionNotice(""); } return; }
     const dependents = REMITTANCE_PERMISSION_KEYS.includes(entry.key as RemittancePermission)
       ? remittanceKeys.filter((key) => REMITTANCE_PERMISSION_DEPENDENCIES[key]?.includes(entry.key as RemittancePermission)) : [];
     setPrompt({ kind: "remove", key: entry.key, message: `¿Quitar el permiso «${entry.name}» de ${userName}?${dependents.length ? ` También se quitarán los permisos que lo necesitan: ${dependents.map(remittanceName).join(", ")}.` : ""} El cambio se aplicará al confirmar Guardar.` });
@@ -213,15 +226,17 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
     const savedIds = mode === "role" ? storedIds ?? rolePermissionIds(userRole) : assignedIds;
     // The server keeps an empty reference of keys as the role profile, so that is what goes back.
     const savedKeys = mode === "role" ? storedKeys?.length ? storedKeys : roleKeys : remittanceKeys;
-    const draft: UserPermissions = { userId, permissionIds: sortedIds(savedIds), mode, remittancePermissions: [...savedKeys].sort(), revision };
+    const extras = mode === "role" ? storedExceptions : savedIds.some((id) => !rolePermissionIds(userRole).includes(id)) || savedKeys.some((key) => !roleKeys.includes(key));
+    const draft: UserPermissions = { ...(extras ? { roleExceptions: true } : storedExceptions ? { roleExceptions: false } : {}), userId, permissionIds: sortedIds(savedIds), mode, remittancePermissions: [...savedKeys].sort(), revision };
     try {
-      const result = await request.run<UserPermissions>(`/usuarios/${encodeURIComponent(userId)}/permisos`, { permissionIds: draft.permissionIds, mode, remittancePermissions: draft.remittancePermissions, revision }, draft,
-        (result) => isUserPermissions(result, userId) && result.mode === draft.mode && JSON.stringify([...(result.remittancePermissions ?? [])].sort()) === JSON.stringify(draft.remittancePermissions) && JSON.stringify([...result.permissionIds].sort((a, b) => a - b)) === JSON.stringify(draft.permissionIds),
+      const result = await request.run<UserPermissions>(`/usuarios/${encodeURIComponent(userId)}/permisos`, { permissionIds: draft.permissionIds, mode, remittancePermissions: draft.remittancePermissions, revision, ...(draft.roleExceptions !== undefined ? { roleExceptions: draft.roleExceptions } : {}) }, draft,
+        (result) => isUserPermissions(result, userId) && !!result.roleExceptions === !!draft.roleExceptions && result.mode === draft.mode && JSON.stringify([...(result.remittancePermissions ?? [])].sort()) === JSON.stringify(draft.remittancePermissions) && JSON.stringify([...result.permissionIds].sort((a, b) => a - b)) === JSON.stringify(draft.permissionIds),
         "POST", isMockToken(getToken()) ? "api" : "strict");
       // A second save in this window must use the server's new revision and a fresh operation key.
       const confirmedMode = result.mode ?? "role";
       setRevision(result.revision);
       setLoadedMode(confirmedMode);
+      setStoredExceptions(result.roleExceptions === true);
       setStoredIds(result.permissionIds);
       setStoredKeys(result.remittancePermissions ?? []);
       setMode(confirmedMode);
@@ -242,7 +257,7 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
     if (request.uncertain) { void save(); return; }
     const count = assignedIds.length + remittanceKeys.length;
     if (!count && !entries.some((entry) => entry.saved && !entry.selected)) {
-      setPrompt({ kind: "warning", message: roleHasNoAccess ? roleReason : "Agrega al menos un permiso a la lista de asignados antes de guardar." });
+      setPrompt({ kind: "warning", message: "Agrega al menos un permiso a la lista de asignados antes de guardar." });
       return;
     }
     setPrompt({ kind: "save", message: `¿Guardar los permisos de ${userName}?${count === 0 ? " Esta cuenta quedará sin permisos y no podrá iniciar sesión." : ` Quedarán ${count} permisos en la lista de asignados.`} Los cambios se aplicarán a esta cuenta al confirmar.` });
@@ -251,6 +266,11 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
     if (!prompt || request.busy) return;
     const confirmed = prompt;
     setPrompt(null);
+    if (confirmed.kind === "exception") {
+      const entry = entryFor.get(confirmed.key);
+      if (!entry || entry.selected || entry.protected || loading || !ready || !canEdit || request.locked) return;
+      entry.add(); setSelectedKey(null); setSelectionNotice(""); return;
+    }
     if (confirmed.kind === "save") { void save(); return; }
     if (confirmed.kind === "discard") {
       if (confirmed.action === "close") finishClose();
@@ -285,7 +305,7 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
         const next = event.target.value as PermissionMode; setMode(next);
         if (next === "role") { setAssignedIds(rolePermissionIds(userRole)); setRemittanceKeys(roleKeys); }
         // Back to the personalized permissions it was loaded with: that selection, not the role profile.
-        else if (loadedMode === "custom") { setAssignedIds(storedIds ?? []); setRemittanceKeys(storedKeys ?? []); }
+        else if (loadedMode === "custom") { setAssignedIds(savedReach.legacy); setRemittanceKeys(savedReach.remittances); }
       }}><option value="role">Perfil del rol</option><option value="custom">Permisos personalizados</option></select></label>
       <div className="connected-permissions-controls">
         <label className="connected-permission-category">Categoría:
@@ -336,7 +356,7 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
         </ul>
       </section>
       </div>
-      <p className="connected-user-permissions-note">{mode === "role" ? "Se aplica el perfil inicial del rol. Al agregar o quitar un permiso pasarás a permisos personalizados." : "Al guardar se aplicarán estos permisos en las pantallas y en cada operación. El rol no cambia: Supervisor conserva solo consulta, Cobrador conserva su ruta y Cajero atiende solo Remesas y su propia caja, sin catálogos, tasas ni comisiones. Los códigos 410–415 (reportes del sistema anterior) se conservan, pero los reportes se abren con «Visualizar Reportes» (400) y muestran solo los datos que la cuenta puede consultar."}</p>
+      <p className="connected-user-permissions-note">{mode === "role" ? "Se aplica el perfil inicial del rol. Al agregar o quitar un permiso pasarás a permisos personalizados." : "Al guardar se aplicarán los permisos personalizados y las excepciones autorizadas. El rol no cambia. Se mantienen las restricciones sobre rutas, cajas y movimientos. Los códigos 410–415 (reportes del sistema anterior) se conservan, pero los reportes se abren con «Visualizar Reportes» (400) y muestran solo los datos que la cuenta puede consultar."}</p>
       {mode === "custom" && !assigned.has(1) && <p role="status" className="connected-permission-error">Sin «Entrar al sistema» esta cuenta no podrá iniciar sesión ni realizar operaciones.</p>}
       {!canEdit && <p className="connected-permissions-feedback">Tu cuenta no tiene permiso para modificar permisos («Modificar permisos de usuario», 106).</p>}
       {request.error && <p className="connected-permission-error" role="alert">{request.error}</p>}
@@ -349,7 +369,7 @@ export function ConnectedUserPermissionsDialog({ userId, userName, userRole, act
       </div>
     </form>
   </LegacyDialog>
-  {prompt && <LegacyDialog title={prompt.kind === "warning" ? "Aviso" : prompt.kind === "remove" ? "Quitar permiso" : prompt.kind === "save" ? "Guardar permisos" : "Cambios sin guardar"} className="legacy-confirm-dialog connected-permission-confirm" overlayClassName="connected-permission-prompt-overlay" onClose={() => setPrompt(null)}>
+  {prompt && <LegacyDialog title={prompt.kind === "warning" ? "Aviso" : prompt.kind === "exception" ? "Permiso adicional al rol" : prompt.kind === "remove" ? "Quitar permiso" : prompt.kind === "save" ? "Guardar permisos" : "Cambios sin guardar"} className="legacy-confirm-dialog connected-permission-confirm" overlayClassName="connected-permission-prompt-overlay" onClose={() => setPrompt(null)}>
     <div className="legacy-confirm-content"><span className="legacy-question-icon" aria-hidden="true">{prompt.kind === "warning" ? "!" : "?"}</span><p role={prompt.kind === "warning" ? "alert" : undefined}>{prompt.message}</p></div>
     <div className="legacy-dialog-actions centered">
       {prompt.kind === "warning" ? <button type="button" autoFocus onClick={() => setPrompt(null)}>Aceptar</button> : <>

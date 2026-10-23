@@ -98,7 +98,7 @@ import { isMockToken } from "./mock";
 import OperationModal, { type Operation } from "./Operations";
 import AccountModal, { type AccountOperation } from "./Users";
 import RemittancesWorkspace, { type RemittanceCashOpening } from "../../shared/remittances/RemittancesWorkspace";
-import { hasPermission, hasRemittancePermission, canOpenPage, canChangeOwnPassword } from "../../shared/access.mjs";
+import { hasPermission, hasRemittancePermission, hasRoleExceptions, canOpenPage, canChangeOwnPassword } from "../../shared/access.mjs";
 import { PERMISSION_CATALOG } from "../../shared/permissionCatalog";
 import { accountRoleLabel as accountRoleName } from "../../shared/accountRoles";
 import { PageAccessContext, usePageAccess } from "./PageAccess";
@@ -4591,7 +4591,7 @@ function Login({
       if (isSuspendedUser(next))
         throw new Error("Tu cuenta o tu empresa está suspendida. Habla con la oficina.");
       // A collector works from the collector app: the session goes there without asking again.
-      if (normalizeRole(next.role) === "COLLECTOR") {
+      if (normalizeRole(next.role) === "COLLECTOR" && !hasRoleExceptions(next)) {
         setToCollector(true);
         openCollectorPortal(result.token, collectorUrl);
         return;
@@ -5009,6 +5009,7 @@ export default function App() {
       .slice(0, 3) ?? [];
   const effectiveUser = user ?? enrichUserRole({ id: "", name: "", role: "UNDEFINED" });
   const isAdminRole = ["ADMIN", "SUPERADMIN"].includes(normalizeRole(effectiveUser.role));
+  const canManageOffice = isAdminRole || hasRoleExceptions(effectiveUser);
   const canViewRemittanceCash = hasRemittancePermission(effectiveUser, "remittances.cash.view");
   // The search looks for clients and routes only: an account that can open neither has nothing to search.
   const canSearchOperation = canOpenPage(effectiveUser, "clients") || canOpenPage(effectiveUser, "routes");
@@ -5420,7 +5421,7 @@ export default function App() {
               ) : windowState.page === "banks" ? (
                 <ConnectedBanks actorId={effectiveUser.id} canManage={["ADMIN", "SUPERADMIN"].includes(normalizeRole(effectiveUser.role))} />
               ) : windowState.page === "exchangeRates" ? (
-                <ConnectedExchangeRates actorId={effectiveUser.id} isAdmin={["ADMIN", "SUPERADMIN"].includes(normalizeRole(effectiveUser.role)) && hasPermission(effectiveUser, 201) && hasRemittancePermission(effectiveUser, "remittances.rates.manage")} />
+                <ConnectedExchangeRates actorId={effectiveUser.id} isAdmin={canManageOffice && hasPermission(effectiveUser, 201) && hasRemittancePermission(effectiveUser, "remittances.rates.manage")} />
               ) : windowState.page === "remittances" ? (
                 <RemittancesWorkspace api={remittancesApi} user={effectiveUser} isAdmin={isAdminRole} sections={["envios"]} fixedForm onOpenCash={canViewRemittanceCash ? openRemittanceCash : undefined} desktopId="main-content" nextWindowZIndex={nextReceiptZIndex} />
               ) : windowState.page === "remittancePayouts" ? (
@@ -5455,7 +5456,7 @@ export default function App() {
               ) : isMdiMonitoringPage(windowState.page) ? (
                 windowState.page === "dailySettlements" ? (
                   <DailySettlementsWindow snapshot={snapshot} user={effectiveUser} isAdmin={isAdminRole} showCollectors={hasPermission(effectiveUser, 401)} showRemittanceCash={canViewRemittanceCash}
-                    canManage={isAdminRole && hasPermission(effectiveUser, 402) && hasPermission(effectiveUser, 403)} onRefresh={refresh} sectionRequest={settlementSectionRequest} />
+                    canManage={canManageOffice && hasPermission(effectiveUser, 402) && hasPermission(effectiveUser, 403)} onRefresh={refresh} sectionRequest={settlementSectionRequest} />
                 ) : (
                   <MonitorView
                     page={windowState.page}

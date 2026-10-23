@@ -1,4 +1,5 @@
-import { canChangeOwnPassword, effectiveAccess, hasPermission, hasRemittancePermission, hasRemittanceAccess, type RemittancePermission } from "../../shared/access.mjs";
+import { canChangeOwnPassword, effectiveAccess, hasPermission, hasRemittancePermission, hasRemittanceAccess, hasRoleExceptions, type RemittancePermission } from "../../shared/access.mjs";
+import { allowOfficeRequest, clearOfficeRequest } from "./request-authority.js";
 import { businessDate, DomainError, type State, type User } from "./domain.js";
 import type { AdminToolsState } from "./admin-tools.js";
 
@@ -28,6 +29,15 @@ export function currentAccessUser(state: State, actor: User): User {
 export function requirePermission(actor: User, permission: number) {
   if (!hasPermission(actor, permission)) throw new DomainError("PERMISSION_REQUIRED", "Tu cuenta no tiene permiso para realizar esta acción.", 403);
 }
+export function assertDelegatesAccess(actor: User, access: ReturnType<typeof effectiveAccess>) {
+  const own = actor.access ?? effectiveAccess(actor.role);
+  if (access.legacy.some((id) => !own.legacy.includes(id)) || access.remittances.some((key) => !own.remittances.includes(key)))
+    throw new DomainError("PERMISSION_DELEGATION_FORBIDDEN", "No puedes conceder permisos que tu propia cuenta no tiene.", 403);
+}
+export function assertDelegatesRole(actor: User, role: string, collectorId?: string) {
+  if (role === "admin" && actor.role !== "admin" || actor.role === "collector" && (role !== "collector" || collectorId !== actor.collectorId))
+    throw new DomainError("PERMISSION_DELEGATION_FORBIDDEN", "No puedes asignar un rol o una ruta con más alcance que tu propia cuenta.", 403);
+}
 export function requireRemittancePermission(actor: User, permission: RemittancePermission) {
   if (!hasRemittancePermission(actor, permission)) throw new DomainError(actor.access?.mode === "custom" ? "PERMISSION_REQUIRED" : "FORBIDDEN", "Tu cuenta no tiene permiso para esta acción de envíos de dinero.", 403);
 }
@@ -39,30 +49,30 @@ const resourcePermissions: Record<string, readonly [number, number, number, numb
   descargos: [360, 361, 362, 363], "descargos-recurrentes": [390, 391, 392, 393],
   cobros: [320, 321, 322, 323], pagos: [370, 371, 372, 373], depositos: [330, 331, 332, 333], entregas: [380, 381, 382, 383],
 };
-export function authorizeRequest(actor: User, method: string, route: string) {
+function checkRequest(actor: User, method: string, route: string): boolean {
   const path = decodeURIComponent(route.replace(/^\/api\//, "")), parts = path.split("/");
-  if (path === "auth/me" || path === "auth/logout") return;
+  if (path === "auth/me" || path === "auth/logout") return true;
   // Same rule as the interface: the role profile keeps the own password change; code 2 withdraws it only in custom mode.
-  if (path === `usuarios/${actor.id}/clave`) { if (!canChangeOwnPassword(actor)) requirePermission(actor, 2); return; }
+  if (path === `usuarios/${actor.id}/clave`) { if (!canChangeOwnPassword(actor)) requirePermission(actor, 2); return true; }
   // Own-session endpoints remain available so a revoked user can log out.
   if (!hasPermission(actor, 1) && actor.access?.mode === "custom")
     throw new DomainError("ACCESS_REVOKED", "Tu acceso cambió. Solicita a Administración que revise tus permisos.", 403);
-  if (path === "snapshot") return;
+  if (path === "snapshot") return true;
   if (/^recibos\/[^/]+\/revocar$/.test(path)) {
     if (![323, 373, 333, 383].some((id) => hasPermission(actor, id))) requirePermission(actor, 323);
-    return;
+    return true;
   }
   if (parts[0] === "envios") {
     let permission: RemittancePermission | undefined;
     if (path === "envios/snapshot") {
       if (!hasRemittanceAccess(actor) && !hasRemittancePermission(actor, "remittances.commissions.view") && !hasRemittancePermission(actor, "remittances.rates.view"))
         throw new DomainError("PERMISSION_REQUIRED", "Tu cuenta no tiene acceso a Remesas.", 403);
-      return;
+      return true;
     }
     if (path.startsWith("envios/clientes")) {
       if (!hasRemittancePermission(actor, "remittances.create") && !hasRemittancePermission(actor, "remittances.receipts"))
         throw new DomainError("PERMISSION_REQUIRED", "Tu cuenta no tiene permiso para consultar estos clientes.", 403);
-      return;
+      return true;
     }
     if (path === "envios/cotizacion") permission = "remittances.create";
     else if (path === "envios/politica-comisiones") permission = "remittances.commissions.manage";
@@ -80,45 +90,58 @@ export function authorizeRequest(actor: User, method: string, route: string) {
       if (read[permission]) requireRemittancePermission(actor, read[permission]!);
       if (permission === "remittances.rates.manage") requirePermission(actor, 201);
     }
-    return;
+    return true;
   }
-  if (path === "permisos") { requirePermission(actor, 101); return; }
+  if (path === "permisos") { requirePermission(actor, 101); return true; }
   if (["estaciones/validar", "estaciones/obtener-datos"].includes(path)) {
     requirePermission(actor, 111);
     if (!hasPermission(actor, 112) && !hasPermission(actor, 113)) throw new DomainError("PERMISSION_REQUIRED", "No tienes permiso para registrar ni editar estaciones.", 403);
-    return;
+    return true;
   }
-  if (parts[0] === "usuarios" && parts[2] === "permisos") { requirePermission(actor, method === "GET" ? 101 : 106); return; }
-  if (parts[0] === "usuarios" && parts[2] === "clave") { requirePermission(actor, 107); return; }
+  if (parts[0] === "usuarios" && parts[2] === "permisos") { requirePermission(actor, method === "GET" ? 101 : 106); return true; }
+  if (parts[0] === "usuarios" && parts[2] === "clave") { requirePermission(actor, 107); return true; }
   if (parts[0] === "cobradores" && ["zonas", "rutas", "limites"].includes(parts[2])) {
-    requirePermission(actor, method === "GET" ? 150 : ({ zonas: 154, rutas: 155, limites: 156 } as const)[parts[2] as "zonas" | "rutas" | "limites"]); return;
+    requirePermission(actor, method === "GET" ? 150 : ({ zonas: 154, rutas: 155, limites: 156 } as const)[parts[2] as "zonas" | "rutas" | "limites"]); return true;
   }
   // Added/removed station permissions are checked against the actual set inside the transaction.
-  if (parts[0] === "pcps" && parts[2] === "estaciones") { requirePermission(actor, 174); return; }
-  if (parts[0] === "rutas" && parts[2] === "clientes") { requirePermission(actor, method === "GET" ? 130 : 134); return; }
-  if (parts[0] === "configuracion") { requirePermission(actor, method === "GET" ? 3 : 4); return; }
-  if (parts[0] === "sesiones") { requirePermission(actor, method === "GET" ? 115 : 116); return; }
-  if (parts[0] === "trazas") { requirePermission(actor, 5); return; }
+  if (parts[0] === "pcps" && parts[2] === "estaciones") { requirePermission(actor, 174); return true; }
+  if (parts[0] === "rutas" && parts[2] === "clientes") { requirePermission(actor, method === "GET" ? 130 : 134); return true; }
+  if (parts[0] === "configuracion") { requirePermission(actor, method === "GET" ? 3 : 4); return true; }
+  if (parts[0] === "sesiones") { requirePermission(actor, method === "GET" ? 115 : 116); return true; }
+  if (parts[0] === "trazas") { requirePermission(actor, 5); return true; }
   // POST /cuadres closes the collector's day: «Hacer cuadre» (402) and «Cerrar Día» (403), as in the interface.
-  if (parts[0] === "cuadres") { requirePermission(actor, method === "GET" ? 401 : /cerrar|regularizar/.test(path) ? 403 : 402); if (method !== "GET" && path === "cuadres") requirePermission(actor, 403); return; }
-  if (parts[0] === "reportes") { requirePermission(actor, 400); return; }
+  if (parts[0] === "cuadres") { requirePermission(actor, method === "GET" ? 401 : /cerrar|regularizar/.test(path) ? 403 : 402); if (method !== "GET" && path === "cuadres") requirePermission(actor, 403); return true; }
+  if (parts[0] === "reportes") { requirePermission(actor, 400); return true; }
   // The collector monitor is its own page (501); zones and routes keep the general monitors (500).
-  if (parts[0] === "monitoring" && parts[1] === "collector") { requirePermission(actor, 501); return; }
-  if (/^monito/.test(parts[0]) || parts[0] === "tracking" && method === "GET") { requirePermission(actor, 500); return; }
-  if (parts[0] === "tracking" && method === "POST") return; // Authenticated collector scope is enforced by the tracking route.
-  if (parts[0] === "clientes" && parts[2] === "estado" && method === "GET") { requirePermission(actor, 144); return; }
+  if (parts[0] === "monitoring" && parts[1] === "collector") { requirePermission(actor, 501); return true; }
+  if (/^monito/.test(parts[0]) || parts[0] === "tracking" && method === "GET") { requirePermission(actor, 500); return true; }
+  if (parts[0] === "tracking" && method === "POST") return true; // Authenticated collector scope is enforced by the tracking route.
+  if (parts[0] === "clientes" && parts[2] === "estado" && method === "GET") { requirePermission(actor, 144); return true; }
   // Generating from templates creates real charges: it also needs to see and add charges.
-  if (parts[0] === "cargos" && parts[1] === "recurrentes") { for (const id of [350, 351, 300, 301]) requirePermission(actor, id); return; }
-  if (["bancos", "motivos-atraso", "solicitudes-autorizacion"].includes(parts[0])) { requirePermission(actor, 10); return; }
+  if (parts[0] === "cargos" && parts[1] === "recurrentes") { for (const id of [350, 351, 300, 301]) requirePermission(actor, id); return true; }
+  if (["bancos", "motivos-atraso", "solicitudes-autorizacion"].includes(parts[0])) { requirePermission(actor, 10); return true; }
   const resource = resourcePermissions[parts[0]];
   if (resource) { requirePermission(actor, resource[0]); requirePermission(actor, method === "GET" ? resource[0]
     : /cancelar|inactivar|actividad|estado|eliminar/.test(path) ? resource[3]
     : path === "depositos/aceptar" || /depositos\/[^/]+\/aceptar/.test(path) ? 334
     : /importar|subir/.test(path) ? parts[0] === "cargos" ? 304 : 364
-    : parts.length > 1 && !["sugerencias", "registrar", "central"].includes(parts[1]) ? resource[2] : resource[1]); }
+    : parts.length > 1 && !["sugerencias", "registrar", "central"].includes(parts[1]) ? resource[2] : resource[1]); return true; }
+  return false;
 }
 
-export function guardCatalogChanges(state: State, actor: User, route: string): () => void {
+export function authorizeRequest(actor: User, method: string, route: string) {
+  clearOfficeRequest(actor);
+  const mapped = checkRequest(actor, method, route);
+  if (!hasRoleExceptions(actor)) return;
+  // New custom exceptions fail closed on routes without an individual permission
+  // mapping. Domain role guards accept only this checked, request-local authority.
+  if (!mapped) throw new DomainError("PERMISSION_REQUIRED", "Esta operación no tiene un permiso individual habilitado.", 403);
+  if (method !== "GET" && actor.role !== "admin" && /^\/api\/(bancos|motivos-atraso|solicitudes-autorizacion)(?:\/|$)/.test(route))
+    throw new DomainError("FORBIDDEN", "Esta acción requiere administración; no tiene un permiso individual de modificación.", 403);
+  allowOfficeRequest(actor);
+}
+
+function guardCatalogFields(state: State, actor: User, route: string): () => void {
   const parts = decodeURIComponent(route.replace(/^\/api\//, "")).split("/");
   const collections = { usuarios: "accounts", cobradores: "collectors", clientes: "clients", zonas: "zones", rutas: "routes", servicios: "services", "cargos-recurrentes": "recurringCharges", "descargos-recurrentes": "payoutRecurring" } as const;
   // PCPs and stations live in the administrative tools namespace.
@@ -142,9 +165,34 @@ export function guardCatalogChanges(state: State, actor: User, route: string): (
   };
 }
 
+export function guardCatalogChanges(state: State, actor: User, route: string): () => void {
+  const fields = guardCatalogFields(state, actor, route);
+  if (actor.role !== "collector" || !hasRoleExceptions(actor)) return fields;
+  // Additional catalog actions never turn a collector into the owner of another
+  // route's clients, money, or closed days. Check the complete transaction delta.
+  const keys = ["routes", "clients", "charges", "recurringCharges", "payouts", "payoutRecurring", "movements", "settlements", "cashReconciliations"] as const;
+  type ScopedRow = { id: string; clientId?: string; routeId?: string; collectorId?: string };
+  const before = new Map(keys.map((key) => [key, new Map((state[key] ?? []).map((row) => [row.id, JSON.stringify(row)]))]));
+  const previousRoutes = new Set(state.routes.filter((row) => row.collectorId === actor.collectorId).map((row) => row.id));
+  const previousClients = new Set(state.clients.filter((row) => previousRoutes.has(row.routeId)).map((row) => row.id));
+  return () => {
+    fields();
+    const routes = new Set(state.routes.filter((row) => row.collectorId === actor.collectorId).map((row) => row.id));
+    const clients = new Set(state.clients.filter((row) => routes.has(row.routeId)).map((row) => row.id));
+    for (const key of keys) for (const row of (state[key] ?? []) as ScopedRow[]) {
+      const original = before.get(key)?.get(row.id);
+      if (original === JSON.stringify(row)) continue;
+      const outside = (value: ScopedRow, allowedRoutes: Set<string>, allowedClients: Set<string>) => key === "clients"
+        ? !allowedRoutes.has(value.routeId ?? "") : value.clientId ? !allowedClients.has(value.clientId) : value.collectorId !== actor.collectorId;
+      if (outside(row, routes, clients) || original !== undefined && outside(JSON.parse(original) as ScopedRow, previousRoutes, previousClients))
+        throw new DomainError("FORBIDDEN", "Los permisos adicionales no permiten cambiar clientes ni movimientos de otro cobrador.", 403);
+    }
+  };
+}
+
 export function filterOperationalSnapshot<T extends ReturnType<typeof import("./domain.js").snapshot>>(data: T, actor: User): T {
   // Remittance desks never receive the operational catalogs, whatever their permission mode.
-  const desk = actor.role === "cashier";
+  const desk = actor.role === "cashier" && !hasRoleExceptions(actor);
   if (actor.access?.mode !== "custom" && !desk) return data;
   const result = structuredClone(data);
   if (desk) result.banks = [];

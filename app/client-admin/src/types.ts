@@ -1,5 +1,5 @@
 import type { AccountRole } from "../../shared/accountRoles";
-import { hasRemittanceAccess, type EffectiveAccess } from "../../shared/access.mjs";
+import { hasRemittanceAccess, hasRoleExceptions, type EffectiveAccess } from "../../shared/access.mjs";
 
 export const ROLE_DEFINITIONS = {
   SUPERADMIN: {
@@ -67,6 +67,7 @@ export const enrichUserRole = <T extends User>(user: T): T => {
   };
 };
 export const canAccessAdmin = (user: User) =>
+  hasRoleExceptions(user) ||
   ["SUPERADMIN", "ADMIN", "SUPERVISOR"].includes(normalizeRole(user.role)) ||
   (normalizeRole(user.role) === "CASHIER" && hasRemittanceAccess(user));
 export const canAccessCollector = (user: User) =>
@@ -225,6 +226,7 @@ export type PublicAccount = {
   permissionIds?: number[];
   permissionRevision?: number;
   permissionMode?: "role" | "custom";
+  roleExceptions?: boolean;
   remittancePermissions?: import("../../shared/access.mjs").RemittancePermission[];
   id: string;
   name: string;

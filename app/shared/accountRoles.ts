@@ -12,16 +12,16 @@ export function isCollectorAccountRole(role: unknown) {
 /** What each role can actually do today; shown wherever a role is chosen. */
 const access: Record<string, string> = {
   admin: "Puede usar todo el sistema. Se le pueden quitar permisos uno por uno.",
-  supervisor: "Solo mira: ve la información, pero no puede registrar ni cambiar nada.",
-  collector: "Trabaja solo en la app del cobrador, con su ruta.",
-  client: "Cliente del negocio. Por ahora no puede entrar a la oficina ni a la app del cobrador.",
-  cashier: "Atiende remesas de cualquier cliente: envía y entrega dinero, cancela sus envíos, registra clientes nuevos y abre y cierra su propia caja. No cambia tasas ni comisiones.",
-  undefined: "Todavía no puede entrar a nada. Elige un rol para que la cuenta pueda trabajar.",
+  supervisor: "Por defecto solo consulta. Administración puede autorizar acciones adicionales con una advertencia.",
+  collector: "Por defecto trabaja en la app del cobrador con su ruta. Los permisos adicionales no cambian la asignación de sus movimientos.",
+  client: "Por defecto no tiene acceso de trabajo. Solo podrá usar las funciones que Administración le autorice expresamente.",
+  cashier: "Por defecto atiende remesas de cualquier cliente y su propia caja. Para cambiar tasas, comisiones u otras funciones necesita permisos adicionales autorizados.",
+  undefined: "No tiene permisos iniciales. Puedes elegir un rol o autorizar permisos individuales; el nombre de la cuenta no define su rol.",
 };
 export function accountRoleAccess(role: string) {
   return access[role] ?? "";
 }
-export const ACCOUNT_ROLE_SUMMARY = "El rol dice qué puede hacer cada cuenta. Los permisos personalizados quitan o añaden acciones dentro de lo que el rol permite. Supervisor solo mira; Cobrador trabaja su ruta; Cajero atiende remesas y su propia caja; Cliente todavía no puede entrar.";
+export const ACCOUNT_ROLE_SUMMARY = "El rol aporta los permisos iniciales. Administración puede quitar permisos o agregar otros con una advertencia y guardarlos para esa cuenta. La asignación de rutas, cajas y movimientos sigue aplicándose.";
 export function isOperationalRole(role: string) {
   return role === "admin" || role === "collector";
 }
