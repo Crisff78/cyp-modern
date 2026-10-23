@@ -774,11 +774,11 @@ export async function mockApi<T>(
     const match = path.match(/^\/usuarios\/([^/]+)\/permisos$/);
     const account = state.accounts.find(({ id }) => id === (match ? decodeURIComponent(match[1]) : ""));
     if (!account) throw new MockApiError("La cuenta no existe.", 404);
-    const response = (): UserPermissions => ({ userId: account.id, permissionIds: account.permissionIds ?? defaultPermissionIds(account.role), revision: account.permissionRevision ?? 0, mode: account.permissionMode ?? "role", remittancePermissions: (account.permissionMode ?? "role") === "role" && !account.remittancePermissions?.length ? roleRemittancePermissions(account.role) : account.remittancePermissions ?? [] });
+    const response = (): UserPermissions => ({ userId: account.id, permissionIds: account.permissionIds ?? defaultPermissionIds(account.role), revision: account.permissionRevision ?? 0, ...(account.roleExceptions ? {roleExceptions: true} : {}), mode: account.permissionMode ?? "role", remittancePermissions: (account.permissionMode ?? "role") === "role" && !account.remittancePermissions?.length ? roleRemittancePermissions(account.role) : account.remittancePermissions ?? [] });
     if (method === "GET") return structuredClone(response()) as T;
     if (method === "POST") {
       const body = jsonBody(options);
-      if (Object.keys(body).some((key) => !["permissionIds", "revision", "mode", "remittancePermissions"].includes(key)) ||
+      if (Object.keys(body).some((key) => !["permissionIds", "revision", "mode", "remittancePermissions", "roleExceptions"].includes(key)) ||
           !isUserPermissions({ ...body, userId: account.id }, account.id) || Number(body.revision) > 2_147_483_647)
         throw new MockApiError("Los permisos no son válidos.", 400);
       const key = new Headers(options.headers).get("Idempotency-Key");
@@ -792,10 +792,11 @@ export async function mockApi<T>(
       const next = [...body.permissionIds as number[]].sort((a, b) => a - b);
       const mode = body.mode === "role" ? "role" : "custom";
       const remittancePermissions = [...(body.remittancePermissions as NonNullable<UserPermissions["remittancePermissions"]> ?? response().remittancePermissions ?? [])].sort();
-      const effective = effectiveAccess(account.role, { permissionMode: mode, permissionIds: next, remittancePermissions });
+      const effective = effectiveAccess(account.role, { permissionMode: mode, permissionIds: next, remittancePermissions, roleExceptions: body.roleExceptions === true });
       if (actor.id === account.id && account.role === "admin" && ![1, 10, 101, 106].every((id) => effective.legacy.includes(id))) throw new MockApiError("No puedes retirar tu propio acceso a permisos.", 409);
       if (account.permissionIds === undefined || JSON.stringify(next) !== JSON.stringify(account.permissionIds) || mode !== account.permissionMode || JSON.stringify(remittancePermissions) !== JSON.stringify(account.remittancePermissions)) {
         account.permissionIds = next;
+        account.roleExceptions = body.roleExceptions === true;
         account.permissionMode = mode;
         account.remittancePermissions = remittancePermissions;
         account.permissionRevision = Number(body.revision) + 1;

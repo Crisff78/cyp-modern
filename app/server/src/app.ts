@@ -67,8 +67,8 @@ import { ACCOUNT_ROLES, isCollectorAccountRole, isOperationalRole } from "./acco
 import { DEMO_PASSWORD } from "./demo-credentials.js";
 import { DEMO_CASHIER_ID } from "./demo-cashier-scenarios.js";
 import { dropSavedRoleProfile, permissionCatalog, permissionsForAccount, updateAccountPermissions, userPermissionsBody } from "./user-permissions.js";
-import { assertBootstrapManagedBySelf, assertManagesAccount, authorizeRequest, currentAccessUser, filterOperationalSnapshot, guardCatalogChanges, requirePermission } from "./access.js";
-import { effectiveAccess, hasPermission, hasRemittanceAccess } from "../../shared/access.mjs";
+import { assertDelegatesAccess, assertDelegatesRole, assertBootstrapManagedBySelf, assertManagesAccount, authorizeRequest, currentAccessUser, filterOperationalSnapshot, guardCatalogChanges, requirePermission } from "./access.js";
+import { effectiveAccess, hasPermission, hasRemittanceAccess, hasRoleExceptions } from "../../shared/access.mjs";
 import { clientInput } from "./client-schema.js";
 import { previousCashPreview, reconcilePreviousCash } from "./cash-reconciliation.js";
 
@@ -315,7 +315,7 @@ export async function buildApp(config: Config) {
       throw new DomainError("COLLECTOR_INACTIVE", "El cobrador está inactivo.", 403);
     const accessedUser = currentAccessUser(state, u);
     req.user = accessedUser;
-    if (!isOperationalRole(u.role)) {
+    if (!isOperationalRole(u.role) && !hasRoleExceptions(accessedUser)) {
       const ownSession = path === "/api/auth/me" || path === "/api/auth/logout" || path === `/api/usuarios/${u.id}/clave`;
       const remittanceOperator = u.role === "cashier" && hasRemittanceAccess(accessedUser) && (path.startsWith("/api/envios") || path === "/api/snapshot");
       if (!ownSession && !remittanceOperator && !(u.role === "supervisor" && req.method === "GET"))
@@ -564,6 +564,8 @@ export async function buildApp(config: Config) {
     (state, u, body) => {
       assertAdmin(u);
       if (!["undefined", "client"].includes(body.role)) requirePermission(u, 106);
+      assertDelegatesAccess(u, effectiveAccess(body.role));
+      assertDelegatesRole(u, body.role, body.collectorId);
       const email = body.email.trim().toLowerCase();
       if (bootstrapIdForLogin(email))
         throw new DomainError("DUPLICATE_EMAIL", "Ese usuario de inicio corresponde a una cuenta existente.", 409);
@@ -621,7 +623,8 @@ export async function buildApp(config: Config) {
     const withoutAccess = (role: string) => { const access = effectiveAccess(role, account); return !access.legacy.length && !access.remittances.length; };
     if (body.role !== account.role && !([account.role, body.role].every((role) => role === "undefined" || role === "client") && withoutAccess(account.role) && withoutAccess(body.role)))
       requirePermission(actor, 106);
-    if (actor.id === account.id && body.role !== "admin") throw new DomainError("FORBIDDEN", "No puedes retirar tu propio acceso administrativo.", 403);
+    if (actor.id === account.id && account.role === "admin" && body.role !== "admin") throw new DomainError("FORBIDDEN", "No puedes retirar tu propio acceso administrativo.", 403);
+    if (body.role !== account.role || body.collectorId !== account.collectorId) assertDelegatesRole(actor, body.role, body.collectorId);
     if (body.role !== account.role && !isCollectorAccountRole(body.role) && state.collectors.some((collector) => collector.accountId === account.id))
       throw new DomainError("ACCOUNT_LINKED_COLLECTOR", `Retira la cuenta del cobrador antes de cambiar su rol a ${body.role === "admin" ? "Admin" : body.role === "client" ? "Cliente" : "Cajero"}.`, 409);
     if (body.role === "collector" && !body.collectorId) throw new DomainError("COLLECTOR_REQUIRED", "Una cuenta de cobrador necesita un cobrador asignado.", 422);
@@ -640,6 +643,7 @@ export async function buildApp(config: Config) {
       account.role !== body.role || account.collectorId !== body.collectorId;
     // These changes revoke the account's sessions: only for accounts within the actor's own access.
     if (authChanged) assertManagesAccount(state, actor, account.id);
+    if (body.role !== account.role) assertDelegatesAccess(actor, effectiveAccess(body.role, account));
     // A copy of the previous role profile saved with «Perfil del rol» would show up as an earlier selection.
     if (body.role !== account.role) dropSavedRoleProfile(account);
     Object.assign(account, { name: body.name, email, role: body.role });
@@ -682,7 +686,7 @@ export async function buildApp(config: Config) {
           "La cuenta no existe.",
           404,
         );
-      if (u.role !== "admin" && u.id !== account.id)
+      if (u.role !== "admin" && !hasRoleExceptions(u) && u.id !== account.id)
         throw new DomainError(
           "FORBIDDEN",
           "Solo puedes cambiar tu propia contraseña.",

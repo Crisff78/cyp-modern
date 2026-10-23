@@ -106,7 +106,7 @@ async function readState(client: pg.PoolClient): Promise<State> {
     await client.query(
       `SELECT id,name,nickname,note,email,role,collector_id AS "collectorId",salt,password_hash AS "passwordHash",
        legacy_permission_ids AS "permissionIds",legacy_permission_revision AS "permissionRevision",
-       permission_mode AS "permissionMode",remittance_permissions AS "remittancePermissions",
+       permission_mode AS "permissionMode",remittance_permissions AS "remittancePermissions",role_exceptions AS "roleExceptions",
        credential_version AS "credentialVersion",status,created_at AS "createdAt",updated_at AS "updatedAt"
        FROM users WHERE email IS NOT NULL ORDER BY created_at,id`,
     )
@@ -283,14 +283,14 @@ async function saveState(client: pg.PoolClient, state: State, before: State) {
     if (unchanged(before.accounts, account)) continue;
     const updatedAt = account.updatedAt || account.createdAt;
     await client.query(
-      `INSERT INTO users(id,name,email,role,collector_id,salt,password_hash,credential_version,status,created_at,updated_at,nickname,note,legacy_permission_ids,legacy_permission_revision,permission_mode,remittance_permissions)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+      `INSERT INTO users(id,name,email,role,collector_id,salt,password_hash,credential_version,status,created_at,updated_at,nickname,note,legacy_permission_ids,legacy_permission_revision,permission_mode,remittance_permissions,role_exceptions)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
        ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,email=EXCLUDED.email,role=EXCLUDED.role,
        collector_id=EXCLUDED.collector_id,salt=EXCLUDED.salt,password_hash=EXCLUDED.password_hash,
        credential_version=EXCLUDED.credential_version,status=EXCLUDED.status,updated_at=EXCLUDED.updated_at,
        nickname=EXCLUDED.nickname,note=EXCLUDED.note,
        legacy_permission_ids=EXCLUDED.legacy_permission_ids,legacy_permission_revision=EXCLUDED.legacy_permission_revision,
-       permission_mode=EXCLUDED.permission_mode,remittance_permissions=EXCLUDED.remittance_permissions`,
+       permission_mode=EXCLUDED.permission_mode,remittance_permissions=EXCLUDED.remittance_permissions,role_exceptions=EXCLUDED.role_exceptions`,
       [
         account.id,
         account.name,
@@ -309,6 +309,7 @@ async function saveState(client: pg.PoolClient, state: State, before: State) {
         account.permissionRevision ?? 0,
         account.permissionMode ?? "role",
         account.remittancePermissions ?? [],
+        account.roleExceptions ?? false,
       ],
     );
   }

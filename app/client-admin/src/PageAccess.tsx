@@ -1,5 +1,5 @@
 import { createContext, useContext } from "react";
-import { accessRole, hasPermission, type AccessActor } from "../../shared/access.mjs";
+import { accessRole, hasPermission, hasRoleExceptions, type AccessActor } from "../../shared/access.mjs";
 
 export const PageAccessContext = createContext<{ actor: AccessActor; page: string } | null>(null);
 const actions: Record<string, readonly [number, number, number]> = {
@@ -17,7 +17,7 @@ export function usePageAccess() {
   const context = useContext(PageAccessContext);
   const actor = context?.actor ?? { role: "undefined" };
   const ids = actions[context?.page ?? ""] ?? [10, 10, 10];
-  const manage = accessRole(actor.role) === "admin";
+  const manage = accessRole(actor.role) === "admin" || hasRoleExceptions(actor);
   return { actor, page: context?.page, canCreate: manage && hasPermission(actor, ids[0]),
     canEdit: manage && hasPermission(actor, ids[1]), canDelete: manage && hasPermission(actor, ids[2]),
     canAccept: manage && hasPermission(actor, 334), canImport: manage && context?.page !== undefined && hasPermission(actor, imports[context.page] ?? 0),
