@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { accessRole, hasRemittancePermission, type AccessActor } from "../../shared/access.mjs";
+import { accessRole, hasRoleExceptions, hasRemittancePermission, type AccessActor } from "../../shared/access.mjs";
 import { decimalCents } from "../../shared/remittances/output";
 import { isDecimalDraft } from "../../shared/inputRules";
 import { confirmedCommissionPolicy } from "../../shared/remittances/commissionPolicyResponse";
@@ -21,7 +21,7 @@ export function ConnectedRemittanceCommissions({ actor }: { actor: AccessActor &
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [reload, setReload] = useState(0);
-  const canManage = accessRole(actor.role) === "admin" && hasRemittancePermission(actor, "remittances.commissions.manage");
+  const canManage = (accessRole(actor.role) === "admin" || hasRoleExceptions(actor)) && hasRemittancePermission(actor, "remittances.commissions.manage");
   useEffect(() => {
     let retired = false;
     setLoading(true); setError("");

@@ -52,6 +52,8 @@ test("user permission selection, explicit adds, confirmations and backend saves 
     };
     const first = await create("Usuario de prueba uno"), second = await create("Usuario de prueba dos"), supervisor = await create("Supervisor de prueba", "supervisor"), cashier = await create("Cajero de prueba", "cashier");
     const reviewedUser = await create("Usuario de permisos paso a paso");
+    const exceptionUser = await create("Supervisor con permiso adicional", "supervisor");
+    const exceptionToken = (await login(exceptionUser.email, "Synthetic-Permissions-2026!")).json().token;
     const undefinedRoleUser = await create("Supervisor demo sin rol asignado", "undefined");
     // A Cajero personalized down to «Entrar al sistema», as an office account with nothing granted yet.
     await store.transaction((state) => { const account = state.accounts.find(({ id }) => id === cashier.id)!; account.permissionMode = "custom"; account.permissionIds = [1]; account.remittancePermissions = []; });
@@ -137,10 +139,11 @@ createRoot(document.getElementById("root")).render(<Fixture />);`, "utf8");
     const confirmation = (title: string) => page.getByRole("dialog", { name: title, exact: true });
     const isAssigned = async (id: number) => await assigned().getByRole("button", { name: `Quitar permiso: ${permissionName(id)}`, exact: true }).count() === 1;
     const isRemittanceAssigned = async (name: string) => await assigned().getByRole("button", { name: `Quitar permiso: ${name}`, exact: true }).count() === 1;
-    const add = async (id: number) => { await choice(id).check(); await dialog().getByRole("button", { name: "Agregar", exact: true }).click(); assert.equal(await isAssigned(id), true); };
+    const add = async (id: number) => { await choice(id).check(); await dialog().getByRole("button", { name: "Agregar", exact: true }).click(); if (await confirmation("Permiso adicional al rol").count()) await confirmation("Permiso adicional al rol").getByRole("button", { name: "Sí", exact: true }).click(); assert.equal(await isAssigned(id), true); };
     const addRemittance = async (name: string) => {
       await dialog().getByRole("radio", { name: `Remesas: ${name}`, exact: true }).check();
       await dialog().getByRole("button", { name: "Agregar", exact: true }).click();
+      if (await confirmation("Permiso adicional al rol").count()) await confirmation("Permiso adicional al rol").getByRole("button", { name: "Sí", exact: true }).click();
       assert.equal(await isRemittanceAssigned(name), true);
     };
     const remove = async (id: number, confirm = true) => {
@@ -409,15 +412,18 @@ createRoot(document.getElementById("root")).render(<Fixture />);`, "utf8");
     });
     await t.test("office cashier grants add their read dependency without granting catalog administration", async () => {
       await open(cashier.name);
-      assert.equal(await choice(101).isDisabled(), true); assert.equal(await choice(141).isDisabled(), true);
-      assert.equal(await row(101).getByRole("cell", { name: "No disponible para el rol", exact: true }).count(), 1);
-      assert.equal(await row(101).getAttribute("title"), "El rol «Cajero» no permite activar este permiso.");
-      await row(101).locator("td").nth(1).click(); await row(101).focus(); await row(101).press("Enter");
-      assert.equal(await choice(101).isChecked(), false, "a row click or keyboard shortcut cannot bypass the role restriction");
+      assert.equal(await choice(101).isDisabled(), false); assert.equal(await choice(141).isDisabled(), false);
+      await row(141).locator("label").click();
+      assert.equal(await choice(141).isChecked(), true);
+      await dialog().getByRole("button", { name: "Agregar", exact: true }).click();
+      assert.match(await confirmation("Permiso adicional al rol").innerText(), /no viene por defecto/);
+      assert.equal(await isAssigned(141), false, "no grant before accepting the exception warning");
+      await confirmation("Permiso adicional al rol").getByRole("button", { name: "No", exact: true }).click();
+      assert.equal(await isAssigned(141), false);
       await category().selectOption("Remesas");
       await addRemittance("Registrar envíos de dinero");
       assert.equal(await isRemittanceAssigned("Ver envíos de dinero"), true);
-      assert.equal(await dialog().getByRole("radio", { name: "Remesas: Cambiar tasas de remesas", exact: true }).isDisabled(), true);
+      assert.equal(await dialog().getByRole("radio", { name: "Remesas: Cambiar tasas de remesas", exact: true }).isDisabled(), false);
       await assigned().getByRole("button", { name: "Quitar permiso: Ver envíos de dinero", exact: true }).click();
       assert.match(await confirmation("Quitar permiso").innerText(), /También se quitarán los permisos que lo necesitan: Registrar envíos de dinero/);
       await confirmation("Quitar permiso").getByRole("button", { name: "No", exact: true }).click();
@@ -428,12 +434,12 @@ createRoot(document.getElementById("root")).render(<Fixture />);`, "utf8");
       assert.deepEqual(profile.remittancePermissions, ["remittances.create", "remittances.view"]);
       assert.equal((await store.read()).accounts.find(({ id }) => id === cashier.id)?.role, "cashier");
     });
-    await t.test("a Cajero in Perfil del rol shows its initial profile and can only add the reports of Envíos", async () => {
+    await t.test("a Cajero in Perfil del rol keeps its initial profile and may confirm additional permissions", async () => {
       await open(cashierRole.name);
       assert.equal(await dialog().getByRole("combobox", { name: "Modo de permisos", exact: true }).inputValue(), "role");
       assert.match(await dialog().innerText(), /Se aplica el perfil inicial del rol\./);
       for (const id of [1, 2]) assert.equal(await isAssigned(id), true, `legacy ${id}`);
-      for (const id of [101, 140, 200, 401]) assert.equal(await choice(id).isDisabled(), true, `legacy ${id} stays out of reach`);
+      for (const id of [101, 140, 200, 401]) assert.equal(await choice(id).isDisabled(), false, `legacy ${id} is available with an explicit warning`);
       await category().selectOption("Remesas");
       const remittance = (name: string) => dialog().getByRole("radio", { name: `Remesas: ${name}`, exact: true });
       for (const name of ["Ver envíos de dinero", "Registrar envíos de dinero", "Ver remesas por entregar", "Entregar dinero al destinatario", "Cancelar envíos pendientes",
@@ -442,7 +448,7 @@ createRoot(document.getElementById("root")).render(<Fixture />);`, "utf8");
       const reports = remittance("Ver e imprimir reportes de remesas");
       assert.equal(await reports.isChecked(), false); assert.equal(await reports.isDisabled(), false);
       for (const name of ["Ver tasas de remesas", "Cambiar tasas de remesas", "Ver comisiones de remesas", "Cambiar comisiones de remesas"])
-        assert.equal(await remittance(name).isDisabled(), true, `${name} is administrative`);
+        assert.equal(await remittance(name).isDisabled(), false, `${name} requires confirmation`);
       await addRemittance("Ver e imprimir reportes de remesas");
       assert.equal(await dialog().getByRole("combobox", { name: "Modo de permisos", exact: true }).inputValue(), "custom");
       await saveAndClose();
@@ -514,24 +520,47 @@ createRoot(document.getElementById("root")).render(<Fixture />);`, "utf8");
       assert.equal(profile.mode, "custom"); assert.deepEqual(profile.permissionIds, [1, 2, 140, 400]);
       assert.equal((await store.read()).accounts.find(({ id }) => id === migrated.id)?.role, "supervisor");
     });
-    await t.test("No definido explains disabled clicks and opens the exact user's role editor without inferring a role from their name", async () => {
+    await t.test("an off-profile permission requires warning, saves, works, reopens and can be revoked", async () => {
+      const count = writes.length, before = (await store.read()).accounts.find(({ id }) => id === exceptionUser.id)!;
+      await open(exceptionUser.name);
+      await row(141).locator("label").click(); assert.equal(await choice(141).isChecked(), true);
+      await dialog().getByRole("button", { name: "Agregar", exact: true }).click();
+      const warning = confirmation("Permiso adicional al rol");
+      assert.match(await warning.innerText(), /Agregar cliente.*no viene por defecto/s);
+      assert.equal(await dialog().locator("form").getAttribute("inert"), "");
+      assert.equal(await isAssigned(141), false); assert.equal(writes.length, count);
+      await warning.getByRole("button", { name: "No", exact: true }).click();
+      assert.equal(await isAssigned(141), false);
+      await dialog().getByRole("button", { name: "Agregar", exact: true }).click();
+      await warning.getByRole("button", { name: "Sí", exact: true }).click();
+      assert.equal(await isAssigned(141), true); assert.equal(writes.length, count);
+      await page.screenshot({ path: path.join(output, "confirmed-role-exception.png") });
+      await saveAndStay(); assert.equal(writes[count].body.roleExceptions, true);
+      const account = (await store.read()).accounts.find(({ id }) => id === exceptionUser.id)!;
+      assert.equal(account.role, "supervisor"); assert.equal(account.credentialVersion, before.credentialVersion); assert.equal(account.passwordHash, before.passwordHash);
+      const route = (await store.read()).routes[0];
+      const response = await app.inject({ method: "POST", url: "/api/clientes", payload: { name: "Cliente de la excepción", identification: "SYN-UI-EXCEPTION", routeId: route.id }, headers: { authorization: `Bearer ${exceptionToken}`, "idempotency-key": randomUUID() } });
+      assert.equal(response.statusCode, 200, response.body);
+      await cancel(); await open(exceptionUser.name);
+      assert.equal(await isAssigned(141), true); assert.equal(await choice(141).isDisabled(), true);
+      await remove(141); await saveAndStay();
+      assert.equal(writes.at(-1)!.body.roleExceptions, false, "revoking the last exception explicitly clears its authorization");
+      const revoked = await app.inject({ method: "POST", url: "/api/clientes", payload: { name: "Sin permiso", identification: "SYN-UI-REVOKED", routeId: route.id }, headers: { authorization: `Bearer ${exceptionToken}`, "idempotency-key": randomUUID() } });
+      assert.equal(revoked.statusCode, 403, revoked.body); await cancel();
+    });
+    await t.test("No definido supports explicit exceptions and opens the exact user's role editor without inferring a role from their name", async () => {
       const count = writes.length, before = structuredClone((await store.read()).accounts.find(({ id }) => id === undefinedRoleUser.id));
       await open(undefinedRoleUser.name);
       const roleNote = dialog().getByRole("note", { name: "Rol del usuario", exact: true });
       assert.match(await roleNote.innerText(), /Rol del usuario: No definido/);
-      assert.match(await roleNote.innerText(), /El nombre de la cuenta no define su rol/);
-      assert.equal(await choice(1).isDisabled(), true);
-      // A human click on the disabled circle reaches its explanatory row, never a grant.
+      assert.match(await roleNote.innerText(), /[Ee]l nombre de la cuenta no define su rol/);
+      assert.equal(await choice(1).isDisabled(), false);
       await row(1).locator("td").first().click();
-      assert.match(await dialog().locator(".connected-permissions-selection-feedback").innerText(), /rol «No definido»/);
-      assert.equal(await choice(1).isChecked(), false); assert.equal(await isAssigned(1), false);
-      await row(1).locator("label").click();
-      assert.match(await dialog().locator(".connected-permissions-selection-feedback").innerText(), /Primero define su rol/);
-      for (const button of ["Agregar", "Guardar"]) {
-        await dialog().getByRole("button", { name: button, exact: true }).click();
-        await confirmation("Aviso").getByRole("alert").getByText(/Esta cuenta tiene el rol «No definido»/).waitFor();
-        await confirmation("Aviso").getByRole("button", { name: "Aceptar", exact: true }).click();
-      }
+      assert.equal(await choice(1).isChecked(), true); assert.equal(await isAssigned(1), false);
+      await dialog().getByRole("button", { name: "Agregar", exact: true }).click();
+      assert.match(await confirmation("Permiso adicional al rol").innerText(), /rol «No definido»/);
+      await confirmation("Permiso adicional al rol").getByRole("button", { name: "No", exact: true }).click();
+      assert.equal(await isAssigned(1), false, "the account name never grants access implicitly");
       await page.screenshot({ path: path.join(output, "permissions-role-not-defined.png") });
       await dialog().getByRole("button", { name: "Definir rol", exact: true }).click();
       const editor = confirmation("Datos de Usuario...");
@@ -556,8 +585,8 @@ createRoot(document.getElementById("root")).render(<Fixture />);`, "utf8");
       assert.match(await dialog().locator(".connected-permissions-selection-feedback").innerText(), /ya está en la lista de asignados/);
       assert.equal(await isAssigned(1), true, "choosing the role explicitly keeps its documented default profile");
       await row(141).locator("label").click();
-      assert.match(await dialog().locator(".connected-permissions-selection-feedback").innerText(), /El rol «Supervisor» no permite activar este permiso/);
-      assert.equal(await choice(141).isChecked(), false); assert.equal(await isAssigned(141), false);
+      assert.match(await dialog().locator(".connected-permissions-selection-feedback").innerText(), /Seleccionado/);
+      assert.equal(await choice(141).isChecked(), true); assert.equal(await isAssigned(141), false);
       await cancel();
     });
     await t.test("opening the role editor honors unsaved-permission confirmation and Cancel preserves every saved grant", async () => {

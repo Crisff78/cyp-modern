@@ -97,7 +97,16 @@ export function registerCatalogRoutes(app: FastifyInstance, store: Store, user: 
     ["/api/cobradores", "collectors"], ["/api/zonas", "zones"], ["/api/servicios", "services"],
     ["/api/motivos-atraso", "delayReasons"], ["/api/cargos-recurrentes", "recurringCharges"],
   ] as const) {
-    app.get(path, async (req) => { assertAdminRead(user(req)); return (await store.read())[key]; });
+    app.get(path, async (req) => {
+      const actor = user(req); assertAdminRead(actor); const state = await store.read();
+      const rows = state[key];
+      if (actor.role !== "collector") return rows;
+      if (key === "collectors") return state.collectors.filter((row) => row.id === actor.collectorId);
+      const routes = state.routes.filter((row) => row.collectorId === actor.collectorId);
+      if (key === "zones") return state.zones.filter((row) => routes.some((r) => r.zoneId === row.id));
+      if (key === "recurringCharges") return state.recurringCharges.filter((row) => state.clients.some((client) => client.id === row.clientId && routes.some((r) => r.id === client.routeId)));
+      return rows;
+    });
     describe("get", path, `Consultar ${key}`);
   }
   for (const editing of [false, true]) {

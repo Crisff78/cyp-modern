@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { assertAdmin, businessDate, DomainError, type State, type User } from "./domain.js";
-import { effectiveAccess, hasRemittancePermission, hasRemittanceAccess } from "../../shared/access.mjs";
+import { effectiveAccess, hasRemittancePermission, hasRemittanceAccess, hasRoleExceptions } from "../../shared/access.mjs";
 import { cashReceivedForTransfer, isPaymentTextDraft, paymentAmounts, PaymentValidationError, type ReceiptIssuer, type RemittancePayment, type RemittancePaymentInput, type RemittanceRefund, type RemittanceRefundInput } from "../../shared/remittances/payment.mjs";
 import { appliedRate, type RateKind } from "../../shared/remittances/appliedRate.mjs";
 
@@ -226,7 +226,7 @@ export function remittanceOperators(state: State, user: User, systemOperators: U
   // Only the business identity: the token payload also carries session fields.
   const self: User = { id: user.id, name: user.name, role: user.role, ...(user.collectorId ? { collectorId: user.collectorId } : {}) };
   if (user.access) self.access = user.access;
-  if (user.role !== "admin") return user.role === "collector" || (isRemittanceDesk(user.role) && hasRemittanceAccess(user)) ? [self] : [];
+  if (user.role !== "admin") return user.role === "collector" || ((isRemittanceDesk(user.role) || hasRoleExceptions(user)) && hasRemittanceAccess(user)) ? [self] : [];
   const accounts: User[] = state.accounts.filter((a) => a.status === "active" && (a.role === "admin" || a.role === "collector" || (isRemittanceDesk(a.role) && hasRemittanceAccess({ role: a.role, access: effectiveAccess(a.role, a) })))).map((a) => ({
     id: a.id, name: a.name, role: a.role, ...(a.collectorId ? { collectorId: a.collectorId } : {}),
     access: effectiveAccess(a.role, a),
@@ -243,6 +243,7 @@ function operator(state: State, user: User, id: string, systemOperators: User[])
 function clientInRoute(state: State, user: User, clientId: string) {
   if (user.role === "admin") return true;
   if (isRemittanceDesk(user.role) && hasRemittanceAccess(user)) return true;
+  if (user.role !== "collector" && hasRoleExceptions(user) && hasRemittanceAccess(user)) return true;
   const client = state.clients.find((c) => c.id === clientId);
   return !!client && state.routes.some((r) => r.id === client.routeId && r.collectorId === user.collectorId);
 }
@@ -303,7 +304,7 @@ function currentCash(state: State, operatorId: string, currency: Currency, now: 
 }
 export function openRemittanceCash(state: State, user: User, input: { operatorId: string; currency: Currency; openingAmount: number }, systemOperators: User[] = [], now = new Date()) {
   // Administration opens any cash box; a cashier with the permission opens only his own.
-  if (user.role === "cashier") {
+  if (user.role !== "admin") {
     if (input.operatorId !== user.id || !hasRemittancePermission(user, "remittances.cash.open"))
       fail("FORBIDDEN", "Solo puedes abrir tu propia caja de remesas.", 403);
   } else assertAdmin(user);
@@ -486,7 +487,7 @@ export function remittanceSnapshot(state: State, user: User, systemOperators: Us
       ...state.remittances.rates.filter((r) => r.currency !== "DOP" && (canViewRates || effectiveRateIds?.has(r.id)))]
       .sort((a, b) => b.date.localeCompare(a.date) || (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "") || a.currency.localeCompare(b.currency))
       .map(({ updatedBy, ...row }) => ({ ...row, ...(user.role === "admin" && updatedBy ? { updatedBy } : {}) })),
-    rateHistory: user.role === "admin" && hasRemittancePermission(user, "remittances.rates.view") ? [...(state.remittances.rateHistory ?? [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.date.localeCompare(a.date) || b.id.localeCompare(a.id)) : [],
+    rateHistory: (user.role === "admin" || hasRoleExceptions(user)) && hasRemittancePermission(user, "remittances.rates.view") ? [...(state.remittances.rateHistory ?? [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.date.localeCompare(a.date) || b.id.localeCompare(a.id)) : [],
     transfers: transfers.map((t) => transferView(state, user, t)),
     cashSessions: cashSessions.map((c) => cashView(state, user, c)),
   };

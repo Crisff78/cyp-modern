@@ -10,6 +10,7 @@ import { emptyAdminToolsState, type AdminToolsState } from "./admin-tools.js";
 import type { AccountRole } from "./account-roles.js";
 import type { CashReconciliationRecord } from "../../shared/cashReconciliation.js";
 import { reconciledSettlements } from "./cash-reconciliation.js";
+import { isOfficeRequest } from "./request-authority.js";
 
 export type Role = AccountRole;
 export const ledgerCurrencies = ["DOP", "USD", "EUR"] as const;
@@ -70,6 +71,7 @@ export type Account = {
   permissionIds?: number[];
   permissionRevision?: number;
   permissionMode?: PermissionMode;
+  roleExceptions?: boolean;
   remittancePermissions?: RemittancePermission[];
   email: string;
   role: Role;
@@ -809,7 +811,7 @@ export function importPayouts(
 }
 
 export function assertAdmin(user: User) {
-  if (user.role !== "admin")
+  if (user.role !== "admin" && !isOfficeRequest(user))
     throw new DomainError(
       "FORBIDDEN",
       "Esta acción requiere administración.",
@@ -817,13 +819,13 @@ export function assertAdmin(user: User) {
     );
 }
 export function canReadAdministration(user: User) {
-  return user.role === "admin" || user.role === "supervisor";
+  return user.role === "admin" || user.role === "supervisor" || user.role !== "collector" && isOfficeRequest(user);
 }
 export function assertAdminRead(user: User) {
-  if (!canReadAdministration(user)) throw new DomainError("FORBIDDEN", "Esta consulta requiere administración o supervisión.", 403);
+  if (!canReadAdministration(user) && !isOfficeRequest(user)) throw new DomainError("FORBIDDEN", "Esta consulta requiere administración o supervisión.", 403);
 }
 export function assertCollectorAccess(user: User, id: string) {
-  if (user.role !== "admin" && !(user.role === "collector" && user.collectorId === id))
+  if (user.role !== "admin" && !(user.role !== "collector" && isOfficeRequest(user)) && !(user.role === "collector" && user.collectorId === id))
     throw new DomainError(
       "FORBIDDEN",
       "Este cobrador no está asignado a tu cuenta.",
@@ -884,7 +886,7 @@ export function postMovement(
     : type === "payout" ? ledgerCurrency(payout?.currency) : ledgerCurrency(body.currency);
   if (body.currency !== undefined && ledgerCurrency(body.currency) !== currency)
     throw new DomainError("CURRENCY_MISMATCH", "La moneda debe coincidir con la autorización.", 422);
-  if (user.role !== "admin" && currency !== "DOP")
+  if (user.role !== "admin" && !(user.role !== "collector" && isOfficeRequest(user)) && currency !== "DOP")
     throw new DomainError("UNSUPPORTED_COLLECTOR_CURRENCY", "Este portal de cobrador opera en DOP; USD y EUR se registran desde administración.", 422);
   assertImportAmount(body.amount);
   if (charge && (charge.status === "cancelled" || charge.collected + body.amount > charge.amount))
