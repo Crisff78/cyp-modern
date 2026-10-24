@@ -48,12 +48,12 @@ export function LegacyToolbar({ onToggleFilters, filtersVisible = true, onFirst,
       <button type="button" className="nav-tool" title="Registro siguiente" onClick={runToolbarAction(onNext)}>&gt;</button>
       <button type="button" className="nav-tool" title="Último registro" onClick={runToolbarAction(onLast)}>&gt;|</button>
       <span className="mdi-toolbar-separator" />
-      <button type="button" title={newTitle} disabled={disableNew || !access.canCreate} onClick={runToolbarAction(onNew)}>{newIcon ?? <Plus size={15} />}</button>
-      {showEdit && <button type="button" title={consult ? "Consultar" : "Editar"} disabled={disableEdit || !access.canEdit && !consult} onClick={runToolbarAction(onEdit)}>{consult ? <Eye size={15} /> : <Pencil size={15} />}</button>}
+      <button type="button" title={newTitle} disabled={disableNew || !access.canCreate} onClick={runToolbarAction(onNew)}>{newIcon ?? <Plus size={15} />}<span className="legacy-tool-label">{newTitle}</span></button>
+      {showEdit && <button type="button" title={consult ? "Consultar" : "Editar"} disabled={disableEdit || !access.canEdit && !consult} onClick={runToolbarAction(onEdit)}>{consult ? <Eye size={15} /> : <Pencil size={15} />}<span className="legacy-tool-label">{consult ? "Consultar" : "Editar"}</span></button>}
       {onAccept && <button type="button" title="Aceptar depósito" disabled={disableAccept || !access.canAccept} onClick={runToolbarAction(onAccept)}><ClipboardCheck size={15} /></button>}
-      <button type="button" className="danger-tool" title={deleteTitle} disabled={disableDelete || !access.canDelete} onClick={runToolbarAction(onDelete)}>{deleteIcon === "x" ? <X size={15} /> : <Trash2 size={15} />}</button>
-      <button type="button" title="Refrescar" onClick={runToolbarAction(onRefresh)}><RefreshCw size={15} /></button>
-      {onPrint && <button type="button" title="Imprimir" onClick={runToolbarAction(onPrint)}><Printer size={15} /></button>}
+      <button type="button" className="danger-tool" title={deleteTitle} disabled={disableDelete || !access.canDelete} onClick={runToolbarAction(onDelete)}>{deleteIcon === "x" ? <X size={15} /> : <Trash2 size={15} />}<span className="legacy-tool-label">{deleteTitle}</span></button>
+      <button type="button" title="Refrescar" onClick={runToolbarAction(onRefresh)}><RefreshCw size={15} /><span className="legacy-tool-label">Refrescar</span></button>
+      {onPrint && <button type="button" title="Imprimir" onClick={runToolbarAction(onPrint)}><Printer size={15} /><span className="legacy-tool-label">Imprimir</span></button>}
       {extra && <span className="mdi-toolbar-extra">{extra}</span>}
     </div>
   );

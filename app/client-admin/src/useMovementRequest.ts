@@ -23,6 +23,7 @@ const definitiveCodes = new Set([
   "FUTURE_DATE", "INVALID_DATE", "UNBALANCED",
   "RATE_DATE", "DOP_RATE", "INVALID_RATE", "INVALID_CURRENCY",
   "PERMISSIONS_CHANGED",
+  "ASSIGNMENTS_CHANGED", "ASSIGNMENT_INVALID", "ZONE_NO_ROUTES", "LIMIT_INVALID", "REASSIGNMENT_CONFIRMATION_REQUIRED",
 ]);
 const states = new Map<string, RequestState>();
 const listeners = new Set<() => void>();

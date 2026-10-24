@@ -1,3 +1,4 @@
+import { ungroupDecimal } from "../../shared/decimalText";
 export const businessDate = (value: string): string => {
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
   const timestamp = new Date(value);
@@ -65,9 +66,10 @@ export const centsInput = (cents: number) => {
 
 export const decimalProductCents = (price: string, quantity: string) => {
   const hundredths = (input: string) => {
-    if (!/^\d+(\.\d{1,2})?$/.test(input)) throw new Error("Escribe importe y cantidad válidos con un máximo de dos decimales.");
-    const [whole, fraction = ""] = input.split(".");
-    return BigInt(whole) * 100n + BigInt(fraction.padEnd(2, "0"));
+    const clean = ungroupDecimal(input.trim());
+    if (clean === undefined) throw new Error("Escribe importe y cantidad válidos con un máximo de dos decimales.");
+    const [whole, fraction = ""] = clean.split(".");
+    return BigInt(whole || "0") * 100n + BigInt(fraction.padEnd(2, "0"));
   };
   const cents = (hundredths(price) * hundredths(quantity) + 50n) / 100n;
   if (cents <= 0n || cents > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error("El importe total debe ser positivo y estar dentro del rango seguro de centavos.");

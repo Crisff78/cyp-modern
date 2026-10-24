@@ -26,7 +26,7 @@ export async function readCatalogs(client: pg.PoolClient, state: State) {
   state.recurringCharges = (await client.query(`SELECT rc.id,coalesce(rc.client_id,'') AS "clientId",rc.route_id AS "routeId",
     rc.service_id AS "serviceId",rc.created_at AS "registeredAt",coalesce(rc.start_date,rc.next_run_date)::text AS "startDate",
     coalesce(rc.end_date::text,'') AS "endDate",rc.frequency,rc.day1,rc.day2,rc.currency,s.name AS service,rc.concept,
-    rc.fixed_amount AS "useConceptAmount",rc.amount,rc.note,rc.status='active' AS active
+    rc.fixed_amount AS "useConceptAmount",rc.amount,rc.note,rc.status='active' AS active,rc.generation_from::text AS "generationFrom",coalesce(rc.next_run_date::text,'') AS "nextRunDate"
     FROM recurring_charges rc JOIN services s ON s.id=rc.service_id ORDER BY rc.created_at,rc.id`)).rows.map((r) => ({
       ...r, routeId: r.routeId ?? undefined, registeredAt: r.registeredAt instanceof Date ? r.registeredAt.toISOString() : r.registeredAt,
       frequency: frequencyLabels[r.frequency] ?? r.frequency,
@@ -69,14 +69,14 @@ export async function saveRecurringCharges(client: pg.PoolClient, state: State, 
     const serviceId = await resolveService(row.service, row.serviceId);
     const routeId = state.clients.find((c) => c.id === row.clientId)?.routeId ?? row.routeId ?? null;
     await client.query(`INSERT INTO recurring_charges(id,service_id,route_id,client_id,amount,required,fixed_amount,frequency,
-      next_run_date,status,created_at,start_date,end_date,day1,day2,currency,concept,note)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+      next_run_date,status,created_at,start_date,end_date,day1,day2,currency,concept,note,generation_from)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
       ON CONFLICT(id) DO UPDATE SET service_id=EXCLUDED.service_id,route_id=EXCLUDED.route_id,client_id=EXCLUDED.client_id,
       amount=EXCLUDED.amount,fixed_amount=EXCLUDED.fixed_amount,frequency=EXCLUDED.frequency,next_run_date=EXCLUDED.next_run_date,
       status=EXCLUDED.status,start_date=EXCLUDED.start_date,end_date=EXCLUDED.end_date,day1=EXCLUDED.day1,day2=EXCLUDED.day2,
-      currency=EXCLUDED.currency,concept=EXCLUDED.concept,note=EXCLUDED.note`,
+      currency=EXCLUDED.currency,concept=EXCLUDED.concept,note=EXCLUDED.note,generation_from=EXCLUDED.generation_from`,
       [row.id,serviceId,routeId,row.clientId || null,row.amount,false,row.useConceptAmount,
-        frequencyCodes[row.frequency] ?? row.frequency,row.startDate,row.active ? "active" : "paused",row.registeredAt,
-        row.startDate,row.endDate || null,row.day1,row.day2,row.currency,row.concept,row.note]);
+        frequencyCodes[row.frequency] ?? row.frequency,row.nextRunDate === undefined ? row.startDate : row.nextRunDate || null,row.active ? "active" : "paused",row.registeredAt,
+        row.startDate,row.endDate || null,row.day1,row.day2,row.currency,row.concept,row.note,row.generationFrom || null]);
   }
 }

@@ -49,12 +49,12 @@ test("actual user forms and collector picker persist real API references in an i
   const { token, user } = (await app.inject({ method: "POST", url: "/api/auth/login", payload: { email: "admin@cyp.local", password: "Demo-CyP-2026!" } })).json();
   const samples: Record<string, { id: string; name: string; email: string }> = {};
   for (const role of ["admin", "supervisor", "collector", "client", "undefined", "cashier"]) {
-    const result = await app.inject({ method: "POST", url: "/api/usuarios", headers: { authorization: `Bearer ${token}`, "idempotency-key": randomUUID() }, payload: { name: `Cuenta QA ${role}`, email: `qa-${role}@example.invalid`, role, password: "Qa3+#'", ...(role === "collector" ? { collectorId: "col-1" } : {}) } });
+    const result = await app.inject({ method: "POST", url: "/api/usuarios", headers: { authorization: `Bearer ${token}`, "idempotency-key": randomUUID() }, payload: { name: `Cuenta QA ${role}`, email: `qa-${role}@example.invalid`, role, password: "Synthetic-Qa3+#'-2026!", ...(role === "collector" ? { collectorId: "col-1" } : {}) } });
     assert.equal(result.statusCode, 200, result.body); samples[role] = result.json();
   }
-  const otherAccount = await app.inject({ method: "POST", url: "/api/usuarios", headers: { authorization: `Bearer ${token}`, "idempotency-key": randomUUID() }, payload: { name: "Cuenta de otro cobrador QA", email: "qa-other@example.invalid", role: "collector", collectorId: "col-2", password: "Qa3+#'" } });
+  const otherAccount = await app.inject({ method: "POST", url: "/api/usuarios", headers: { authorization: `Bearer ${token}`, "idempotency-key": randomUUID() }, payload: { name: "Cuenta de otro cobrador QA", email: "qa-other@example.invalid", role: "collector", collectorId: "col-2", password: "Synthetic-Qa3+#'-2026!" } });
   assert.equal(otherAccount.statusCode, 200, otherAccount.body);
-  const disabledAccount = await app.inject({ method: "POST", url: "/api/usuarios", headers: { authorization: `Bearer ${token}`, "idempotency-key": randomUUID() }, payload: { name: "Cuenta inactiva QA", email: "qa-disabled@example.invalid", role: "supervisor", password: "Qa3+#'" } });
+  const disabledAccount = await app.inject({ method: "POST", url: "/api/usuarios", headers: { authorization: `Bearer ${token}`, "idempotency-key": randomUUID() }, payload: { name: "Cuenta inactiva QA", email: "qa-disabled@example.invalid", role: "supervisor", password: "Synthetic-Qa3+#'-2026!" } });
   assert.equal(disabledAccount.statusCode, 200, disabledAccount.body);
   const disabled = await app.inject({ method: "POST", url: `/api/usuarios/${disabledAccount.json().id}/estado`, headers: { authorization: `Bearer ${token}`, "idempotency-key": randomUUID() }, payload: { status: "disabled" } });
   assert.equal(disabled.statusCode, 200, disabled.body);
@@ -81,7 +81,7 @@ remittancesApi("/snapshot").then(initial=>createRoot(document.getElementById("ro
       import(pathToFileURL(localRequire.resolve("vite")).href), import(pathToFileURL(localRequire.resolve("@vitejs/plugin-react")).href),
       import(pathToFileURL(localRequire.resolve("@tailwindcss/vite")).href), import(pathToFileURL(playwrightEntry!).href),
     ]);
-    await build({ root: adminRoot, configFile: false, envFile: false, publicDir: false, cacheDir: path.join(output, "cache"), resolve: { dedupe: ["react", "react-dom"] }, plugins: [react(), tailwind()], define: { "process.env.NODE_ENV": JSON.stringify("production") }, logLevel: "error", build: { outDir: path.join(output, "dist"), emptyOutDir: false, cssCodeSplit: false, lib: { entry: fixture, formats: ["es"], fileName: () => "fixture.js", cssFileName: "fixture" } } });
+    await build({ root: adminRoot, configFile: false, envFile: false, publicDir: false, cacheDir: path.join(output, "cache"), resolve: { dedupe: ["react", "react-dom"] }, plugins: [react(), tailwind()], define: { "process.env.NODE_ENV": JSON.stringify("production") }, logLevel: "error", build: { outDir: path.join(output, "dist"), emptyOutDir: false, cssCodeSplit: false, rollupOptions: { output: { inlineDynamicImports: true } }, lib: { entry: fixture, formats: ["es"], fileName: () => "fixture.js", cssFileName: "fixture" } } });
     server = createServer(async (req, res) => {
       const pathname = new URL(req.url ?? "/", "http://127.0.0.1").pathname;
       try {
@@ -124,9 +124,9 @@ remittancesApi("/snapshot").then(initial=>createRoot(document.getElementById("ro
       assert.equal(await username.getAttribute("type"), "text");
       await username.fill("qa.new");
       assert.equal(await username.evaluate((input: HTMLInputElement) => input.checkValidity()), true);
-      const password = dialog.getByLabel("Contraseña inicial (mínimo 3 caracteres)", { exact: true });
-      assert.equal(await password.getAttribute("maxlength"), "200"); assert.equal(await password.getAttribute("minlength"), "3");
-      await password.fill("Qa3+#'"); await dialog.getByRole("button", { name: "Aceptar", exact: true }).click();
+      const password = dialog.getByLabel("Contraseña inicial (mínimo 15 caracteres)", { exact: true });
+      assert.equal(await password.getAttribute("maxlength"), "200"); assert.equal(await password.getAttribute("minlength"), "15");
+      await password.fill("Synthetic-Qa3+#'-2026!"); await dialog.getByRole("button", { name: "Aceptar", exact: true }).click();
       await dialog.waitFor({ state: "detached" });
       const created = (await store.read()).accounts.find((row) => row.email === "qa.new")!; assert.equal(created.role, "undefined");
       await page.getByRole("row").filter({ hasText: created.email }).click(); await page.getByTitle("Editar", { exact: true }).click();
@@ -135,7 +135,7 @@ remittancesApi("/snapshot").then(initial=>createRoot(document.getElementById("ro
       await dialog.getByRole("button", { name: "Aceptar", exact: true }).click(); await dialog.waitFor({ state: "detached" });
       const edited = (await store.read()).accounts.find((row) => row.id === created.id)!;
       assert.equal(edited.role, "supervisor"); assert.equal(edited.email, "qa.edited");
-      const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { email: "qa.edited", password: "Qa3+#'" } });
+      const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { email: "qa.edited", password: "Synthetic-Qa3+#'-2026!" } });
       assert.equal(login.statusCode, 200); assert.equal(login.json().user.id, created.id);
       await page.getByRole("row").filter({ hasText: edited.email }).click(); await page.getByTitle("Editar", { exact: true }).click();
       assert.equal(await role.inputValue(), "supervisor"); await dialog.getByRole("button", { name: "Cancelar", exact: true }).click();
@@ -189,13 +189,13 @@ remittancesApi("/snapshot").then(initial=>createRoot(document.getElementById("ro
       assert.equal(await username.getAttribute("type"), "text");
       assert.equal(await username.getAttribute("autocomplete"), "username");
       await username.fill("qa.auxiliary"); await association.selectOption("col-1");
-      const password = dialog.getByLabel("Contraseña (3 caracteres mínimo)", { exact: true });
+      const password = dialog.getByLabel("Contraseña (15 caracteres mínimo)", { exact: true });
       await password.fill("Qa"); assert.equal(await password.evaluate((input: HTMLInputElement) => input.checkValidity()), false);
-      await password.fill("Qa3"); await dialog.getByRole("button", { name: "Crear cuenta", exact: true }).click();
+      await password.fill("Synthetic-Qa3-2026!"); await dialog.getByRole("button", { name: "Crear cuenta", exact: true }).click();
       await page.getByText("Ventana cerrada", { exact: true }).waitFor();
       const saved = (await store.read()).accounts.find((row) => row.email === "qa.auxiliary")!;
       assert.equal(saved.role, "collector"); assert.equal(saved.collectorId, "col-1");
-      const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { email: "qa.auxiliary", password: "Qa3" } });
+      const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { email: "qa.auxiliary", password: "Synthetic-Qa3-2026!" } });
       assert.equal(login.statusCode, 200); assert.equal(login.json().user.id, saved.id);
     });
     await t.test("historical inactive collector remains visible but cannot be selected as a new association", async () => {

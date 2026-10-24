@@ -1,3 +1,4 @@
+import { effectiveAccess } from "../../shared/access.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -13,7 +14,7 @@ import { quoteRemittance, setDailyRate, setCommissionPolicy, getCommissionPolicy
 
 const now = new Date("2026-10-09T16:00:00Z");
 const admin: User = { id: "demo-admin", name: "Synthetic Admin", role: "admin" };
-const collector: User = { id: "demo-collector", name: "Synthetic Gestor", role: "collector", collectorId: "col-1" };
+const collector: User = { id: "demo-collector", name: "Synthetic Gestor", role: "collector", collectorId: "col-1", access: { ...effectiveAccess("collector"), roleExceptions: true, remittances: [...effectiveAccess("collector").remittances, "remittances.commissions.view"] } };
 const receiver: User = { id: "synthetic-receiver", name: "Synthetic Receiver", role: "collector", collectorId: "col-2" };
 const pair = { sourceCurrency: "USD" as Currency, destinationCurrency: "EUR" as Currency, amount: 10000, commissionBps: 500 };
 const code = (expected: string) => (error: unknown) => { assert.equal((error as { code: string }).code, expected); return true; };

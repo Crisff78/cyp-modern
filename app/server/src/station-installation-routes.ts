@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { assertAuthSession, recordAdminTrace } from "./admin-tools.js";
+import { authorizeRequest, currentAccessUser, requirePermission } from "./access.js";
 import { assertAdmin, assertAdminRead, DomainError, type State, type User } from "./domain.js";
 import { boundedId, freeText } from "./input-validation.js";
 import type { Store } from "./store.js";
@@ -49,14 +50,17 @@ export function registerStationInstallationRoutes(app: FastifyInstance, store: S
   async function transact<T>(req: FastifyRequest, stationId: string, action: Action,
     operation: (state: State, actor: InstallationActor, requestOrigin: string) => T,
     idempotency?: { body: unknown; params: unknown }): Promise<T> {
-    const requestOrigin = origin(req), actor = user(req) as InstallationActor;
+    const requestOrigin = origin(req), sessionActor = user(req) as InstallationActor;
     const key = req.headers["idempotency-key"];
     if (idempotency && (typeof key !== "string" || key.length < 8 || key.length > 100 || /[\u0000-\u001f\u007f]/.test(key)))
       throw new DomainError("IDEMPOTENCY_REQUIRED", "Envía un Idempotency-Key válido.", 400);
     const outcome = await store.transaction((state) => {
+      const actor = currentAccessUser(state, sessionActor) as InstallationActor;
       let authorized = false;
       try {
         assertAuthSession(state, actor, actor.sid);
+        authorizeRequest(actor, req.method, req.routeOptions.url ?? req.url);
+        if (action === "challenge" && (req.body as {purpose?: string}).purpose === "register") requirePermission(actor, 113);
         const account = state.accounts.find((row) => row.id === actor.id);
         if (account && (account.status !== "active" || account.role !== actor.role || account.collectorId !== actor.collectorId))
           throw new DomainError("SESSION_EXPIRED", "La cuenta cambió. Inicia sesión de nuevo.", 401);
@@ -95,7 +99,9 @@ export function registerStationInstallationRoutes(app: FastifyInstance, store: S
   app.get(listPath, routeOptions(60), async (req) => {
     origin(req, false); noQuery.parse(req.query); const params = stationParams.parse(req.params), actor = user(req) as InstallationActor;
     const state = await store.read(); assertAuthSession(state, actor, actor.sid);
-    return listStationInstallations(state, actor, params.id, settings);
+    const current = currentAccessUser(state, actor) as InstallationActor;
+    authorizeRequest(current, req.method, req.routeOptions.url ?? req.url);
+    return listStationInstallations(state, current, params.id, settings);
   });
   app.post(challengePath, routeOptions(30), async (req) => {
     const params = stationParams.parse(req.params), body = challengeBody.parse(req.body); noQuery.parse(req.query);

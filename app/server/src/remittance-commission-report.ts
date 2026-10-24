@@ -1,4 +1,5 @@
 import { businessDate, DomainError, type State, type User } from "./domain.js";
+import { hasRemittancePermission } from "../../shared/access.mjs";
 import { canReportTransfer, safeMoney, type CommissionAllocation, type Currency, type Remittance } from "./remittances.js";
 
 export type CommissionReportInput = {
@@ -23,6 +24,8 @@ function accumulate(total: Totals, allocation: CommissionAllocation, cancelled: 
     total[field] = safeMoney(BigInt(total[field]) + BigInt(allocation[field]));
 }
 export function consolidatedCommissionReport(state: State, user: User, input: CommissionReportInput) {
+  if (!hasRemittancePermission(user, "remittances.commissions.view"))
+    throw new DomainError("PERMISSION_REQUIRED", "Tu cuenta no tiene permiso para consultar el reparto de comisiones.", 403);
   if (input.from > input.to) throw new DomainError("INVALID_DATE_RANGE", "La fecha inicial no puede superar la final.", 400);
   const groups = new Map<string, Group>(), currencyTotals = new Map<Currency, Totals & { currency: Currency }>();
   const details: Array<CommissionAllocation & Pick<Remittance, "id" | "envioReference" | "createdAt" | "status">> = [];

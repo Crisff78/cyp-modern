@@ -14,7 +14,7 @@ async function setup(t: TestContext, store = new MemoryStore(seed())) {
   const app = await buildApp({ store, demo: true, secret: "synthetic-exceptions-secret-longer-than-32-characters", origins: [], collectorUrl: "/collector/" });
   t.after(() => app.close());
   const login = async (email = "admin") => {
-    const response = await app.inject({ method: "POST", url: "/api/auth/login", payload: { email, password: "Demo-CyP-2026!" } });
+    const response = await app.inject({ method: "POST", url: "/api/auth/login", payload: { email, password: email === "admin" ? "Demo-CyP-2026!" : "Synthetic-Exception-2026!" } });
     assert.equal(response.statusCode, 200, response.body); return response.json().token as string;
   };
   const admin = await login();
@@ -22,7 +22,7 @@ async function setup(t: TestContext, store = new MemoryStore(seed())) {
   const get = (url: string, token = admin) => app.inject({ url, headers: { authorization: `Bearer ${token}` } });
   const create = async (role: string) => {
     const email = `${randomUUID()}@example.invalid`;
-    const response = await post("/api/usuarios", { name: "Cuenta sintética", role, email, password: "Demo-CyP-2026!", ...(role === "collector" ? { collectorId: "col-1" } : {}) });
+    const response = await post("/api/usuarios", { name: "Cuenta sintética", role, email, password: "Synthetic-Exception-2026!", ...(role === "collector" ? { collectorId: "col-1" } : {}) });
     assert.equal(response.statusCode, 200, response.body); return { ...response.json(), token: await login(email) };
   };
   const grant = (id: string, permissionIds: number[], revision = 0, extra: object = {}) => post(`/api/usuarios/${id}/permisos`, { permissionIds, remittancePermissions: [], mode: "custom", revision, ...extra });
@@ -91,7 +91,7 @@ test("limited permission managers cannot delegate or manufacture access they do 
     assert.equal(response.statusCode, 403, response.body); assert.equal(response.json().error.code, "PERMISSION_DELEGATION_FORBIDDEN");
     assert.deepEqual(await store.read(), before);
   }
-  const newAdmin = await post("/api/usuarios", { name: "No autorizado", email: "cannot-elevate@example.invalid", role: "admin", password: "Ficticia-2026!" }, manager.token);
+  const newAdmin = await post("/api/usuarios", { name: "No autorizado", email: "cannot-elevate@example.invalid", role: "admin", password: "Ficticia-Segura-2026!" }, manager.token);
   assert.equal(newAdmin.statusCode, 403, newAdmin.body); assert.deepEqual(await store.read(), before);
   const allowed = await post(`/api/usuarios/${target.id}/permisos`, { permissionIds: [1, 140], mode: "custom", roleExceptions: true, revision: 0 }, manager.token);
   assert.equal(allowed.statusCode, 200, allowed.body);

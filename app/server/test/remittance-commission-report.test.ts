@@ -1,3 +1,4 @@
+import { effectiveAccess } from "../../shared/access.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { buildApp } from "../src/app.js";
@@ -62,6 +63,8 @@ test("business date boundaries, daily/currency grouping and legacy exclusion nev
 });
 test("exact BigInt sums reject unsafe totals atomically and respect receipt/outgoing visibility", () => {
   const state = fixture(), outsider: User = { id: "outsider", name: "Outsider", role: "collector", collectorId: "col-3" };
+  assert.throws(() => consolidatedCommissionReport(state, outsider, defaults), /reparto de comisiones/);
+  outsider.access = effectiveAccess("collector", {permissionMode:"custom",permissionIds:[1],remittancePermissions:["remittances.reports","remittances.commissions.view"],roleExceptions:true});
   assert.deepEqual(consolidatedCommissionReport(state, outsider, defaults).currencyTotals, []);
   const maximum = transfer("maximum"); Object.assign(maximum.commissionAllocation!, { transactionAmount: Number.MAX_SAFE_INTEGER, companyAmount: Number.MAX_SAFE_INTEGER, managerAmount: 0 });
   const extra = transfer("extra"); Object.assign(extra.commissionAllocation!, { transactionAmount: 1, companyAmount: 1, managerAmount: 0 });
@@ -85,7 +88,7 @@ test("consolidated API validates filters, preserves access scope and performs no
     assert.equal(report.json().currencyTotals[0].managerAmount, 0); assert.equal(report.json().currencyTotals[0].cancelledManagerAmount, 160);
     assert.deepEqual(await store.read(), before);
     const collectorToken = await login("collector@cyp.local");
-    const scoped = await get(`${base}&managerId=gestor-2&currency=EUR`, collectorToken); assert.equal(scoped.statusCode, 200);
-    assert.equal(scoped.json().details.length, 1, "Existing sender-route scope is preserved; manager filter grants no extra rights");
+    const scoped = await get(`${base}&managerId=gestor-2&currency=EUR`, collectorToken); assert.equal(scoped.statusCode, 403);
+    assert.equal(scoped.json().error.code, "FORBIDDEN");
   } finally { await app.close(); }
 });

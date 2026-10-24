@@ -1,8 +1,10 @@
+import { remittancesApi } from "./remittancesApi";
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { RefreshCw } from "lucide-react";
 import { LegacyDialog, handleKeyboardActivation } from "./LegacyConnectedUi";
-import { loadCollectorAssignments, parseLimit, saveCollectorAssignments, type AssignmentKind, type CollectorAssignment } from "./collectorAssignmentsState";
+import { parseLimit, type AssignmentKind, type CollectorAssignment } from "./collectorAssignmentsState";
 import { isDecimalDraft } from "../../shared/inputRules";
+import { pendingMovementDraft, useMovementRequest } from "./useMovementRequest";
 import "./collector-assignments.css";
 
 const titles: Record<AssignmentKind, string> = {
@@ -84,7 +86,7 @@ function LimitPicker({ rows, onSelect, onClose }: Readonly<{
   };
   return <LegacyDialog title="Seleccionar..." className="collector-assignment-limit-picker" onClose={onClose}>
     <form className="collector-assignment-limit-form" onSubmit={submit}>
-      <label>Moneda:<select autoFocus value={currency} onChange={(event) => changeCurrency(event.target.value)}>{currencies.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+      <label>Moneda:<select aria-label="Moneda:" autoFocus value={currency} onChange={(event) => changeCurrency(event.target.value)}>{currencies.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
       <label>Lím. de Cobro:<input type="text" inputMode="decimal" maxLength={17} value={collectionLimit} onChange={(event) => { const next = event.target.value; if (isDecimalDraft(next) || next.length < collectionLimit.length) setCollectionLimit(next); }} /></label>
       <label>Lím. de Pago:<input type="text" inputMode="decimal" maxLength={17} value={payoutLimit} onChange={(event) => { const next = event.target.value; if (isDecimalDraft(next) || next.length < payoutLimit.length) setPayoutLimit(next); }} /></label>
       {rows.some((row) => row.id === currency) && <small>Los valores reemplazarán los límites de esta moneda al aceptar.</small>}
@@ -94,21 +96,47 @@ function LimitPicker({ rows, onSelect, onClose }: Readonly<{
   </LegacyDialog>;
 }
 
-export function CollectorAssignmentsDialog({ collectorId, collectorName, kind, initial, loadOptions, onSave, onClose, onModifyOperationalLimits, canManage = false }: Readonly<{
-  collectorId: string; collectorName: string; kind: AssignmentKind;
+type AssignmentDraft = { rows: CollectorAssignment[]; revision: string; savedRows: string };
+type AssignmentResult = { rows: CollectorAssignment[]; revision: string };
+
+export function CollectorAssignmentsDialog({ actorId, collectorId, collectorName, kind, initial, loadOptions, onSave, onClose, canManage = false }: Readonly<{
+  actorId: string; collectorId: string; collectorName: string; kind: AssignmentKind;
   initial: readonly CollectorAssignment[]; loadOptions: () => Promise<readonly CollectorAssignment[]>;
-  onSave: (rows: readonly CollectorAssignment[]) => void; onClose: () => void;
-  onModifyOperationalLimits?: () => void;
+  onSave: (rows: readonly CollectorAssignment[]) => void | Promise<void>; onClose: () => void;
   canManage?: boolean;
 }>) {
-  const [rows, setRows] = useState(() => loadCollectorAssignments(collectorId, kind, initial));
+  const scope = `collector-assignments:${collectorId}:${kind}`;
+  const request = useMovementRequest(actorId, scope);
+  const pending = () => pendingMovementDraft<AssignmentDraft>(actorId, scope);
+  const [rows, setRows] = useState(() => pending()?.rows ?? [...initial]);
+  const [revision, setRevision] = useState(() => pending()?.revision ?? "");
+  const [savedRows, setSavedRows] = useState(() => pending()?.savedRows ?? JSON.stringify(initial));
+  const [saving, setSaving] = useState(false);
+  const [saveConfirm, setSaveConfirm] = useState(false);
+  const [discardConfirm, setDiscardConfirm] = useState(false);
+  const path = `/cobradores/${encodeURIComponent(collectorId)}/${({zones:"zonas",routes:"rutas",limits:"limites/monedas"} as const)[kind]}`;
+  const dirty = JSON.stringify(rows) !== savedRows;
+  const close = () => { if (saving || !request.closable) return; if (request.denied) { onClose(); return; } if (dirty) setDiscardConfirm(true); else { request.clear(); onClose(); } };
+  const loadAssigned = useCallback(async () => {
+    if (pendingMovementDraft(actorId, scope)) return;
+    setLoadingAssigned(true); setError("");
+    try {
+      const value = await remittancesApi<{ rows: CollectorAssignment[]; revision: string }>(path);
+      if (!mounted.current) return;
+      setRows(value.rows); setRevision(value.revision); setSavedRows(JSON.stringify(value.rows));
+      setSelectedId(""); setPage(1);
+    } catch (failure) { if (mounted.current) setError(failure instanceof Error ? failure.message : "No se pudieron cargar las asignaciones."); }
+    finally { if (mounted.current) setLoadingAssigned(false); }
+  }, [path, actorId, scope]);
   const [options, setOptions] = useState<readonly CollectorAssignment[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [page, setPage] = useState(1);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [loadingAssigned, setLoadingAssigned] = useState(false);
+  const [loadingOptions, setLoadingOptions] = useState(false);
+  const loading = loadingAssigned || loadingOptions;
   const mounted = useRef(true);
   const requestNumber = useRef(0);
   const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
@@ -117,7 +145,7 @@ export function CollectorAssignmentsDialog({ collectorId, collectorName, kind, i
   const fetchOptions = useCallback(async () => {
     if (kind === "limits") return;
     const request = ++requestNumber.current;
-    setLoading(true); setError("");
+    setLoadingOptions(true); setError("");
     try {
       const loaded = await loadOptions();
       if (mounted.current && request === requestNumber.current) {
@@ -126,9 +154,9 @@ export function CollectorAssignmentsDialog({ collectorId, collectorName, kind, i
       }
     } catch (failure) {
       if (mounted.current && request === requestNumber.current) setError(failure instanceof Error ? failure.message : "No se pudo cargar el catálogo.");
-    } finally { if (mounted.current && request === requestNumber.current) setLoading(false); }
+    } finally { if (mounted.current && request === requestNumber.current) setLoadingOptions(false); }
   }, [kind, loadOptions]);
-  useEffect(() => { mounted.current = true; void fetchOptions(); return () => { mounted.current = false; ++requestNumber.current; }; }, [fetchOptions]);
+  useEffect(() => { mounted.current = true; void loadAssigned(); void fetchOptions(); return () => { mounted.current = false; ++requestNumber.current; }; }, [fetchOptions, loadAssigned]);
   const add = (row: CollectorAssignment) => {
     let updated = [...rows, row];
     if (rows.some((item) => item.id === row.id)) updated = rows.map((item) => item.id === row.id ? row : item);
@@ -136,30 +164,36 @@ export function CollectorAssignmentsDialog({ collectorId, collectorName, kind, i
     setPage(Math.floor(updated.findIndex((item) => item.id === row.id) / pageSize) + 1);
     setPickerOpen(false);
   };
-  const save = () => {
-    if (!canManage) { onClose(); return; }
-    try { saveCollectorAssignments(collectorId, kind, rows); onSave(rows); onClose(); }
-    catch (failure) { setError(failure instanceof Error ? failure.message : "No se pudieron guardar las asignaciones."); }
+  const save = async () => {
+    if (!canManage || !revision || saving || request.busy) return;
+    setSaving(true); setError(""); setSaveConfirm(false);
+    const submitted = rows.map(({id,collectionLimit,payoutLimit}) => kind === "limits" ? {id,collectionLimit,payoutLimit} : {id});
+    try {
+      const result = await request.run<AssignmentResult>(path, { rows: submitted, revision, confirmReassignment: true }, { rows, revision, savedRows }, (value) => Array.isArray(value?.rows) && typeof value?.revision === "string");
+      setRows(result.rows); setRevision(result.revision); setSavedRows(JSON.stringify(result.rows));
+      await onSave(result.rows); onClose();
+    } catch (failure) { setError(failure instanceof Error ? failure.message : "No se pudieron guardar las asignaciones."); }
+    finally { setSaving(false); }
   };
-  const refresh = () => {
-    setRows(loadCollectorAssignments(collectorId, kind, initial)); setSelectedId(""); setPage(1);
-    void fetchOptions();
-  };
+  const refresh = () => { if (request.locked || saving) return; if (dirty) { setDiscardConfirm(true); return; } void loadAssigned(); void fetchOptions(); };
   const goToPage = (value: number) => { setPage(Math.min(pageCount, Math.max(1, value))); setSelectedId(""); };
-  return <LegacyDialog title={titles[kind]} className="collector-assignments-dialog" onClose={onClose}>
+  return <LegacyDialog title={titles[kind]} className="collector-assignments-dialog" onClose={close}>
     <div className="collector-assignment-content">
-      <div className="legacy-relation-toolbar collector-assignment-toolbar"><button type="button" disabled={!canManage || loading || (kind !== "limits" && Boolean(error))} onClick={() => setPickerOpen(true)}>Agregar</button><button type="button" disabled={!canManage || !selectedId} onClick={() => setConfirmOpen(true)}>Eliminar</button>{kind === "limits" && onModifyOperationalLimits && <button type="button" onClick={onModifyOperationalLimits} title="Abrir los límites persistidos. Los cambios de sesión pendientes no se guardan.">Modificar límites operativos DOP</button>}</div>
+      <div className="legacy-relation-toolbar collector-assignment-toolbar"><button type="button" disabled={!canManage || !revision || saving || request.locked || loading || (kind !== "limits" && Boolean(error))} onClick={() => setPickerOpen(true)}>Agregar</button><button type="button" disabled={!canManage || saving || request.locked || !selectedId} onClick={() => setConfirmOpen(true)}>Eliminar</button></div>
       <div className="legacy-mdi-table-wrap"><AssignmentGrid kind={kind} rows={visibleRows} selectedId={selectedId} onSelect={setSelectedId} /></div>
       <div className="legacy-mdi-pager collector-assignment-pager">
         <button type="button" aria-label="Primera página" disabled={currentPage === 1} onClick={() => goToPage(1)}>|&lt;</button><button type="button" aria-label="Página anterior" disabled={currentPage === 1} onClick={() => goToPage(currentPage - 1)}>&lt;</button>
         <label>Página <input aria-label="Página" type="number" min={1} max={pageCount} value={currentPage} onChange={(event) => goToPage(Number(event.target.value) || 1)} /> de {pageCount}</label>
         <button type="button" aria-label="Página siguiente" disabled={currentPage === pageCount} onClick={() => goToPage(currentPage + 1)}>&gt;</button><button type="button" aria-label="Última página" disabled={currentPage === pageCount} onClick={() => goToPage(pageCount)}>&gt;|</button>
-        <button type="button" onClick={refresh} disabled={loading}><RefreshCw size={13} className={loading ? "animate-spin" : ""} />Refrescar</button>
+        <button type="button" onClick={refresh} disabled={loading || saving || request.locked}><RefreshCw size={13} className={loading ? "animate-spin" : ""} />Refrescar</button>
       </div>
-      {error && <p className="collector-assignment-error" role="alert">{error}</p>}
-      <div className="collector-assignment-scope">{collectorName} · {kind === "limits" ? "Para cambiar los límites que se aplican al cobrador pulsa «Modificar límites operativos DOP». La lista por moneda de esta ventana es solo una anotación temporal de esta sesión: no cambia los límites reales." : "Esta lista es una anotación temporal de esta sesión. Para asignar de verdad una ruta o una zona al cobrador usa Rutas y Zonas en el Panel de Control."}</div>
-      <div className="legacy-relation-footer"><button type="button" onClick={save}>Aceptar</button><button type="button" onClick={onClose}>Cancelar</button></div>
+      {(request.error || error) && <p className="collector-assignment-error" role="alert">{request.error || error}</p>}
+      {request.uncertain && <p role="status">El guardado está pendiente de confirmación. Reintenta las mismas asignaciones antes de cambiarlas o cerrar.</p>}
+      <div className="collector-assignment-scope">{collectorName} · {kind === "limits" ? "Los límites se guardan y aplican en la moneda indicada, sin conversiones. Quitar una moneda bloquea nuevos importes en esa moneda." : "Asignaciones reales. Una zona incluye todas sus rutas activas. Quitar una asignación deja sus rutas sin cobrador y conserva los clientes y el historial."}</div>
+      <div className="legacy-relation-footer"><button type="button" disabled={!canManage || !revision || saving || request.busy || loading} onClick={() => request.uncertain ? void save() : setSaveConfirm(true)}>{saving ? "Guardando…" : request.uncertain ? "Reintentar mismas asignaciones" : "Aceptar"}</button><button type="button" disabled={saving || !request.closable} onClick={close}>Cancelar</button></div>
     </div>
+    {saveConfirm && <LegacyDialog title="Confirmar asignaciones" onClose={() => setSaveConfirm(false)}><p>¿Guardar los cambios de {collectorName}? {kind !== "limits" && "Las rutas seleccionadas pasarán a este cobrador, incluso si antes pertenecían a otro. Revisa la lista antes de continuar."}</p><div className="legacy-dialog-actions"><button type="button" onClick={() => void save()}>Sí, guardar</button><button type="button" onClick={() => setSaveConfirm(false)}>No</button></div></LegacyDialog>}
+    {discardConfirm && <LegacyDialog title="Descartar cambios" onClose={() => setDiscardConfirm(false)}><p>Hay cambios sin guardar. ¿Deseas descartarlos y cerrar?</p><div className="legacy-dialog-actions"><button type="button" onClick={onClose}>Sí, descartar</button><button type="button" onClick={() => setDiscardConfirm(false)}>Seguir revisando</button></div></LegacyDialog>}
     {pickerOpen && kind !== "limits" && <AreaPicker kind={kind} options={options} assigned={rows} onSelect={add} onClose={() => setPickerOpen(false)} />}
     {pickerOpen && kind === "limits" && <LimitPicker rows={rows} onSelect={add} onClose={() => setPickerOpen(false)} />}
     {confirmOpen && <LegacyDialog title="Confirm" className="legacy-confirm-dialog" onClose={() => setConfirmOpen(false)}><div className="legacy-confirm-content"><span className="legacy-question-icon">?</span><p>{confirmations[kind]}</p></div><div className="legacy-dialog-actions centered"><button type="button" onClick={() => { setRows((current) => current.filter((row) => row.id !== selectedId)); setSelectedId(""); setConfirmOpen(false); }}>Sí</button><button type="button" onClick={() => setConfirmOpen(false)}>No</button></div></LegacyDialog>}
