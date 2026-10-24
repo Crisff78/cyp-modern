@@ -24,7 +24,7 @@ async function setup(t: TestContext) {
   const post = (url: string, payload: object, token = adminToken, key = randomUUID()) => app.inject({ method: "POST", url, payload, headers: { authorization: `Bearer ${token}`, "idempotency-key": key } });
   const get = (url: string, token = adminToken) => app.inject({ method: "GET", url, headers: { authorization: `Bearer ${token}` } });
   const account = async (role: AccountRole) => {
-    const body = { name: `José O'Connor & Hijos ${role}`, email: `${role}-${randomUUID()}@example.invalid`, role, ...(role === "collector" ? { collectorId: "col-1" } : {}), password: "Ab#'☃" };
+    const body = { name: `José O'Connor & Hijos ${role}`, email: `${role}-${randomUUID()}@example.invalid`, role, ...(role === "collector" ? { collectorId: "col-1" } : {}), password: "Frase Ab#'☃ para pruebas" };
     const result = await post("/api/usuarios", body);
     assert.equal(result.statusCode, 200, result.body);
     return { ...result.json(), body };

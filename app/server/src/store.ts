@@ -2,13 +2,19 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile, rename } from "node:fs/promises";
 import { dirname } from "node:path";
 import pg from "pg";
-import { DomainError, emptyState, type State } from "./domain.js";
+import { DomainError, emptyState, type State, type User } from "./domain.js";
 import { readRemittances, saveRemittances } from "./remittance-store.js";
 import { readAdminTools, saveAdminTools } from "./admin-tools-store.js";
 import { readCatalogs, saveCatalogMasters, saveRecurringCharges } from "./catalog-store.js";
 pg.types.setTypeParser(20, Number);
 export interface Store {
   read(): Promise<State>;
+  readRequest?(): Promise<State>;
+  transactionRequest?<T>(fn: (s: State) => T | Promise<T>): Promise<T>;
+  readAccess?(actor: User, sessionId: unknown): Promise<State>;
+  hasDueRecurring?(today: string): Promise<boolean>;
+  readIdempotency?(key: string): Promise<State["idempotency"][number] | undefined>;
+  readAdminPage?(kind: "traces" | "sessions", input: { from?: string; to?: string; q: string; status?: string; limit: number; offset: number }): Promise<{items: Record<string, unknown>[]; total: number; limit: number; offset: number}>;
   transaction<T>(fn: (s: State) => T | Promise<T>): Promise<T>;
   close(): Promise<void>;
 }
@@ -100,7 +106,7 @@ async function ensureUser(client: pg.PoolClient, id: string, state: State) {
     [id, id, role, role === "collector" ? "col-1" : null],
   );
 }
-async function readState(client: pg.PoolClient): Promise<State> {
+async function readState(client: pg.PoolClient, includeAuditHistory = true): Promise<State> {
   const state = emptyState();
   state.accounts = (
     await client.query(
@@ -113,13 +119,13 @@ async function readState(client: pg.PoolClient): Promise<State> {
   ).rows.map(clean);
   state.collectors = (
     await client.query(
-      `SELECT id,name,initials,route_id AS "routeId",status,collection_limit AS "collectionLimit",
+      `SELECT id,name,initials,coalesce(route_id,'') AS "routeId",status,collection_limit AS "collectionLimit",currency_limits AS "currencyLimits",
        payout_limit AS "payoutLimit",lat,lng,last_seen AS "lastSeen",active,ident,cellular,account_code AS "accountId" FROM collectors ORDER BY id`,
     )
   ).rows.map((row) => ({ ...clean(row), lat: row.lat ?? null, lng: row.lng ?? null }));
   state.routes = (
     await client.query(
-      `SELECT r.id,r.name,z.sector,r.zone_id AS "zoneId",r.collector_id AS "collectorId",r.number,r.range_from AS "from",r.range_to AS "to",r.active
+      `SELECT r.id,r.name,z.sector,r.zone_id AS "zoneId",coalesce(r.collector_id,'') AS "collectorId",r.number,r.range_from AS "from",r.range_to AS "to",r.active
        FROM routes r JOIN zones z ON z.id=r.zone_id ORDER BY r.id`,
     )
   ).rows.map(clean);
@@ -152,7 +158,7 @@ async function readState(client: pg.PoolClient): Promise<State> {
   state.charges = (
     await client.query(
       `SELECT ch.id,ch.client_id AS "clientId",ch.service_id AS "serviceId",s.name AS service,ch.concept,ch.currency,ch.note,ch.amount,ch.collected,ch.cancel_reason AS "cancelReason",
-       ch.due_date::text AS "dueDate",ch.required,ch.status
+       ch.due_date::text AS "dueDate",ch.required,ch.status,ch.recurring_template_id AS "recurringTemplateId",ch.scheduled_date::text AS "scheduledDate"
        FROM charges ch JOIN services s ON s.id=ch.service_id ORDER BY ch.id`,
     )
   ).rows.map(clean);
@@ -260,7 +266,7 @@ async function readState(client: pg.PoolClient): Promise<State> {
   ).rows.map(clean);
   state.remittances = await readRemittances(client);
   await readCatalogs(client, state);
-  state.adminTools = await readAdminTools(client);
+  state.adminTools = await readAdminTools(client, includeAuditHistory);
   return state;
 }
 async function saveState(client: pg.PoolClient, state: State, before: State) {
@@ -328,17 +334,17 @@ async function saveState(client: pg.PoolClient, state: State, before: State) {
   for (const collector of state.collectors) {
     if (unchanged(before.collectors, collector)) continue;
     await client.query(
-      `INSERT INTO collectors(id,name,initials,route_id,status,collection_limit,payout_limit,lat,lng,last_seen,active,ident,cellular,account_code)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+      `INSERT INTO collectors(id,name,initials,route_id,status,collection_limit,payout_limit,lat,lng,last_seen,active,ident,cellular,account_code,currency_limits)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
        ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,initials=EXCLUDED.initials,route_id=EXCLUDED.route_id,
        status=EXCLUDED.status,collection_limit=EXCLUDED.collection_limit,payout_limit=EXCLUDED.payout_limit,
        lat=EXCLUDED.lat,lng=EXCLUDED.lng,last_seen=EXCLUDED.last_seen,active=EXCLUDED.active,
-       ident=EXCLUDED.ident,cellular=EXCLUDED.cellular,account_code=EXCLUDED.account_code`,
+       ident=EXCLUDED.ident,cellular=EXCLUDED.cellular,account_code=EXCLUDED.account_code,currency_limits=EXCLUDED.currency_limits`,
       [
         collector.id,
         collector.name,
         collector.initials,
-        collector.routeId,
+        collector.routeId || null,
         collector.status,
         collector.collectionLimit,
         collector.payoutLimit,
@@ -349,6 +355,7 @@ async function saveState(client: pg.PoolClient, state: State, before: State) {
         collector.ident ?? "",
         collector.cellular ?? "",
         collector.accountId ?? "",
+        JSON.stringify(collector.currencyLimits ?? Object.fromEntries(["DOP","USD","EUR"].map((currency) => [currency, {collectionLimit: collector.collectionLimit, payoutLimit: collector.payoutLimit}]))),
       ],
     );
   }
@@ -358,7 +365,7 @@ async function saveState(client: pg.PoolClient, state: State, before: State) {
       `INSERT INTO routes(id,name,zone_id,collector_id,number,range_from,range_to,active) VALUES($1,$2,$3,$4,$5,$6,$7,$8)
        ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,zone_id=EXCLUDED.zone_id,collector_id=EXCLUDED.collector_id,
        number=EXCLUDED.number,range_from=EXCLUDED.range_from,range_to=EXCLUDED.range_to,active=EXCLUDED.active`,
-      [route.id, route.name, routeZones.get(route.id), route.collectorId,route.number ?? "",route.from ?? "",route.to ?? "",route.active !== false],
+      [route.id, route.name, routeZones.get(route.id), route.collectorId || null,route.number ?? "",route.from ?? "",route.to ?? "",route.active !== false],
     );
   }
   for (const clientRow of state.clients) {
@@ -446,8 +453,8 @@ async function saveState(client: pg.PoolClient, state: State, before: State) {
     if (unchanged(before.charges, charge)) continue;
     const sid = await resolveService(charge.service, charge.serviceId);
     await client.query(
-      `INSERT INTO charges(id,client_id,service_id,concept,currency,note,amount,collected,due_date,required,status,cancel_reason)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      `INSERT INTO charges(id,client_id,service_id,concept,currency,note,amount,collected,due_date,required,status,cancel_reason,recurring_template_id,scheduled_date)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
        ON CONFLICT(id) DO UPDATE SET client_id=EXCLUDED.client_id,service_id=EXCLUDED.service_id,
        concept=EXCLUDED.concept,currency=EXCLUDED.currency,note=EXCLUDED.note,
        amount=EXCLUDED.amount,collected=EXCLUDED.collected,due_date=EXCLUDED.due_date,
@@ -465,6 +472,8 @@ async function saveState(client: pg.PoolClient, state: State, before: State) {
         charge.required,
         charge.status,
         charge.cancelReason ?? "",
+        charge.recurringTemplateId ?? null,
+        charge.scheduledDate ?? null,
       ],
     );
   }
@@ -662,11 +671,64 @@ export class PostgresStore implements Store {
   constructor(url: string) {
     this.pool = new pg.Pool({ connectionString: url, max: 8 });
   }
-  async read() {
+  async readAccess(actor: User, sessionId: unknown) {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
-      const state = await readState(client);
+      const state = emptyState();
+      state.accounts = (await client.query(`SELECT id,name,email,role,collector_id AS "collectorId",credential_version AS "credentialVersion",status,
+        legacy_permission_ids AS "permissionIds",legacy_permission_revision AS "permissionRevision",permission_mode AS "permissionMode",
+        remittance_permissions AS "remittancePermissions",role_exceptions AS "roleExceptions" FROM users WHERE id=$1 AND email IS NOT NULL`, [actor.id])).rows.map(clean);
+      state.adminTools.sessions = (await client.query(`SELECT id,user_id AS "userId",user_name AS "userName",role,collector_id AS "collectorId",
+        started_at AS "startedAt",expires_at AS "expiresAt",revoked_at AS "revokedAt",revoked_by AS "revokedBy" FROM auth_sessions WHERE id=$1 AND user_id=$2`,
+        [typeof sessionId === "string" ? sessionId : "", actor.id])).rows.map(clean);
+      if (actor.collectorId) state.collectors = (await client.query('SELECT id,active FROM collectors WHERE id=$1', [actor.collectorId])).rows;
+      await client.query("COMMIT"); return state;
+    } catch (error) { await client.query("ROLLBACK"); throw error; }
+    finally { client.release(); }
+  }
+  async hasDueRecurring(today: string) {
+    const result = await this.pool.query("SELECT EXISTS(SELECT 1 FROM recurring_charges WHERE status='active' AND next_run_date <= $1::date AND generation_from <= $1::date AND frequency <> 'undefined') AS due", [today]);
+    return result.rows[0].due as boolean;
+  }
+  async readIdempotency(key: string) {
+    const result = await this.pool.query('SELECT id,fingerprint,response,created_at AS "createdAt" FROM idempotency WHERE id=$1', [key]);
+    return result.rows[0] as State["idempotency"][number] | undefined;
+  }
+  async readAdminPage(kind: "traces" | "sessions", input: { from?: string; to?: string; q: string; status?: string; limit: number; offset: number }) {
+    const trace = kind === "traces";
+    const source = trace ? "admin_traces" : "auth_sessions";
+    const timestamp = trace ? "created_at" : "started_at";
+    const text = trace ? "concat_ws(' ',action,resource,actor_id,resource_id)" : "concat_ws(' ',user_id,user_name,role)";
+    const status = "CASE WHEN revoked_at IS NOT NULL THEN 'closed' WHEN expires_at <= now() THEN 'expired' ELSE 'active' END";
+    const columns = trace ? 'id,actor_id AS "actorId",action,resource,resource_id AS "resourceId",created_at AS "createdAt",details'
+      : `id,user_id AS "userId",user_name AS "userName",role,collector_id AS "collectorId",started_at AS "startedAt",expires_at AS "expiresAt",revoked_at AS "revokedAt",revoked_by AS "revokedBy",${status} AS status`;
+    const where = `($1::date IS NULL OR (${timestamp} AT TIME ZONE 'America/Santo_Domingo')::date >= $1::date)
+      AND ($2::date IS NULL OR (${timestamp} AT TIME ZONE 'America/Santo_Domingo')::date <= $2::date)
+      AND ${text} ILIKE $3 ESCAPE '\\' ${trace ? "" : `AND ($4::text IS NULL OR ${status}=$4)`}`;
+    const search = `%${input.q.replace(/[\\%_]/g, "\\$&")}%`;
+    const params = trace ? [input.from ?? null, input.to ?? null, search] : [input.from ?? null, input.to ?? null, search, input.status === "all" ? null : input.status ?? null];
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      const count = await client.query(`SELECT count(*) AS total FROM ${source} WHERE ${where}`, params);
+      const result = await client.query(`SELECT ${columns} FROM ${source} WHERE ${where} ORDER BY ${timestamp} DESC,id ASC LIMIT $${params.length+1} OFFSET $${params.length+2}`, [...params,input.limit,input.offset]);
+      await client.query("COMMIT");
+      return {items: result.rows.map(clean), total: Number(count.rows[0].total), limit: input.limit, offset: input.offset};
+    } catch (error) { await client.query("ROLLBACK"); throw error; }
+    finally { client.release(); }
+  }
+  async read() {
+    return this.readWithAudit(true);
+  }
+  async readRequest() {
+    return this.readWithAudit(false);
+  }
+  private async readWithAudit(includeAuditHistory: boolean) {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      const state = await readState(client, includeAuditHistory);
       await client.query("COMMIT");
       return state;
     } catch (e) {
@@ -677,12 +739,18 @@ export class PostgresStore implements Store {
     }
   }
   async transaction<T>(fn: (s: State) => T | Promise<T>): Promise<T> {
+    return this.transactWithAudit(fn, true);
+  }
+  async transactionRequest<T>(fn: (s: State) => T | Promise<T>): Promise<T> {
+    return this.transactWithAudit(fn, false);
+  }
+  private async transactWithAudit<T>(fn: (s: State) => T | Promise<T>, includeAuditHistory: boolean): Promise<T> {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
       await client.query("SELECT pg_advisory_xact_lock(7341920)");
       await client.query("SET CONSTRAINTS ALL DEFERRED");
-      const before = await readState(client),
+      const before = await readState(client, includeAuditHistory),
         draft = structuredClone(before);
       const result = await fn(draft);
       await saveState(client, draft, before);

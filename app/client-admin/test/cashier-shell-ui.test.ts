@@ -78,7 +78,7 @@ window.print = () => {};
 createRoot(document.getElementById("root")).render(<App />);`, "utf8");
       await build({ root, configFile: false, envFile: false, publicDir: false, cacheDir: path.join(output, `cache-${surface}`), resolve: { dedupe: ["react", "react-dom"] }, plugins: surface === "admin" ? [react(), tailwind()] : [react()],
         define: { "process.env.NODE_ENV": JSON.stringify("production"), "import.meta.env.BASE_URL": JSON.stringify("/collector/"), "import.meta.env.VITE_COLLECTOR_URL": JSON.stringify("/collector/") }, logLevel: "error",
-        build: { outDir: path.join(output, surface), emptyOutDir: false, cssCodeSplit: false, lib: { entry: fixture, formats: ["es"], fileName: () => `${surface}.js`, cssFileName: surface } } });
+        build: { outDir: path.join(output, surface), emptyOutDir: false, cssCodeSplit: false, rollupOptions: { output: { inlineDynamicImports: true } }, lib: { entry: fixture, formats: ["es"], fileName: () => `${surface}.js`, cssFileName: surface } } });
     }
     server = createServer(async (request, response) => {
       try {
@@ -366,7 +366,8 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         await page.locator(".sidebar").getByRole("button", { name: "CUADRES Y REPORTES", exact: true }).click();
         await page.locator(".sidebar").getByRole("button", { name: "Reportes", exact: true }).click();
         const launcher = page.getByRole("dialog", { name: "Reportes", exact: true });
-        await launcher.getByRole("button", { name: "Reporte consolidado de comisiones", exact: true }).waitFor();
+        await launcher.getByRole("button", { name: "Montos y cantidad de envíos", exact: true }).waitFor();
+        assert.equal(await launcher.getByRole("button", { name: "Reporte consolidado de comisiones", exact: true }).count(), 0, "Viewing operation reports does not expose the internal commission split.");
         assert.deepEqual(await launcher.locator(".control-panel-section-heading > span").allTextContents(), ["-- Remesas --"]);
       } finally { await context.close(); }
     });

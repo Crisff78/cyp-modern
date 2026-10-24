@@ -1,4 +1,5 @@
 import contracts from "./input-contracts.json";
+import { ungroupDecimal } from "./decimalText";
 
 export const INPUT_LIMITS = {
   id: 80,
@@ -86,9 +87,23 @@ export function validateEmail(value: string, label = "Correo", options: { requir
   if (!validEmail(value, options.required)) throw new Error(`Escribe un ${label.toLocaleLowerCase()} válido.`);
 }
 
-export function isDecimalDraft(value: string, options: { wholeDigits?: number; decimalDigits?: number } = {}) {
-  const { wholeDigits = 14, decimalDigits = 2 } = options;
-  return value === value.trim() && new RegExp(`^0*\\d{0,${wholeDigits}}(?:\\.\\d{0,${decimalDigits}})?$`).test(value);
+/** Formatea un importe mientras el usuario escribe: comas para miles y punto para decimales */
+export function formatMoneyInput(value: string, maxWholeDigits = 14): string {
+  const clean = ungroupDecimal(value, true);
+  // Never turn pasted letters, signs or a malformed separator into another amount.
+  if (clean === undefined || clean === "") return value;
+  const [whole, fraction] = clean.split(".");
+  if (whole.length > maxWholeDigits) return value;
+  const formatted = (whole || "0").replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return fraction === undefined ? formatted : `${formatted}.${fraction}`;
+}
+
+export function isDecimalDraft(value: string, options: { wholeDigits?: number; decimalDigits?: number; grouping?: boolean } = {}) {
+  const { wholeDigits = 14, decimalDigits = 2, grouping = false } = options;
+  if (value !== value.trim()) return false;
+  const clean = grouping ? ungroupDecimal(value, true, decimalDigits) : value;
+  if (clean === undefined) return false;
+  return new RegExp(`^0*\\d{0,${wholeDigits}}(?:\\.\\d{0,${decimalDigits}})?$`).test(clean);
 }
 
 export function isIntegerDraft(value: string, maximumDigits = 2) {

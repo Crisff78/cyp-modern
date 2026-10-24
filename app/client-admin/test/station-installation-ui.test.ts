@@ -86,7 +86,7 @@ remittancesApi("/snapshot").then(snapshot => createRoot(document.getElementById(
     ]);
     await build({ root: adminRoot, configFile: false, envFile: false, publicDir: false, resolve: { dedupe: ["react", "react-dom"] }, plugins: [react()], logLevel: "error",
       define: { "process.env.NODE_ENV": JSON.stringify("production") }, build: { outDir: path.join(output, "dist"), emptyOutDir: false, cssCodeSplit: false,
-        lib: { entry: fixture, formats: ["es"], fileName: () => "fixture.js", cssFileName: "fixture" } } });
+        rollupOptions: { output: { inlineDynamicImports: true } }, lib: { entry: fixture, formats: ["es"], fileName: () => "fixture.js", cssFileName: "fixture" } } });
     browser = await chromium.launch({ executablePath: edge, headless: true });
     context = await browser.newContext({ viewport: { width: 1280, height: 950 }, serviceWorkers: "block" });
     await context.addInitScript((value: string) => localStorage.setItem("cyp-admin-token", value), token);

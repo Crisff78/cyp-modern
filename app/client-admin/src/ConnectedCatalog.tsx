@@ -1,3 +1,4 @@
+import { MIN_NEW_PASSWORD_LENGTH } from "../../shared/passwordPolicy.mjs";
 import { useCallback, useEffect, useId, useState, type FormEvent, type ReactNode } from "react";
 import { KeyRound, ShieldCheck, Users, Wallet } from "lucide-react";
 import { LegacyToolbar, LegacyDialog, LegacyCheck, LegacyDenseTable } from "./LegacyConnectedUi";
@@ -7,7 +8,6 @@ import { CollectorAccountPicker } from "./CollectorAccountPicker";
 import { collectorOptionsForAccount } from "./collectorAccountOptions";
 import type { CollectorAssignment } from "./collectorAssignmentsState";
 import { remittancesApi } from "./remittancesApi";
-import { pendingMovementDraft, useMovementRequest } from "./useMovementRequest";
 import { decimalCents, formatMoney } from "../../shared/remittances/output";
 import { INPUT_LIMITS, assertCentsLimit, isDecimalDraft, isIntegerDraft, parseDay, validateEmail, validatePhone, validateText } from "../../shared/inputRules";
 import { recurringDayFromInput } from "../../shared/recurringDays";
@@ -34,7 +34,7 @@ type Field = { key: string; label: string; type?: "money" | "number" | "date" | 
 const moneyString = (value: unknown) => typeof value === "number" ? `${Math.trunc(value / 100)}.${String(value % 100).padStart(2, "0")}` : "0.00";
 const active = (row: RecordRow) => row.active !== false && row.status !== "disabled";
 // Match the account password policy enforced by the API.
-const MIN_ACCOUNT_PASSWORD_LENGTH = 3;
+const MIN_ACCOUNT_PASSWORD_LENGTH = MIN_NEW_PASSWORD_LENGTH;
 const assignmentText = (value: unknown) => typeof value === "string" || typeof value === "number" ? String(value) : "";
 const areaAssignment = (row: { id: string; name: string; number?: unknown; from?: unknown; to?: unknown }): CollectorAssignment => ({
   id: row.id, name: row.name, number: assignmentText(row.number) || row.id,
@@ -71,7 +71,6 @@ export function ConnectedCatalog({ page, snapshot, actorId, canManagePermissions
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState("");
   const [toggleTarget, setToggleTarget] = useState<RecordRow | null>(null);
-  const [limitsTarget, setLimitsTarget] = useState<RecordRow | null>(null);
   const [accountPickerOpen, setAccountPickerOpen] = useState(false);
   const [pickedAccount, setPickedAccount] = useState<PublicAccount | null>(null);
   const refresh = useCallback(async () => {
@@ -115,7 +114,7 @@ export function ConnectedCatalog({ page, snapshot, actorId, canManagePermissions
     { key: "name", label: "Nombre", required: true, maxLength: INPUT_LIMITS.name }, { key: "ident", label: "Código / identificación", maxLength: INPUT_LIMITS.name }, { key: "cellular", label: "Celular", type: "tel", maxLength: INPUT_LIMITS.phone }, { key: "accountId", label: "Cuenta", maxLength: INPUT_LIMITS.name },
     { key: "collectionLimit", label: "Límite de cobro (DOP)", type: "money", required: true, maxLength: 11 }, { key: "payoutLimit", label: "Límite de pago (DOP)", type: "money", required: true, maxLength: 11 },
   ] : page === "routes" ? [
-    { key: "number", label: "Número", maxLength: INPUT_LIMITS.name }, { key: "name", label: "Nombre", required: true, maxLength: INPUT_LIMITS.name }, { key: "sector", label: "Sector / zona", required: true, maxLength: INPUT_LIMITS.name }, { key: "collectorId", label: "Cobrador", required: true, maxLength: INPUT_LIMITS.id, options: collectorOptions }, { key: "from", label: "Desde", maxLength: INPUT_LIMITS.name }, { key: "to", label: "Hasta", maxLength: INPUT_LIMITS.name },
+    { key: "number", label: "Número", maxLength: INPUT_LIMITS.name }, { key: "name", label: "Nombre", required: true, maxLength: INPUT_LIMITS.name }, { key: "sector", label: "Sector / zona", required: true, maxLength: INPUT_LIMITS.name }, { key: "collectorId", label: "Cobrador", maxLength: INPUT_LIMITS.id, options: [{value:"",label:"Sin asignar"},...collectorOptions] }, { key: "from", label: "Desde", maxLength: INPUT_LIMITS.name }, { key: "to", label: "Hasta", maxLength: INPUT_LIMITS.name },
   ] : page === "zones" ? [
     { key: "number", label: "Número", maxLength: INPUT_LIMITS.name }, { key: "name", label: "Nombre", required: true, maxLength: INPUT_LIMITS.name }, { key: "sector", label: "Sector", maxLength: INPUT_LIMITS.name }, { key: "from", label: "Desde", maxLength: INPUT_LIMITS.name }, { key: "to", label: "Hasta", maxLength: INPUT_LIMITS.name },
   ] : page === "servicesProducts" ? [
@@ -325,7 +324,7 @@ export function ConnectedCatalog({ page, snapshot, actorId, canManagePermissions
       {linkedAccount && <p className="catalog-linked-account">Cuenta de acceso: <strong>{linkedAccount.email}</strong> · {accountRoleLabel(linkedAccount.role)} · {linkedAccount.status === "active" ? "Activa" : "Inactiva"}</p>}
       <p className="catalog-association-note">Aquí solo se editan los datos del cobrador: nombre, identificación y celular. «Cuenta» es una referencia; el acceso del cobrador se da en Usuarios, con una cuenta de rol Cobrador asociada a él. El usuario o correo, rol y contraseña de esa cuenta se editan desde Usuarios.</p>
       {editing && editing !== "new"
-        ? <fieldset className="legacy-config-fieldset collector-limits-readonly"><legend>Límites en DOP (solo consulta)</legend><div className="legacy-dialog-row two-cols"><label>Cobro:<input readOnly aria-label="Límite de cobro actual (DOP)" value={String(draft.collectionLimit ?? "")} /></label><label>Pago:<input readOnly aria-label="Límite de pago actual (DOP)" value={String(draft.payoutLimit ?? "")} /></label></div><p className="catalog-association-note">Los límites no se cambian desde esta ficha. Ciérrala, selecciona al cobrador, pulsa el botón L y luego «Modificar límites operativos DOP».</p></fieldset>
+        ? <fieldset className="legacy-config-fieldset collector-limits-readonly"><legend>Límites en DOP (solo consulta)</legend><div className="legacy-dialog-row two-cols"><label>Cobro:<input readOnly aria-label="Límite de cobro actual (DOP)" value={String(draft.collectionLimit ?? "")} /></label><label>Pago:<input readOnly aria-label="Límite de pago actual (DOP)" value={String(draft.payoutLimit ?? "")} /></label></div><p className="catalog-association-note">Los límites no se cambian desde esta ficha. Ciérrala, selecciona al cobrador, pulsa L, Agregar y selecciona la moneda que quieres modificar.</p></fieldset>
         : <fieldset className="legacy-config-fieldset"><legend>Límites iniciales en DOP</legend><div className="legacy-dialog-row two-cols"><label>Cobro:{control("collectionLimit")}</label><label>Pago:{control("payoutLimit")}</label></div></fieldset>}
     </>;
     if (page === "routes") return <>
@@ -370,6 +369,7 @@ export function ConnectedCatalog({ page, snapshot, actorId, canManagePermissions
       <div className="recurring-charge-row recurring-charge-client-row"><span>Cliente:</span><input aria-label="Código del cliente" value={client?.code ?? ""} readOnly /><input aria-label="Nombre del cliente" value={client?.name ?? ""} readOnly placeholder="Seleccione un cliente" /><button type="button" disabled={busy} onClick={() => openPicker("form")} aria-label="Buscar cliente" title="Buscar cliente">[...]</button></div>
       <div className="recurring-charge-row recurring-charge-date-row"><span>F. Inicial:</span>{control("startDate")}<span>F. final:</span>{control("endDate")}</div>
       <div className="recurring-charge-row recurring-charge-frequency-row"><span>Frecuencia:</span>{control("frequency")}<span>Día1:</span>{control("day1", undefined, "recurring-charge-day")}<span>Día2:</span>{control("day2", undefined, "recurring-charge-day")}</div>
+      <p className="catalog-scope-note">Quincenal: cada 15 días desde la fecha inicial. Si indicas ambos, Día1 y Día2, se usan esos días del mes; con uno solo se conserva el intervalo de 15 días. Mensual y las frecuencias de varios meses o anual generan un cargo por periodo, usando Día1 o el día inicial; Día2 solo se usa en Quincenal. Un día inexistente se ajusta al último día del mes. Diaria, Bidiaria y Semanal conservan la fecha inicial como referencia.</p>
       <label className="recurring-charge-row recurring-charge-labeled-row"><span>Moneda:</span><input value="Peso Dominicano (DOP)" readOnly /></label>
       <label className="recurring-charge-row recurring-charge-labeled-row"><span>Servicio:</span>{control("service")}</label>
       <label className="recurring-charge-row recurring-charge-labeled-row"><span>Concepto:</span>{control("concept")}</label>
@@ -384,15 +384,9 @@ export function ConnectedCatalog({ page, snapshot, actorId, canManagePermissions
   if (relation === "zones") assignmentInitial = relatedZones.map(areaAssignment);
   if (relation === "routes") assignmentInitial = relatedRoutes.map(areaAssignment);
   if (relation === "limits" && relationRow) assignmentInitial = [{ id: "DOP", number: "DOP", name: "Peso Dominicano", from: "", to: "", collectionLimit: Number(relationRow.collectionLimit ?? 0), payoutLimit: Number(relationRow.payoutLimit ?? 0) }];
-  const saveAssignments = (rows: readonly CollectorAssignment[]) => {
-    if (!relationRow || !relation) return;
-    const collectorId = relationRow.id;
-    const kind = relation;
-    // Session-only metadata never enters catalog API payloads or financial risk checks.
-    setRecords((current) => current.map((row) => row.id === collectorId ? {
-      ...row, sessionAssignments: { ...(row.sessionAssignments as Record<string, unknown> | undefined), [kind]: rows },
-    } : row));
-    setMessage("Asignaciones guardadas para esta sesión.");
+  const saveAssignments = async (_rows: readonly CollectorAssignment[]) => {
+    await refresh(); await onRefresh();
+    setMessage("Asignaciones guardadas en la base de datos.");
   };
   const relatedClients = snapshot.clients.filter((row) => row.routeId === relationRow?.id);
   const collector = snapshot.collectors.find((row) => row.id === relationRow?.id);
@@ -415,6 +409,12 @@ export function ConnectedCatalog({ page, snapshot, actorId, canManagePermissions
       disableNew={loading || busy} disableEdit={!selected || loading || busy} disableDelete={!selected || loading || busy}
       onRefresh={() => { if (!loading && !busy) { void refresh(); void loadServices(); } }}
       extra={<>
+        {page === "recurringCharges" && <button type="button" disabled={busy || loading || !access.has(351) || !access.has(301)} onClick={async () => {
+          setBusy(true); setError("");
+          try { const result = await remittancesApi<{generated: string[]; skipped: unknown[]}>("/cargos/recurrentes/calendario", {method:"POST",body:"{}"}); await refresh(); await onRefresh(); setMessage(`${result.generated.length} cargo(s) generado(s). ${result.skipped.length ? "Revisa las plantillas con cliente o servicio inactivo." : "No se duplican vencimientos existentes."}`); }
+          catch (failure) { setError(failure instanceof Error ? failure.message : "No se pudo generar el calendario."); }
+          finally { setBusy(false); }
+        }}>Generar vencimientos</button>}
         {page === "collectors" && <><button type="button" title="Zonas del Cobrador" aria-label="Zonas del Cobrador" disabled={!selected || busy} onClick={() => openRelation("zones")}>Z</button><button type="button" title="Límites del Cobrador" aria-label="Límites del Cobrador" disabled={!selected || busy} onClick={() => openRelation("limits")}>L</button><button type="button" title="Rutas del Cobrador" aria-label="Rutas del Cobrador" disabled={!selected || busy} onClick={() => openRelation("routes")}>R</button><button type="button" title="Balances de Efectivo" aria-label="Balances de Efectivo" disabled={!selected || busy} onClick={() => openRelation("balances")}><Wallet size={15} /></button></>}
         {page === "routes" && <button type="button" title="Clientes de la Ruta" aria-label="Clientes de la Ruta" disabled={!selected || busy} onClick={() => openRelation("clients")}><Users size={15} /></button>}
         {page === "users" && <><button type="button" title="Cambiar Clave" aria-label="Cambiar Clave" disabled={!selected || busy || !access.has(107)} onClick={() => { if (selected) { setPasswordTarget(selected); setDraft({ password: "", confirmation: "" }); setFormError(""); } }}><KeyRound size={15} /></button><button type="button" title="Permisos" aria-label="Permisos" disabled={!selected || busy} onClick={() => openRelation("permissions")}><ShieldCheck size={15} /></button></>}
@@ -443,9 +443,8 @@ export function ConnectedCatalog({ page, snapshot, actorId, canManagePermissions
         {page === "recurringCharges" && <div className="legacy-footerbar"><span>Cantidad: <strong>{visible.length}</strong></span>{Array.from(totals, ([currency, amount]) => <span key={currency}>Total {currency}: <strong>{formatMoney(amount, currency)}</strong></span>)}<span title="La API no vincula cobros a estas plantillas">Recib.: <strong>—</strong></span><span title="La API no calcula saldos de plantillas">Pend.: <strong>—</strong></span></div>}
       </div>
     </div>
-    {page === "recurringCharges" && <p className="catalog-scope-note">Plantillas guardadas. La generación por calendario todavía no está disponible; recibido y pendiente no se calculan para plantillas.</p>}
+    {page === "recurringCharges" && <p className="catalog-scope-note">El servidor genera los vencimientos automáticamente, sin duplicarlos. Las plantillas anteriores a esta actualización comienzan desde el día siguiente a la actualización; no se crean deudas históricas. Los cobros y saldos se consultan en Cargos.</p>}
     {page === "users" && <p className="catalog-scope-note">{ACCOUNT_ROLE_SUMMARY} Permisos permite aplicar un perfil personalizado a cada cuenta, respetando el alcance de su rol.</p>}
-    {limitsTarget && <CollectorLimitsDialog key={`${actorId}-${limitsTarget.id}`} actorId={actorId} collector={limitsTarget} onClose={() => setLimitsTarget(null)} onSaved={async (saved) => { setLimitsTarget(null); setRelationRow(saved); await refresh(); setMessage("Límites del cobrador guardados. Sus demás datos se conservan."); onRefresh(); }} />}
     {editing && <LegacyDialog title={formTitles[page]} className={dialogClasses[page] + " catalog-legacy-dialog"} onClose={() => { if (!busy) setEditing(null); }}>
       <form className={formClasses[page]} onSubmit={submit}>{viewOnly ? <fieldset disabled className="catalog-readonly-fieldset" style={{ border: 0, padding: 0, margin: 0, display: "contents" }}>{formContent()}</fieldset> : formContent()}{formError && <p role="alert">{formError}</p>}
         {viewOnly ? <><p className="catalog-scope-note">Solo consulta: tu cuenta no tiene permiso para modificar este registro.</p><div className="legacy-dialog-actions centered"><button type="button" autoFocus onClick={() => setEditing(null)}>Cerrar</button></div></>
@@ -455,47 +454,8 @@ export function ConnectedCatalog({ page, snapshot, actorId, canManagePermissions
     {toggleTarget && <LegacyDialog title="Confirmar" className="legacy-confirm-dialog catalog-legacy-dialog" onClose={() => { if (!busy) setToggleTarget(null); }}><div className="legacy-confirm-content"><span className="legacy-question-icon">?</span><p>¿{active(toggleTarget) ? "Inactivar" : "Reactivar"} {text(toggleTarget, definition.label)}?</p></div><p className="catalog-scope-note">El historial se conserva.</p>{formError && <p role="alert">{formError}</p>}<div className="legacy-dialog-actions centered"><button type="button" disabled={busy} onClick={() => void toggle()}>{busy ? "Guardando…" : "Sí"}</button><button type="button" disabled={busy} onClick={() => setToggleTarget(null)}>No</button></div></LegacyDialog>}
     {passwordTarget && <LegacyDialog title="Cambiar clave de usuario..." className="legacy-password-dialog catalog-legacy-dialog" onClose={() => { if (!busy) setPasswordTarget(null); }}><form className="legacy-user-form" onSubmit={changePassword}><label className="legacy-form-row"><span>Clave:</span><input autoFocus type="password" disabled={busy} required minLength={MIN_ACCOUNT_PASSWORD_LENGTH} maxLength={INPUT_LIMITS.password} autoComplete="new-password" value={String(draft.password ?? "")} onChange={(event) => setDraft((current) => ({ ...current, password: event.target.value }))} /></label><label className="legacy-form-row"><span>Confirmación:</span><input type="password" disabled={busy} required maxLength={INPUT_LIMITS.password} autoComplete="new-password" value={String(draft.confirmation ?? "")} onChange={(event) => setDraft((current) => ({ ...current, confirmation: event.target.value }))} /></label><small>Mínimo {MIN_ACCOUNT_PASSWORD_LENGTH} caracteres.</small>{formError && <p role="alert">{formError}</p>}<div className="legacy-dialog-actions centered"><button type="submit" disabled={busy}>{busy ? "Guardando…" : "Aceptar"}</button><button type="button" disabled={busy} onClick={() => setPasswordTarget(null)}>Cancelar</button></div></form></LegacyDialog>}
     {relation === "permissions" && relationRow && <ConnectedUserPermissionsDialog key={relationRow.id} userId={relationRow.id} userRole={text(relationRow, "role")} userName={text(relationRow, "name") || text(relationRow, "email") || relationRow.id} actorId={actorId} canEdit={canManagePermissions} onClose={() => setRelation(null)} onEditUser={access.canEdit && canManagePermissions ? () => { if (!busy && !loading) { setRelation(null); open(relationRow); } } : undefined} />}
-    {(relation === "zones" || relation === "limits" || relation === "routes") && relationRow && <CollectorAssignmentsDialog key={`${relationRow.id}:${relation}`} collectorId={relationRow.id} collectorName={text(relationRow, "name")} kind={relation} canManage={access.has(({ zones: 154, routes: 155, limits: 156 } as const)[relation])} initial={assignmentInitial} loadOptions={loadAssignmentOptions} onSave={saveAssignments} onClose={() => setRelation(null)} onModifyOperationalLimits={relation === "limits" && access.has(156) ? () => { if (!busy && !loading) { setMessage(""); setLimitsTarget(relationRow); setRelation(null); } } : undefined} />}
+    {(relation === "zones" || relation === "limits" || relation === "routes") && relationRow && <CollectorAssignmentsDialog key={`${relationRow.id}:${relation}`} actorId={actorId} collectorId={relationRow.id} collectorName={text(relationRow, "name")} kind={relation} canManage={access.has(({ zones: 154, routes: 155, limits: 156 } as const)[relation])} initial={assignmentInitial} loadOptions={loadAssignmentOptions} onSave={saveAssignments} onClose={() => setRelation(null)} />}
     {(relation === "clients" || relation === "balances") && relationRow && <LegacyDialog title={relationTitles[relation]} className="catalog-relation-dialog" onClose={() => setRelation(null)}><div className="legacy-relation-manager">{relationContent()}<div className="legacy-relation-footer"><span>{text(relationRow, "name")}</span><button type="button" onClick={() => setRelation(null)}>Cerrar</button></div></div></LegacyDialog>}
     {clientPicker && <LegacyDialog title="Buscar Cliente..." className="catalog-client-picker" onClose={() => setClientPicker(null)}><div className="legacy-dialog-form"><label>Buscar:<input autoFocus value={clientQuery} onChange={(event) => setClientQuery(event.target.value)} /></label><div className="legacy-mdi-table-wrap"><table className="legacy-mdi-table"><thead><tr><th>Código</th><th>Cliente</th><th>Identificación</th></tr></thead><tbody>{clientOptions.map((client) => <tr key={client.id} className={pickedClientId === client.id ? "selected-row" : ""} tabIndex={0} aria-selected={pickedClientId === client.id} onClick={() => setPickedClientId(client.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setPickedClientId(client.id); } }}><td>{client.code}</td><td>{client.name}</td><td>{client.identification}</td></tr>)}</tbody></table></div><div className="legacy-dialog-actions centered"><button type="button" disabled={!pickedClientId} onClick={pickClient}>Aceptar</button><button type="button" onClick={() => setClientPicker(null)}>Cancelar</button></div></div></LegacyDialog>}
   </section>;
-}
-
-type CollectorLimitsDraft = { collectionLimit: string; payoutLimit: string; previousCollectionLimit: number; previousPayoutLimit: number };
-function CollectorLimitsDialog({ actorId, collector, onClose, onSaved }: { actorId: string; collector: RecordRow; onClose: () => void; onSaved: (collector: RecordRow) => Promise<void> }) {
-  const scope = `collector-limits:${collector.id}`;
-  const request = useMovementRequest(actorId, scope);
-  const [draft, setDraft] = useState<CollectorLimitsDraft>(() => pendingMovementDraft<CollectorLimitsDraft>(actorId, scope) ?? { collectionLimit: moneyString(collector.collectionLimit), payoutLimit: moneyString(collector.payoutLimit), previousCollectionLimit: Number(collector.collectionLimit ?? 0), previousPayoutLimit: Number(collector.payoutLimit ?? 0) });
-  const [reviewing, setReviewing] = useState(() => Boolean(pendingMovementDraft(actorId, scope)));
-  const [formError, setFormError] = useState("");
-  const close = () => { if (request.closable) { request.clear(); onClose(); } };
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    if (request.busy) return;
-    setFormError("");
-    try {
-      const submitted = pendingMovementDraft<CollectorLimitsDraft>(actorId, scope) ?? draft;
-      validateText(submitted.collectionLimit, "Límite de cobro", 11, { required: true });
-      validateText(submitted.payoutLimit, "Límite de pago", 11, { required: true });
-      const payload = { collectionLimit: decimalCents(submitted.collectionLimit), payoutLimit: decimalCents(submitted.payoutLimit) };
-      if (payload.collectionLimit > 1_000_000_000 || payload.payoutLimit > 1_000_000_000) throw new Error("Cada límite debe ser positivo y no superar DOP 10,000,000.00.");
-      if (!reviewing) { setReviewing(true); return; }
-      const saved = await request.run<RecordRow>(`/cobradores/${encodeURIComponent(collector.id)}/limites`, payload, submitted, (result) => result?.id === collector.id && result.collectionLimit === payload.collectionLimit && result.payoutLimit === payload.payoutLimit);
-      await onSaved(saved);
-    } catch (failure) { setFormError(failure instanceof Error ? failure.message : "No se pudieron guardar los límites."); }
-  };
-  const previewLimit = (value: string) => { try { return formatMoney(decimalCents(value), "DOP"); } catch { return "Importe no válido"; } };
-  return <LegacyDialog title={reviewing ? "Confirmar límites del cobrador..." : "Modificar límites del cobrador..."} className="collector-form-dialog catalog-legacy-dialog" onClose={close}>
-    <form className="legacy-dialog-form" onSubmit={submit}>
-      <p>Cobrador: <strong>{String(collector.name ?? "")}</strong> · Código: {String(collector.ident ?? collector.id)}</p>
-      <p className="catalog-scope-note">Este formulario solo modifica los límites. Nombre, contacto, cuenta, actividad y ruta se conservan.</p>
-      {reviewing ? <><LegacyDenseTable columns={["Límite", "Antes", "Después"]} rows={[["Cobro", formatMoney(draft.previousCollectionLimit, "DOP"), previewLimit(draft.collectionLimit)], ["Pago", formatMoney(draft.previousPayoutLimit, "DOP"), previewLimit(draft.payoutLimit)]]} /><p>Confirma estos cambios para el cobrador indicado.</p></> : <fieldset disabled={request.locked} className="legacy-config-fieldset"><legend>Límites en DOP</legend>
-        <label>Cobro:<input autoFocus required aria-label="Límite de cobro (DOP)" inputMode="decimal" maxLength={11} value={draft.collectionLimit} onChange={(event) => { const next = event.target.value; if (isDecimalDraft(next, { wholeDigits: 8 }) || next.length < draft.collectionLimit.length) setDraft((current) => ({ ...current, collectionLimit: next })); }} /></label>
-        <label>Pago:<input required aria-label="Límite de pago (DOP)" inputMode="decimal" maxLength={11} value={draft.payoutLimit} onChange={(event) => { const next = event.target.value; if (isDecimalDraft(next, { wholeDigits: 8 }) || next.length < draft.payoutLimit.length) setDraft((current) => ({ ...current, payoutLimit: next })); }} /></label>
-      </fieldset>}
-      {(request.error || formError) && <p role="alert">{request.error || formError}</p>}
-      {request.uncertain && <p role="status">El resultado está pendiente de confirmación. Reintenta los mismos límites antes de cambiar los datos o cerrar.</p>}
-      <div className="legacy-dialog-actions centered"><button type="submit" disabled={request.busy}>{request.busy ? "Guardando…" : request.uncertain ? "Reintentar mismos límites" : reviewing ? "Confirmar límites" : "Revisar límites"}</button>{reviewing && <button type="button" disabled={request.locked} onClick={() => setReviewing(false)}>Volver</button>}<button type="button" disabled={request.locked} onClick={close}>Cancelar</button></div>
-    </form>
-  </LegacyDialog>;
 }

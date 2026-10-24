@@ -44,7 +44,7 @@ remittancesApi("/snapshot").then(snapshot => createRoot(document.getElementById(
   try {
     await build({ root: adminRoot, configFile: false, envFile: false, publicDir: false, resolve: { dedupe: ["react", "react-dom"] }, plugins: [react()], logLevel: "error",
       define: { "process.env.NODE_ENV": JSON.stringify("production") }, build: { outDir: path.join(output, "dist"), emptyOutDir: false, cssCodeSplit: false,
-        lib: { entry: fixture, formats: ["es"], fileName: () => "fixture.js", cssFileName: "fixture" } } });
+        rollupOptions: { output: { inlineDynamicImports: true } }, lib: { entry: fixture, formats: ["es"], fileName: () => "fixture.js", cssFileName: "fixture" } } });
     server = createServer(async (request, response) => {
       try {
         const pathname = new URL(request.url ?? "/", "http://127.0.0.1").pathname;

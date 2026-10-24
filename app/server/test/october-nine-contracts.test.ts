@@ -29,7 +29,7 @@ test("client identity reservations are atomic, repeatable and distinct from lega
     const body = { name: "Persona ficticia", code: "MANUAL-SYNTHETIC", routeId: "route-1", identification: "LEGAL-SYNTHETIC", reservationId: a.json().reservationId };
     const created = await env.post("/api/clientes", body, createKey);
     assert.equal(created.statusCode, 200, created.body);
-    assert.equal((await env.post("/api/usuarios", { name: "Cuenta ficticia reservada", email: "admin", role: "admin", password: "Old" })).statusCode, 409);
+    assert.equal((await env.post("/api/usuarios", { name: "Cuenta ficticia reservada", email: "admin", role: "admin", password: "Old-Synthetic-2026!" })).statusCode, 409);
     assert.equal(created.json().code, body.code); assert.equal(created.json().identification, body.identification);
     assert.equal(created.json().internalIdentification, a.json().internalIdentification);
     assert.deepEqual((await env.post("/api/clientes", body, createKey)).json(), created.json());
@@ -174,32 +174,32 @@ test("configured footer reaches minimal and ESC/POS receipts and remittance snap
 test("a username without email works and own password requires current value and revokes the session", async () => {
   const env = await setup();
   try {
-    const created = await env.post("/api/usuarios", { name: "Cuenta ficticia", email: "synthetic.operator", role: "collector", collectorId: "col-1", password: "Old" });
+    const created = await env.post("/api/usuarios", { name: "Cuenta ficticia", email: "synthetic.operator", role: "collector", collectorId: "col-1", password: "Old-Synthetic-2026!" });
     assert.equal(created.statusCode, 200, created.body);
-    const login = await env.login("SYNTHETIC.OPERATOR", "Old"); assert.equal(login.statusCode, 200);
+    const login = await env.login("SYNTHETIC.OPERATOR", "Old-Synthetic-2026!"); assert.equal(login.statusCode, 200);
     const userToken = login.json().token as string, path = `/api/usuarios/${created.json().id}/clave`;
-    assert.equal((await env.post(path, { password: "New" }, randomUUID(), userToken)).statusCode, 422);
-    assert.equal((await env.post(path, { password: "New", currentPassword: "Bad" }, randomUUID(), userToken)).statusCode, 401);
-    assert.equal((await env.post(path, { password: "New", currentPassword: "Old" }, randomUUID(), userToken)).statusCode, 200);
+    assert.equal((await env.post(path, { password: "New-Synthetic-2026!" }, randomUUID(), userToken)).statusCode, 422);
+    assert.equal((await env.post(path, { password: "New-Synthetic-2026!", currentPassword: "Bad" }, randomUUID(), userToken)).statusCode, 401);
+    assert.equal((await env.post(path, { password: "New-Synthetic-2026!", currentPassword: "Old-Synthetic-2026!" }, randomUUID(), userToken)).statusCode, 200);
     assert.equal((await env.get("/api/auth/me", userToken)).statusCode, 401);
-    assert.equal((await env.login("synthetic.operator", "Old")).statusCode, 401);
-    assert.equal((await env.login("synthetic.operator", "New")).statusCode, 200);
-    assert.equal((await env.post("/api/usuarios", { name: "Inválida", email: "control\u0000name", role: "admin", password: "Old" })).statusCode, 400);
+    assert.equal((await env.login("synthetic.operator", "Old-Synthetic-2026!")).statusCode, 401);
+    assert.equal((await env.login("synthetic.operator", "New-Synthetic-2026!")).statusCode, 200);
+    assert.equal((await env.post("/api/usuarios", { name: "Inválida", email: "control\u0000name", role: "admin", password: "Old-Synthetic-2026!" })).statusCode, 400);
   } finally { await env.app.close(); }
 });
 
 test("bootstrap demo account changes its own password without keeping the old fallback", async () => {
   const env = await setup();
   try {
-    assert.equal((await env.post("/api/usuarios/demo-admin/clave", { password: "New", currentPassword: "Wrong" })).statusCode, 401);
+    assert.equal((await env.post("/api/usuarios/demo-admin/clave", { password: "New-Synthetic-2026!", currentPassword: "Wrong" })).statusCode, 401);
     assert.equal((await env.store.read()).accounts.some((row) => row.id === "demo-admin"), false);
-    assert.equal((await env.post("/api/usuarios/demo-admin/clave", { password: "New", currentPassword: "Demo-CyP-2026!" })).statusCode, 200);
+    assert.equal((await env.post("/api/usuarios/demo-admin/clave", { password: "New-Synthetic-2026!", currentPassword: "Demo-CyP-2026!" })).statusCode, 200);
     assert.equal((await env.get("/api/auth/me")).statusCode, 401);
     assert.equal((await env.login("admin", "Demo-CyP-2026!")).statusCode, 401);
-    const login = await env.login("admin", "New"); assert.equal(login.statusCode, 200);
+    const login = await env.login("admin", "New-Synthetic-2026!"); assert.equal(login.statusCode, 200);
     assert.equal((await env.get("/api/auth/me", login.json().token)).statusCode, 200);
     const account = (await env.store.read()).accounts.find((row) => row.id === "demo-admin")!;
-    assert.notEqual(account.passwordHash, "New"); assert.equal(account.credentialVersion, 1);
+    assert.notEqual(account.passwordHash, "New-Synthetic-2026!"); assert.equal(account.credentialVersion, 1);
   } finally { await env.app.close(); }
 });
 

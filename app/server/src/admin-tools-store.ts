@@ -5,7 +5,7 @@ import type { StationInstallation, StationInstallationChallenge } from "./statio
 
 const clean = (row: Record<string, unknown>) => Object.fromEntries(Object.entries(row)
   .filter(([, value]) => value !== null).map(([key, value]) => [key, value instanceof Date ? value.toISOString() : value]));
-export async function readAdminTools(client: pg.PoolClient): Promise<AdminToolsState> {
+export async function readAdminTools(client: pg.PoolClient, includeAuditHistory = true): Promise<AdminToolsState> {
   const rows = async (sql: string) => (await client.query(sql)).rows.map(clean);
   const scope = (await client.query('SELECT scope_id AS "scopeId" FROM station_installation_scope WHERE id=$1', ["main"])).rows[0];
   return {
@@ -30,7 +30,7 @@ export async function readAdminTools(client: pg.PoolClient): Promise<AdminToolsS
     authorizationRequests: await rows(`SELECT id,client_id AS "clientId",collector_id AS "collectorId",delay_reason_id AS "delayReasonId",
       for_collection AS "forCollection",note,status,created_at AS "createdAt",created_by AS "createdBy",resolved_at AS "resolvedAt",
       resolved_by AS "resolvedBy",resolution_note AS "resolutionNote" FROM authorization_requests ORDER BY created_at,id`),
-    traces: await rows('SELECT id,actor_id AS "actorId",action,resource,resource_id AS "resourceId",created_at AS "createdAt" FROM admin_traces ORDER BY created_at,id'),
+    traces: includeAuditHistory ? await rows('SELECT id,actor_id AS "actorId",action,resource,resource_id AS "resourceId",created_at AS "createdAt",details FROM admin_traces ORDER BY created_at,id') : [],
   } as AdminToolsState;
 }
 export async function saveAdminTools(client: pg.PoolClient, state: State, before: State) {
@@ -130,7 +130,7 @@ export async function saveAdminTools(client: pg.PoolClient, state: State, before
   }
   for (const row of data.traces) {
     if (old.traces.some((trace) => trace.id === row.id)) continue;
-    await client.query('INSERT INTO admin_traces(id,actor_id,action,resource,resource_id,created_at) VALUES($1,$2,$3,$4,$5,$6)',
-      [row.id,row.actorId,row.action,row.resource,row.resourceId ?? null,row.createdAt]);
+    await client.query('INSERT INTO admin_traces(id,actor_id,action,resource,resource_id,created_at,details) VALUES($1,$2,$3,$4,$5,$6,$7)',
+      [row.id,row.actorId,row.action,row.resource,row.resourceId ?? null,row.createdAt,row.details ? JSON.stringify(row.details) : null]);
   }
 }

@@ -1,3 +1,4 @@
+import { ungroupDecimal } from "../decimalText";
 import { encodeCsvCell } from "../csv";
 
 export const formatMoney = (cents: number, currency: string) => {
@@ -8,9 +9,10 @@ export const formatMoney = (cents: number, currency: string) => {
 };
 export const formatDate = (value?: string) => value ? new Intl.DateTimeFormat("es-DO", { dateStyle: "short", timeStyle: "short", timeZone: "America/Santo_Domingo" }).format(new Date(value)) : "—";
 export const decimalCents = (value: string, allowZero = false) => {
-  if (!/^\d+(\.\d{1,2})?$/.test(value.trim())) throw new Error("Escribe un importe con un máximo de dos decimales.");
-  const [whole, fraction = ""] = value.trim().split(".");
-  const result = BigInt(whole) * 100n + BigInt(fraction.padEnd(2, "0"));
+  const clean = ungroupDecimal(value.trim());
+  if (clean === undefined) throw new Error("Escribe un importe válido: usa comas solo para miles y un punto para hasta dos decimales.");
+  const [whole, fraction = ""] = clean.split(".");
+  const result = BigInt(whole || "0") * 100n + BigInt(fraction.padEnd(2, "0"));
   if (result > BigInt(Number.MAX_SAFE_INTEGER) || result < 0n || (!allowZero && result === 0n)) throw new Error("El importe está fuera del rango permitido.");
   return Number(result);
 };

@@ -145,7 +145,8 @@ test("report-only cashiers see their own operations, not the pending payout queu
   const date = (await get("/api/envios/snapshot", firstToken)).json().businessDate;
   const report = await get(`/api/envios/reportes?from=${date}&to=${date}`, firstToken);
   assert.equal(report.statusCode, 200, report.body); assert.equal(report.json().amounts[0].count, 1);
-  assert.equal((await get(`/api/envios/reportes/comisiones?from=${date}&to=${date}`, firstToken)).json().details.length, 1);
+  assert.equal((await get(`/api/envios/reportes/comisiones?from=${date}&to=${date}`, firstToken)).statusCode, 403);
+  assert.deepEqual(report.json().commissionAllocations, {details:[],totals:[]});
   for (const endpoint of ["/api/envios", "/api/envios/recibos", "/api/configuracion", "/api/usuarios"])
     assert.equal((await get(endpoint, firstToken)).statusCode, 403, endpoint);
 });
@@ -165,10 +166,10 @@ test("limited account administration cannot bypass individual restrictions by cr
   const before = await store.read();
   // A Cajero starts with its role profile, so creating one also needs permission 106.
   for (const role of ["admin", "cashier"]) {
-    const forbidden = await post("/api/usuarios", { role, name: "No autorizado", email: `blocked-${role}@example.invalid`, password: "Ficticia-2026!" }, token);
+    const forbidden = await post("/api/usuarios", { role, name: "No autorizado", email: `blocked-${role}@example.invalid`, password: "Ficticia-Segura-2026!" }, token);
     assert.equal(forbidden.statusCode, 403, role); assert.deepEqual(await store.read(), before);
   }
-  const allowed = await post("/api/usuarios", { role: "client", name: "Sin permisos iniciales", email: "unprivileged-user@example.invalid", password: "Ficticia-2026!" }, token);
+  const allowed = await post("/api/usuarios", { role: "client", name: "Sin permisos iniciales", email: "unprivileged-user@example.invalid", password: "Ficticia-Segura-2026!" }, token);
   assert.equal(allowed.statusCode, 200, allowed.body); assert.equal(allowed.json().role, "client");
 });
 

@@ -83,7 +83,7 @@ void (async () => {
 })();`);
     await build({ root: adminRoot, configFile: false, envFile: false, publicDir: false, cacheDir: path.join(output, "cache-workspace"), resolve: { dedupe: ["react", "react-dom"] }, plugins: [react()],
       define: { "process.env.NODE_ENV": JSON.stringify("production") }, logLevel: "error",
-      build: { outDir: path.join(output, "workspace"), emptyOutDir: false, cssCodeSplit: false, lib: { entry: path.join(output, "workspace.tsx"), formats: ["es"], fileName: () => "workspace.js", cssFileName: "workspace" } } });
+      build: { outDir: path.join(output, "workspace"), emptyOutDir: false, cssCodeSplit: false, rollupOptions: { output: { inlineDynamicImports: true } }, lib: { entry: path.join(output, "workspace.tsx"), formats: ["es"], fileName: () => "workspace.js", cssFileName: "workspace" } } });
     const collectorModule = (name: string) => JSON.stringify(path.join(collectorRoot, "src", name).replaceAll("\\", "/"));
     fs.writeFileSync(path.join(output, "collector.tsx"), `import { createRoot } from "react-dom/client";
 import { App } from ${collectorModule("App.tsx")};
@@ -91,7 +91,7 @@ import ${collectorModule("styles.css")};
 createRoot(document.getElementById("root")).render(<App />);`);
     await build({ root: collectorRoot, configFile: false, envFile: false, publicDir: false, cacheDir: path.join(output, "cache-collector"), resolve: { dedupe: ["react", "react-dom"] }, plugins: [react()],
       define: { "process.env.NODE_ENV": JSON.stringify("production"), "import.meta.env.BASE_URL": JSON.stringify("/collector/") }, logLevel: "error",
-      build: { outDir: path.join(output, "collector"), emptyOutDir: false, cssCodeSplit: false, lib: { entry: path.join(output, "collector.tsx"), formats: ["es"], fileName: () => "collector.js", cssFileName: "collector" } } });
+      build: { outDir: path.join(output, "collector"), emptyOutDir: false, cssCodeSplit: false, rollupOptions: { output: { inlineDynamicImports: true } }, lib: { entry: path.join(output, "collector.tsx"), formats: ["es"], fileName: () => "collector.js", cssFileName: "collector" } } });
     server = createServer(async (request, response) => {
       try {
         const url = new URL(request.url ?? "/", "http://127.0.0.1");

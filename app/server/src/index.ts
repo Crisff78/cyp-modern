@@ -8,6 +8,8 @@ import { FileStore, PostgresStore, type Store } from "./store.js";
 import { registerPublicWeb } from "./public-web.js";
 import { createDemoStationControl, createRraaValidator, limitRraaCalls, type RraaValidator } from "./rraa.js";
 import { validateDemoAccessCode } from "./demo-access.js";
+import { businessDate } from "./domain.js";
+import { generateScheduledCharges, nextChargeDate } from "./recurring-charges.js";
 
 const requestedDemo = process.env.DEMO_MODE === "true";
 const publicWeb = process.env.CYP_PUBLIC_DEMO === "true";
@@ -123,6 +125,24 @@ const app = await buildApp({
     ? process.env.RENDER_GIT_COMMIT : undefined,
 });
 if (publicWeb) await registerPublicWeb(app);
+let recurringBusy = false;
+const runRecurring = async () => {
+  if (recurringBusy) return;
+  recurringBusy = true;
+  try {
+    const today = businessDate();
+    if (store.hasDueRecurring && !await store.hasDueRecurring(today)) return;
+    const state = await store.read();
+    if (!state.recurringCharges.some((row) => row.active && row.nextRunDate !== "" && (nextChargeDate(row, row.nextRunDate ?? today) ?? "9999") <= today)) return;
+    const result = await store.transaction((draft) => generateScheduledCharges(draft, today));
+    if (result.generated.length || result.skipped.length) app.log.info({ generated: result.generated.length, skipped: result.skipped.length }, "Calendario de cargos recurrentes");
+  } catch (error) { app.log.error({ err: error }, "No se pudo procesar el calendario; se reintentará sin duplicar cargos."); }
+  finally { recurringBusy = false; }
+};
+const recurringTimer = setInterval(() => void runRecurring(), 60_000);
+recurringTimer.unref();
+app.addHook("onClose", async () => { clearInterval(recurringTimer); });
+await runRecurring();
 await app.listen({
   port,
   host: process.env.HOST ?? "127.0.0.1",

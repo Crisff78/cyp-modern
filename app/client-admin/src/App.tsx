@@ -1,3 +1,7 @@
+import { lazy, Suspense } from "react";
+const FinancialMonitorView = lazy(() => import("./FinancialMonitorView"));
+import { monitorLedger } from "./monitorLedger";
+import { MIN_NEW_PASSWORD_LENGTH } from "../../shared/passwordPolicy.mjs";
 import {
   isValidElement,
   type FocusEvent as ReactFocusEvent,
@@ -564,14 +568,6 @@ const operationTypeForPage = (targetPage: Page): Operation["type"] => {
   if (targetPage === "payouts" || targetPage === "payments") return "payout";
   if (targetPage === "recurringCharges") return "recurring";
   return "charge";
-};
-
-const monitorTitleForPage = (page: Page) => pageTitles[page === "monitorCollectors" || page === "monitorZones" ? page : "monitorRoutes"];
-
-const adaptedMapForEntity = (entityType: MonitorEntity, title: string, data: MapData): AdaptedMap => {
-  if (entityType === "zone") return transformZoneToMap(title, data.stops);
-  if (entityType === "route") return transformRouteToMap(title, data.stops);
-  return transformCollectorToMap(data.collector, data.stops);
 };
 
 
@@ -1187,8 +1183,8 @@ const pendingChargeExportFormats = [
   { value: "3", label: "3- XML Compuesto" },
   { value: "4", label: "4- HTML" },
   { value: "5", label: "5- RTF" },
-  { value: "6", label: "6- PDF" },
-  { value: "7", label: "7- Excel (XLS)" },
+  { value: "6", label: "6- Imprimir / Guardar como PDF" },
+  { value: "7", label: "7- CSV para Excel" },
 ] as const;
 
 const pendingChargeColumns = ["Fecha", "DD", "Identificacion", "Cliente", "Importe", "Recibido", "Pendiente"] as const;
@@ -1279,13 +1275,16 @@ function printReportTable(title: string, table: ReportTableModel) {
       return;
     }
     printWindow.focus();
+    const cleanup = () => { window.clearTimeout(fallback); frame.remove(); };
+    const fallback = window.setTimeout(() => frame.remove(), 120_000);
+    printWindow.addEventListener("afterprint", cleanup, { once: true });
     printWindow.print();
-    window.setTimeout(() => frame.remove(), 1500);
   };
   document.body.appendChild(frame);
 }
 
 function downloadReportTable(format: string, title: string, table: ReportTableModel) {
+  if (format === "6") { printReportTable(title, table); return; }
   const tableRows = reportTableMatrix(table);
   let content: string;
   let mimeType: string;
@@ -1312,7 +1311,7 @@ function downloadReportTable(format: string, title: string, table: ReportTableMo
     extension = "rtf";
   } else {
     const delimiter = format === "0" ? "\t" : " | ";
-    content = `${tableRows.map((row) => row.join(delimiter)).join("\r\n")}\r\n\r\nFormato PDF simulado como texto tabular.`;
+    content = tableRows.map((row) => row.map((value) => csvCell(value, delimiter)).join(delimiter)).join("\r\n");
     mimeType = "text/plain;charset=utf-8";
     extension = "txt";
   }
@@ -4698,7 +4697,7 @@ function OwnPasswordDialog({ userId, onClose, onChanged, onSessionEnd }: Readonl
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (inFlight.current || uncertain) return;
-    if (!currentPassword || Array.from(password).length < 3 || password.length > INPUT_LIMITS.password) { setError("Escribe tu clave actual y una nueva clave de al menos 3 caracteres."); return; }
+    if (!currentPassword || Array.from(password).length < MIN_NEW_PASSWORD_LENGTH || password.length > INPUT_LIMITS.password) { setError("Escribe tu clave actual y una nueva clave de al menos 15 caracteres."); return; }
     if (password !== confirmation) { setError("La confirmación no coincide con tu nueva clave."); return; }
     inFlight.current = true; setBusy(true); setError("");
     try {
@@ -4714,9 +4713,9 @@ function OwnPasswordDialog({ userId, onClose, onChanged, onSessionEnd }: Readonl
   };
   return <LegacyDialog title="Cambiar mi clave..." className="legacy-password-dialog" onClose={() => { if (!busy) onClose(); }}><form className="legacy-user-form" onSubmit={submit}>
     <label className="legacy-form-row"><span>Clave actual:</span><input type="password" autoFocus required disabled={busy || uncertain} autoComplete="current-password" maxLength={INPUT_LIMITS.password} value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} /></label>
-    <label className="legacy-form-row"><span>Nueva clave:</span><input type="password" required disabled={busy || uncertain} autoComplete="new-password" minLength={3} maxLength={INPUT_LIMITS.password} value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+    <label className="legacy-form-row"><span>Nueva clave:</span><input type="password" required disabled={busy || uncertain} autoComplete="new-password" minLength={MIN_NEW_PASSWORD_LENGTH} maxLength={INPUT_LIMITS.password} value={password} onChange={(event) => setPassword(event.target.value)} /></label>
     <label className="legacy-form-row"><span>Confirmación:</span><input type="password" required disabled={busy || uncertain} autoComplete="new-password" maxLength={INPUT_LIMITS.password} value={confirmation} onChange={(event) => setConfirmation(event.target.value)} /></label>
-    <small>Mínimo 3 caracteres. Al guardar, inicia sesión con la nueva clave.</small>{error && <p role="alert">{error}</p>}
+    <small>Mínimo {MIN_NEW_PASSWORD_LENGTH} caracteres. Al guardar, inicia sesión con la nueva clave.</small>{error && <p role="alert">{error}</p>}
     <div className="legacy-dialog-actions centered">{uncertain ? <button type="button" onClick={onSessionEnd}>Cerrar sesión y comprobar</button> : <button type="submit" disabled={busy}>{busy ? "Guardando…" : "Guardar"}</button>}<button type="button" disabled={busy} onClick={onClose}>Cancelar</button></div>
   </form></LegacyDialog>;
 }
@@ -5819,55 +5818,6 @@ type OperationSpec = {
   entity?: string;
   relationLabel?: string;
   details?: ReactNode;
-};
-
-type MonitorEntity = "collector" | "zone" | "route";
-type MonitorMetricValues = {
-  collectionLimit: number;
-  payoutLimit: number;
-  collected: number;
-  deposited: number;
-  delivered: number;
-  paid: number;
-  difference: number;
-};
-type MonitorRow = TableRow & {
-  entityId: string;
-  entityType: MonitorEntity;
-  rawName: string;
-  name: string;
-  collectionLimit: ReactNode;
-  payoutLimit: ReactNode;
-  collected: ReactNode;
-  deposited: ReactNode;
-  delivered: ReactNode;
-  paid: ReactNode;
-  difference: ReactNode;
-  metrics: MonitorMetricValues;
-};
-type MapData = {
-  collector: {
-    id: string;
-    name: string;
-    phone: string;
-    lat: number;
-    lng: number;
-    cash_in_hand: number;
-    collection_limit: number;
-    payout_limit: number;
-    last_ping: string;
-  };
-  stops: {
-    id: string;
-    order: number;
-    client_name: string;
-    lat: number;
-    lng: number;
-    amount_due: number;
-    status: "pending" | "partial" | "paid" | "cancelled" | string;
-    obligated: boolean;
-  }[];
-  route_geometry: null | unknown;
 };
 
 function ModuleRouter({
@@ -10890,461 +10840,9 @@ function operationSpec(page: Page, snapshot: Snapshot): OperationSpec {
 
 function MonitorView(props: Readonly<{ page: Page; snapshot: Snapshot; refreshing: boolean; currentUser: User; onRefresh: () => void }>) {
   if (props.page === "monitorCollectors" || props.page === "monitorZones" || props.page === "monitorRoutes") {
-    return <FinancialMonitorView key={props.page} page={props.page} snapshot={props.snapshot} refreshing={props.refreshing} onRefresh={props.onRefresh} />;
+    return <Suspense fallback={<p role="status">Cargando monitor…</p>}><FinancialMonitorView key={props.page} page={props.page} snapshot={props.snapshot} refreshing={props.refreshing} onRefresh={props.onRefresh} /></Suspense>;
   }
-  return <MapMonitorView {...props} />;
-}
-
-function FinancialMonitorView({ page, snapshot, refreshing, onRefresh }: Readonly<{ page: "monitorCollectors" | "monitorZones" | "monitorRoutes"; snapshot: Snapshot; refreshing: boolean; onRefresh: () => void }>) {
-  const entityLabel = page === "monitorCollectors" ? "Cobrador" : page === "monitorZones" ? "Zona" : "Ruta";
-  const [auto, setAuto] = useState(() => page === "monitorCollectors");
-  const [seconds, setSeconds] = useState("60");
-  const [remaining, setRemaining] = useState(60);
-  const [currency, setCurrency] = useState("Peso Dominicano");
-  const [selectedRow, setSelectedRow] = useState<MonitorRow | null>(null);
-  const [mapOpen, setMapOpen] = useState(false);
-  const onRefreshRef = useRef(onRefresh);
-  const refreshSeconds = Math.max(1, Number(seconds) || 60);
-  const rows = monitorRows(page, snapshot, currency);
-  const totals = rows.reduce<MonitorMetricValues>((total, row) => ({
-    collectionLimit: total.collectionLimit + row.metrics.collectionLimit,
-    payoutLimit: total.payoutLimit + row.metrics.payoutLimit,
-    collected: total.collected + row.metrics.collected,
-    deposited: total.deposited + row.metrics.deposited,
-    delivered: total.delivered + row.metrics.delivered,
-    paid: total.paid + row.metrics.paid,
-    difference: total.difference + row.metrics.difference,
-  }), { collectionLimit: 0, payoutLimit: 0, collected: 0, deposited: 0, delivered: 0, paid: 0, difference: 0 });
-
-  useEffect(() => {
-    onRefreshRef.current = onRefresh;
-  }, [onRefresh]);
-  useEffect(() => {
-    setRemaining(refreshSeconds);
-  }, [refreshSeconds]);
-  useEffect(() => {
-    if (!auto) return;
-    const timer = window.setInterval(() => {
-      setRemaining((current) => {
-        if (current <= 1) {
-          if (document.visibilityState === "visible" && navigator.onLine)
-            onRefreshRef.current();
-          return refreshSeconds;
-        }
-        return current - 1;
-      });
-    }, 1000);
-    return () => window.clearInterval(timer);
-  }, [auto, refreshSeconds]);
-
-  const refresh = () => {
-    setRemaining(refreshSeconds);
-    onRefresh();
-  };
-  const handleMonitoreoClick = () => {
-    if (selectedRow) setMapOpen(true);
-  };
-  return <div className="collector-monitor-mdi">
-    <div className="collector-monitor-topbar">
-      <div className="collector-monitor-controls">
-        <label className="collector-monitor-auto"><input type="checkbox" checked={auto} onChange={(event) => setAuto(event.target.checked)} />Auto.</label>
-        <input className="collector-monitor-seconds" aria-label="Tiempo de refresco en segundos" type="number" min="1" max="3600" value={seconds} onChange={(event) => setSeconds(event.target.value)} />
-        <label htmlFor="collector-monitor-currency">Moneda:</label>
-        <select id="collector-monitor-currency" value={currency} onChange={(event) => setCurrency(event.target.value)}>
-          <option>Peso Dominicano</option><option>Dólar Americano</option><option>Euro</option>
-        </select>
-      </div>
-      <div className="collector-monitor-actions">
-        <button type="button" disabled={!selectedRow} onClick={handleMonitoreoClick}><MapPinned size={14} />Monitoreo</button>
-        <button type="button" disabled={refreshing} onClick={refresh}><RefreshCw size={14} className={refreshing ? "spin" : undefined} />Refrescar</button>
-      </div>
-    </div>
-    <div className="collector-monitor-grid-scroll">
-      <div className="collector-monitor-grid-content">
-        <table className="collector-monitor-table">
-          <colgroup><col className="monitor-collector-name-column" /><col span={7} /></colgroup>
-          <thead><tr><th>{entityLabel}</th><th>Límite de cobro</th><th>Límite de pago</th><th>Cobrado</th><th>Depositado</th><th>Entregado</th><th>Pagado</th><th>Diferencia</th></tr></thead>
-          <tbody>{rows.map((row) => {
-            const selected = selectedRow?.entityId === row.entityId;
-            return <tr key={row.entityId} className={selected ? "selected-row" : undefined} aria-selected={selected} role="button" tabIndex={0} onClick={() => setSelectedRow(row)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedRow(row))}>
-              <td>{row.name}</td><td>{row.collectionLimit}</td><td>{row.payoutLimit}</td><td>{row.collected}</td><td>{row.deposited}</td><td>{row.delivered}</td><td>{row.paid}</td><td>{row.difference}</td>
-            </tr>;
-          })}</tbody>
-        </table>
-        <div className="collector-monitor-footer-grid">
-          <div className="collector-monitor-page-controls">
-            <button type="button" disabled aria-label="Primera página">|&lt;&lt;</button><button type="button" disabled aria-label="Página anterior">&lt;</button><span>Página [ 1 ] de 1</span><button type="button" disabled aria-label="Página siguiente">&gt;</button><button type="button" disabled aria-label="Última página">&gt;&gt;|</button>
-            <button type="button" className="monitor-footer-refresh" title="Refrescar" onClick={refresh}><RefreshCw size={12} /></button>
-            <span className="monitor-countdown">{auto ? `Faltan: ${remaining} seg(s)` : "Auto. pausado"}</span>
-          </div>
-          {[totals.collectionLimit, totals.payoutLimit, totals.collected, totals.deposited, totals.delivered, totals.paid, totals.difference].map((amount, index) => <span className="collector-monitor-total" key={`monitor-total-${index}`}>{money(amount)}</span>)}
-        </div>
-      </div>
-    </div>
-    {mapOpen && selectedRow && <LegacyDialog title={`Mapa de Monitoreo - ${selectedRow.rawName}`} onClose={() => setMapOpen(false)} className="collector-monitor-map-dialog">
-      <MonitorGeoMap entityType={selectedRow.entityType} entityId={selectedRow.entityId} />
-    </LegacyDialog>}
-  </div>;
-}
-
-function MapMonitorView({
-  page,
-  snapshot,
-  refreshing,
-  onRefresh,
-}: Readonly<{
-  page: Page;
-  snapshot: Snapshot;
-  refreshing: boolean;
-  currentUser: User;
-  onRefresh: () => void;
-}>) {
-  const [auto, setAuto] = useState(true),
-    [seconds, setSeconds] = useState("30"),
-    [currency, setCurrency] = useState("DOP"),
-    [query, setQuery] = useState(""),
-    [selected, setSelected] = useState<MonitorRow | null>(null),
-    [mapData, setMapData] = useState<MapData | null>(null),
-    [mapLoading, setMapLoading] = useState(false),
-    [mapError, setMapError] = useState("");
-  const rows = monitorRows(page, snapshot).filter((row) =>
-    `${row.rawName} ${row.entityId}`
-      .toLowerCase()
-      .includes(query.toLowerCase()),
-  );
-  const title = monitorTitleForPage(page);
-  useEffect(() => {
-    if (!selected) {
-      setMapData(null);
-      setMapError("");
-      return;
-    }
-    let cancelled = false;
-    setMapLoading(true);
-    setMapError("");
-    api<MapData>(
-      `/monitoring/${selected.entityType}/${encodeURIComponent(selected.entityId)}/map-data`,
-    )
-      .then((data) => {
-        if (!cancelled) setMapData(data);
-      })
-      .catch((error) => {
-        if (!cancelled)
-          setMapError(
-            error instanceof Error
-              ? error.message
-              : "No pudimos cargar CobranzaMapas.",
-          );
-      })
-      .finally(() => {
-        if (!cancelled) setMapLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selected]);
-  return (
-    <>
-      <div className="page-title compact-title">
-        <div>
-          <div className="eyebrow">MONITORES</div>
-          <h1>
-            {title}
-            <span className="title-dot">.</span>
-          </h1>
-          <p>Diferencia = (Cobrado - Depositado) + (Entregado - Pagado).</p>
-        </div>
-      </div>
-      <section className="panel monitor-panel">
-        <div className="monitor-header">
-          <label>
-            <input
-              type="checkbox"
-              checked={auto}
-              onChange={(event) => setAuto(event.target.checked)}
-            />{" "}
-            Auto.
-          </label>
-          <label>
-            Refresco{" "}
-            <input
-              value={seconds}
-              onChange={(event) => setSeconds(event.target.value)}
-              inputMode="numeric"
-            />{" "}
-            seg.
-          </label>
-          <label>
-            Moneda{" "}
-            <select
-              value={currency}
-              onChange={(event) => setCurrency(event.target.value)}
-            >
-              <option>DOP</option>
-              <option>USD</option>
-              <option>EUR</option>
-            </select>
-          </label>
-          <label className="monitor-search">
-            <Search size={15} />
-            <input
-              aria-label={`Buscar en ${title}`}
-              placeholder={
-                page === "monitorCollectors"
-                  ? "Buscar cobrador..."
-                  : page === "monitorZones"
-                    ? "Buscar zona..."
-                    : "Buscar ruta..."
-              }
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-            />
-          </label>
-          <button className="btn" onClick={onRefresh} disabled={refreshing}>
-            <RefreshCw className={refreshing ? "spin" : ""} size={16} />{" "}
-            Refrescar
-          </button>
-        </div>
-        <MonitorLedgerTable page={page} rows={rows} onSelect={setSelected} />
-        <div className="legacy-footerbar">
-          <span>Página 1 de 1</span>
-          <span>
-            Registros: <strong>{rows.length}</strong>
-          </span>
-          <span>
-            Próximo refresco: <strong>{auto ? `${seconds}s` : "Manual"}</strong>
-          </span>
-          <span>Click sobre una fila para abrir CobranzaMapas.</span>
-        </div>
-      </section>
-      <Modal
-        open={Boolean(selected)}
-        onClose={() => setSelected(null)}
-        title={
-          selected ? `CobranzaMapas · ${selected.rawName}` : "CobranzaMapas"
-        }
-        description="Ubicación, ruta, paradas y exposición financiera en tiempo real."
-        className="map-monitor-dialog"
-      >
-        {mapLoading && <Loading label="Cargando datos de CobranzaMapas…" />}
-        {mapError && !mapLoading && (
-          <Empty
-            title="No pudimos cargar el mapa"
-            text={mapError}
-            action={
-              <button
-                className="btn"
-                onClick={() => selected && setSelected({ ...selected })}
-              >
-                <RefreshCw size={16} /> Reintentar
-              </button>
-            }
-          />
-        )}
-        {mapData && !mapLoading && !mapError && (
-          <CobranzaMapasModal
-            data={mapData}
-            entityType={selected?.entityType ?? "collector"}
-            title={selected?.rawName ?? "Ruta"}
-          />
-        )}
-      </Modal>
-    </>
-  );
-}
-
-function MonitorLedgerTable({
-  page,
-  rows,
-  onSelect,
-}: Readonly<{
-  page: Page;
-  rows: MonitorRow[];
-  onSelect: (row: MonitorRow) => void;
-}>) {
-  const entityLabel =
-    page === "monitorCollectors"
-      ? "Cobrador"
-      : page === "monitorZones"
-        ? "Zona"
-        : "Ruta";
-  return (
-    <div className="table-scroll legacy-table-scroll">
-      <table className="data-table legacy-data-table dense monitor-ledger-table">
-        <thead>
-          <tr>
-            <th>{entityLabel}</th>
-            <th className="align-right">Lím. de Cobro</th>
-            <th className="align-right">Lím. de Pago</th>
-            <th className="align-right">Cobrado</th>
-            <th className="align-right">Depositado</th>
-            <th className="align-right">Entregado</th>
-            <th className="align-right">Pagado</th>
-            <th className="align-right">Diferencia</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={`${row.entityType}-${row.entityId}`}>
-              <td>
-                <button
-                  className="monitor-row-action"
-                  onClick={() => onSelect(row)}
-                  aria-label={`Abrir mapa de ${row.rawName}`}
-                >
-                  <MapPinned size={15} />
-                  <span>{row.name}</span>
-                </button>
-              </td>
-              <td className="align-right">{row.collectionLimit}</td>
-              <td className="align-right">{row.payoutLimit}</td>
-              <td className="align-right">{row.collected}</td>
-              <td className="align-right">{row.deposited}</td>
-              <td className="align-right">{row.delivered}</td>
-              <td className="align-right">{row.paid}</td>
-              <td className="align-right">{row.difference}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {!rows.length && (
-        <Empty title="Sin resultados" text="Ajusta la búsqueda del monitor." />
-      )}
-    </div>
-  );
-}
-
-function CobranzaMapasModal({
-  data,
-  entityType,
-  title,
-}: Readonly<{
-  data: MapData;
-  entityType: MonitorEntity;
-  title: string;
-}>) {
-  const [focusedMarker, setFocusedMarker] = useState<MapMarker | null>(null);
-  const adapted = adaptedMapForEntity(entityType, title, data);
-  const pending = data.stops.filter((stop) => stop.status !== "paid"),
-    obligated = data.stops.filter((stop) => stop.obligated),
-    totalDue = data.stops.reduce((sum, stop) => sum + stop.amount_due, 0);
-  const pointStyle = (lat: number, lng: number) => ({
-    top: `${86 - (((lat - adapted.bounds.minLat) / Math.max(adapted.bounds.maxLat - adapted.bounds.minLat, 0.001)) * 70 + 8)}%`,
-    left: `${((lng - adapted.bounds.minLng) / Math.max(adapted.bounds.maxLng - adapted.bounds.minLng, 0.001)) * 78 + 9}%`,
-  });
-  const openMarker = (marker: MapMarker) =>
-    dispatchMarkerClick(marker, {
-      onFocus: setFocusedMarker,
-      onOpenClient: setFocusedMarker,
-      onOpenCollection: setFocusedMarker,
-    });
-  const selectedMarker = focusedMarker ?? adapted.markers[0];
-  return (
-    <div className="cobranza-map-modal">
-      <div className="map-modal-summary">
-        <div>
-          <span>Entidad</span>
-          <strong>{title}</strong>
-          <small>
-            {data.collector.name} · {data.collector.phone}
-          </small>
-        </div>
-        <div>
-          <span>Dinero en mano</span>
-          <strong>{moneyFromUnits(data.collector.cash_in_hand)}</strong>
-          <small>
-            Límite cobro {moneyFromUnits(data.collector.collection_limit)}
-          </small>
-        </div>
-        <div>
-          <span>Pendientes</span>
-          <strong>
-            {pending.length}/{data.stops.length}
-          </strong>
-          <small>{obligated.length} obligados a cobrar</small>
-        </div>
-        <div>
-          <span>Total ruta</span>
-          <strong>{moneyFromUnits(totalDue)}</strong>
-          <small>Último ping {timeLabel(data.collector.last_ping)}</small>
-        </div>
-      </div>
-      <div className="cobranza-map-grid">
-        <section
-          className="cobranza-map-canvas"
-          aria-label="CobranzaMapas operativo"
-        >
-          <div className="map-grid-lines" />
-          <div className="route-polyline" />
-          {adapted.markers.map((marker) =>
-            marker.type === "collector" ? (
-              <button
-                className={`collector-live-pin ${selectedMarker?.id === marker.id ? "focused" : ""}`}
-                key={marker.id}
-                style={pointStyle(marker.lat, marker.lng)}
-                onClick={() => openMarker(marker)}
-                aria-label={`Abrir popup de ${marker.label}`}
-              >
-                <MapPinned size={16} />
-              </button>
-            ) : (
-              <button
-                className={`stop-pin ${marker.color} ${marker.obligated ? "obligated" : ""} ${selectedMarker?.id === marker.id ? "focused" : ""}`}
-                key={marker.id}
-                style={pointStyle(marker.lat, marker.lng)}
-                title={marker.popupTitle}
-                onClick={() => openMarker(marker)}
-              >
-                {marker.order}
-              </button>
-            ),
-          )}
-          {selectedMarker && (
-            <div
-              className="map-popup-card"
-              style={pointStyle(selectedMarker.lat, selectedMarker.lng)}
-            >
-              <strong>{selectedMarker.popupTitle}</strong>
-              <span>{selectedMarker.popupSubtitle}</span>
-              {selectedMarker.amountDue !== undefined && (
-                <small>
-                  {moneyFromUnits(selectedMarker.amountDue)} pendiente
-                </small>
-              )}
-            </div>
-          )}
-          <div className="map-module-label">
-            <strong>CobranzaMapas</strong>
-            <span>Adapter activo · {data.stops.length} PCP</span>
-          </div>
-        </section>
-        <aside className="map-stops-panel">
-          <div className="map-stops-heading">
-            <strong>Paradas</strong>
-            <span>{data.stops.length} puntos</span>
-          </div>
-          <div className="map-stops-list">
-            {adapted.markers
-              .filter((marker) => marker.type === "stop")
-              .map((marker) => (
-                <button
-                  className={`map-stop-row ${selectedMarker?.id === marker.id ? "active" : ""}`}
-                  key={marker.id}
-                  onClick={() => openMarker(marker)}
-                >
-                  <span className="stop-order">{marker.order}</span>
-                  <span>
-                    <strong>{marker.clientName}</strong>
-                    <small>{marker.popupSubtitle}</small>
-                  </span>
-                  <strong>{moneyFromUnits(marker.amountDue ?? 0)}</strong>
-                </button>
-              ))}
-          </div>
-        </aside>
-      </div>
-    </div>
-  );
+  return null;
 }
 
 type SettlementBreakdown = {
@@ -11756,100 +11254,6 @@ function ReportsView() {
       </button>
     </section>
   );
-}
-
-function monitorRows(page: Page, snapshot: Snapshot, currency = "Peso Dominicano"): MonitorRow[] {
-  const currencyCode = currency === "Peso Dominicano" ? "DOP" : currency === "Dólar Americano" ? "USD" : "EUR";
-  if (page === "monitorCollectors") {
-    return snapshot.collectors.map((collector) =>
-      ledgerForEntity(collector.id, "collector", collector.name, snapshot, [
-        collector.id,
-      ], currencyCode),
-    );
-  }
-
-  if (page === "monitorRoutes") {
-    return snapshot.routes.map((route) =>
-      ledgerForEntity(route.id, "route", route.name, snapshot, [
-        route.collectorId,
-      ], currencyCode),
-    );
-  }
-
-  const zones = new Map<string, Set<string>>();
-  snapshot.routes.forEach((route) => {
-    const collectorIds = zones.get(route.sector) ?? new Set<string>();
-    collectorIds.add(route.collectorId);
-    zones.set(route.sector, collectorIds);
-  });
-
-  return Array.from(zones.entries()).map(([zone, collectorIds]) =>
-    ledgerForEntity(zone, "zone", zone, snapshot, Array.from(collectorIds), currencyCode),
-  );
-}
-
-function ledgerForEntity(
-  entityId: string,
-  entityType: MonitorEntity,
-  name: string,
-  snapshot: Snapshot,
-  collectorIds: string[],
-  selectedCurrency = "DOP",
-): MonitorRow {
-  const collectorIdSet = new Set(collectorIds);
-  const collectors = snapshot.collectors.filter((collector) =>
-    collectorIdSet.has(collector.id),
-  );
-  const movements = snapshot.movements.filter((movement) => collectorIdSet.has(movement.collectorId) && !movement.cancelledAt && currencyCode(movement.currency) === selectedCurrency);
-  const collectionLimit = collectors.reduce((sum, collector) => {
-      return sum + collector.collectionLimit;
-    }, 0),
-    payoutLimit = collectors.reduce((sum, collector) => {
-      return sum + collector.payoutLimit;
-    }, 0),
-    collected = sumMovements(movements, "collection"),
-    deposited = sumMovements(movements, "deposit"),
-    delivered = sumMovements(movements, "office_delivery"),
-    paid = sumMovements(movements, "payout");
-  const returned = (snapshot.cashReconciliations ?? []).filter((row) => collectorIdSet.has(row.collectorId) && row.currency === selectedCurrency)
-    .reduce((sum, row) => sum + row.returnedCollection + row.returnedPayout, 0);
-  const difference = collected - deposited + delivered - paid - returned;
-  const metrics: MonitorMetricValues = {
-    collectionLimit,
-    payoutLimit,
-    collected,
-    deposited,
-    delivered,
-    paid,
-    difference,
-  };
-  return {
-    entityId,
-    entityType,
-    rawName: name,
-    name,
-    collectionLimit: nativeMoney(collectionLimit, selectedCurrency),
-    payoutLimit: nativeMoney(payoutLimit, selectedCurrency),
-    collected: nativeMoney(collected, selectedCurrency),
-    deposited: nativeMoney(deposited, selectedCurrency),
-    delivered: nativeMoney(delivered, selectedCurrency),
-    paid: nativeMoney(paid, selectedCurrency),
-    difference: (
-      <span className={difference === 0 ? "balanced-text" : "warning-text"} title={returned ? `Incluye ${nativeMoney(returned, selectedCurrency)} devuelto y conciliado administrativamente.` : undefined}>
-        {nativeMoney(difference, selectedCurrency)}
-      </span>
-    ),
-    metrics,
-  };
-}
-
-function sumMovements(
-  movements: Snapshot["movements"],
-  type: Snapshot["movements"][number]["type"],
-) {
-  return movements
-    .filter((movement) => movement.type === type)
-    .reduce((sum, movement) => sum + movement.amount, 0);
 }
 
 function moneyFromUnits(value: number) {

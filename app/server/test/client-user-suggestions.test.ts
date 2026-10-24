@@ -229,12 +229,12 @@ test("2.9 existing security edit still rotates version and revokes sessions", as
   assert.equal((await get("/api/auth/me", token)).statusCode, 401);
 });
 
-test("2.8 approved three-character minimum applies to provisioning and reset, preserving auth safeguards", async (t) => {
+test("strengthened fifteen-character minimum applies to provisioning and reset, preserving auth safeguards", async (t) => {
   const { app, store, post, login, get, adminToken } = await setup(t);
-  const two = "Sy";
-  const three = "Syn";
-  assert.equal(two.length, 2);
-  assert.equal(three.length, 3);
+  const two = "S".repeat(14);
+  const three = "S".repeat(15);
+  assert.equal(two.length, 14);
+  assert.equal(three.length, 15);
   const before = await store.read();
   const weak = await post("/api/usuarios", accountBody({ password: two }));
   assert.equal(weak.statusCode, 400, weak.body);
@@ -249,9 +249,9 @@ test("2.8 approved three-character minimum applies to provisioning and reset, pr
   assert.deepEqual(await store.read(), original);
   assert.equal((await get("/api/auth/me", accountToken)).statusCode, 200);
   const key = randomUUID();
-  const reset = await post(`/api/usuarios/${id}/clave`, { password: "New" }, key);
+  const reset = await post(`/api/usuarios/${id}/clave`, { password: "New-Synthetic-2026!" }, key);
   assert.equal(reset.statusCode, 200, reset.body);
-  const replay = await post(`/api/usuarios/${id}/clave`, { password: "New" }, key);
+  const replay = await post(`/api/usuarios/${id}/clave`, { password: "New-Synthetic-2026!" }, key);
   assert.deepEqual(replay.json(), reset.json());
   const prior = original.accounts.find((row) => row.id === id)!;
   const current = (await store.read()).accounts.find((row) => row.id === id)!;
@@ -264,7 +264,7 @@ test("2.8 approved three-character minimum applies to provisioning and reset, pr
   assert.equal((await get("/api/auth/me", accountToken)).statusCode, 401);
   assert.equal((await get("/api/auth/me", adminToken)).statusCode, 200);
   assert.equal((await app.inject({ method: "POST", url: "/api/auth/login", payload: { email: prior.email, password: three } })).statusCode, 401);
-  const newToken = await login(prior.email, "New");
+  const newToken = await login(prior.email, "New-Synthetic-2026!");
   assert.equal((await get("/api/auth/me", newToken)).statusCode, 200);
   // The independently configured bootstrap admin retains its fourteen-character guard.
   await assert.rejects(buildApp({ store: new MemoryStore(seed()), secret: "synthetic-client-user-test-secret-at-least32", demo: false,

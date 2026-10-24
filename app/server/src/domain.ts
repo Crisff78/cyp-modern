@@ -162,6 +162,8 @@ export type RecurringCharge = {
   registeredAt: string; startDate: string; endDate: string; frequency: string;
   day1: string; day2: string; currency: string; service: string; concept: string;
   useConceptAmount: boolean; amount: number; note: string; active: boolean;
+  generationFrom?: string;
+  nextRunDate?: string;
 };
 export type Collector = {
   id: string;
@@ -171,6 +173,7 @@ export type Collector = {
   status: "active" | "offline" | "limit";
   collectionLimit: number;
   payoutLimit: number;
+  currencyLimits?: Partial<Record<LedgerCurrency, { collectionLimit: number; payoutLimit: number }>>;
   lat: number | null;
   lng: number | null;
   lastSeen: string;
@@ -179,7 +182,13 @@ export type Collector = {
   cellular?: string;
   accountId?: string;
 };
+export function collectorLimit(collector: Collector, currency: LedgerCurrency) {
+  return collector.currencyLimits ? collector.currencyLimits[currency] ?? { collectionLimit: 0, payoutLimit: 0 }
+    : { collectionLimit: collector.collectionLimit, payoutLimit: collector.payoutLimit };
+}
 export type Charge = {
+  recurringTemplateId?: string;
+  scheduledDate?: string;
   id: string;
   clientId: string;
   service: string;
@@ -924,7 +933,7 @@ export function postMovement(
     payoutCash = balance.officeDelivered - balance.paidToClients - (balance.returnedPayout ?? 0);
   if (
     type === "collection" &&
-    collectionCash + body.amount > collector.collectionLimit
+    collectionCash + body.amount > collectorLimit(collector, currency).collectionLimit
   )
     throw new DomainError(
       "COLLECTION_LIMIT",
@@ -933,7 +942,7 @@ export function postMovement(
     );
   if (
     type === "office_delivery" &&
-    payoutCash + body.amount > collector.payoutLimit
+    payoutCash + body.amount > collectorLimit(collector, currency).payoutLimit
   )
     throw new DomainError(
       "PAYOUT_LIMIT",
@@ -1091,7 +1100,7 @@ export function cancelMovement(
     throw new DomainError("INSUFFICIENT_COLLECTION_CASH", "No se puede anular el cobro porque su efectivo ya fue depositado. Revisa primero los depósitos de esta jornada.", 409);
   if (type === "office_delivery" && balance.officeDelivered - balance.paidToClients - (balance.returnedPayout ?? 0) < movement.amount)
     throw new DomainError("INSUFFICIENT_PAYOUT_CASH", "No se puede anular la entrega porque sus fondos ya se usaron para pagos. Revisa primero los pagos de esta jornada.", 409);
-  if (type === "payout" && balance.officeDelivered - balance.paidToClients - (balance.returnedPayout ?? 0) + movement.amount > collector.payoutLimit)
+  if (type === "payout" && balance.officeDelivered - balance.paidToClients - (balance.returnedPayout ?? 0) + movement.amount > collectorLimit(collector, ledgerCurrency(movement.currency)).payoutLimit)
     throw new DomainError("PAYOUT_LIMIT", "Al anular este pago se superaría el límite de efectivo para pagos del cobrador. Revisa primero las entregas de esta jornada.", 409);
   const charge = type === "collection" ? state.charges.find((item) => item.id === movement.chargeId) : undefined;
   const payout = type === "payout" ? state.payouts.find((item) => item.id === movement.payoutId) : undefined;
@@ -1188,8 +1197,13 @@ export function snapshot(state: State, user: User) {
         ...c,
         cashInHand: b.difference,
         cashInHandByCurrency: Object.fromEntries(ledgerCurrencies.map((currency) => [currency, balances[currency].difference])),
-        status: (c.active === false ? "offline" : (administration ? Object.values(balances) : [b]).some((balance) => balance.collected - balance.deposited >= c.collectionLimit ||
-        balance.officeDelivered - balance.paidToClients >= c.payoutLimit)
+        status: (c.active === false ? "offline" : (administration ? ledgerCurrencies : ["DOP" as const]).some((currency) => {
+          const balance = balances[currency];
+          const limits = collectorLimit(c, currency);
+          const collectionCash = balance.collected - balance.deposited - (balance.returnedCollection ?? 0);
+          const payoutCash = balance.officeDelivered - balance.paidToClients - (balance.returnedPayout ?? 0);
+          return collectionCash > 0 && collectionCash >= limits.collectionLimit || payoutCash > 0 && payoutCash >= limits.payoutLimit;
+        })
           ? "limit"
           : Date.now() - Date.parse(c.lastSeen) > 15 * 60 * 1000
             ? "offline"

@@ -1,3 +1,4 @@
+import { MIN_NEW_PASSWORD_LENGTH } from "../../shared/passwordPolicy.mjs";
 import { useRef, useState } from "react";
 import {
   ArrowRight,
@@ -24,7 +25,7 @@ export type AccountOperation =
   | { type: "status"; account: PublicAccount; status: "active" | "disabled" };
 
 // Match the account password policy enforced by the API.
-const MIN_LENGTH = 3;
+const MIN_LENGTH = MIN_NEW_PASSWORD_LENGTH;
 const labelFor = (operation: AccountOperation) =>
   operation.type === "create"
     ? "Nueva cuenta"

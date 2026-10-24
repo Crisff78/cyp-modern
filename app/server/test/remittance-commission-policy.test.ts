@@ -1,3 +1,4 @@
+import { effectiveAccess } from "../../shared/access.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -13,7 +14,7 @@ import { getCommissionPolicy, setCommissionPolicy, quoteRemittance, createRemitt
 
 const at = new Date("2026-10-09T16:00:00Z");
 const admin: User = { id: "demo-admin", name: "Synthetic Admin", role: "admin" };
-const collector: User = { id: "demo-collector", name: "Synthetic Collector", role: "collector", collectorId: "col-1" };
+const collector: User = { id: "demo-collector", name: "Synthetic Collector", role: "collector", collectorId: "col-1", access: { ...effectiveAccess("collector"), roleExceptions: true, remittances: [...effectiveAccess("collector").remittances, "remittances.commissions.view"] } };
 const pair = { sourceCurrency: "USD" as const, destinationCurrency: "EUR" as const, amount: 10000 };
 const rate = { transactionCommissionBps: 500, managerCommissionBps: 200 };
 const code = (expected: string) => (error: unknown) => { assert.equal((error as { code: string }).code, expected); return true; };
@@ -132,7 +133,8 @@ test("API central policy is strict, admin-only, automatic on quote/create and id
     assert.equal((await post("/envios", { ...body, commissionBps: "500" }, token)).statusCode, 400);
     const key = randomUUID(); const saved = await post("/envios", body, token, key);
     assert.equal(saved.statusCode, 200, saved.body); assert.equal(saved.json().commissionAmount, 500);
-    assert.equal(saved.json().commissionAllocation.companyAmount, 240); assert.equal(saved.json().commissionAllocation.managerAmount, 160);
+    assert.equal(saved.json().commissionAllocation, undefined, "A collector without commission permission never receives the internal split");
+    assert.equal((await store.read()).remittances.transfers[0].commissionAllocation?.companyAmount, 240); assert.equal((await store.read()).remittances.transfers[0].commissionAllocation?.managerAmount, 160);
     await post("/envios/politica-comisiones", { ...rate, transactionCommissionBps: 600 });
     assert.deepEqual((await post("/envios", body, token, key)).json(), saved.json(), "lost response retry retains original commission");
     assert.equal((await post("/envios", body, token)).statusCode, 409);

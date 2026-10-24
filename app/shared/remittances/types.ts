@@ -11,7 +11,7 @@ export type Quote = {
   sourceRateKind?: RateKind; destinationRateKind?: RateKind;
   commissionPolicyRevision?: string; managerCommissionBps?: number;
 };
-export type CommissionPolicy = { revision: string; transactionCommissionBps: number; managerCommissionBps: number; updatedAt?: string; updatedBy?: string };
+export type CommissionPolicy = { revision: string; transactionCommissionBps: number; managerCommissionBps?: number; updatedAt?: string; updatedBy?: string };
 export type CommissionAllocation = {
   version: 1; currency: Currency; policyRevision: string; managerCommissionBps: number;
   baseAmount: number; transactionAmount: number; companyAmount: number; managerAmount: number;

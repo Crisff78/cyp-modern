@@ -3,6 +3,7 @@ import catalog from "../../shared/permission-catalog.json" with { type: "json" }
 import { assertAdmin, DomainError, type Account, type State, type User } from "./domain.js";
 import { effectiveAccess, rolePermissionIds, roleRemittancePermissions, REMITTANCE_PERMISSION_KEYS } from "../../shared/access.mjs";
 import { assertBootstrapManagedBySelf, assertDelegatesRole, assertManagesAccount } from "./access.js";
+import { recordAdminTrace } from "./admin-tools.js";
 
 export const permissionCatalog = catalog;
 const permissionIds = catalog.permissions.map(({ id }) => id);
@@ -77,6 +78,12 @@ export function updateAccountPermissions(state: State, actor: User, userId: stri
     if (roleExceptions) account.roleExceptions = true; else delete account.roleExceptions;
     account.permissionRevision = body.revision + 1;
     account.updatedAt = new Date().toISOString();
+    const audit = recordAdminTrace(state, actor, "permissions.changed", "usuarios/permisos", account.id);
+    audit.details = { version: 1, previousRevision: body.revision, revision: account.permissionRevision,
+      previousMode: previous.mode, mode, roleExceptionsConfirmed: body.roleExceptions === true,
+      added: access.legacy.filter((id) => !previous.legacy.includes(id)), removed: previous.legacy.filter((id) => !access.legacy.includes(id)),
+      remittancesAdded: access.remittances.filter((key) => !previous.remittances.includes(key)),
+      remittancesRemoved: previous.remittances.filter((key) => !access.remittances.includes(key)) };
   }
   // Access is read from the account on every request; never elevate the role or
   // embed these grants in a long-lived token. Existing session identities stay intact.

@@ -1,13 +1,15 @@
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { assertAdmin, assertAdminRead, DomainError, ledgerCurrency, MAX_MONEY_AMOUNT, supportedLedgerCurrency, type Collector, type State, type User, type Zone } from "./domain.js";
+import { assertAdmin, assertAdminRead, businessDate, DomainError, ledgerCurrency, MAX_MONEY_AMOUNT, supportedLedgerCurrency, type Collector, type State, type User, type Zone } from "./domain.js";
 import { isCollectorAccountRole } from "./account-roles.js";
 import type { Store } from "./store.js";
 import { frequencyCodes } from "./catalog-store.js";
 import { boundedId, freeText, phone, singleLine } from "./input-validation.js";
 import { phoneOrEmpty } from "./contact-schemas.js";
 import contracts from "../../shared/input-contracts.json" with { type: "json" };
+import { collectorAssignments, saveCollectorAssignments } from "./collector-assignments.js";
+import { generateScheduledCharges, nextChargeDate } from "./recurring-charges.js";
 
 type Mutate = <T, P = Record<string, string>>(
   path: string, summary: string, schema: z.ZodType<T>,
@@ -19,7 +21,7 @@ const name = singleLine(160, 1);
 const short = singleLine(160);
 const amount = z.number().int().positive().max(1_000_000_000);
 const zoneBody = z.object({ name, sector: short.optional(), number: short.optional(), from: short.optional(), to: short.optional(), active: z.boolean().optional() }).strict();
-const routeBody = z.object({ name, sector: short, collectorId: id, zoneId: id.optional(), number: short.optional(), from: short.optional(), to: short.optional(), active: z.boolean().optional() }).strict();
+const routeBody = z.object({ name, sector: short, collectorId: z.union([id,z.literal("")]).default(""), zoneId: id.optional(), number: short.optional(), from: short.optional(), to: short.optional(), active: z.boolean().optional() }).strict();
 const collectorBody = z.object({
   name, ident: short.optional(), cellular: phone.pipe(phoneOrEmpty).optional(), accountId: short.optional(),
   routeId: id.optional(), collectionLimit: amount.optional(), payoutLimit: amount.optional(), active: z.boolean().optional(),
@@ -79,6 +81,29 @@ function validateCollectorAccount(state: State, accountId?: string, current?: Co
     throw new DomainError("COLLECTOR_ACCOUNT_SCOPE", "La cuenta de cobrador está asignada a otro cobrador.", 409);
 }
 export function registerCatalogRoutes(app: FastifyInstance, store: Store, user: (req: FastifyRequest) => User, mutate: Mutate, describe: Describe) {
+  mutate("/api/cargos/recurrentes/calendario", "Generar vencimientos de plantillas hasta hoy, sin duplicarlos", z.object({}).strict(), (state, actor) => {
+    assertAdmin(actor); return generateScheduledCharges(state);
+  });
+  const assignmentBody = z.object({ revision: z.string().regex(/^[a-f0-9]{64}$/),
+    confirmReassignment: z.boolean().optional(), rows: z.array(z.object({ id,
+      collectionLimit: z.number().int().min(0).max(MAX_MONEY_AMOUNT).optional(),
+      payoutLimit: z.number().int().min(0).max(MAX_MONEY_AMOUNT).optional() }).strict()).max(500)
+      .refine((rows) => new Set(rows.map((row) => row.id)).size === rows.length, "No se permiten asignaciones duplicadas.") }).strict();
+  for (const kind of ["zonas", "rutas", "limites"] as const) {
+    const path = `/api/cobradores/:id/${kind}${kind === "limites" ? "/monedas" : ""}`;
+    app.get(path, async (req) => {
+      const actor = user(req); assertAdminRead(actor);
+      const params = z.object({ id }).strict().parse(req.params);
+      if (actor.role === "collector" && params.id !== actor.collectorId) throw new DomainError("FORBIDDEN", "Solo puedes consultar tus propias asignaciones.", 403);
+      return collectorAssignments(await store.read(), params.id, kind);
+    });
+    describe("get", path, "Consultar asignaciones y revisión del cobrador");
+    mutate(path, "Guardar asignaciones del cobrador en la base de datos", assignmentBody, (state, actor, body, params) => {
+      assertAdmin(actor);
+      if (actor.role === "collector" && params.id !== actor.collectorId) throw new DomainError("FORBIDDEN", "Solo puedes modificar tus propias asignaciones.", 403);
+      return saveCollectorAssignments(state, actor, params.id, kind, body);
+    });
+  }
   app.get("/api/bancos", async () => (await store.read()).banks);
   describe("get", "/api/bancos", "Consultar catálogo de bancos reutilizable");
   for (const editing of [false, true]) {
@@ -126,22 +151,22 @@ export function registerCatalogRoutes(app: FastifyInstance, store: Store, user: 
     });
     mutate(`/api/rutas${suffix}`, "Guardar ruta y cobrador responsable", routeBody, (state, actor, input, params) => {
       assertAdmin(actor);
-      const owner = requireRow(state.collectors, input.collectorId, "Cobrador");
-      if (owner.active === false) throw new DomainError("COLLECTOR_INACTIVE", "Selecciona un cobrador activo.", 409);
+      const owner = input.collectorId ? requireRow(state.collectors, input.collectorId, "Cobrador") : undefined;
+      if (owner?.active === false) throw new DomainError("COLLECTOR_INACTIVE", "Selecciona un cobrador activo.", 409);
       const current = editing ? requireRow(state.routes, params.id, "Ruta") : undefined;
-      if (current && current.collectorId !== owner.id) {
+      if (current && current.collectorId && current.collectorId !== input.collectorId) {
         const previousOwner = requireRow(state.collectors, current.collectorId, "Cobrador anterior");
         if (previousOwner.routeId === current.id) {
           const replacement = state.routes.find((route) => route.id !== current.id && route.collectorId === previousOwner.id && route.active !== false);
-          if (!replacement) throw new DomainError("PRIMARY_ROUTE", "El cobrador anterior necesita otra ruta activa antes de reasignar esta.", 409);
-          previousOwner.routeId = replacement.id;
+          previousOwner.routeId = replacement?.id ?? "";
         }
       }
       const zone = resolveZone(state, input.sector, input.zoneId ?? (current?.sector === input.sector ? current.zoneId : undefined));
       if (zone.active === false && (!current || current.zoneId !== zone.id)) throw new DomainError("ZONE_INACTIVE", "Selecciona una zona activa.", 409);
       const values = { ...input, zoneId: zone.id, sector: zone.sector };
-      if (current) { Object.assign(current, values); return current; }
+      if (current) { Object.assign(current, values); if(owner && !owner.routeId) owner.routeId=current.id; return current; }
       const route = { id: randomUUID(), ...values, active: input.active ?? true };
+      if (owner && !owner.routeId) owner.routeId=route.id;
       state.routes.push(route); return route;
     });
     mutate(`/api/cobradores${suffix}`, "Guardar cobrador", collectorBody, (state, actor, input, params) => {
@@ -209,9 +234,10 @@ export function registerCatalogRoutes(app: FastifyInstance, store: Store, user: 
       if (!Object.hasOwn(frequencyCodes, input.frequency)) throw new DomainError("FREQUENCY_INVALID", "Selecciona una frecuencia válida.", 422);
       if (input.endDate && input.endDate < input.startDate) throw new DomainError("DATE_RANGE", "La fecha final debe ser igual o posterior a la inicial.", 422);
       // Legacy PostgreSQL columns are NOT NULL text; keep that storage representation.
-      const values = { ...input, serviceId: service.id, routeId: client.routeId, day1: input.day1 === null ? "" : String(input.day1), day2: input.day2 === null ? "" : String(input.day2) };
-      if (current) { Object.assign(current, values); return current; }
+      const values = { ...input, serviceId: service.id, routeId: client.routeId, day1: input.day1 === null ? "" : String(input.day1), day2: input.day2 === null ? "" : String(input.day2), generationFrom: current?.generationFrom ?? businessDate() };
+      if (current) { Object.assign(current, values); current.nextRunDate = nextChargeDate(current, businessDate()) ?? ""; return current; }
       const recurring = { id: randomUUID(), registeredAt: new Date().toISOString(), ...values };
+      Object.assign(recurring, { nextRunDate: nextChargeDate(recurring, businessDate()) ?? "" });
       state.recurringCharges.push(recurring); return recurring;
     });
   }
@@ -224,6 +250,7 @@ export function registerCatalogRoutes(app: FastifyInstance, store: Store, user: 
     const collector = requireRow(state.collectors, params.id, "Cobrador");
     collector.collectionLimit = input.collectionLimit;
     collector.payoutLimit = input.payoutLimit;
+    if (collector.currencyLimits) collector.currencyLimits.DOP = { ...input };
     return collector;
   });
 }
