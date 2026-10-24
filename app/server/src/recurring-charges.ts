@@ -24,7 +24,8 @@ export function nextChargeDate(template: RecurringCharge, from: string): string 
       if (((cursor - start) / DAY) % interval[frequency] === 0) return day;
     } else if (periods[frequency]) {
       const months = (date.getUTCFullYear() - anchor.getUTCFullYear()) * 12 + date.getUTCMonth() - anchor.getUTCMonth();
-      if (months % periods[frequency] === 0 && (selectedDays.length ? selectedDays : [anchor.getUTCDate()]).some((value) => Math.min(value, monthDays) === date.getUTCDate())) return day;
+      const firstDay = /^\d{1,2}$/.test(template.day1) && Number(template.day1) >= 1 && Number(template.day1) <= 31 ? Number(template.day1) : anchor.getUTCDate();
+      if (months % periods[frequency] === 0 && Math.min(firstDay, monthDays) === date.getUTCDate()) return day;
     } else return undefined;
   }
   return undefined;

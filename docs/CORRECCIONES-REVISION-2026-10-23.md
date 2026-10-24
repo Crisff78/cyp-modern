@@ -28,9 +28,10 @@ validaciones de la Fase 1 y las restricciones de ámbito del cobrador.
 - Diaria: cada día; Bidiaria: cada dos días; Semanal: cada siete días.
 - Quincenal: cada 15 días desde F. Inicial. Si se indican ambos, Día1 y Día2,
   se usan esos días del mes. Un solo día conserva el intervalo de 15 días.
-- Mensual, Trimestral, Cuatrimestral, Semestral y Anual conservan el mes de
-  inicio como referencia. Día1/Día2 fijan el día; si quedan vacíos se usa el día
-  de F. Inicial. Un día inexistente se ajusta al último día del mes. Si dos
+- Mensual, Trimestral, Cuatrimestral, Semestral y Anual crean un cargo por periodo
+  y conservan el mes de inicio como referencia. Día1 fija el día; si queda vacío
+  se usa el de F. Inicial. Día2 solo se usa en Quincenal. Un día inexistente se
+  ajusta al último día del mes. Si dos
   vencimientos coinciden después del ajuste, no se cobra dos veces esa fecha.
 - No Definida o una plantilla inactiva no genera cargos. Cliente o servicio
   inactivos, moneda desconocida o importe inválido impiden generar esa plantilla.

@@ -25,6 +25,8 @@ test("calendar clamps month-end and leap days, preserves anchors and optional tw
   assert.equal(nextChargeDate(scheduled({ startDate:"2026-01-01",frequency:"Quincenal",day1:"15",day2:"31" }), "2026-02-16"), "2026-02-28");
   assert.equal(nextChargeDate(scheduled({ startDate:"2026-01-01",frequency:"Quincenal",day1:"",day2:"" }), "2026-01-17"), "2026-01-31");
   assert.equal(nextChargeDate(scheduled({ startDate:"2026-01-01",frequency:"Quincenal",day1:"15",day2:"" }), "2026-01-17"), "2026-01-31");
+  assert.equal(nextChargeDate(scheduled({ startDate:"2026-01-01",frequency:"Mensual",day1:"10",day2:"20" }), "2026-01-11"), "2026-02-10", "Monthly creates only one occurrence per month, even if an old template has Day2.");
+  assert.equal(nextChargeDate(scheduled({ startDate:"2026-01-01",frequency:"Trimestral",day1:"10",day2:"20" }), "2026-01-11"), "2026-04-10");
   assert.equal(nextChargeDate(scheduled({ frequency:"No Definida" }), "2026-02-01"), undefined);
   assert.equal(nextChargeDate(scheduled({ endDate:"2026-02-15" }), "2026-02-01"), undefined);
 });
