@@ -134,6 +134,7 @@ export type Collector = {
   cashInHand: number;
   collectionLimit: number;
   payoutLimit: number;
+  currencyLimits?: Partial<Record<"DOP" | "USD" | "EUR", { collectionLimit: number; payoutLimit: number }>>;
   lat: number | null;
   lng: number | null;
   lastSeen: string;

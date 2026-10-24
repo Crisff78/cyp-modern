@@ -249,7 +249,6 @@ test("a personalized Cajero never gains rates, commissions or legacy codes, but 
   const report = await get(`/api/envios/reportes?from=${date}&to=${date}`, cashier.token);
   assert.equal(report.statusCode, 200, report.body); assert.equal(report.json().amounts[0].count, 1);
   const consolidated = await get(`/api/envios/reportes/comisiones?from=${date}&to=${date}`, cashier.token);
-  assert.equal(consolidated.statusCode, 200, consolidated.body);
-  assert.deepEqual(ids(consolidated.json().details), [own.id]);
+  assert.equal(consolidated.statusCode, 403, consolidated.body);
   assert.ok(ids((await get("/api/envios/recibos", cashier.token)).json()).includes(other.id));
 });

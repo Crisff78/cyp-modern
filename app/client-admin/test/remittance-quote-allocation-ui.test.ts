@@ -60,7 +60,7 @@ ${surface === "admin" ? `import ${module("suggestions-shell.css")};` : ""}
 createRoot(document.getElementById("root")).render(<App />);`);
       await build({ root, configFile: false, envFile: false, publicDir: false, cacheDir: path.join(output, `cache-${surface}`), resolve: { dedupe: ["react", "react-dom"] }, plugins: surface === "admin" ? [react(), tailwind()] : [react()],
         define: { "process.env.NODE_ENV": JSON.stringify("production"), "import.meta.env.BASE_URL": JSON.stringify("/collector/"), "import.meta.env.VITE_COLLECTOR_URL": JSON.stringify("/collector/") }, logLevel: "error",
-        build: { outDir: path.join(output, surface), emptyOutDir: false, cssCodeSplit: false, lib: { entry: fixture, formats: ["es"], fileName: () => `${surface}.js`, cssFileName: surface } } });
+        build: { outDir: path.join(output, surface), emptyOutDir: false, cssCodeSplit: false, rollupOptions: { output: { inlineDynamicImports: true } }, lib: { entry: fixture, formats: ["es"], fileName: () => `${surface}.js`, cssFileName: surface } } });
     }
     server = createServer(async (request, response) => {
       try {
@@ -256,7 +256,13 @@ createRoot(document.getElementById("root")).render(<App />);`);
         assert.equal(await commission.getAttribute("readonly"), "");
         assert.equal(await commission.inputValue(), "5", "both surfaces use the saved central policy");
         await commission.evaluate((input: HTMLInputElement) => { input.value = "0"; });
-        await workspace.getByLabel("Monto a enviar (USD)", { exact: true }).fill("100");
+        const sourceAmount = workspace.getByLabel("Monto a enviar (USD)", { exact: true });
+        await sourceAmount.fill("1000.00"); await sourceAmount.press("Tab");
+        assert.equal(await sourceAmount.inputValue(), "1,000.00");
+        assert.equal(await sourceAmount.evaluate((input: HTMLInputElement) => input.checkValidity()), true);
+        await workspace.getByRole("button", { name: "Calcular cotización", exact: true }).click();
+        await page.waitForFunction(() => Array.from(document.querySelectorAll<HTMLInputElement>('input[readonly]')).some((input) => input.value === "DOP 60,000.00"));
+        await sourceAmount.fill("100");
         await workspace.getByRole("button", { name: "Calcular cotización", exact: true }).click();
         const dop = workspace.getByRole("textbox", { name: "Equivalente del principal en DOP", exact: true });
         await page.waitForFunction(() => Array.from(document.querySelectorAll<HTMLInputElement>('input[readonly]')).some((input) => input.value === "DOP 6,000.00"));
@@ -306,8 +312,12 @@ createRoot(document.getElementById("root")).render(<App />);`);
         await workspace.getByRole("button", { name: "Revisar y confirmar envío", exact: true }).click();
         await confirmation.getByLabel("Dinero recibido (USD)", { exact: true }).fill("110");
         assert.equal(await confirmation.getByLabel("Devuelta (USD)", { exact: true }).inputValue(), "USD 5.00");
-        await confirmation.getByText("Reparto de la comisión entre empresa y gestor", { exact: true }).click();
-        assert.match(await confirmation.innerText(), /EUR 1\.60/); assert.match(await confirmation.innerText(), /EUR 2\.40/);
+        if (surface === "admin") {
+          await confirmation.getByText("Reparto de la comisión entre empresa y gestor", { exact: true }).click();
+          assert.match(await confirmation.innerText(), /EUR 1\.60/); assert.match(await confirmation.innerText(), /EUR 2\.40/);
+        } else {
+          assert.equal(await confirmation.getByText("Reparto de la comisión entre empresa y gestor", { exact: true }).count(), 0, "Collectors without commission-view permission cannot read the internal split.");
+        }
         const savedReply = page.waitForResponse((reply: any) => reply.request().method() === "POST" && new URL(reply.url()).pathname === "/api/envios");
         await confirmation.getByRole("button", { name: "Aceptar", exact: true }).click();
         const registered = await savedReply;
@@ -498,13 +508,13 @@ createRoot(document.getElementById("root")).render(<App />);`);
     });
     await t.test("office Usuario with remittance permissions, atomic quick customers, keyboard capture and continuous focus in the actual Admin shell", async () => {
       const post = (url: string, payload: object, token = tokens.admin) => app.inject({ method: "POST", url, payload, headers: { authorization: `Bearer ${token}`, "idempotency-key": randomUUID() } });
-      const account = await post("/api/usuarios", { role: "cashier", name: "Cajero sintético", email: "cashier-dionel@example.invalid", password: "Ficticia-2026!" });
+      const account = await post("/api/usuarios", { role: "cashier", name: "Cajero sintético", email: "cashier-dionel@example.invalid", password: "Ficticia-Segura-2026!" });
       assert.equal(account.statusCode, 200, account.body);
       const cashier = account.json();
       const keys = ["remittances.view", "remittances.create", "remittances.clients.create", "remittances.receipts", "remittances.pay"];
       assert.equal((await post(`/api/usuarios/${cashier.id}/permisos`, { mode: "custom", permissionIds: [1, 2], remittancePermissions: keys, revision: 0 })).statusCode, 200);
       assert.equal((await post("/api/envios/cajas/abrir", { operatorId: cashier.id, currency: "DOP", openingAmount: 0 })).statusCode, 200);
-      const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { email: cashier.email, password: "Ficticia-2026!" } });
+      const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { email: cashier.email, password: "Ficticia-Segura-2026!" } });
       assert.equal(login.statusCode, 200); const token = login.json().token;
       const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: "es-DO", serviceWorkers: "block", extraHTTPHeaders: { "x-qa-rate-refresh-client": "cashier" } });
       try {
@@ -731,7 +741,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
         assert.equal(destination.amount, 5000); assert.equal(destination.receiveAmount, 295000);
         assert.equal(destination.quote.sourceRate, "59.000000"); assert.equal(destination.quote.sourceRateKind, "purchase");
         await page.waitForFunction(() => Array.from(document.querySelectorAll<HTMLInputElement>("input[readonly]")).some((input) => input.value === "USD 50.00"));
-        assert.equal(await send.inputValue(), "USD 50.00"); assert.equal(await desired.inputValue(), "2950");
+        assert.equal(await send.inputValue(), "USD 50.00"); assert.equal(await desired.inputValue(), "2,950");
         assert.match(await workspace.getByRole("region", { name: "Recibe el destinatario", exact: true }).innerText(), /DOP 2,950\.00/);
         await send.scrollIntoViewIfNeeded(); await page.screenshot({ path: path.join(output, `${surface}-exact-destination-2950-dop.png`) });
         await workspace.getByRole("button", { name: "Revisar y confirmar envío", exact: true }).click();

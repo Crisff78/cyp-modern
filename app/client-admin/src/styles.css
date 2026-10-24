@@ -11350,3 +11350,8 @@ table {
   .sidebar-collapsed .workspace-switch > span:nth-child(2) { display: revert; }
   .sidebar-collapsed .nav-item { justify-content: flex-start; }
 }
+
+/* Visible action names work with mouse, keyboard and touch. */
+.legacy-mdi-toolbar { flex-wrap: wrap; }
+.legacy-mdi-toolbar button:has(.legacy-tool-label) { display: inline-flex; align-items: center; justify-content: center; gap: 4px; width: auto; min-height: 28px; padding: 2px 7px; white-space: nowrap; }
+.legacy-tool-label { font-size: 11px; line-height: 1.1; }

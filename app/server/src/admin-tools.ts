@@ -21,7 +21,7 @@ export type AuthorizationRequest = {
   forCollection: boolean; note: string; status: "pending" | "approved" | "rejected" | "cancelled";
   createdAt: string; createdBy: string; resolvedAt?: string; resolvedBy?: string; resolutionNote?: string;
 };
-export type AdminTrace = { id: string; actorId: string; action: string; resource: string; resourceId?: string; createdAt: string };
+export type AdminTrace = { id: string; actorId: string; action: string; resource: string; resourceId?: string; createdAt: string; details?: Record<string, unknown> };
 export type AdminToolsState = {
   stations: PcpStation[]; pcpGroups: PcpGroup[]; pcps: Pcp[]; pcpStations: PcpStationLink[];
   sessions: AuthSession[]; authorizationRequests: AuthorizationRequest[]; traces: AdminTrace[];

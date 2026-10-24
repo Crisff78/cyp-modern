@@ -90,7 +90,7 @@ window.print = () => {};
 createRoot(document.getElementById("root")).render(<App />);`, "utf8");
     await build({ root: adminRoot, configFile: false, envFile: false, publicDir: false, cacheDir: path.join(output, "cache"), resolve: { dedupe: ["react", "react-dom"] }, plugins: [react(), tailwind()],
       define: { "process.env.NODE_ENV": JSON.stringify("production"), "import.meta.env.VITE_COLLECTOR_URL": JSON.stringify("/collector/") }, logLevel: "error",
-      build: { outDir: path.join(output, "admin"), emptyOutDir: false, cssCodeSplit: false, lib: { entry: fixture, formats: ["es"], fileName: () => "admin.js", cssFileName: "admin" } } });
+      build: { outDir: path.join(output, "admin"), emptyOutDir: false, cssCodeSplit: false, rollupOptions: { output: { inlineDynamicImports: true } }, lib: { entry: fixture, formats: ["es"], fileName: () => "admin.js", cssFileName: "admin" } } });
     server = createServer(async (request, response) => {
       try {
         const url = new URL(request.url ?? "/", "http://127.0.0.1");

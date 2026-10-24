@@ -13,6 +13,7 @@ import { boundedId, freeText, phone, singleLine } from "./input-validation.js";
 import { remittanceClientDraft } from "./client-schema.js";
 import { registerRemittanceClient } from "./remittance-client-registration.js";
 import { isPaymentTextDraft, paymentMethods } from "../../shared/remittances/payment.mjs";
+import { hasRemittancePermission } from "../../shared/access.mjs";
 
 type Mutate = <T, P = Record<string, string>>(
   path: string, summary: string, schema: z.ZodType<T>,
@@ -58,7 +59,11 @@ export function registerRemittanceRoutes(
       commissionBps: z.string().regex(/^\d{1,5}$/).transform(Number).pipe(bps).optional(),
       amountMode: z.enum(["source", "destination"]).default("source"),
     }).strict().parse(req.query);
-    return quoteRemittance(await store.read(), input);
+    const quotation = quoteRemittance(await store.read(), input);
+    if (hasRemittancePermission(user(req), "remittances.commissions.view")) return quotation;
+    const { commissionAllocation: _split, ...publicQuotation } = quotation;
+    const { managerCommissionBps: _percentage, ...quote } = quotation.quote;
+    return { ...publicQuotation, quote };
   });
   mutate("/api/envios/politica-comisiones", "Configurar reparto de comisiones para envíos futuros", z.object({
     transactionCommissionBps: bps.optional(), managerCommissionBps: bps,

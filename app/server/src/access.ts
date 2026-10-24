@@ -77,7 +77,10 @@ function checkRequest(actor: User, method: string, route: string): boolean {
     if (path === "envios/cotizacion") permission = "remittances.create";
     else if (path === "envios/politica-comisiones") permission = "remittances.commissions.manage";
     else if (path === "envios/tasas") permission = "remittances.rates.manage";
-    else if (path.startsWith("envios/reportes")) permission = "remittances.reports";
+    else if (path.startsWith("envios/reportes")) {
+      permission = "remittances.reports";
+      if (path === "envios/reportes/comisiones") requireRemittancePermission(actor, "remittances.commissions.view");
+    }
     else if (path === "envios/recibos") permission = "remittances.receipts";
     else if (path.endsWith("/pagar")) permission = "remittances.pay";
     else if (path.endsWith("/cancelar")) permission = "remittances.cancel";
@@ -96,6 +99,11 @@ function checkRequest(actor: User, method: string, route: string): boolean {
   if (["estaciones/validar", "estaciones/obtener-datos"].includes(path)) {
     requirePermission(actor, 111);
     if (!hasPermission(actor, 112) && !hasPermission(actor, 113)) throw new DomainError("PERMISSION_REQUIRED", "No tienes permiso para registrar ni editar estaciones.", 403);
+    return true;
+  }
+  if (parts[0] === "estaciones" && (parts[2] === "instalaciones" || parts[2] === "datos")) {
+    requirePermission(actor, 111);
+    if (method !== "GET" && parts.at(-1) !== "desafios" && parts[2] !== "datos") requirePermission(actor, 113);
     return true;
   }
   if (parts[0] === "usuarios" && parts[2] === "permisos") { requirePermission(actor, method === "GET" ? 101 : 106); return true; }

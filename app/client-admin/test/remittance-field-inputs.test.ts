@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isPhoneDraft, isRemittanceDocumentDraft, isTextDraft, validatePhone, validateRemittanceClientName, validateRemittanceDocument } from "../../shared/inputRules";
+import { formatMoneyInput, isDecimalDraft, isPhoneDraft, isRemittanceDocumentDraft, isTextDraft, validatePhone, validateRemittanceClientName, validateRemittanceDocument } from "../../shared/inputRules";
 import { isMoneyDraft } from "../../shared/remittances/moneyInput";
 import { decimalCents } from "../../shared/remittances/output";
 import { isPaymentTextDraft, paymentAmounts } from "../../shared/remittances/payment.mjs";
@@ -10,6 +10,21 @@ test("all remittance money fields have the same exact decimal and safe-cent boun
   for (const value of ["1e3", "0x10", "-2", "+2", "1,25", "1 000", "2.001", "１２", "1\n", " 1", "1\u200b", "90071992547409.92", "99999999999999", "1".repeat(18), "0".repeat(18)]) assert.equal(isMoneyDraft(value), false, value);
   assert.equal(decimalCents("90071992547409.91"), Number.MAX_SAFE_INTEGER);
   assert.throws(() => decimalCents("90071992547409.92"));
+});
+
+test("grouped money keeps exact cents and never coerces malformed or hostile input", () => {
+  for (const value of ["1,000", "1,000.00", "12,345,678.90", "90,071,992,547,409.91"]) assert.equal(isMoneyDraft(value), true, value);
+  assert.equal(decimalCents("1,000.05"), 100005);
+  assert.equal(decimalCents("90,071,992,547,409.91"), Number.MAX_SAFE_INTEGER);
+  assert.equal(formatMoneyInput("1234567.05"), "1,234,567.05");
+  assert.equal(formatMoneyInput("1,234,567.05"), "1,234,567.05");
+  for (const value of ["1,25", "12,34", "1,2,3", "1,,000", ",100", "1,", "1.000,05", "1,000.001", "1e3", "1; DROP TABLE", "-100", "+100", "90,071,992,547,409.92"]) {
+    assert.equal(isMoneyDraft(value), false, value);
+    assert.throws(() => decimalCents(value), value);
+    assert.equal(formatMoneyInput(value), value, "Invalid text is never silently converted to another amount.");
+  }
+  assert.equal(isDecimalDraft("1,000.00"), false, "Rates and other ungrouped controls retain their strict contract.");
+  assert.equal(isDecimalDraft("1,000.00", { grouping: true }), true);
 });
 
 test("payment references keep alphanumeric banking data but reject controls and invisible separators", () => {

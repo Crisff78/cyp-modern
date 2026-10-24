@@ -84,7 +84,7 @@ window.print = () => {};
 createRoot(document.getElementById("root")).render(<App />);`, "utf8");
       await build({ root, configFile: false, envFile: false, publicDir: false, cacheDir: path.join(output, `cache-${surface}`), resolve: { dedupe: ["react", "react-dom"] }, plugins: surface === "admin" ? [react(), tailwind()] : [react()],
         define: { "process.env.NODE_ENV": JSON.stringify("production"), "import.meta.env.BASE_URL": JSON.stringify("/collector/"), "import.meta.env.VITE_COLLECTOR_URL": JSON.stringify("/collector/") }, logLevel: "error",
-        build: { outDir: path.join(output, surface), emptyOutDir: false, cssCodeSplit: false, lib: { entry: fixture, formats: ["es"], fileName: () => `${surface}.js`, cssFileName: surface } } });
+        build: { outDir: path.join(output, surface), emptyOutDir: false, cssCodeSplit: false, rollupOptions: { output: { inlineDynamicImports: true } }, lib: { entry: fixture, formats: ["es"], fileName: () => `${surface}.js`, cssFileName: surface } } });
     }
     server = createServer(async (request, response) => {
       try {
@@ -566,7 +566,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         await form.waitFor({ state: "detached" });
         await workspace.getByRole("button", { name: "Volver a la captura", exact: true }).click();
         await form.waitFor();
-        assert.deepEqual([await amount.inputValue(), await selection.innerText(), await search.inputValue()], ["1500", chosen, "ENV"], "the draft comes back as it was, and the search stays");
+        assert.deepEqual([await amount.inputValue(), await selection.innerText(), await search.inputValue()], ["1,500", chosen, "ENV"], "the same amount comes back with thousands formatting, and the selection and search stay");
         await waitForFocus(page, '[data-client-side="sender"] input');
         assert.equal(await workspace.getByRole("listbox", { name: "Clientes para remitente", exact: true }).count(), 0, "the cursor waits in the sender without unfolding its catalog over the draft");
         await search.focus(); await form.waitFor({ state: "detached" });

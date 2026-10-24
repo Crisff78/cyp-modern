@@ -80,7 +80,7 @@ createRoot(document.getElementById("root")).render(new URLSearchParams(location.
       import(pathToFileURL(localRequire.resolve("@vitejs/plugin-react")).href),
       import(pathToFileURL(playwrightEntry!).href),
     ]);
-    await build({ root: adminRoot, configFile: false, envFile: false, publicDir: false, cacheDir: path.join(output, "cache"), resolve: { dedupe: ["react", "react-dom"] }, plugins: [react()], define: { "process.env.NODE_ENV": JSON.stringify("production") }, logLevel: "error", build: { outDir: path.join(output, "dist"), emptyOutDir: false, sourcemap: false, cssCodeSplit: false, lib: { entry: fixture, formats: ["es"], fileName: () => "fixture.js", cssFileName: "fixture" } } });
+    await build({ root: adminRoot, configFile: false, envFile: false, publicDir: false, cacheDir: path.join(output, "cache"), resolve: { dedupe: ["react", "react-dom"] }, plugins: [react()], define: { "process.env.NODE_ENV": JSON.stringify("production") }, logLevel: "error", build: { outDir: path.join(output, "dist"), emptyOutDir: false, sourcemap: false, cssCodeSplit: false, rollupOptions: { output: { inlineDynamicImports: true } }, lib: { entry: fixture, formats: ["es"], fileName: () => "fixture.js", cssFileName: "fixture" } } });
     const html = '<!doctype html><html lang="es"><meta charset="utf-8"><link rel="stylesheet" href="/fixture.css"><style>body{font:14px Arial;margin:20px}main{max-width:800px}.remittance-client-picker{width:500px}</style><div id="root"></div><script type="module" src="/fixture.js"></script></html>';
     server = createServer((request, response) => {
       const pathname = new URL(request.url ?? "/", "http://127.0.0.1").pathname;

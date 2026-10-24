@@ -264,12 +264,19 @@ export function canReportTransfer(state: State, user: User, transfer: Remittance
   if (isRemittanceDesk(user.role)) return transfer.sendingUserId === user.id || transfer.paidBy === user.id;
   return readsAllOperations(user) || transfer.sendingUserId === user.id || clientInRoute(state, user, transfer.senderClientId) || clientInRoute(state, user, transfer.recipientClientId);
 }
+export function visibleRemittanceResult<T>(user: User, value: T): T {
+  if (hasRemittancePermission(user, "remittances.commissions.view") || !value || typeof value !== "object" || Array.isArray(value)) return value;
+  const result = structuredClone(value) as Record<string, unknown>;
+  delete result.commissionAllocation; delete result.managerCommission;
+  if (result.quote && typeof result.quote === "object") delete (result.quote as Record<string, unknown>).managerCommissionBps;
+  return result as T;
+}
 export function transferView(state: State, user: User, transfer: Remittance) {
-  return {
+  return visibleRemittanceResult(user, {
     ...transfer,
     canPay: hasRemittancePermission(user, "remittances.pay") && transfer.status === "pending" && canSeeReceipt(state, user, transfer),
     canCancel: hasRemittancePermission(user, "remittances.cancel") && transfer.status === "pending" && (user.role === "admin" || transfer.sendingUserId === user.id),
-  };
+  });
 }
 export function cashBalance(state: State, cash: CashSession) {
   const sums = { sent: 0n, cancelled: 0n, paid: 0n };
@@ -472,7 +479,8 @@ export function remittanceSnapshot(state: State, user: User, systemOperators: Us
     : hasRemittancePermission(user, "remittances.view") ? state.clients.filter((c) => referenced.has(c.id)) : [];
   return {
     businessDate: date, currencies, access: user.access ?? effectiveAccess(user.role),
-    commissionPolicy: getCommissionPolicy(state),
+    commissionPolicy: hasRemittancePermission(user, "remittances.commissions.view") ? getCommissionPolicy(state)
+      : { revision: getCommissionPolicy(state).revision, transactionCommissionBps: getCommissionPolicy(state).transactionCommissionBps },
     receiptFooterNote: typeof state.systemConfig?.receiptFooterNote === "string" ? state.systemConfig.receiptFooterNote : "",
     receiptIssuer: remittanceReceiptIssuer(state),
     clients: catalog.map((c) => ({ id: c.id, code: c.code, name: c.name, routeId: c.routeId, active: c.active !== false, preferredCurrency: c.preferredCurrency ?? "DOP",
@@ -595,8 +603,9 @@ export function remittanceReports(state: State, user: User, input: { from: strin
     for (const field of ["sentTotal", "cancelRefund", "paid"] as const) group[field] = safeMoney(BigInt(group[field]) + BigInt(row[field]));
     cashGroups.set(key, group);
   }
+  const viewCommissions = hasRemittancePermission(user, "remittances.commissions.view");
   return { ...input, amounts: [...amounts.values()], commissions: { details: commissionDetails, totals: [...commissionTotals.values()] },
-    commissionAllocations: { details: allocationDetails, totals: [...allocationTotals.values()] },
-    managerCommissions: { details: managerCommissionDetails, totals: [...managerCommissionTotals.values()] },
+    commissionAllocations: { details: viewCommissions ? allocationDetails : [], totals: viewCommissions ? [...allocationTotals.values()] : [] },
+    managerCommissions: { details: viewCommissions ? managerCommissionDetails : [], totals: viewCommissions ? [...managerCommissionTotals.values()] : [] },
     deliveryTimes, deliveryTimeSummary, delivered: [...delivered.values()], cash, cashSummary: [...cashGroups.values()] };
 }

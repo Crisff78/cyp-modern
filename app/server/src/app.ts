@@ -1,3 +1,6 @@
+import { MIN_NEW_PASSWORD_LENGTH } from "../../shared/passwordPolicy.mjs";
+import { requestStore } from "./request-store.js";
+import { visibleRemittanceResult } from "./remittances.js";
 import Fastify, { type FastifyRequest } from "fastify";
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
@@ -156,6 +159,7 @@ const loginBody = z
   })
   .strict();
 export async function buildApp(config: Config) {
+  config = { ...config, store: requestStore(config.store) };
   if (config.secret.length < 32)
     throw new Error("JWT_SECRET must contain at least 32 characters.");
   // Its licences are fictional: it can never stand in for the provider outside demo mode.
@@ -268,7 +272,7 @@ export async function buildApp(config: Config) {
     // Validate this request against one consistent state. Each store.read()
     // fetches the full PostgreSQL state, including operational histories.
     // Mutating routes retain their own fresh checks inside the transaction.
-    const state = await config.store.read();
+    const state = config.store.readAccess ? await config.store.readAccess(u, (req.user as User & { sid?: string }).sid) : await config.store.read();
     assertAuthSession(state, u, (req.user as User & { sid?: string }).sid);
     const persistedAccount = state.accounts.find((account) => account.id === u.id);
     const legacyIdentity = !persistedAccount && (config.demo
@@ -377,11 +381,12 @@ export async function buildApp(config: Config) {
       },
     };
   };
-  const mutate = <T, P = Record<string, string>>(
+  const mutate = <T, P = Record<string, string>, C = undefined>(
     path: string,
     summary: string,
     schema: z.ZodType<T>,
-    fn: (state: State, u: User, body: T, params: P) => unknown,
+    fn: (state: State, u: User, body: T, params: P, prepared: C) => unknown,
+    prepare?: (body: T, params: P) => Promise<C>,
   ) => {
     describe("post", path, summary, schema);
     const paramsSchema = z.object(Object.fromEntries(
@@ -402,6 +407,14 @@ export async function buildApp(config: Config) {
         fingerprint = createHash("sha256")
           .update(JSON.stringify({ path: req.url, body }))
           .digest("hex");
+      // Slow read-only providers run before the financial write lock. A committed
+      // retry never asks the provider again; authorization is rechecked below.
+      let prepared: C | undefined;
+      if (prepare) {
+        const prior = config.store.readIdempotency ? await config.store.readIdempotency(scope)
+          : (await config.store.read()).idempotency.find((row) => row.id === scope);
+        if (!prior) prepared = await prepare(body, params);
+      }
       return config.store.transaction(async (state) => {
         assertAuthSession(state, u, (u as User & { sid?: string }).sid);
         const accessedUser = currentAccessUser(state, u);
@@ -417,10 +430,10 @@ export async function buildApp(config: Config) {
               "Esta clave ya se usó para otra operación.",
               409,
             );
-          return existing.response;
+          return path.startsWith("/api/envios") ? visibleRemittanceResult(accessedUser, existing.response) : existing.response;
         }
         const checkCatalogChanges = guardCatalogChanges(state, accessedUser, req.url.split("?")[0]);
-        const response = await fn(state, accessedUser, body, params);
+        const response = await fn(state, accessedUser, body, params, prepared as C);
         checkCatalogChanges();
         recordMutationTrace(state, u, path, req.params, response);
         state.idempotency.push({
@@ -514,10 +527,8 @@ export async function buildApp(config: Config) {
   });
   describe("get", "/api/auth/me", "Usuario actual");
   const emailField = singleLine(200, 1);
-  const passwordField = z
-    .string()
-    .min(3, "La contraseña debe tener al menos 3 caracteres.")
-    .max(200);
+  const passwordField = z.string().max(200).refine((value) => Array.from(value).length >= MIN_NEW_PASSWORD_LENGTH,
+    `La contraseña debe tener al menos ${MIN_NEW_PASSWORD_LENGTH} caracteres.`);
   const accountBody = z
     .object({
       name: text,

@@ -32,7 +32,7 @@ export function ConnectedRemittanceCommissions({ actor }: { actor: AccessActor &
       setPolicy(result.commissionPolicy);
       if (!pendingMovementDraft<PolicyDraft>(actor.id, scope)) {
         setTransaction(String(result.commissionPolicy.transactionCommissionBps / 100));
-        setManager(String(result.commissionPolicy.managerCommissionBps / 100));
+        setManager(String((result.commissionPolicy.managerCommissionBps ?? 0) / 100));
       }
     }).catch((failure) => { if (!retired) setError(failure instanceof Error ? failure.message : "No se pudieron cargar las comisiones."); })
       .finally(() => { if (!retired) setLoading(false); });

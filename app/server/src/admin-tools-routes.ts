@@ -12,7 +12,7 @@ import {
 import { applyRraaValidation, resolveRraaStation, stationRraaValidated, type RraaValidator } from "./rraa.js";
 import { freeText, phone, singleLine } from "./input-validation.js";
 
-type Mutate = <T, P = Record<string, string>>(path: string, summary: string, schema: z.ZodType<T>, fn: (state: State, actor: User, body: T, params: P) => unknown) => void;
+type Mutate = <T, P = Record<string, string>, C = undefined>(path: string, summary: string, schema: z.ZodType<T>, fn: (state: State, actor: User, body: T, params: P, prepared: C) => unknown, prepare?: (body: T, params: P) => Promise<C>) => void;
 type Describe = (method: string, path: string, summary: string, schema?: z.ZodType, isPublic?: boolean, requiresIdempotency?: boolean) => void;
 // Keep the existing normalization of body references in administrative tools.
 const id = singleLine(80, 1);
@@ -70,17 +70,21 @@ export function registerAdminToolsRoutes(app: FastifyInstance, store: Store, use
   describe("get", "/api/estaciones/rraa", "Disponibilidad de validación RRAA para esta instalación");
   describe("post", "/api/estaciones/validar", "Consultar VALSTAT sin guardar ni activar la estación", stationValidationBody, false, false);
   describe("post", "/api/estaciones/obtener-datos", "Obtener ID, licencia y SO por empresa y estación desde STATDAT y comprobar VALSTAT, sin guardar ni activar", stationLookupBody, false, false);
-  mutate("/api/estaciones/:id/actividad", "Activar con RRAA o desactivar estación", z.object({ active: z.boolean() }).strict(), async (state, actor, body, params) => {
+  mutate<{active: boolean}, Record<string, string>, {name: string; deviceId: string; validation: Awaited<ReturnType<typeof resolveRraaStation>>} | undefined>("/api/estaciones/:id/actividad", "Activar con RRAA o desactivar estación", z.object({ active: z.boolean() }).strict(), (state, actor, body, params, prepared) => {
     assertAdmin(actor); const station = requireAdminRow(getAdminTools(state).stations, params.id, "Estación");
     if (body.active) {
-      const service = validator();
-      // Practice control only: a station without device can never be found, so say what is missing. The provider keeps its own answer.
-      if (service.simulated && !service.lookup && !String(station.deviceId ?? "").trim()) throw new DomainError("RRAA_INPUT_INVALID", "Esta estación no tiene ID dispositivo. Obtén los datos de una Estación registrada en el control de prueba antes de activarla.", 422);
-      const validation = await resolveRraaStation(service, station.name, station.deviceId);
+      if (!prepared || prepared.name !== station.name || prepared.deviceId !== station.deviceId)
+        throw new DomainError("STATION_CHANGED", "La estación cambió durante la consulta. Refresca y vuelve a validarla.", 409);
+      const validation = prepared.validation;
       uniqueAdminValue(getAdminTools(state).stations, "deviceId", validation.deviceId, station.id);
       applyRraaValidation(station, validation, actor.id);
     }
     station.active = body.active; return stationView(station);
+  }, async (body, params) => {
+    if (!body.active) return undefined;
+    const service = validator(), station = requireAdminRow(getAdminTools(await store.read()).stations, params.id, "Estación");
+    if (service.simulated && !service.lookup && !String(station.deviceId ?? "").trim()) throw new DomainError("RRAA_INPUT_INVALID", "Esta estación no tiene ID dispositivo. Obtén sus datos antes de activarla.", 422);
+    return { name: station.name, deviceId: station.deviceId, validation: await resolveRraaStation(service, station.name, station.deviceId) };
   });
   app.get("/api/grupos-pcp", async (req) => { assertAdminRead(user(req)); return getAdminTools(await store.read()).pcpGroups; });
   app.get("/api/pcps", async (req) => {
@@ -92,7 +96,7 @@ export function registerAdminToolsRoutes(app: FastifyInstance, store: Store, use
   describe("get", "/api/pcps", "Puntos de cobros y pagos y sus estaciones");
   for (const editing of [false, true]) {
     const suffix = editing ? "/:id" : "";
-    mutate(`/api/estaciones${suffix}`, "Guardar estación validada por RRAA", stationBody, async (state, actor, body, params) => {
+    mutate<z.infer<typeof stationBody>, Record<string, string>, Awaited<ReturnType<typeof resolveRraaStation>>>(`/api/estaciones${suffix}`, "Guardar estación validada por RRAA", stationBody, (state, actor, body, params, validation) => {
       assertAdmin(actor); const service = validator(), data = getAdminTools(state);
       const current = editing ? requireAdminRow(data.stations, params.id, "Estación") : undefined;
       uniqueAdminValue(data.stations, "name", body.name, current?.id);
@@ -103,12 +107,18 @@ export function registerAdminToolsRoutes(app: FastifyInstance, store: Store, use
       if (number.length > 80) throw new DomainError("STATION_NUMBER_INVALID", "No se pudo asignar el próximo número de estación.", 422);
       uniqueAdminValue(data.stations, "number", number, current?.id);
       if (body.deviceId) uniqueAdminValue(data.stations, "deviceId", body.deviceId, current?.id);
-      const validation = await resolveRraaStation(service, body.name, body.deviceId);
       uniqueAdminValue(data.stations, "deviceId", validation.deviceId, current?.id);
       const station = current ?? { id: randomUUID(), ...body, active: body.active ?? false, number, license: "", version: "" };
       Object.assign(station, body, { number, active: body.active ?? station.active }); applyRraaValidation(station, validation, actor.id);
       if (!current) data.stations.push(station);
       return stationView(station);
+    }, async (body, params) => {
+      const service = validator();
+      const data = getAdminTools(await store.read()), current = editing ? requireAdminRow(data.stations, params.id, "Estación") : undefined;
+      uniqueAdminValue(data.stations, "name", body.name, current?.id);
+      if (body.number) uniqueAdminValue(data.stations, "number", body.number, current?.id);
+      if (body.deviceId) uniqueAdminValue(data.stations, "deviceId", body.deviceId, current?.id);
+      return resolveRraaStation(service, body.name, body.deviceId);
     });
     mutate(`/api/grupos-pcp${suffix}`, "Guardar grupo de PCPs", groupBody, (state, actor, body, params) => {
       assertAdmin(actor); const data = getAdminTools(state);
@@ -155,6 +165,10 @@ export function registerAdminToolsRoutes(app: FastifyInstance, store: Store, use
   });
   app.get("/api/sesiones", async (req) => {
     const actor = user(req) as User & { sid?: string }; assertAdminRead(actor); const input = filters.parse(req.query);
+    if (store.readAdminPage) {
+      const page = await store.readAdminPage("sessions", input);
+      return { ...page, items: page.items.map((row) => ({ ...row, current: row.id === actor.sid })) };
+    }
     const items = getAdminTools(await store.read()).sessions.map((row) => ({ ...row, status: sessionStatus(row), current: row.id === actor.sid }))
       .filter((row) => inDateRange(row.startedAt, input.from, input.to) && (!input.status || row.status === input.status) && contains(`${row.userName} ${row.userId}`, input.q))
       .sort((a, b) => b.startedAt.localeCompare(a.startedAt) || a.id.localeCompare(b.id));
@@ -170,6 +184,7 @@ export function registerAdminToolsRoutes(app: FastifyInstance, store: Store, use
   mutate("/api/auth/logout", "Cerrar la sesión propia", z.object({}).strict(), (state, actor) => endOwnAuthSession(state, actor));
   app.get("/api/trazas", async (req) => {
     assertAdminRead(user(req)); const input = filters.parse(req.query);
+    if (store.readAdminPage) return store.readAdminPage("traces", input);
     const items = getAdminTools(await store.read()).traces
       .filter((row) => inDateRange(row.createdAt, input.from, input.to) && contains(`${row.action} ${row.resource} ${row.actorId} ${row.resourceId ?? ""}`, input.q))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id));
