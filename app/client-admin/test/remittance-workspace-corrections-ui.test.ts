@@ -151,7 +151,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
       await dialog.getByRole("button", { name: "Usar estos datos", exact: true }).click(); await dialog.waitFor({ state: "detached" });
     };
     const review = async (page: any, workspace: any, amount = "100") => {
-      await workspace.getByLabel("Monto a enviar (DOP)", { exact: true }).fill(amount);
+      await workspace.getByLabel("Monto a enviar (DOP)", { exact: true }).fill((amount.includes(".") ? amount : `${amount}.00`));
       await workspace.getByRole("button", { name: "Calcular cotización", exact: true }).click();
       await workspace.getByRole("button", { name: "Revisar y confirmar envío", exact: true }).click();
       return page.getByRole("dialog", { name: "Confirmar envío", exact: true });
@@ -279,7 +279,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
         // Coming back to the chosen client and pressing Enter keeps the currencies and the quote.
         await choose(page, workspace, "Remitente", "CL-0001"); await choose(page, workspace, "Destinatario", "CL-0002");
         await workspace.getByLabel("Moneda del remitente").selectOption("USD");
-        await workspace.getByLabel("Monto a enviar (USD)", { exact: true }).fill("10");
+        await workspace.getByLabel("Monto a enviar (USD)", { exact: true }).fill("10.00");
         await workspace.getByRole("button", { name: "Calcular cotización", exact: true }).click();
         await workspace.getByRole("button", { name: "Revisar y confirmar envío", exact: true }).waitFor();
         await sender.focus(); await lookupSettled(page); await sender.press("Enter");

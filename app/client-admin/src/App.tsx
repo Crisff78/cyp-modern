@@ -1,3 +1,4 @@
+import { MoneyInput } from "../../shared/MoneyInput";
 import { lazy, Suspense } from "react";
 const FinancialMonitorView = lazy(() => import("./FinancialMonitorView"));
 import { monitorLedger } from "./monitorLedger";
@@ -6444,7 +6445,7 @@ function CargoDialog({
           </div>
           <div className="cargo-entry-row cargo-amount-row">
             <label htmlFor="cargo-amount">Importe:</label>
-            <label>Monto<input id="cargo-amount" type="number" min="0" step="0.01" value={draft.amount} onChange={(event) => update("amount", event.target.value)} /></label>
+            <label>Monto<MoneyInput id="cargo-amount" min="0" value={draft.amount} onValueChange={(nextValue) => update("amount", nextValue)} /></label>
             <label>Cantidad<input type="number" min="0.01" step="0.01" value={draft.quantity} onChange={(event) => update("quantity", event.target.value)} /></label>
             <label>Total<input type="number" value={centsInput(totalCents)} disabled readOnly /></label>
           </div>
@@ -6951,7 +6952,7 @@ function RecurringChargeDialog({
         <label className="recurring-charge-checkbox"><input type="checkbox" checked={useConceptAmount} onChange={(event) => setUseConceptAmount(event.target.checked)} />Usar Importe de Concepto</label>
         <label className="recurring-charge-row recurring-charge-labeled-row" htmlFor="recurring-charge-amount">
           <span>Importe:</span>
-          <input id="recurring-charge-amount" type="number" min="0" step="0.01" value={amount} disabled={useConceptAmount} onChange={(event) => setAmount(event.target.value)} />
+          <MoneyInput id="recurring-charge-amount" min="0" value={amount} disabled={useConceptAmount} onValueChange={(nextValue) => setAmount(nextValue)} />
         </label>
         <label className="recurring-charge-row recurring-charge-labeled-row" htmlFor="recurring-charge-note">
           <span>Nota:</span>
@@ -8155,7 +8156,7 @@ function DepositDataDialog({ actorId, snapshot, movement, initialDraft, onClose,
     </div>
     <section className="deposit-denominations-section"><div className="deposit-denominations-toolbar"><strong>Denominaciones</strong><button type="button" onClick={refreshDenominations}><RefreshCw size={14} /> Refrescar</button></div><div className="deposit-denominations-table-wrap"><table className="deposit-denominations-table"><thead><tr><th>Denom.</th><th>Cantidad</th><th>Importe</th></tr></thead><tbody>{denominationRows(quantities, currency).map((denomination) => { const quantity = Number(quantities[denomination] ?? 0) || 0; return <tr key={denomination}><td>{denominationName(denomination, currency)}</td><td><input aria-label={`Cantidad ${denomination / 100}`} type="number" min="0" max="1000000000" step="1" value={quantities[denomination] ?? ""} onChange={(event) => setQuantities((current) => ({ ...current, [denomination]: event.target.value }))} /></td><td>{Number.isSafeInteger(denomination * quantity) && quantity >= 0 ? depositMoney(denomination * quantity, currency) : "Cantidad no válida"}</td></tr>; })}</tbody></table></div></section>
     <section className="deposit-components-section"><div className="deposit-denominations-toolbar"><strong>Cheques y depósitos bancarios</strong><button type="button" disabled={nonCash.length >= (cashAmount > 0 ? 19 : 20)} onClick={() => setNonCash((lines) => [...lines, { id: crypto.randomUUID(), method: "cheque", amount: "", bank: "", reference: "" }])}>Añadir cheque</button><button type="button" disabled={nonCash.length >= (cashAmount > 0 ? 19 : 20)} onClick={() => setNonCash((lines) => [...lines, { id: crypto.randomUUID(), method: "bank_deposit", amount: "", bank: "", reference: "" }])}>Añadir depósito bancario</button></div>
-      {nonCash.length > 0 && <div className="deposit-components-table-wrap"><table className="data-table dense deposit-components-table"><thead><tr><th>Método</th><th>Importe ({currencyCode(currency)})</th><th>Banco</th><th>Referencia</th><th /></tr></thead><tbody>{nonCash.map((line, index) => <tr key={line.id}><td><select aria-label={`Método componente ${index + 1}`} value={line.method} onChange={(event) => setNonCash((lines) => lines.map((item) => item.id === line.id ? { ...item, method: event.target.value as NonCashDepositLine["method"] } : item))}><option value="cheque">Cheque</option><option value="bank_deposit">Depósito bancario</option></select></td><td><input aria-label={`Importe componente ${index + 1}`} inputMode="decimal" maxLength={30} value={line.amount} onChange={(event) => setNonCash((lines) => lines.map((item) => item.id === line.id ? { ...item, amount: event.target.value } : item))} /></td><td>{bankStatus === "loading"
+      {nonCash.length > 0 && <div className="deposit-components-table-wrap"><table className="data-table dense deposit-components-table"><thead><tr><th>Método</th><th>Importe ({currencyCode(currency)})</th><th>Banco</th><th>Referencia</th><th /></tr></thead><tbody>{nonCash.map((line, index) => <tr key={line.id}><td><select aria-label={`Método componente ${index + 1}`} value={line.method} onChange={(event) => setNonCash((lines) => lines.map((item) => item.id === line.id ? { ...item, method: event.target.value as NonCashDepositLine["method"] } : item))}><option value="cheque">Cheque</option><option value="bank_deposit">Depósito bancario</option></select></td><td><MoneyInput aria-label={`Importe componente ${index + 1}`} value={line.amount} onValueChange={(nextValue) => setNonCash((lines) => lines.map((item) => item.id === line.id ? { ...item, amount: nextValue } : item))} /></td><td>{bankStatus === "loading"
         ? <select aria-label={`Banco componente ${index + 1}`} value="" disabled><option value="">{line.bank || "Cargando bancos…"}</option></select>
         : bankCatalog.length
         ? <select aria-label={`Banco componente ${index + 1}`} value={line.bank} onChange={(event) => setNonCash((lines) => lines.map((item) => item.id === line.id ? { ...item, bank: event.target.value } : item))}><option value="">Seleccione el banco…</option>{line.bank && !bankCatalog.some((bank) => bank.name === line.bank) ? <option value={line.bank}>{line.bank}</option> : null}{bankCatalog.map((bank) => <option key={bank.id} value={bank.name}>{bank.name}</option>)}</select>
@@ -9024,7 +9025,7 @@ function PaymentAmountDialog({ line, maxAmount, onClose, onSave }: Readonly<{ li
       onSave(cents);
     } catch (failure) { setError(failure instanceof Error ? failure.message : "Importe no válido."); }
   };
-  return <LegacyDialog title="Modificar Importe..." onClose={onClose} className="collection-receipt-modify-dialog" overlayClassName="collection-receipt-suboverlay"><form className="collection-receipt-modify-form" onSubmit={submit}><label>Importe:<input autoFocus type="number" min="0.01" max="10000000" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} /></label>{error && <div className="collection-receipt-error" role="alert">{error}</div>}<div className="legacy-dialog-actions centered"><button type="button" onClick={onClose}>Cancelar</button><button type="submit">Aceptar</button></div></form></LegacyDialog>;
+  return <LegacyDialog title="Modificar Importe..." onClose={onClose} className="collection-receipt-modify-dialog" overlayClassName="collection-receipt-suboverlay"><form className="collection-receipt-modify-form" onSubmit={submit}><label>Importe:<MoneyInput autoFocus min="0.01" max="10000000" value={amount} onValueChange={(nextValue) => setAmount(nextValue)} /></label>{error && <div className="collection-receipt-error" role="alert">{error}</div>}<div className="legacy-dialog-actions centered"><button type="button" onClick={onClose}>Cancelar</button><button type="submit">Aceptar</button></div></form></LegacyDialog>;
 }
 
 function PaymentCancelNoteDialog({ note, onChange, onClose, onConfirm }: Readonly<{ note: string; onChange: (value: string) => void; onClose: () => void; onConfirm: () => void }>) {
@@ -9098,7 +9099,7 @@ function PayoutDataDialog({ actorId, snapshot, payout, concepts, onClose, onSave
           <div className="cargo-entry-row"><label htmlFor="payout-currency">Moneda:</label><select id="payout-currency" value={draft.currency} onChange={(event) => update("currency", event.target.value)}><option>No definida</option><option>Peso Dominicano</option><option>Dólar Americano</option><option>Euro</option></select></div>
           <div className="cargo-entry-row"><label htmlFor="payout-service">Servicio:</label><select id="payout-service" value={servicesLoading && !payout ? "" : draft.service} disabled={servicesLoading} onChange={(event) => update("service", event.target.value)}>{servicesLoading && !payout ? <option value="">Cargando servicios…</option> : services.map((service) => <option key={service} value={service}>{service}</option>)}</select></div>
           <div className="cargo-entry-row"><label htmlFor="payout-concept">Concepto:</label><select id="payout-concept" value={draft.concept} onChange={(event) => update("concept", event.target.value)}>{payoutConcepts.map((concept) => <option key={concept}>{concept}</option>)}</select></div>
-          <div className="cargo-entry-row cargo-amount-row"><label htmlFor="payout-price">Importe:</label><label>Precio<input id="payout-price" type="number" min="0" step="0.01" value={draft.price} onChange={(event) => update("price", event.target.value)} /></label><label>Cantidad<input type="number" min="0" step="0.01" value={draft.quantity} onChange={(event) => update("quantity", event.target.value)} /></label><label>Total<input type="number" value={centsInput(totalCents)} disabled readOnly /></label></div>
+          <div className="cargo-entry-row cargo-amount-row"><label htmlFor="payout-price">Importe:</label><label>Precio<MoneyInput id="payout-price" min="0" value={draft.price} onValueChange={(nextValue) => update("price", nextValue)} /></label><label>Cantidad<input type="number" min="0" step="0.01" value={draft.quantity} onChange={(event) => update("quantity", event.target.value)} /></label><label>Total<input type="number" value={centsInput(totalCents)} disabled readOnly /></label></div>
           <div className="cargo-entry-row"><label htmlFor="payout-note">Nota:</label><input id="payout-note" maxLength={INPUT_LIMITS.note} value={draft.note} onChange={(event) => update("note", event.target.value)} /></div>
           </fieldset>
           {errorMessage && <div className="inline-error" role="alert">{errorMessage}</div>}
@@ -9232,12 +9233,10 @@ function RecurringPayoutModal({
         </label>
         <label className="field">
           Monto (RD$)
-          <input
-            type="number"
+          <MoneyInput
             min="0.01"
-            step="0.01"
             value={amount}
-            onChange={(event) => setAmount(event.target.value)}
+            onValueChange={(nextValue) => setAmount(nextValue)}
             required
           />
         </label>
@@ -9382,7 +9381,7 @@ function CollectorSubflowModal({
         </div>
         {flow === "zones" && <label className="field compact-field">Zona disponible<select value={selectedZone} onChange={(event) => setSelectedZone(event.target.value)}><option>Distrito Nacional</option><option>Mercado</option><option>Santiago Norte</option><option>Zona Este</option></select></label>}
         {flow === "routes" && <label className="field compact-field">Ruta disponible<select value={selectedRoute} onChange={(event) => setSelectedRoute(event.target.value)}>{snapshot.routes.map((route) => <option value={route.id} key={route.id}>{route.name}</option>)}</select></label>}
-        {flow === "limits" && <div className="form-grid three-cols"><label className="field">Moneda<select value={abbr} onChange={(event) => { const next = event.target.value; setAbbr(next); setCurrency(collectorCurrencyName(next)); }}><option value="NONE">No definida</option><option value="DOP">Peso Dominicano (DOP)</option><option value="USD">Dólar Americano (USD)</option><option value="EUR">Euro (EUR)</option></select></label><label className="field">Límite de Cobro<input type="number" min="0" step="0.01" value={collectionLimit} onChange={(event) => setCollectionLimit(event.target.value)} /></label><label className="field">Límite de Pago<input type="number" min="0" step="0.01" value={payoutLimit} onChange={(event) => setPayoutLimit(event.target.value)} /></label></div>}
+        {flow === "limits" && <div className="form-grid three-cols"><label className="field">Moneda<select value={abbr} onChange={(event) => { const next = event.target.value; setAbbr(next); setCurrency(collectorCurrencyName(next)); }}><option value="NONE">No definida</option><option value="DOP">Peso Dominicano (DOP)</option><option value="USD">Dólar Americano (USD)</option><option value="EUR">Euro (EUR)</option></select></label><label className="field">Límite de Cobro<MoneyInput min="0" value={collectionLimit} onValueChange={(nextValue) => setCollectionLimit(nextValue)} /></label><label className="field">Límite de Pago<MoneyInput min="0" value={payoutLimit} onValueChange={(nextValue) => setPayoutLimit(nextValue)} /></label></div>}
         <div className="table-scroll legacy-table-scroll">
           {flow === "zones" && <table className="data-table legacy-data-table dense"><thead><tr><th>Nro</th><th>Zona</th><th>Desde</th><th>Hasta</th></tr></thead><tbody>{(collector.zones ?? []).map((zone, index) => <tr key={zone.id} className={selectedRow === zone.id ? "selected-row" : undefined} role="button" tabIndex={0} onClick={() => setSelectedRow(zone.id)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedRow(zone.id))}><td>{index + 1}</td><td>{zone.name}</td><td>{zone.from}</td><td>{zone.to}</td></tr>)}</tbody></table>}
           {flow === "limits" && <table className="data-table legacy-data-table dense"><thead><tr><th>Moneda</th><th>Abrev</th><th>Lím. de Cobro</th><th>Lím. de Pago</th></tr></thead><tbody>{(collector.limits ?? []).map((limit) => <tr key={limit.abbr} className={selectedRow === limit.abbr ? "selected-row" : undefined} role="button" tabIndex={0} onClick={() => setSelectedRow(limit.abbr)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedRow(limit.abbr))}><td>{limit.currency}</td><td>{limit.abbr}</td><td>{money(limit.collectionLimit)}</td><td>{money(limit.payoutLimit)}</td></tr>)}</tbody></table>}
@@ -9469,7 +9468,7 @@ function ChargeDataModal({
           <label className="field">Concepto<input value={concept} onChange={(event) => setConcept(event.target.value)} required /></label>
         </div>
         <div className="form-grid three-cols">
-          <label className="field">Monto Base<input type="number" min="0.01" step="0.01" value={base} onChange={(event) => setBase(event.target.value)} required /></label>
+          <label className="field">Monto Base<MoneyInput min="0.01" value={base} onValueChange={(nextValue) => setBase(nextValue)} required /></label>
           <label className="field">Tasa/Multiplicador<input type="number" min="0.01" step="0.01" value={rate} onChange={(event) => setRate(event.target.value)} required /></label>
           <label className="field">Total Calculado<input value={(total / 100).toFixed(2)} readOnly disabled /></label>
         </div>
@@ -9846,7 +9845,7 @@ function ModifyReceiptAmountDialog({
   return (
     <LegacyDialog title="Modificar Importe..." onClose={onClose} className="collection-receipt-modify-dialog" overlayClassName="collection-receipt-suboverlay">
       <form className="collection-receipt-modify-form" onSubmit={submit}>
-        <label>Importe:<input autoFocus type="number" min="0.01" max="10000000" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} /></label>
+        <label>Importe:<MoneyInput autoFocus min="0.01" max="10000000" value={amount} onValueChange={(nextValue) => setAmount(nextValue)} /></label>
         {error && <div className="collection-receipt-error" role="alert">{error}</div>}
         <div className="legacy-dialog-actions centered"><button type="button" onClick={onClose}>Cancelar</button><button type="submit">Aceptar</button></div>
       </form>
@@ -10051,12 +10050,10 @@ function QuickRecordModal({
             </label>
             <label className="field">
               Monto (RD$)
-              <input
-                type="number"
+              <MoneyInput
                 min="0.01"
-                step="0.01"
                 value={amount}
-                onChange={(event) => setAmount(event.target.value)}
+                onValueChange={(nextValue) => setAmount(nextValue)}
                 required
               />
             </label>
@@ -11220,11 +11217,11 @@ function DailySettlementsView({ snapshot, onRefresh }: Readonly<{ snapshot: Snap
       <form className="settlement-balance-editor" onSubmit={saveBalance}>
         <div className="settlement-balance-header"><label>Fecha:<input type="date" value={balanceDraft.date} onChange={(event) => updateDraft("date", event.target.value)} /></label><label>Moneda:<select value={balanceDraft.currency} onChange={(event) => updateDraft("currency", event.target.value)}><option>No definido</option><option>Peso Dominicano</option><option>Dólar Americano</option><option>Euro</option></select></label></div>
         <div className="settlement-balance-columns"><span /><strong>Efectivo</strong><strong>Cheque</strong></div>
-        <label className="settlement-balance-row"><span>Monto al Inicio:</span><span className="settlement-money-entry"><input type="number" step="0.01" value={balanceDraft.cashOpening} onChange={(event) => updateDraft("cashOpening", event.target.value)} /><button type="button" onClick={() => openDenominationDialog({ section: "cash", field: "Opening" })}>[...]</button></span><span className="settlement-money-entry"><input type="number" step="0.01" value={balanceDraft.checkOpening} onChange={(event) => updateDraft("checkOpening", event.target.value)} /><button type="button" onClick={() => openDenominationDialog({ section: "check", field: "Opening" })}>[...]</button></span></label>
-        <label className="settlement-balance-row"><span>Ingresos:</span><input type="number" step="0.01" value={balanceDraft.cashIncome} onChange={(event) => updateDraft("cashIncome", event.target.value)} /><input type="number" step="0.01" value={balanceDraft.checkIncome} onChange={(event) => updateDraft("checkIncome", event.target.value)} /></label>
-        <label className="settlement-balance-row"><span>Egresos:</span><input type="number" step="0.01" value={balanceDraft.cashExpenses} onChange={(event) => updateDraft("cashExpenses", event.target.value)} /><input type="number" step="0.01" value={balanceDraft.checkExpenses} onChange={(event) => updateDraft("checkExpenses", event.target.value)} /></label>
+        <label className="settlement-balance-row"><span>Monto al Inicio:</span><span className="settlement-money-entry"><MoneyInput value={balanceDraft.cashOpening} onValueChange={(nextValue) => updateDraft("cashOpening", nextValue)} /><button type="button" onClick={() => openDenominationDialog({ section: "cash", field: "Opening" })}>[...]</button></span><span className="settlement-money-entry"><MoneyInput value={balanceDraft.checkOpening} onValueChange={(nextValue) => updateDraft("checkOpening", nextValue)} /><button type="button" onClick={() => openDenominationDialog({ section: "check", field: "Opening" })}>[...]</button></span></label>
+        <label className="settlement-balance-row"><span>Ingresos:</span><MoneyInput value={balanceDraft.cashIncome} onValueChange={(nextValue) => updateDraft("cashIncome", nextValue)} /><MoneyInput value={balanceDraft.checkIncome} onValueChange={(nextValue) => updateDraft("checkIncome", nextValue)} /></label>
+        <label className="settlement-balance-row"><span>Egresos:</span><MoneyInput value={balanceDraft.cashExpenses} onValueChange={(nextValue) => updateDraft("cashExpenses", nextValue)} /><MoneyInput value={balanceDraft.checkExpenses} onValueChange={(nextValue) => updateDraft("checkExpenses", nextValue)} /></label>
         <div className="settlement-balance-row"><span>Totales:</span><input value={settlementMoney(draftSectionTotal("cash"), balanceDraft.currency)} readOnly /><input value={settlementMoney(draftSectionTotal("check"), balanceDraft.currency)} readOnly /></div>
-        <label className="settlement-balance-row"><span>Monto al Final:</span><span className="settlement-money-entry"><input type="number" step="0.01" value={balanceDraft.cashFinal} onChange={(event) => updateDraft("cashFinal", event.target.value)} /><button type="button" onClick={() => openDenominationDialog({ section: "cash", field: "Final" })}>[...]</button></span><span className="settlement-money-entry"><input type="number" step="0.01" value={balanceDraft.checkFinal} onChange={(event) => updateDraft("checkFinal", event.target.value)} /><button type="button" onClick={() => openDenominationDialog({ section: "check", field: "Final" })}>[...]</button></span></label>
+        <label className="settlement-balance-row"><span>Monto al Final:</span><span className="settlement-money-entry"><MoneyInput value={balanceDraft.cashFinal} onValueChange={(nextValue) => updateDraft("cashFinal", nextValue)} /><button type="button" onClick={() => openDenominationDialog({ section: "cash", field: "Final" })}>[...]</button></span><span className="settlement-money-entry"><MoneyInput value={balanceDraft.checkFinal} onValueChange={(nextValue) => updateDraft("checkFinal", nextValue)} /><button type="button" onClick={() => openDenominationDialog({ section: "check", field: "Final" })}>[...]</button></span></label>
         <div className="settlement-balance-row"><span>Balance:</span><input value={settlementMoney(draftSectionBalance("cash"), balanceDraft.currency)} readOnly /><input value={settlementMoney(draftSectionBalance("check"), balanceDraft.currency)} readOnly /></div>
         <label className="settlement-balance-note">Nota:<input value={balanceDraft.note} onChange={(event) => updateDraft("note", event.target.value)} /></label>
         <div className="legacy-dialog-actions centered"><button type="submit">Aceptar</button><button type="button" onClick={() => { setEditingRow(null); setBalanceDraft(null); }}>Cancelar</button></div>

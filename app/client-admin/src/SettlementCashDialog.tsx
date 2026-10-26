@@ -1,3 +1,4 @@
+import { MoneyInput } from "../../shared/MoneyInput";
 import { useEffect, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { api } from "./api";
@@ -93,7 +94,7 @@ export function SettlementCashDialog({ actorId, collectorId, date, onClose, onRe
         </tbody></table></div>
         {preview.issues.map((issue) => <p role="alert" key={issue}>{issue}</p>)}
         {preview.rows.length > 0 && <fieldset disabled={locked || !preview.canReconcile} className="previous-cash-fields">
-          {currencies.map((currency) => <label key={currency}>{currency} recibido:<input aria-label={`Efectivo recibido ${currency}`} inputMode="decimal" maxLength={22} value={received[currency]} readOnly={preview.amounts[currency] === 0} onChange={(event) => { setReceived((current) => ({ ...current, [currency]: event.target.value })); clearError(); }} /><small>Pendiente: {cashMoney(preview.amounts[currency], currency)}</small></label>)}
+          {currencies.map((currency) => <label key={currency}>{currency} recibido:<MoneyInput aria-label={`Efectivo recibido ${currency}`} value={received[currency]} readOnly={preview.amounts[currency] === 0} onValueChange={(nextValue) => { setReceived((current) => ({ ...current, [currency]: nextValue })); clearError(); }} /><small>Pendiente: {cashMoney(preview.amounts[currency], currency)}</small></label>)}
           {preview.demo && <button type="button" onClick={() => { setReceived(Object.fromEntries(currencies.map((currency) => [currency, centsInput(preview.amounts[currency])])) as ReceiptDraft["received"]); clearError(); }}>Usar importes ficticios de prueba</button>}
           <label className="previous-cash-note">Motivo:<textarea aria-label="Motivo de devolución" maxLength={2000} rows={2} value={note} onChange={(event) => { setNote(event.target.value); clearError(); }} /></label>
           <label className="previous-cash-confirm"><input type="checkbox" checked={confirmed} onChange={(event) => { setConfirmed(event.target.checked); clearError(); }} />{preview.demo ? "Confirmo la recepción ficticia para esta prueba" : "Confirmo que recibí en oficina el efectivo indicado"}</label>

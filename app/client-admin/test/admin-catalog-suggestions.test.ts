@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { moneyEntryDisplay } from "../../shared/moneyEntry";
 import test from "node:test";
 import fs from "node:fs";
 import path from "node:path";
@@ -215,7 +216,7 @@ remittancesApi("/snapshot").then(snapshot => { if (new URLSearchParams(location.
       await reopened.getByRole("button", { name: "Agregar", exact: true }).click();
       const picker = page.getByRole("dialog", { name: "Seleccionar...", exact: true });
       await picker.getByLabel("Moneda:", { exact: true }).selectOption("DOP");
-      assert.equal(await picker.getByLabel("Lím. de Cobro:", { exact: true }).inputValue(), (before.collectionLimit / 100).toFixed(2));
+      assert.equal(await picker.getByLabel("Lím. de Cobro:", { exact: true }).inputValue(), moneyEntryDisplay((before.collectionLimit / 100).toFixed(2)));
       await picker.getByRole("button", { name: "Cancelar", exact: true }).click();
       await discardAssignments(reopened);
       assert.equal(limitsWrites().length, count); assert.deepEqual(await financialState(), beforeFinancial);
