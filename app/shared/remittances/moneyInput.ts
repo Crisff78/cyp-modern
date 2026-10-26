@@ -1,7 +1,8 @@
 import { ungroupDecimal } from "../decimalText";
+import { MONEY_ENTRY_ERROR } from "../moneyEntry";
 export const MONEY_INPUT_MAX_LENGTH = 24;
 export const MONEY_INPUT_PATTERN = "([0-9]+|[0-9]{1,3}(,[0-9]{3})+)([.][0-9]{1,2})?";
-export const MONEY_INPUT_MESSAGE = "Usa números, comas para separar los miles y un punto para los decimales (hasta dos decimales). El máximo es 90071992547409.91.";
+export const MONEY_INPUT_MESSAGE = MONEY_ENTRY_ERROR;
 
 /** Check the whole draft, including its exact cent limit, before a browser can truncate or coerce it. */
 export function isMoneyDraft(value: string): boolean {
