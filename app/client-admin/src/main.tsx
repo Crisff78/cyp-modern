@@ -8,6 +8,13 @@ import "leaflet/dist/leaflet.css";
 import "./styles.css";
 import "./suggestions-shell.css";
 import App from "./App";
+import { getToken } from "./api";
+import { NewVersionNotice } from "../../shared/NewVersionNotice";
+import { ADMIN_TOKEN_KEY, COLLECTOR_TOKEN_KEY } from "../../shared/sessionHandoff";
+import { startSessionLifetime } from "../../shared/sessionLifetime";
+
+// Before anything reads the token: a tab closed and reopened starts signed out.
+startSessionLifetime([ADMIN_TOKEN_KEY, COLLECTOR_TOKEN_KEY]);
 
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -39,5 +46,6 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <ErrorBoundary>
       <App />
     </ErrorBoundary>
+    <NewVersionNotice pageUrl={import.meta.env.BASE_URL} isSignedIn={() => Boolean(getToken())} />
   </React.StrictMode>,
 );

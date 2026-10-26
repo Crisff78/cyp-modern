@@ -92,7 +92,7 @@ function Fixture({ snapshot }) {
   window.__qaView = setView;
   return <main><h1>QA sintética de Administración</h1><PageAccessContext.Provider value={{actor:{role:"admin"},page:view === "rates" ? "exchangeRates" : view}}>{view === "empty" ? <p>Ventana cerrada</p> : ["account", "account-mock"].includes(view) ? <AccountModal operation={{type:"create"}} snapshot={snapshot} actorId=${JSON.stringify(user.id)} onClose={() => setView("empty")} onComplete={async () => {}} /> : view === "rates" ? <ConnectedExchangeRates actorId=${JSON.stringify(user.id)} isAdmin={true} /> : ["stations", "authorizationRequests"].includes(view) ? <ConnectedAdminTools key={view} page={view} snapshot={snapshot} onRefresh={() => {}} /> : <ConnectedCatalog key={view} page={view} actorId=${JSON.stringify(user.id)} snapshot={snapshot} onRefresh={() => {}} />}</PageAccessContext.Provider></main>;
 }
-remittancesApi("/snapshot").then(snapshot => { if (new URLSearchParams(location.search).get("view") === "account-mock") localStorage.setItem("cyp-admin-token", "mock-token:qa-account"); createRoot(document.getElementById("root")).render(<Fixture snapshot={snapshot} />); });
+remittancesApi("/snapshot").then(snapshot => { if (new URLSearchParams(location.search).get("view") === "account-mock") sessionStorage.setItem("cyp-admin-token", "mock-token:qa-account"); createRoot(document.getElementById("root")).render(<Fixture snapshot={snapshot} />); });
 `, "utf8");
     report.fixtureSha256 = hash(fixture);
     const [{ build }, { default: react }, { chromium }] = await Promise.all([
@@ -133,7 +133,7 @@ remittancesApi("/snapshot").then(snapshot => { if (new URLSearchParams(location.
     browser = await chromium.launch({ executablePath: edge, headless: true });
     report.browserVersion = browser.version();
     context = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale: "es-DO", serviceWorkers: "block" });
-    await context.addInitScript(({ token }: { token: string }) => localStorage.setItem("cyp-admin-token", token), { token });
+    await context.addInitScript(({ token }: { token: string }) => sessionStorage.setItem("cyp-admin-token", token), { token });
     await context.route("**/*", async (route: any) => {
       const target = new URL(route.request().url());
       if (target.origin !== origin) { external.push(target.origin); return route.abort("blockedbyclient"); }

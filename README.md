@@ -82,9 +82,11 @@ Supervisor, Cobrador, Cliente, Cajero y No definido (Cliente todavía no tiene a
 de permisos y **Usuarios → Permisos** permite limitarlo (ver
 [docs/DIONEL-REMESAS-PERMISOS.md](docs/DIONEL-REMESAS-PERMISOS.md) y
 [docs/ROLES-Y-CUENTAS-COBRADORES.md](docs/ROLES-Y-CUENTAS-COBRADORES.md)). La
-contraseña inicial exige 3 caracteres mínimo, se entrega personalmente y el
-cobrador puede cambiarla; cualquier cambio de contraseña o de estado cierra las
-sesiones abiertas de esa cuenta. Para cambiar la clave, el estado, el rol o los
+contraseña inicial exige 15 caracteres mínimo (desde el 2026-10-23; las claves anteriores siguen
+sirviendo para entrar), se entrega personalmente y el cobrador puede cambiarla; cualquier cambio de
+contraseña o de estado cierra las sesiones abiertas de esa cuenta. La sesión vive solo en su pestaña:
+al cerrar la pestaña o el navegador hay que volver a entrar (ver
+[docs/SESION-Y-VERSION-NUEVA.md](docs/SESION-Y-VERSION-NUEVA.md)). Para cambiar la clave, el estado, el rol o los
 datos de inicio de otra cuenta hay que tener todos sus permisos, y la cuenta
 principal de administración solo la modifica ella misma.
 

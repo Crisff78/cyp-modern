@@ -92,7 +92,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
     await page.getByRole("button", { name: "Iniciar sesión", exact: true }).click();
     await page.getByRole("heading", { name: "Oficina" }).waitFor();
     assert.equal(new URL(page.url()).pathname, "/"); assert.equal(new URL(page.url()).search, "");
-    assert.equal(await page.evaluate(() => localStorage.getItem("cyp-admin-token")), "qa-forbidden-admin");
+    assert.equal(await page.evaluate(() => sessionStorage.getItem("cyp-admin-token")), "qa-forbidden-admin");
     assert.equal(await page.evaluate(() => sessionStorage.getItem("cyp-collector-token")), null);
     assert.equal(await page.evaluate((secret: string) => [localStorage, sessionStorage].every((storage) => Object.values(storage).every((value) => !String(value).includes(secret))), secret), true);
     await page.evaluate(() => localStorage.clear()); await page.goto(`${origin}/collector/`); await email.waitFor();

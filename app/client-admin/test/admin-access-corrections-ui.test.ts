@@ -117,7 +117,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
     browser = await chromium.launch({ executablePath: edge, headless: true });
     const open = async (token: string) => {
       const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: "es-DO", timezoneId: "America/Santo_Domingo", serviceWorkers: "block" });
-      await context.addInitScript((token: string) => localStorage.setItem("cyp-admin-token", token), token);
+      await context.addInitScript((token: string) => sessionStorage.setItem("cyp-admin-token", token), token);
       await context.route("**/*", (route: any) => { const target = new URL(route.request().url()); if (target.origin === origin) return route.continue(); external.push(target.origin); return route.abort("blockedbyclient"); });
       const page = await context.newPage(); page.setDefaultTimeout(15000);
       page.on("pageerror", (error: Error) => pageErrors.push(error.message));
@@ -324,7 +324,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         await page.evaluate(() => window.dispatchEvent(new CustomEvent("cyp-user-permissions-updated")));
         await page.getByText(/Si tu acceso cambió, solicita a Administración que revise tus permisos\./).first().waitFor();
         await page.getByRole("button", { name: "Abrir cuenta", exact: true }).waitFor({ state: "detached" });
-        assert.equal(await page.evaluate(() => localStorage.getItem("cyp-admin-token")), null);
+        assert.equal(await page.evaluate(() => sessionStorage.getItem("cyp-admin-token")), null);
       } finally { await context.close(); }
     });
 

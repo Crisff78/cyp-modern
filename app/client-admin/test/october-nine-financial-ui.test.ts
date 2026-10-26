@@ -73,7 +73,7 @@ remittancesApi('/snapshot').then(snapshot=>createRoot(document.getElementById('r
     const address = server.address(); assert.ok(address && typeof address !== "string"); const origin = `http://127.0.0.1:${address.port}`;
     browser = await chromium.launch({ executablePath: edge, headless: true });
     const context = await browser.newContext({ viewport: { width: 1440, height: 1100 }, locale: "es-DO", serviceWorkers: "block" });
-    await context.addInitScript((value: string) => localStorage.setItem("cyp-admin-token", value), token);
+    await context.addInitScript((value: string) => sessionStorage.setItem("cyp-admin-token", value), token);
     await context.route("**/*", (route: any) => { const target = new URL(route.request().url()); if (target.origin === origin || target.protocol === "about:") return route.continue(); blockedExternal.add(target.hostname); return route.abort("blockedbyclient"); });
     const page = await context.newPage(); page.setDefaultTimeout(15000); page.on("pageerror", (error: Error) => errors.push(error.message));
     await page.goto(origin);

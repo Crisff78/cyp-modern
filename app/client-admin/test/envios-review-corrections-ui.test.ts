@@ -114,7 +114,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
     const block = (context: any) => context.route("**/*", (route: any) => { const target = new URL(route.request().url()); if (target.origin === origin) return route.continue(); external.push(target.origin); return route.abort("blockedbyclient"); });
     const open = async (token: string, viewport = { width: 1440, height: 1000 }) => {
       const context = await browser.newContext({ viewport, locale: "es-DO", timezoneId: "America/Santo_Domingo", serviceWorkers: "block" });
-      await context.addInitScript((token: string) => localStorage.setItem("cyp-admin-token", token), token);
+      await context.addInitScript((token: string) => sessionStorage.setItem("cyp-admin-token", token), token);
       await block(context);
       const page = await context.newPage(); page.setDefaultTimeout(15000);
       page.on("pageerror", (error: Error) => pageErrors.push(error.message));

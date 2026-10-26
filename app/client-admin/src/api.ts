@@ -2,11 +2,12 @@ import { isMockToken, mockApi } from "./mock";
 import { createStrictApi, StrictApiError } from "../../shared/remittances/strictApi";
 
 import { ADMIN_TOKEN_KEY as TOKEN_KEY } from "../../shared/sessionHandoff";
-export const getToken = () => localStorage.getItem(TOKEN_KEY);
+// The session lives in this tab only and ends when it is closed (see shared/sessionLifetime.ts).
+export const getToken = () => sessionStorage.getItem(TOKEN_KEY);
 export const setToken = (token: string) =>
-  localStorage.setItem(TOKEN_KEY, token);
+  sessionStorage.setItem(TOKEN_KEY, token);
 export const clearToken = () => {
-  localStorage.removeItem(TOKEN_KEY);
+  sessionStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem("cyp-admin-force-mock");
 };
 export class ApiError extends Error {

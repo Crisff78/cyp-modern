@@ -64,7 +64,7 @@ remittancesApi("/snapshot").then(snapshot => createRoot(document.getElementById(
     const address = server.address(); assert(address && typeof address !== "string"); const origin = `http://127.0.0.1:${address.port}`;
     browser = await chromium.launch({ executablePath: edge, headless: true });
     context = await browser.newContext({ viewport: { width: 1280, height: 950 }, serviceWorkers: "block" });
-    await context.addInitScript((token: string) => localStorage.setItem("cyp-admin-token", token), token);
+    await context.addInitScript((token: string) => sessionStorage.setItem("cyp-admin-token", token), token);
     await context.route("**/*", (route: any) => new URL(route.request().url()).origin === origin ? route.continue() : route.abort("blockedbyclient"));
     const page = await context.newPage(); page.setDefaultTimeout(8000); page.on("pageerror", (error: Error) => errors.push(error.message));
     const dialog = page.getByRole("dialog", { name: "Datos de la Estación de PCP", exact: true });

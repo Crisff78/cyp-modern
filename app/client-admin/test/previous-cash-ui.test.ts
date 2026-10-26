@@ -76,7 +76,7 @@ test("actual Cuadres Diarios UI exclusively closes synthetic cash, preserves his
     const address = server.address(); assert(address && typeof address !== "string"); const origin = `http://127.0.0.1:${address.port}`;
     browser = await chromium.launch({ executablePath: edge, headless: true });
     context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: "es-DO", serviceWorkers: "block" });
-    await context.addInitScript(({ token, origin }: { token: string; origin: string }) => { if (location.origin === origin) localStorage.setItem("cyp-admin-token", token); }, { token, origin });
+    await context.addInitScript(({ token, origin }: { token: string; origin: string }) => { if (location.origin === origin) sessionStorage.setItem("cyp-admin-token", token); }, { token, origin });
     await context.route("**/*", (route: any) => {
       const target = new URL(route.request().url());
       if (target.origin === origin) return route.continue();
