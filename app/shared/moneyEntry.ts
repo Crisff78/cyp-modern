@@ -2,8 +2,7 @@ import { ungroupDecimal } from "./decimalText";
 
 export const MONEY_ENTRY_HELP =
   "Escribe desde los centavos: 1 = 0.01; 100000 = 1,000.00. Las comas y los dos decimales se colocan automáticamente.";
-export const MONEY_ENTRY_ERROR =
-  "Importe no válido. Usa solo números o pega un importe con comas para miles y punto para hasta dos decimales.";
+export const MONEY_ENTRY_ERROR = "Escribe un importe válido.";
 const maximum = BigInt(Number.MAX_SAFE_INTEGER);
 
 /** Decimal values in application state remain units, never reinterpreted as keystrokes. */
