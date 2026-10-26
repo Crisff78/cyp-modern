@@ -1,3 +1,4 @@
+import { MoneyInput } from "../../shared/MoneyInput";
 import { useRef, useState } from "react";
 import {
   ArrowRight,
@@ -229,15 +230,12 @@ function OperationForm({
             {recurring ? "Monto fijo por cliente" : "Monto"} (RD$)
             <div className="currency-field">
               <span>RD$</span>
-              <input
+              <MoneyInput
                 required
-                inputMode="decimal"
-                type="number"
                 min="0.01"
                 max="10000000"
-                step="0.01"
                 value={amount}
-                onChange={(event) => setAmount(event.target.value)}
+                onValueChange={(nextValue) => setAmount(nextValue)}
                 placeholder="0.00"
               />
             </div>

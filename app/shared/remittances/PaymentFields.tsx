@@ -1,7 +1,7 @@
+import { MoneyInput } from "../MoneyInput";
 import { restrictPaste } from "./fieldInput";
 import { decimalCents, formatMoney } from "./output";
-import { isMoneyDraft, MONEY_INPUT_MAX_LENGTH, MONEY_INPUT_MESSAGE, MONEY_INPUT_PATTERN } from "./moneyInput";
-import { formatMoneyInput } from "../inputRules";
+import { isMoneyDraft, MONEY_INPUT_MESSAGE } from "./moneyInput";
 import { isPaymentTextDraft, paymentAmounts, paymentMethodLabels, paymentMethods, type PaymentMethod, type RemittancePaymentInput } from "./payment.mjs";
 import type { Currency } from "./types";
 
@@ -39,7 +39,7 @@ export function PaymentFields({ total, currency, value, onChange, locked = false
       {paymentMethods.map((method) => <option key={method} value={method}>{paymentMethodLabels[method]}</option>)}
     </select></label>
     {value.method === "cash" ? <div className="remittance-payment-cash">
-      <label>Dinero recibido ({currency})<input inputMode="decimal" autoComplete="off" pattern={MONEY_INPUT_PATTERN} title={MONEY_INPUT_MESSAGE} maxLength={MONEY_INPUT_MAX_LENGTH} value={value.tendered} onBlur={() => { if (!value.entryErrors?.tendered && isMoneyDraft(value.tendered) && formatMoneyInput(value.tendered) !== value.tendered) update("tendered", formatMoneyInput(value.tendered)); }} aria-invalid={Boolean(value.entryErrors?.tendered) || undefined} onPaste={(event) => restrictPaste(event, isMoneyDraft, () => reject("tendered", MONEY_INPUT_MESSAGE))} onChange={(event) => { const next = event.target.value; if (!isMoneyDraft(next)) { reject("tendered", MONEY_INPUT_MESSAGE); return; } update("tendered", next); }} /></label>
+      <label>Dinero recibido ({currency})<MoneyInput  autoComplete="off" title={MONEY_INPUT_MESSAGE} value={value.tendered} aria-invalid={Boolean(value.entryErrors?.tendered) || undefined} onValueChange={(nextValue) => { const next = nextValue; if (!isMoneyDraft(next)) { reject("tendered", MONEY_INPUT_MESSAGE); return; } update("tendered", next); }} onInvalidEntry={() => reject("tendered", MONEY_INPUT_MESSAGE)} /></label>
       <label>Devuelta ({currency})<input readOnly value={change === undefined ? "Revisa el dinero recibido" : formatMoney(change, currency)} /></label>
       <p className="remittance-help">El cambio se calcula sobre el total a pagar, incluida la comisión. En caja queda el total neto del envío.</p>
     </div> : <>

@@ -136,7 +136,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
     const send = async (page: any, region: any, amount: string, destination: "DOP" | "USD") => {
       await choose(region, "Remitente", sender.code); await choose(region, "Destinatario", recipient.code);
       await region.getByLabel("Moneda del remitente").selectOption("DOP"); await region.getByLabel("Moneda del destinatario").selectOption(destination);
-      await region.getByLabel("Monto a enviar (DOP)", { exact: true }).fill(amount);
+      await region.getByLabel("Monto a enviar (DOP)", { exact: true }).fill((amount.includes(".") ? amount : `${amount}.00`));
       await region.getByRole("button", { name: "Calcular cotización", exact: true }).click();
       await region.getByRole("button", { name: "Revisar y confirmar envío", exact: true }).click();
       const saved = page.waitForResponse((reply: any) => reply.request().method() === "POST" && new URL(reply.url()).pathname === "/api/envios");
