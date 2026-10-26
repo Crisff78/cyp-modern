@@ -45,6 +45,7 @@ async function setup(t: TestContext) {
   });
   const storage = new Map<string, string>([["cyp-admin-token", token]]);
   replace("localStorage", { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value), removeItem: (key: string) => storage.delete(key) });
+  replace("sessionStorage", (globalThis as unknown as { localStorage: Storage }).localStorage); // the token lives in sessionStorage
   replace("navigator", { onLine: true });
   replace("window", { setTimeout, clearTimeout });
   const calls: Capture[] = [];

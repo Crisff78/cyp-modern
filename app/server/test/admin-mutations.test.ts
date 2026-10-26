@@ -22,6 +22,7 @@ function browserMocks(t: TestContext, token = "synthetic-api-session") {
     setItem: (key: string, value: string) => storage.set(key, value),
     removeItem: (key: string) => storage.delete(key),
   });
+  replace("sessionStorage", (globalThis as unknown as { localStorage: Storage }).localStorage); // the token lives in sessionStorage
   replace("navigator", { onLine: true });
   let timer = 0;
   replace("window", { setTimeout: () => ++timer, clearTimeout: () => undefined });

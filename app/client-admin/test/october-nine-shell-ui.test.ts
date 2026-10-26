@@ -96,7 +96,7 @@ test("October nine shell changes work in actual App with isolated synthetic APIs
     const origin = `http://127.0.0.1:${address.port}`;
     browser = await chromium.launch({ executablePath: edge, headless: true }); report.browserVersion = browser.version();
     const protect = async (target: any, auth: string) => {
-      await target.addInitScript(({ auth, origin }: { auth: string; origin: string }) => { if (location.origin === origin) localStorage.setItem("cyp-admin-token", auth); }, { auth, origin });
+      await target.addInitScript(({ auth, origin }: { auth: string; origin: string }) => { if (location.origin === origin) sessionStorage.setItem("cyp-admin-token", auth); }, { auth, origin });
       await target.route("**/*", async (route: any) => {
         const destination = new URL(route.request().url());
         if (destination.origin === origin) return route.continue();
@@ -267,8 +267,8 @@ test("October nine shell changes work in actual App with isolated synthetic APIs
       ownContext = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: "es-DO", serviceWorkers: "block", extraHTTPHeaders: { "x-qa-own-session": "synthetic-password" } }); await protect(ownContext, passwordSession.token);
       const ownPage = await ownContext.newPage(); await ownPage.goto(origin); await ownPage.getByRole("button", { name: "Abrir cuenta", exact: true }).click(); await ownPage.getByRole("button", { name: "Cambiar mi clave", exact: true }).click();
       const dialog = ownPage.getByRole("dialog", { name: "Cambiar mi clave...", exact: true }); await dialog.getByLabel("Clave actual:", { exact: true }).fill("Incorrecta-ficticia"); await dialog.getByLabel("Nueva clave:", { exact: true }).fill("Nueva-ficticia-2026!"); await dialog.getByLabel("Confirmación:", { exact: true }).fill("Nueva-ficticia-2026!"); await dialog.getByRole("button", { name: "Guardar", exact: true }).click(); await dialog.getByRole("alert").waitFor();
-      assert.equal(await ownPage.evaluate(() => Boolean(localStorage.getItem("cyp-admin-token"))), true);
-      await dialog.getByLabel("Clave actual:", { exact: true }).fill("Demo-CyP-2026!"); await dialog.getByRole("button", { name: "Guardar", exact: true }).click(); await ownPage.getByRole("heading", { name: "Iniciar sesión", exact: true }).waitFor(); assert.equal(await ownPage.evaluate(() => localStorage.getItem("cyp-admin-token")), null);
+      assert.equal(await ownPage.evaluate(() => Boolean(sessionStorage.getItem("cyp-admin-token"))), true);
+      await dialog.getByLabel("Clave actual:", { exact: true }).fill("Demo-CyP-2026!"); await dialog.getByRole("button", { name: "Guardar", exact: true }).click(); await ownPage.getByRole("heading", { name: "Iniciar sesión", exact: true }).waitFor(); assert.equal(await ownPage.evaluate(() => sessionStorage.getItem("cyp-admin-token")), null);
       assert.equal((await app.inject({ url: "/api/snapshot", headers: { authorization: `Bearer ${token}` } })).statusCode, 200);
       const oldLogin = await passwordApp.inject({ method: "POST", url: "/api/auth/login", payload: { email: "admin", password: "Demo-CyP-2026!" } }); assert.equal(oldLogin.statusCode, 401);
       const newLogin = await passwordApp.inject({ method: "POST", url: "/api/auth/login", payload: { email: "admin", password: "Nueva-ficticia-2026!" } }); assert.equal(newLogin.statusCode, 200);

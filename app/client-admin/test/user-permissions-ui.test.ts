@@ -230,7 +230,7 @@ createRoot(document.getElementById("root")).render(<Fixture />);`, "utf8");
       assert.deepEqual(writes[0].body, { permissionIds: [500, 501], revision: 0, mode: "custom", remittancePermissions: [] }); assert.ok(writes[0].key.length >= 8);
       assert.deepEqual((await getProfile()).permissionIds, [500, 501]); assert.deepEqual((await getProfile(second.id)).permissionIds, []);
       assert.deepEqual((await store.read()).adminTools.sessions, sessions);
-      assert.equal(await page.evaluate(() => localStorage.getItem("cyp-admin-token")), adminToken);
+      assert.equal(await page.evaluate(() => sessionStorage.getItem("cyp-admin-token")), adminToken);
       await open(); assert.equal(await isAssigned(501), true); await remove(501); await page.keyboard.press("Escape");
       await confirmation("Cambios sin guardar").getByRole("button", { name: "No", exact: true }).click();
       assert.equal(await dialog().isVisible(), true); assert.equal(await isAssigned(501), false, "declining close preserves unsaved removals");

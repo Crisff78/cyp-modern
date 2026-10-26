@@ -89,7 +89,7 @@ remittancesApi("/snapshot").then(snapshot => createRoot(document.getElementById(
         rollupOptions: { output: { inlineDynamicImports: true } }, lib: { entry: fixture, formats: ["es"], fileName: () => "fixture.js", cssFileName: "fixture" } } });
     browser = await chromium.launch({ executablePath: edge, headless: true });
     context = await browser.newContext({ viewport: { width: 1280, height: 950 }, serviceWorkers: "block" });
-    await context.addInitScript((value: string) => localStorage.setItem("cyp-admin-token", value), token);
+    await context.addInitScript((value: string) => sessionStorage.setItem("cyp-admin-token", value), token);
     await context.route("**/*", (route: any) => {
       if (new URL(route.request().url()).origin === origin) return route.continue();
       externalAttempts++; return route.abort("blockedbyclient");

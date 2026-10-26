@@ -150,12 +150,12 @@ createRoot(document.getElementById("root")).render(<App />);
       await page.waitForURL(`${origin}/collector/`); await page.getByRole("heading", { name: "App del cobrador" }).waitFor();
       assert.equal(new URL(page.url()).search, "");
       assert.equal(typeof await page.evaluate(() => sessionStorage.getItem("cyp-collector-token")), "string");
-      assert.equal(await page.evaluate(() => localStorage.getItem("cyp-admin-token")), null);
+      assert.equal(await page.evaluate(() => sessionStorage.getItem("cyp-admin-token")), null);
       await page.goto(origin); await page.getByRole("heading", { name: "Iniciar sesión", exact: true }).waitFor();
       await page.evaluate(() => sessionStorage.clear());
       await credentials("suspendido@cyp.local");
       await page.getByRole("alert").getByText("Tu cuenta o tu empresa está suspendida. Habla con la oficina.").waitFor();
-      assert.equal(await page.evaluate(() => localStorage.getItem("cyp-admin-token")), null);
+      assert.equal(await page.evaluate(() => sessionStorage.getItem("cyp-admin-token")), null);
       await credentials("admin@cyp.local");
       await page.getByRole("button", { name: /^Notificaciones,/ }).waitFor();
     });
@@ -225,7 +225,7 @@ createRoot(document.getElementById("root")).render(<App />);
       const themeButton = () => page.locator(".theme-toggle");
       assert.deepEqual(await themeButton().evaluate((node: HTMLElement) => ({ before: node.previousElementSibling?.getAttribute("aria-label"), after: node.nextElementSibling?.getAttribute("aria-label") })), { before: "Qué hay de nuevo", after: "Ventana de Pagos" });
       assert.equal(await themeButton().getAttribute("aria-pressed"), "false");
-      const token = await page.evaluate(() => localStorage.getItem("cyp-admin-token"));
+      const token = await page.evaluate(() => sessionStorage.getItem("cyp-admin-token"));
       // The quick buttons above the desktop were removed (2026-10-20): everything opens from the side menu.
       assert.equal(await page.getByRole("navigation", { name: "Operaciones principales" }).count(), 0);
       const openFromMenu = async (section: string, name: string) => {
@@ -249,7 +249,7 @@ createRoot(document.getElementById("root")).render(<App />);
       await openFromMenu("PAGOS", "Descargos"); await page.locator(".payouts-legacy-view").waitFor();
       await page.locator(".mdi-window").filter({ has: page.locator(".payouts-legacy-view") }).getByRole("button", { name: "Cerrar Descargos", exact: true }).click();
       assert.notEqual(await page.locator(".sidebar").evaluate((node: HTMLElement) => getComputedStyle(node).backgroundColor), lightSidebar);
-      assert.equal(await page.evaluate(() => localStorage.getItem("cyp-admin-token")), token);
+      assert.equal(await page.evaluate(() => sessionStorage.getItem("cyp-admin-token")), token);
       assert.equal(await page.evaluate(() => (window as any).__qaLoginRequests), loginCount);
 
       const clients = page.getByRole("button", { name: "Clientes", exact: true });
@@ -275,7 +275,9 @@ createRoot(document.getElementById("root")).render(<App />);
       assert.equal(await name.getAttribute("maxlength"), "160");
       await page.screenshot({ path: path.join(output, "theme-dark-client-dialog.png") });
 
-      const other = await context.newPage(); await other.goto(origin); await other.locator(".theme-toggle").waitFor();
+      // Since 2026-10-26 each tab signs in on its own (the session lives in sessionStorage): the second tab gets its own.
+      const other = await context.newPage(); await other.addInitScript((value: string) => sessionStorage.setItem("cyp-admin-token", value), token!);
+      await other.goto(origin); await other.locator(".theme-toggle").waitFor();
       assert.equal(await other.locator("html").getAttribute("data-theme"), "dark");
       await other.locator(".theme-toggle").click();
       await page.waitForFunction(() => document.documentElement.dataset.theme === "light");
@@ -296,7 +298,7 @@ createRoot(document.getElementById("root")).render(<App />);
       await page.setViewportSize({ width: 1280, height: 900 });
       await page.evaluate("(() => { const original = Storage.prototype.setItem; Storage.prototype.setItem = function(name, value) { if (name === 'cyp-admin-color-theme') throw new DOMException('Storage unavailable', 'SecurityError'); return original.call(this, name, value); }; })()");
       await themeButton().click(); assert.equal(await page.locator("html").getAttribute("data-theme"), "light");
-      assert.equal(await page.evaluate(() => localStorage.getItem("cyp-admin-token")), token);
+      assert.equal(await page.evaluate(() => sessionStorage.getItem("cyp-admin-token")), token);
     });
     await t.test("error notifications remain visible and dismissible above MDI forms and nested alerts", async () => {
       const cash = page.getByRole("button", { name: "Entregas de Dinero a Cobradores", exact: true });

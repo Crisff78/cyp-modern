@@ -18,6 +18,7 @@ function transport(t: TestContext) {
   set("localStorage", { getItem: (key: string) => storage.get(key) ?? null,
     setItem: (key: string, value: string) => storage.set(key, value),
     removeItem: (key: string) => storage.delete(key) });
+  set("sessionStorage", (globalThis as unknown as { localStorage: Storage }).localStorage); // the token lives in sessionStorage
   set("navigator", { onLine: true });
   set("window", { setTimeout: () => 1, clearTimeout: () => undefined });
   const requests: Array<{ method: string; body: string; key: string | null }> = [];

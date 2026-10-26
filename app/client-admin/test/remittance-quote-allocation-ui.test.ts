@@ -109,7 +109,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
     await t.test("Admin registers both central rates once and future remittances display them readonly", async () => {
       const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: "es-DO", serviceWorkers: "block", extraHTTPHeaders: { "x-qa-rate-refresh-client": "commission-policy" } });
       try {
-        await context.addInitScript((token: string) => localStorage.setItem("cyp-admin-token", token), tokens.admin);
+        await context.addInitScript((token: string) => sessionStorage.setItem("cyp-admin-token", token), tokens.admin);
         await context.route("**/*", routeLocalOnly);
         const page = await context.newPage(); page.setDefaultTimeout(15000); page.on("pageerror", (error: Error) => errors.push(error.message));
         const workspace = page.getByRole("region", { name: "Configuración de comisiones de remesas", exact: true });
@@ -144,7 +144,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
       const before = await store.read();
       try {
         await context.addInitScript(({ token, surface }: { token: string; surface: string }) => {
-          if (surface === "admin") localStorage.setItem("cyp-admin-token", token); else sessionStorage.setItem("cyp-collector-token", token);
+          if (surface === "admin") sessionStorage.setItem("cyp-admin-token", token); else sessionStorage.setItem("cyp-collector-token", token);
           (window as any).__qaPrinted = false; window.print = () => { (window as any).__qaPrinted = true; };
         }, { token: tokens[surface], surface });
         await context.route("**/*", routeLocalOnly);
@@ -221,7 +221,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
       await context.addInitScript(() => { (window as any).__qaPrinted = false; window.print = () => { (window as any).__qaPrinted = true; }; });
       try {
         await context.addInitScript(({ token, surface }: { token: string; surface: string }) => {
-          if (surface === "admin") localStorage.setItem("cyp-admin-token", token); else sessionStorage.setItem("cyp-collector-token", token);
+          if (surface === "admin") sessionStorage.setItem("cyp-admin-token", token); else sessionStorage.setItem("cyp-collector-token", token);
         }, { token: tokens[surface], surface });
         await context.route("**/*", routeLocalOnly);
         const page = await context.newPage(); page.setDefaultTimeout(15000); page.on("pageerror", (error: Error) => errors.push(error.message));
@@ -402,7 +402,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
       const previousReceipts = (await store.read()).remittances.transfers.map(({ id, quote, receiveAmount, totalAmount }) => ({ id, quote, receiveAmount, totalAmount }));
       try {
         await context.addInitScript(({ token, surface }: { token: string; surface: string }) => {
-          if (surface === "admin") localStorage.setItem("cyp-admin-token", token); else sessionStorage.setItem("cyp-collector-token", token);
+          if (surface === "admin") sessionStorage.setItem("cyp-admin-token", token); else sessionStorage.setItem("cyp-collector-token", token);
         }, { token: tokens[surface], surface });
         await context.route("**/*", routeLocalOnly);
         const page = await context.newPage(); page.setDefaultTimeout(15000); page.on("pageerror", (error: Error) => errors.push(error.message));
@@ -451,7 +451,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
       });
       const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: "es-DO", serviceWorkers: "block", acceptDownloads: true });
       try {
-        await context.addInitScript(({ token }: { token: string }) => { localStorage.setItem("cyp-admin-token", token); (window as any).__qaPrinted = false; window.print = () => { (window as any).__qaPrinted = true; }; }, { token: tokens.admin });
+        await context.addInitScript(({ token }: { token: string }) => { sessionStorage.setItem("cyp-admin-token", token); (window as any).__qaPrinted = false; window.print = () => { (window as any).__qaPrinted = true; }; }, { token: tokens.admin });
         await context.route("**/*", routeLocalOnly);
         const page = await context.newPage(); page.setDefaultTimeout(15000); page.on("pageerror", (error: Error) => errors.push(error.message));
         await page.goto(`${origin}/admin/`); await (await menuOption(page, "Envíos de dinero")).click();
@@ -520,7 +520,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
       assert.equal(login.statusCode, 200); const token = login.json().token;
       const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: "es-DO", serviceWorkers: "block", extraHTTPHeaders: { "x-qa-rate-refresh-client": "cashier" } });
       try {
-        await context.addInitScript((token: string) => localStorage.setItem("cyp-admin-token", token), token);
+        await context.addInitScript((token: string) => sessionStorage.setItem("cyp-admin-token", token), token);
         await context.route("**/*", routeLocalOnly);
         const page = await context.newPage(); page.setDefaultTimeout(15000); page.on("pageerror", (error: Error) => errors.push(error.message));
         await page.goto(`${origin}/admin/`); await (await menuOption(page, "Envíos de dinero")).click();
@@ -622,7 +622,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
       const context = await browser.newContext({ viewport: surface === "admin" ? { width: 1440, height: 1000 } : { width: 390, height: 844 }, locale: "es-DO", serviceWorkers: "block", extraHTTPHeaders: { "x-qa-rate-refresh-client": `payments-${surface}` } });
       try {
         await context.addInitScript(({ token, surface }: { token: string; surface: string }) => {
-          if (surface === "admin") localStorage.setItem("cyp-admin-token", token); else sessionStorage.setItem("cyp-collector-token", token);
+          if (surface === "admin") sessionStorage.setItem("cyp-admin-token", token); else sessionStorage.setItem("cyp-collector-token", token);
         }, { token: tokens[surface], surface });
         await context.route("**/*", routeLocalOnly);
         const page = await context.newPage(); page.setDefaultTimeout(15000); page.on("pageerror", (error: Error) => errors.push(error.message));
@@ -691,7 +691,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
       const before = await store.read();
       try {
         await context.addInitScript(({ token, surface }: { token: string; surface: string }) => {
-          if (surface === "admin") localStorage.setItem("cyp-admin-token", token); else sessionStorage.setItem("cyp-collector-token", token);
+          if (surface === "admin") sessionStorage.setItem("cyp-admin-token", token); else sessionStorage.setItem("cyp-collector-token", token);
         }, { token: tokens[surface], surface });
         await context.route("**/*", routeLocalOnly);
         const page = await context.newPage(); page.setDefaultTimeout(15000); page.on("pageerror", (error: Error) => errors.push(error.message));
