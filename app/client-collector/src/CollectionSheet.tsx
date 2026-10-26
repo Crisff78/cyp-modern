@@ -1,3 +1,4 @@
+import { MoneyInput } from "../../shared/MoneyInput";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
@@ -15,7 +16,8 @@ import { api, ApiError, getToken, money } from "./api";
 import type { Operation } from "./types";
 import { browserPaymentIntents, confirmedPaymentReceipt, intentStorageKey, type IntentScope, type PaymentIntent } from "./services/paymentIntents";
 import { isMockToken, mockLedgerId } from "./mock";
-import { assertCentsLimit, isDecimalDraft, isIntegerDraft } from "../../shared/inputRules";
+import { assertCentsLimit, isIntegerDraft } from "../../shared/inputRules";
+import { editMoneyEntry, moneyEntryDisplay, MONEY_ENTRY_ERROR } from "../../shared/moneyEntry";
 import { decimalCents } from "../../shared/remittances/output";
 
 const denominations = [2000, 1000, 500, 200, 100, 50, 25, 10, 5, 1];
@@ -54,6 +56,7 @@ export function CollectionSheet({
       : (operation.outstanding / 100).toFixed(2),
   );
   const [replace, setReplace] = useState(true);
+  const [amountEntryError, setAmountEntryError] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(initial.error);
   const inFlight = useRef(false);
@@ -92,6 +95,7 @@ export function CollectionSheet({
   const Icon = collecting ? ArrowDownLeft : ArrowUpRight;
   const validAttempt = !!attempt && Number.isSafeInteger(attempt.amount) && attempt.amount > 0 && attempt.amount <= maximumAmount;
   const valid =
+    !amountEntryError &&
     amount !== null &&
     amount > 0 &&
     amount <= operation.outstanding &&
@@ -100,16 +104,12 @@ export function CollectionSheet({
   function keyPress(key: string) {
     if (attempt || busy) return;
     setError("");
-    if (key === "delete") {
-      setValue(replace ? "" : value.slice(0, -1));
-      setReplace(false);
-      return;
-    }
-    const next = replace ? (key === "." ? "0." : key) : `${value}${key}`;
-    if (isDecimalDraft(next, { wholeDigits: 8 })) {
-      setValue(next);
-      setReplace(false);
-    }
+    const display = replace ? "" : moneyEntryDisplay(value);
+    const next = editMoneyEntry(display, display.length, display.length, key === "delete" ? "" : key, key === "delete" ? "backward" : undefined);
+    if (!next || (next.value !== "" && decimalCents(next.value, true) > maximumAmount)) { setAmountEntryError(true); setError(MONEY_ENTRY_ERROR); return; }
+    setValue(next.value);
+    setAmountEntryError(false);
+    setReplace(false);
   }
 
   async function confirm(beginAnother = false) {
@@ -227,19 +227,19 @@ export function CollectionSheet({
             </label>
             <div>
               <span>RD$</span>
-              <input
+              <MoneyInput
                 id="collection-amount"
-                inputMode="decimal"
-                maxLength={11}
                 value={value}
                 readOnly={!!attempt || busy}
-                onFocus={() => setReplace(true)}
-                onChange={(e) => {
-                  if (isDecimalDraft(e.target.value, { wholeDigits: 8 })) {
-                    setValue(e.target.value);
-                    setReplace(false);
-                  }
+                onFocus={(event) => { setReplace(true); event.currentTarget.select(); }}
+                onValueChange={(nextValue) => {
+                  setValue(nextValue);
+                  setAmountEntryError(false);
+                  setError("");
+                  setReplace(false);
                 }}
+                max="10000000"
+                onInvalidEntry={() => { setAmountEntryError(true); setError(MONEY_ENTRY_ERROR); }}
                 aria-describedby="amount-help"
               />
             </div>
@@ -259,7 +259,7 @@ export function CollectionSheet({
                 "7",
                 "8",
                 "9",
-                ".",
+                "00",
                 "0",
                 "delete",
               ].map((key) => (

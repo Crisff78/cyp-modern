@@ -1,4 +1,5 @@
 import { MIN_NEW_PASSWORD_LENGTH } from "../../shared/passwordPolicy.mjs";
+import { MoneyInput } from "../../shared/MoneyInput";
 import { useCallback, useEffect, useId, useState, type FormEvent, type ReactNode } from "react";
 import { KeyRound, ShieldCheck, Users, Wallet } from "lucide-react";
 import { LegacyToolbar, LegacyDialog, LegacyCheck, LegacyDenseTable } from "./LegacyConnectedUi";
@@ -9,7 +10,7 @@ import { collectorOptionsForAccount } from "./collectorAccountOptions";
 import type { CollectorAssignment } from "./collectorAssignmentsState";
 import { remittancesApi } from "./remittancesApi";
 import { decimalCents, formatMoney } from "../../shared/remittances/output";
-import { INPUT_LIMITS, assertCentsLimit, isDecimalDraft, isIntegerDraft, parseDay, validateEmail, validatePhone, validateText } from "../../shared/inputRules";
+import { INPUT_LIMITS, assertCentsLimit, isIntegerDraft, parseDay, validateEmail, validatePhone, validateText } from "../../shared/inputRules";
 import { recurringDayFromInput } from "../../shared/recurringDays";
 import { currentOperationalWeek } from "../../shared/operationalWeek";
 import { ACCOUNT_ROLE_OPTIONS, ACCOUNT_ROLE_SUMMARY, accountRoleAccess, accountRoleLabel } from "../../shared/accountRoles";
@@ -292,11 +293,15 @@ export function ConnectedCatalog({ page, snapshot, actorId, canManagePermissions
     };
     if (field.type === "boolean") return <input {...common} type="checkbox" checked={Boolean(draft[key])} onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.checked }))} />;
     if (field.options) return <select {...common} value={String(draft[key] ?? "")} onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))}>{key !== "role" && <option value="">{key === "service" && servicesPending ? "Cargando servicios…" : "Selecciona…"}</option>}{field.options.map((option) => <option key={option.value} value={option.value} disabled={option.disabled}>{option.label}</option>)}</select>;
-    return <input {...common} type={field.type === "date" || field.type === "password" || field.type === "email" || field.type === "tel" ? field.type : "text"} inputMode={field.type === "money" ? "decimal" : field.type === "number" ? "numeric" : field.type === "tel" ? "tel" : undefined} autoComplete={field.type === "password" ? "new-password" : "off"} value={String(draft[key] ?? "")} onChange={(event) => {
+    if (field.type === "money") {
+      const { maxLength: _maximumText, ...moneyCommon } = common;
+      return <MoneyInput {...moneyCommon} value={String(draft[key] ?? "")} onValueChange={(next) => setDraft((current) => ({ ...current, [key]: next }))} />;
+    }
+    return <input {...common} type={field.type === "date" || field.type === "password" || field.type === "email" || field.type === "tel" ? field.type : "text"} inputMode={field.type === "number" ? "numeric" : field.type === "tel" ? "tel" : undefined} autoComplete={field.type === "password" ? "new-password" : "off"} value={String(draft[key] ?? "")} onChange={(event) => {
       const next = event.target.value;
       setDraft((current) => {
         const shrinking = next.length < String(current[key] ?? "").length;
-        if (!shrinking && ((field.type === "money" && !isDecimalDraft(next, { wholeDigits: 8 })) || (field.type === "number" && !isIntegerDraft(next)))) return current;
+        if (!shrinking && field.type === "number" && !isIntegerDraft(next)) return current;
         return { ...current, [key]: next };
       });
     }} />;
