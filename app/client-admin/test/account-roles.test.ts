@@ -101,7 +101,7 @@ remittancesApi("/snapshot").then(initial=>createRoot(document.getElementById("ro
     const address = server.address(); assert(address && typeof address !== "string"); const origin = `http://127.0.0.1:${address.port}`;
     browser = await chromium.launch({ executablePath: edge, headless: true });
     context = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale: "es-DO", serviceWorkers: "block" });
-    await context.addInitScript((value: string) => localStorage.setItem("cyp-admin-token", value), token);
+    await context.addInitScript((value: string) => sessionStorage.setItem("cyp-admin-token", value), token);
     await context.route("**/*", async (route: any) => { const target = new URL(route.request().url()); if (target.origin !== origin) { external.push(target.origin); return route.abort("blockedbyclient"); } return route.continue(); });
     const page = await context.newPage(); page.setDefaultTimeout(15000); page.on("pageerror", (error: Error) => pageErrors.push(error.message));
     const open = async (view: string) => { await page.goto(`${origin}/?view=${view}`); await (view === "auxiliary" ? page.getByRole("dialog", { name: "Nueva cuenta", exact: true }) : page.getByRole("region", { name: view === "users" ? "Usuarios" : "Cobradores", exact: true })).waitFor(); };
