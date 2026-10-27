@@ -1,0 +1,13 @@
+/* The keys of CyP (KeyboardHelp.tsx): F1 and Soporte Técnico. */
+.keyboard-help { display: grid; gap: 8px; margin: 4px 0 8px; }
+.keyboard-help > strong { font-size: 14px; }
+.keyboard-help p { margin: 0; font-size: 13px; color: var(--muted, #475569); }
+/* One table under the other: they read well at any width of the window. */
+.keyboard-help-columns { display: grid; gap: 12px; }
+.keyboard-help th { width: 11em; }
+.keyboard-help table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.keyboard-help caption { text-align: left; font-weight: 700; padding-bottom: 4px; }
+.keyboard-help th, .keyboard-help td { padding: 3px 6px; border-bottom: 1px solid var(--line, #e2e8f0); text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.keyboard-help th { font-weight: 400; }
+.keyboard-help kbd { display: inline-block; min-width: 26px; padding: 1px 6px; border: 1px solid var(--line-strong, #94a3b8); border-bottom-width: 2px; border-radius: 4px; background: var(--surface-2, #f8fafc); font: 600 12px/1.4 system-ui, "Segoe UI", sans-serif; text-align: center; }
+.dialog.keyboard-help-dialog { width: min(600px, calc(100vw - 32px)); max-width: none; }

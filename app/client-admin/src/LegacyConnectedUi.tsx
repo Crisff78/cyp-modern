@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { ClipboardCheck, Eye, Pencil, Plus, Printer, RefreshCw, Trash2, X } from "lucide-react";
 import { FiltersPanelIcon } from "./PanelIcons";
 import { usePageAccess } from "./PageAccess";
+import { closeAfterAsking, focusFirstUseful, giveFocusBack } from "../../shared/keyboard";
 
 // Original MDI presentation shared by the connected screens.
 type LegacyToolbarAction = () => void;
@@ -36,6 +37,11 @@ export const handleKeyboardActivation = (event: ReactKeyboardEvent<HTMLElement>,
   event.preventDefault();
   action();
 };
+// A row of a list: Space selects it; Enter does what its double click does (Dionel, 26-10; keyboard only, 27-10).
+export const handleRowKeys = (event: ReactKeyboardEvent<HTMLElement>, select: () => void, open: () => void) => {
+  if (event.key === "Enter") { event.preventDefault(); open(); }
+  else if (event.key === " ") { event.preventDefault(); select(); }
+};
 
 export function LegacyToolbar({ onToggleFilters, filtersVisible = true, onFirst, onPrevious, onNext, onLast, onNew, onEdit, onAccept, onDelete, onRefresh, onPrint, disableNew = false, disableEdit = false, disableAccept = false, disableDelete = false, showEdit = true, consultOnEdit = false, deleteIcon = "trash", deleteTitle = "Eliminar", newTitle = "Nuevo", newIcon, extra }: Readonly<{ onToggleFilters?: () => void; filtersVisible?: boolean; onFirst?: () => void; onPrevious?: () => void; onNext?: () => void; onLast?: () => void; onNew?: () => void; onEdit?: () => void; onAccept?: () => void; onDelete?: () => void; onRefresh?: () => void; onPrint?: () => void; disableNew?: boolean; disableEdit?: boolean; disableAccept?: boolean; disableDelete?: boolean; showEdit?: boolean; consultOnEdit?: boolean; deleteIcon?: "trash" | "x"; deleteTitle?: string; newTitle?: string; newIcon?: ReactNode; extra?: ReactNode }>) {
   const access = usePageAccess();
@@ -43,18 +49,18 @@ export function LegacyToolbar({ onToggleFilters, filtersVisible = true, onFirst,
   const consult = consultOnEdit && !access.canEdit;
   return (
     <div className="legacy-mdi-toolbar" aria-label="Barra de herramientas legacy" onMouseDown={stopToolbarEvent} onClick={stopToolbarEvent}>
-      {onToggleFilters && <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" aria-label="Mostrar/Ocultar filtros" aria-pressed={filtersVisible} onClick={runToolbarAction(onToggleFilters)}><FiltersPanelIcon /></button>}
+      {onToggleFilters && <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" aria-label="Mostrar/Ocultar filtros" aria-pressed={filtersVisible} data-shortcut="filters" onClick={runToolbarAction(onToggleFilters)}><FiltersPanelIcon /></button>}
       <button type="button" className="nav-tool" title="Primer registro" onClick={runToolbarAction(onFirst)}>|&lt;</button>
       <button type="button" className="nav-tool" title="Registro anterior" onClick={runToolbarAction(onPrevious)}>&lt;</button>
       <button type="button" className="nav-tool" title="Registro siguiente" onClick={runToolbarAction(onNext)}>&gt;</button>
       <button type="button" className="nav-tool" title="Último registro" onClick={runToolbarAction(onLast)}>&gt;|</button>
       <span className="mdi-toolbar-separator" />
-      <button type="button" title={newTitle} disabled={disableNew || !access.canCreate} onClick={runToolbarAction(onNew)}>{newIcon ?? <Plus size={15} />}<span className="legacy-tool-label">{newTitle}</span></button>
+      <button type="button" title={newTitle} data-shortcut="new" disabled={disableNew || !access.canCreate} onClick={runToolbarAction(onNew)}>{newIcon ?? <Plus size={15} />}<span className="legacy-tool-label">{newTitle}</span></button>
       {showEdit && <button type="button" title={consult ? "Consultar" : "Editar"} disabled={disableEdit || !access.canEdit && !consult} onClick={runToolbarAction(onEdit)}>{consult ? <Eye size={15} /> : <Pencil size={15} />}<span className="legacy-tool-label">{consult ? "Consultar" : "Editar"}</span></button>}
       {onAccept && <button type="button" title="Aceptar depósito" disabled={disableAccept || !access.canAccept} onClick={runToolbarAction(onAccept)}><ClipboardCheck size={15} /></button>}
       <button type="button" className="danger-tool" title={deleteTitle} disabled={disableDelete || !access.canDelete} onClick={runToolbarAction(onDelete)}>{deleteIcon === "x" ? <X size={15} /> : <Trash2 size={15} />}<span className="legacy-tool-label">{deleteTitle}</span></button>
       <button type="button" title="Refrescar" onClick={runToolbarAction(onRefresh)}><RefreshCw size={15} /><span className="legacy-tool-label">Refrescar</span></button>
-      {onPrint && <button type="button" title="Imprimir" onClick={runToolbarAction(onPrint)}><Printer size={15} /><span className="legacy-tool-label">Imprimir</span></button>}
+      {onPrint && <button type="button" title="Imprimir" data-shortcut="print" onClick={runToolbarAction(onPrint)}><Printer size={15} /><span className="legacy-tool-label">Imprimir</span></button>}
       {extra && <span className="mdi-toolbar-extra">{extra}</span>}
     </div>
   );
@@ -100,10 +106,7 @@ export function LegacyDialog({ title, onClose, children, className = "", overlay
       return overlays[overlays.length - 1] === overlay;
     };
     const controls = () => Array.from(dialog.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href],[tabindex]:not([tabindex="-1"])')).filter((element) => element.getClientRects().length > 0);
-    const focusInside = () => {
-      const field = dialog.querySelector<HTMLElement>('input:not(:disabled):not([readonly]),select:not(:disabled),textarea:not(:disabled)');
-      (field ?? controls()[0] ?? dialog).focus();
-    };
+    const focusInside = () => { if (!focusFirstUseful(dialog)) dialog.focus(); };
     if (!dialog.contains(document.activeElement)) focusInside();
     const containFocus = (event: FocusEvent) => {
       if (isTopmost() && event.target instanceof Node && !dialog.contains(event.target)) focusInside();
@@ -122,13 +125,15 @@ export function LegacyDialog({ title, onClose, children, className = "", overlay
     return () => {
       document.removeEventListener("focusin", containFocus);
       document.removeEventListener("keydown", trapTab, true);
-      if (previousFocus.current?.isConnected) previousFocus.current.focus();
+      giveFocusBack(previousFocus.current);
     };
   }, []);
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       const overlays = document.querySelectorAll(".legacy-dialog-overlay");
-      if (event.key === "Escape" && overlays[overlays.length - 1] === overlayRef.current) onClose();
+      if (event.key !== "Escape" || event.defaultPrevented || overlays[overlays.length - 1] !== overlayRef.current || document.querySelector("dialog.cyp-keyboard-confirm")) return;
+      event.preventDefault();
+      void closeAfterAsking(overlayRef.current?.querySelector('[role="dialog"]') ?? null, onClose);
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);

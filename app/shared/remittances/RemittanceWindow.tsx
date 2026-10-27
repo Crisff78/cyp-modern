@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { closeAfterAsking } from "../keyboard";
 // Shared code cannot import the icon package of each app (it is not resolvable from app/shared): small inline icons.
 const Icon = ({ size = 16, children }: { size?: number; children: ReactNode }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">{children}</svg>;
 const Minus = ({ size }: { size?: number }) => <Icon size={size}><path d="M5 12h14" /></Icon>;
@@ -76,7 +77,7 @@ export function RemittanceWindow({ title, children, onClose, desktopId, nextZInd
   return createPortal(<>
     <section ref={frame} role="dialog" aria-label={title} aria-modal="false" tabIndex={-1}
       className="remittances-dialog remittance-receipt-window" onPointerDownCapture={raise}
-      onKeyDown={(event) => { if (event.key === "Escape" && !event.defaultPrevented) { event.stopPropagation(); onClose(); } }}
+      onKeyDown={(event) => { if (event.key === "Escape" && !event.defaultPrevented) { event.stopPropagation(); void closeAfterAsking(frame.current, onClose); } }}
       style={{ position: host ? "absolute" : "fixed", display: minimized ? "none" : "flex", left: maximized ? 8 : left, top: maximized ? 8 : top, width: maximized ? area.width - 16 : width, height: maximized ? area.height - 16 : height, zIndex }}>
       <header className="remittance-receipt-titlebar" onDoubleClick={(event) => { if (!(event.target as Element).closest("button")) setMaximized((value) => !value); }}
         onPointerDown={(event) => {

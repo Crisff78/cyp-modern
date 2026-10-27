@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { LegacyDialog, LegacyToolbar, handleKeyboardActivation } from "./LegacyConnectedUi";
+import { LegacyDialog, LegacyToolbar, handleKeyboardActivation, handleRowKeys } from "./LegacyConnectedUi";
 import { pendingMovementDraft, useMovementRequest } from "./useMovementRequest";
 import { remittancesApi } from "./remittancesApi";
 import { confirmedRateInput, isRateDraft, rateInputDraft, RATE_INPUT_MAX_LENGTH, RATE_INPUT_MESSAGE } from "../../shared/remittances/rateInput";
@@ -76,7 +76,7 @@ export function ConnectedExchangeRates({ actorId, isAdmin }: { actorId: string; 
       <table className="legacy-mdi-table exchange-rates-grid">
         <thead><tr><th>Fecha</th><th>Moneda</th><th>Abrev</th><th>Tasa de remesas</th><th>Compra</th><th>Venta</th><th>Último cambio (hora de Santo Domingo)</th></tr></thead>
         <tbody>{rates.map((rate) => <tr key={rate.id} role="button" tabIndex={0} className={selected?.id === rate.id ? "selected-row" : ""}
-          onClick={() => setSelectedId(rate.id)} onDoubleClick={() => rate.date === snapshot?.businessDate && open(rate)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedId(rate.id))}>
+          onClick={() => setSelectedId(rate.id)} onDoubleClick={() => rate.date === snapshot?.businessDate && open(rate)} onKeyDown={(event) => handleRowKeys(event, () => setSelectedId(rate.id), () => { setSelectedId(rate.id); if (rate.date === snapshot?.businessDate) open(rate); })}>
           <td><span className={`mdi-row-select ${selected?.id === rate.id ? "selected" : ""}`}>{rate.date}</span></td><td>{names[rate.currency]}</td><td>{rate.currency}</td><td>{rate.rate}</td><td>{rate.purchaseRate ?? "Sin configurar"}</td><td>{rate.saleRate ?? "Sin configurar"}</td><td>{rateMoment(rate.updatedAt)}</td>
         </tr>)}{!rates.length && <tr><td colSpan={7}>{loading ? "Cargando tasas…" : "No hay tasas guardadas."}</td></tr>}</tbody>
       </table>

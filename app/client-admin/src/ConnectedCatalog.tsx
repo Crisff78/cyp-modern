@@ -2,7 +2,7 @@ import { MIN_NEW_PASSWORD_LENGTH } from "../../shared/passwordPolicy.mjs";
 import { MoneyInput } from "../../shared/MoneyInput";
 import { useCallback, useEffect, useId, useState, type FormEvent, type ReactNode } from "react";
 import { KeyRound, ShieldCheck, Users, Wallet } from "lucide-react";
-import { LegacyToolbar, LegacyDialog, LegacyCheck, LegacyDenseTable } from "./LegacyConnectedUi";
+import { LegacyToolbar, LegacyDialog, LegacyCheck, LegacyDenseTable, handleRowKeys } from "./LegacyConnectedUi";
 import { ConnectedUserPermissionsDialog } from "./ConnectedUserPermissionsDialog";
 import { CollectorAssignmentsDialog } from "./CollectorAssignmentsDialog";
 import { CollectorAccountPicker } from "./CollectorAccountPicker";
@@ -442,7 +442,7 @@ export function ConnectedCatalog({ page, snapshot, actorId, canManagePermissions
       </aside>}
       <div className={page === "recurringCharges" ? "charges-grid-panel" : "catalog-grid-panel"}>
         <div className="legacy-mdi-table-wrap"><table className={"legacy-mdi-table " + gridClasses[page]}><thead><tr>{headers[page].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>
-          {visible.map((row, index) => <tr key={row.id} className={selected?.id === row.id ? "selected-row" : ""} aria-selected={selected?.id === row.id} tabIndex={0} onClick={() => setSelectedId(row.id)} onDoubleClick={() => open(row)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedId(row.id); } }}>{rowCells(row, index).map((cell, cellIndex) => <td key={cellIndex}>{cell}</td>)}</tr>)}
+          {visible.map((row, index) => <tr key={row.id} className={selected?.id === row.id ? "selected-row" : ""} aria-selected={selected?.id === row.id} tabIndex={0} onClick={() => setSelectedId(row.id)} onDoubleClick={() => open(row)} onKeyDown={(event) => handleRowKeys(event, () => setSelectedId(row.id), () => { setSelectedId(row.id); open(row); })}>{rowCells(row, index).map((cell, cellIndex) => <td key={cellIndex}>{cell}</td>)}</tr>)}
           {!loading && !visible.length && <tr><td colSpan={headers[page].length}>No hay registros para estos filtros.</td></tr>}
         </tbody></table></div>
         {page === "recurringCharges" && <div className="legacy-footerbar"><span>Cantidad: <strong>{visible.length}</strong></span>{Array.from(totals, ([currency, amount]) => <span key={currency}>Total {currency}: <strong>{formatMoney(amount, currency)}</strong></span>)}<span title="La API no vincula cobros a estas plantillas">Recib.: <strong>—</strong></span><span title="La API no calcula saldos de plantillas">Pend.: <strong>—</strong></span></div>}

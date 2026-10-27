@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>CyP con el teclado · Hoja del cajero</title>
+<style>
+  @page { size: letter; margin: 11mm 12mm; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 10.9pt/1.32 "Segoe UI", Tahoma, Arial, sans-serif; color: #0f172a; }
+  header { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 2.5px solid #1e3a8a; padding-bottom: 4px; margin-bottom: 7px; }
+  h1 { margin: 0; font-size: 17pt; color: #1e3a8a; }
+  header p { margin: 0; font-size: 9.5pt; color: #475569; }
+  h2 { margin: 0 0 4px; font-size: 11.5pt; color: #1e3a8a; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; }
+  section { break-inside: avoid; }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 2px 4px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+  td:first-child { width: 1%; white-space: nowrap; }
+  kbd { display: inline-block; min-width: 24px; padding: 0 5px; border: 1px solid #64748b; border-bottom-width: 2px; border-radius: 3px; background: #f8fafc; font: 700 9.5pt/1.45 "Segoe UI", Arial, sans-serif; text-align: center; }
+  ol { margin: 0; padding-left: 17px; }
+  li { margin: 0 0 2px; }
+  .note { margin-top: 8px; padding: 6px 9px; border: 1.5px solid #b45309; border-radius: 5px; background: #fffbeb; }
+  .note p { margin: 0 0 2px; }
+  .badge { display: inline-block; padding: 0 3px; border: 1px solid #1e3a8a; border-radius: 3px; background: #eff6ff; color: #1e3a8a; font: 700 8pt/1.3 "Segoe UI", Arial, sans-serif; }
+  footer { margin-top: 6px; font-size: 8.5pt; color: #64748b; text-align: right; }
+</style>
+</head>
+<body>
+<header>
+  <h1>CyP con el teclado · Hoja del cajero</h1>
+  <p>Las mismas teclas en todas las ventanas. <kbd>F1</kbd> las muestra en pantalla.</p>
+</header>
+<div class="grid">
+  <section>
+    <h2>Las teclas de siempre</h2>
+    <table>
+      <tr><td><kbd>F1</kbd></td><td>Ver estas teclas</td></tr>
+      <tr><td><kbd>F2</kbd></td><td>Nuevo (en Envíos: vuelve al Remitente)</td></tr>
+      <tr><td><kbd>F3</kbd></td><td>Buscar</td></tr>
+      <tr><td><kbd>F4</kbd></td><td>Mostrar u ocultar los filtros</td></tr>
+      <tr><td><kbd>F8</kbd></td><td>Imprimir</td></tr>
+      <tr><td><kbd>F9</kbd></td><td>Guardar o aceptar (cotizar, revisar, confirmar)</td></tr>
+      <tr><td><kbd>F10</kbd></td><td>Ir al menú</td></tr>
+      <tr><td><kbd>Esc</kbd></td><td>Cerrar o cancelar</td></tr>
+    </table>
+  </section>
+  <section>
+    <h2>Moverse</h2>
+    <table>
+      <tr><td><kbd>Intro</kbd></td><td>Siguiente campo · en una lista, abre el registro</td></tr>
+      <tr><td><kbd>Tab</kbd> <kbd>Mayús+Tab</kbd></td><td>Siguiente / anterior botón o campo</td></tr>
+      <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>Moverse en las listas y en el menú</td></tr>
+      <tr><td><kbd>→</kbd> <kbd>←</kbd></td><td>Abrir / cerrar una sección del menú</td></tr>
+      <tr><td><kbd>Inicio</kbd> <kbd>Fin</kbd></td><td>Primera / última fila</td></tr>
+      <tr><td><kbd>AvPág</kbd> <kbd>RePág</kbd></td><td>Página siguiente / anterior</td></tr>
+      <tr><td><kbd>Espacio</kbd></td><td>Seleccionar o marcar</td></tr>
+    </table>
+  </section>
+  <section>
+    <h2>Registrar un envío</h2>
+    <ol>
+      <li><kbd>F10</kbd>, <kbd>↓</kbd> hasta <b>REMESAS</b>, <kbd>→</kbd>, <kbd>↓</kbd> hasta <b>Envíos de dinero</b>, <kbd>Intro</kbd>.</li>
+      <li><b>Remitente:</b> escribe el teléfono, el código o el nombre, <kbd>↓</kbd> y <kbd>Intro</kbd>.</li>
+      <li><kbd>Intro</kbd> hasta el <b>Monto</b> y escríbelo: se escribe desde los centavos (<b>50000</b> = 500.00).</li>
+      <li><b>Destinatario:</b> igual que el remitente.</li>
+      <li><kbd>F9</kbd> calcula la cotización; <kbd>F9</kbd> otra vez, <b>Revisar y confirmar</b>.</li>
+      <li>Revisa la forma de pago y el dinero recibido; <kbd>F9</kbd> <b>Aceptar</b>.</li>
+      <li>¿Imprimir el recibo? <kbd>Intro</kbd> imprime, <kbd>Esc</kbd> no.</li>
+    </ol>
+  </section>
+  <section>
+    <h2>Entregar el dinero de una remesa</h2>
+    <ol>
+      <li><kbd>F10</kbd> → <b>Entregas de dinero</b> → <kbd>Intro</kbd>.</li>
+      <li>Escribe la referencia o el teléfono en <b>Buscar</b>.</li>
+      <li><kbd>↓</kbd> baja a la lista; <kbd>Intro</kbd> abre el recibo.</li>
+      <li><kbd>F9</kbd> <b>Registrar entrega</b> y <kbd>Intro</kbd> para confirmar.</li>
+      <li><kbd>Esc</kbd> cierra el recibo; <kbd>Esc</kbd> otra vez, la ventana.</li>
+    </ol>
+  </section>
+  <section>
+    <h2>Abrir la caja del día</h2>
+    <ol>
+      <li><kbd>F10</kbd>, <b>CUADRES Y REPORTES</b>, <kbd>→</kbd>, <b>Cuadres Diarios</b>, <kbd>Intro</kbd>.</li>
+      <li>Elige la <b>Moneda</b> con <kbd>↑</kbd> <kbd>↓</kbd>, <kbd>Intro</kbd>.</li>
+      <li>Escribe el <b>Efectivo inicial</b>, <kbd>F9</kbd> y <kbd>Intro</kbd> (Confirmar).</li>
+    </ol>
+  </section>
+  <section>
+    <h2>Contar y cerrar la caja</h2>
+    <ol>
+      <li>En <b>Cuadres Diarios</b>, <kbd>Tab</kbd> hasta <b>Contar y cerrar</b>, <kbd>Intro</kbd>.</li>
+      <li>Escribe el efectivo contado, <kbd>F9</kbd> y <kbd>Intro</kbd> (Confirmar).</li>
+      <li><b>Salir:</b> <kbd>Tab</kbd> hasta tu nombre (arriba a la derecha), <kbd>Intro</kbd> y <b>Cerrar sesión</b>.</li>
+    </ol>
+  </section>
+</div>
+<div class="note">
+  <p><b>El dinero nunca se confirma con un Intro sin querer:</b> siempre con <kbd>F9</kbd> o con su botón, y luego <kbd>Intro</kbd> en «Confirmar».</p>
+  <p><b>Esc avisa</b> si hay algo escrito sin guardar: <kbd>Intro</kbd> = Sí, cerrar · <kbd>Esc</kbd> = No.</p>
+  <p>Cada botón muestra en su esquina la tecla que lo pulsa, por ejemplo <span class="badge">F9</span>. En algunas laptops las teclas F se pulsan junto con <kbd>Fn</kbd>.</p>
+</div>
+<footer>CyP Modern · teclado completo · 27-10-2026</footer>
+</body>
+</html>
