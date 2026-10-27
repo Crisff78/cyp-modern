@@ -2,7 +2,7 @@ import { PermissionAuditDetails } from "./PermissionAuditDetails";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Building2, FileCheck2, RefreshCw } from "lucide-react";
 import { FiltersPanelIcon } from "./PanelIcons";
-import { LegacyCheck, LegacyDenseTable, LegacyDialog, LegacyToolbar, handleKeyboardActivation } from "./LegacyConnectedUi";
+import { LegacyCheck, LegacyDenseTable, LegacyDialog, LegacyToolbar, handleKeyboardActivation, handleRowKeys } from "./LegacyConnectedUi";
 import { clearToken } from "./api";
 import { remittancesApi } from "./remittancesApi";
 import { StrictApiError } from "../../shared/remittances/strictApi";
@@ -303,7 +303,12 @@ export function ConnectedAdminTools({ page, snapshot, user, onRefresh }: { page:
     </form>;
   const grid = <div className={layout + "-grid-panel legacy-admin-grid-panel"}><div className="legacy-mdi-table-wrap"><table className={"legacy-mdi-table " + layout + "-grid"}>
     <thead><tr>{headers.map((heading) => <th key={heading}>{heading}</th>)}</tr></thead>
-    <tbody>{visible.map((row, index) => <tr key={row.id} className={selectedId === row.id ? "selected-row" : ""} tabIndex={0} aria-selected={selectedId === row.id} aria-disabled={installationLocked || undefined} onClick={() => { if (!installationLocked) setSelectedId(row.id); }} onDoubleClick={page === "authorizationRequests" ? () => open({ type: "detail", row }) : !paged ? () => open({ type: "edit", row }) : undefined} onKeyDown={(event) => handleKeyboardActivation(event, () => { if (!installationLocked) setSelectedId(row.id); })}>
+    <tbody>{visible.map((row, index) => <tr key={row.id} className={selectedId === row.id ? "selected-row" : ""} tabIndex={0} aria-selected={selectedId === row.id} aria-disabled={installationLocked || undefined} onClick={() => { if (!installationLocked) setSelectedId(row.id); }} onDoubleClick={page === "authorizationRequests" ? () => open({ type: "detail", row }) : !paged ? () => open({ type: "edit", row }) : undefined} onKeyDown={(event) => handleRowKeys(event, () => { if (!installationLocked) setSelectedId(row.id); }, () => {
+      // Enter does what the double click does: the detail of a request, the edition of a record; a paged log only selects.
+      if (installationLocked) return;
+      setSelectedId(row.id);
+      if (page === "authorizationRequests") open({ type: "detail", row }); else if (!paged) open({ type: "edit", row });
+    })}>
       <td><span className={"mdi-row-select " + (selectedId === row.id ? "selected" : "")}>{page === "stations" || page === "pcps" ? value(row, "number") : offset + index + 1}</span></td>{cells(row)}
     </tr>)}{!visible.length && <tr><td className="legacy-admin-empty" colSpan={headers.length}>{loading ? "Cargando…" : error ? "No se pudo cargar el listado." : "No hay registros para estos filtros."}</td></tr>}</tbody>
   </table></div></div>;

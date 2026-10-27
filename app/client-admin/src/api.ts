@@ -1,4 +1,5 @@
 import { isMockToken, mockApi } from "./mock";
+import { beginSave } from "../../shared/keyboard";
 import { createStrictApi, StrictApiError } from "../../shared/remittances/strictApi";
 
 import { ADMIN_TOKEN_KEY as TOKEN_KEY } from "../../shared/sessionHandoff";
@@ -52,6 +53,7 @@ export async function api<T>(
       throw error;
     }
   }
+  const saved = method && method !== "GET" ? beginSave() : undefined;
   const request = () =>
     fetch(`/api${path}`, {
       ...options,
@@ -78,6 +80,7 @@ export async function api<T>(
         response.status,
       );
     }
+    saved?.();
     return body as T;
   } catch (error) {
     if (error instanceof ApiError) throw error;

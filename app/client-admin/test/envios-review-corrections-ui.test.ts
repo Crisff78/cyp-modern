@@ -291,9 +291,10 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         assert.equal(await reference.evaluate((element: Element) => element === document.activeElement), false, "the receipt behind does not take the keyboard back");
         await waitForFocus(page, "[data-cash-opening-amount]");
         assert.equal(await cash.getByLabel("Moneda").inputValue(), "EUR");
-        await page.keyboard.press("Enter");
+        // A form of money goes on with F9 (Enter never confirms money): the key acts in Caja.
+        await page.keyboard.press("F9");
         await page.getByRole("dialog", { name: "Abrir caja de remesas", exact: true }).waitFor();
-        assert.equal(await detail.count(), 0, "Enter acts in Caja, not on the receipt behind");
+        assert.equal(await detail.count(), 0, "F9 acts in Caja, not on the receipt behind");
       } finally { await context.close(); }
     });
 
@@ -349,7 +350,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         const region = window.getByRole("region", { name: "Envíos de dinero", exact: true });
         const rows = region.locator(".remittance-transfer-table tbody tr"); await rows.nth(4).waitFor();
         await waitForFocus(page, '[data-client-side="sender"] input');
-        await region.getByRole("combobox", { name: "Remitente", exact: true }).press("Escape");
+        { const sender = region.getByRole("combobox", { name: "Remitente", exact: true }); if (await sender.getAttribute("aria-expanded") === "true") await sender.press("Escape"); }
         // Administración has no box in USD: the notice is on view, as every morning before opening the box.
         await region.getByLabel("Moneda del remitente").selectOption("USD");
         const warning = region.locator(".remittance-cash-warning"); await warning.waitFor();
@@ -408,7 +409,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
     await t.test("1280×600: scrolled inside the form, opening the recipient's list keeps the scroll and the field in sight", async () => {
       const { context, region, form, measure } = await shortWindow();
       try {
-        await region.getByRole("combobox", { name: "Remitente", exact: true }).press("Escape");
+        { const sender = region.getByRole("combobox", { name: "Remitente", exact: true }); if (await sender.getAttribute("aria-expanded") === "true") await sender.press("Escape"); }
         await region.getByRole("listbox", { name: "Clientes para remitente", exact: true }).waitFor({ state: "detached" });
         const recipientInput = region.getByRole("combobox", { name: "Destinatario", exact: true });
         const offset = await form.evaluate((element: HTMLElement) => { element.scrollTop = Math.min(24, element.scrollHeight - element.clientHeight); return element.scrollTop; });

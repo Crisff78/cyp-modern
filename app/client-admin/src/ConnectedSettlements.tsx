@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Database, Download, FileSearch, Plus, Printer, RefreshCw } from "lucide-react";
 import { FiltersPanelIcon } from "./PanelIcons";
-import { LegacyDialog, handleKeyboardActivation } from "./LegacyConnectedUi";
+import { LegacyDialog, handleKeyboardActivation, handleRowKeys } from "./LegacyConnectedUi";
 import { remittancesApi } from "./remittancesApi";
 import { SettlementCashDialog } from "./SettlementCashDialog";
 import { pendingMovementDraft, useMovementRequest } from "./useMovementRequest";
@@ -191,7 +191,7 @@ export function ConnectedSettlements({ snapshot, actorId = "", canManage = false
             <colgroup><col className="settlement-date-column" /><col className="connected-settlement-collector-column" /><col className="settlement-total-column" /><col className="settlement-balance-column" /><col className="connected-settlement-state-column" /></colgroup>
             <thead><tr><th scope="col">Fecha</th><th scope="col">Cobrador / moneda</th><th scope="col">Total</th><th scope="col">Balance</th><th scope="col">Estado</th></tr></thead>
             <tbody>{rows.map((row) => <tr key={row.id} className={selectedId === row.id ? "selected-row" : undefined} aria-selected={selectedId === row.id} tabIndex={0}
-              onClick={() => setSelectedId(row.id)} onDoubleClick={() => inspect(row)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedId(row.id))}>
+              onClick={() => setSelectedId(row.id)} onDoubleClick={() => inspect(row)} onKeyDown={(event) => handleRowKeys(event, () => setSelectedId(row.id), () => { setSelectedId(row.id); inspect(row); })}>
               <td className="settlement-date-cell">{row.date}</td><td>{collectorName(row.collectorId)} · {row.currency}</td><td><SettlementTotals balance={row} currency={row.currency} /></td><td className="settlement-balance-value">{formatMoney(row.difference, row.currency)}</td><td>{row.state}</td>
             </tr>)}</tbody>
           </table>

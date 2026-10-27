@@ -1,4 +1,5 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { focusFirstUseful } from "../../shared/keyboard";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
   ArrowDownLeft,
@@ -75,6 +76,14 @@ export function Modal({
   overlayClassName?: string;
   onCloseAutoFocus?: (event: Event) => void;
 }) {
+  // The keyboard starts at the first useful place of the content (not the × of the title) and, on closing, goes back to
+  // what was focused when it opened: these dialogs open from buttons that are not Radix triggers.
+  const content = useRef<HTMLDivElement>(null);
+  const opener = useRef<HTMLElement | null>(null);
+  // Read while rendering the opening, before a field of the content takes the focus with autoFocus.
+  const wasOpen = useRef(false);
+  if (open && !wasOpen.current && typeof document !== "undefined") opener.current = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
+  wasOpen.current = open;
   return (
     <Dialog.Root
       open={open}
@@ -85,8 +94,12 @@ export function Modal({
       <Dialog.Portal>
         <Dialog.Overlay className={`dialog-overlay ${overlayClassName}`} />
         <Dialog.Content
+          ref={content}
           className={`${sheet ? "sheet" : "dialog"} ${className}`}
-          onCloseAutoFocus={onCloseAutoFocus}
+          onOpenAutoFocus={(event) => { if (content.current && focusFirstUseful(content.current)) event.preventDefault(); }}
+          onCloseAutoFocus={onCloseAutoFocus ?? ((event) => {
+            if (opener.current?.isConnected) { event.preventDefault(); opener.current.focus({ preventScroll: true }); }
+          })}
         >
           <div className="dialog-heading">
             <div>

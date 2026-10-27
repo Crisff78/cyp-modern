@@ -1,3 +1,4 @@
+import { beginSave } from "../keyboard";
 export type StrictApi = <T>(path: string, options?: RequestInit) => Promise<T>;
 
 export class StrictApiError extends Error {
@@ -46,6 +47,7 @@ export function createStrictApi(getToken: () => string | null, isDemo: () => boo
     const current = () => !attempt || attempts.get(scope) === attempt;
     const superseded = () => new StrictApiError("Esta solicitud fue sustituida por datos nuevos. Guarda los datos actuales para confirmar su resultado.", 0, false, "REQUEST_SUPERSEDED");
     const release = () => { if (attempt && current()) attempts.delete(scope); };
+    const saved = mutation ? beginSave() : undefined;
     const send = async (): Promise<T> => {
       const controller = new AbortController();
       const timer = window.setTimeout(() => controller.abort(), 20000);
@@ -60,6 +62,7 @@ export function createStrictApi(getToken: () => string | null, isDemo: () => boo
         }
         if (data === null) throw new StrictApiError("La API no devolvió una respuesta válida. Consulta el listado y reintenta con los mismos datos.", response.status, mutation);
         release();
+        saved?.();
         return data as T;
       } catch (error) {
         if (!current() && !(error instanceof StrictApiError)) throw superseded();

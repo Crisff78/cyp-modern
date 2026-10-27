@@ -4,6 +4,10 @@ const FinancialMonitorView = lazy(() => import("./FinancialMonitorView"));
 import { monitorLedger } from "./monitorLedger";
 import { MIN_NEW_PASSWORD_LENGTH } from "../../shared/passwordPolicy.mjs";
 import { DetailsPanelIcon, FiltersPanelIcon } from "./PanelIcons";
+import { LegacyDialog } from "./LegacyConnectedUi";
+import { focusAfterClosing, focusFirstUseful, focusMenu, installKeyboard, keyboardIsFree, restoreWindowFocus } from "../../shared/keyboard";
+import "../../shared/keyboard.css";
+import { KeyboardHelpDialog, KeyboardShortcutsTable } from "./KeyboardHelp";
 import { CLIENT_PAGE_SIZE, NOT_DEFINED, NOT_DEFINED_ROUTE, type ClientPage, type ClientPageStatus } from "../../shared/clientPage.mjs";
 import {
   isValidElement,
@@ -812,6 +816,39 @@ function MdiWindow({ windowState, onClose, onFocus, onMove, onResize, onToggleMa
   const resize = useRef<null | { edge: ResizeEdge; pointerX: number; pointerY: number; rect: WindowRect; desktop?: { width: number; height: number }; last: WindowRect }>(null);
   const [resizing, setResizing] = useState(false);
   const maximized = windowState.maximized === true;
+  // The keyboard goes into a window that opens (its search, its list or its first field, keyboard.ts), unless the
+  // person already took it elsewhere. A list that arrives later takes it from the field it got meanwhile, until a key
+  // is pressed. A screen that places the keyboard itself (Envíos de dinero) says so with data-own-focus.
+  const opener = useRef<Element | null>(typeof document === "undefined" ? null : document.activeElement);
+  useEffect(() => {
+    const node = frame.current;
+    if (!node) return;
+    let placed: Element | null = null, typed = false;
+    const onKey = () => { typed = true; };
+    const place = () => {
+      if (typed || !node.isConnected || node.querySelector("[data-own-focus]")) return;
+      if (!keyboardIsFree(node, opener.current) && !(placed && document.activeElement === placed)) return;
+      if (focusFirstUseful(node)) placed = document.activeElement;
+    };
+    document.addEventListener("keydown", onKey, true);
+    const first = window.requestAnimationFrame(place);
+    const observer = new MutationObserver(place);
+    observer.observe(node, { childList: true, subtree: true });
+    const stop = window.setTimeout(() => observer.disconnect(), 2500);
+    return () => {
+      window.cancelAnimationFrame(first); observer.disconnect(); window.clearTimeout(stop); document.removeEventListener("keydown", onKey, true);
+      // Closed: the keyboard goes to the window now in front, or to the menu.
+      window.requestAnimationFrame(() => focusAfterClosing());
+    };
+  }, []);
+  // Brought to the front again (its option of the menu, while it is open): the keyboard goes back to where it was in
+  // this window. Each bringing to the front raises its zIndex; the opening itself is handled above.
+  const openedAt = useRef(windowState.zIndex);
+  useEffect(() => {
+    const node = frame.current, active = document.activeElement;
+    if (windowState.zIndex === openedAt.current || !windowState.isFocused || !node || node.contains(active)) return;
+    if (!active || active === document.body || active.closest("[data-keyboard-menu]") || active.matches("#main-content")) restoreWindowFocus(node);
+  }, [windowState.isFocused, windowState.zIndex]);
   useEffect(() => {
     if (!drag) return;
     const onMouseMove = (event: MouseEvent) => onMove(windowState.id, Math.max(8, drag.x + event.clientX - drag.startX), Math.max(8, drag.y + event.clientY - drag.startY));
@@ -905,7 +942,7 @@ function LegacyToolbar({ onToggleFilters, filtersVisible = true, onToggleDetails
   disableAccept ||= !access.canAccept;
   return (
     <div className="legacy-mdi-toolbar" aria-label="Barra de herramientas legacy" onMouseDown={stopToolbarEvent} onClick={stopToolbarEvent}>
-      {onToggleFilters && <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" aria-label="Mostrar/Ocultar filtros" aria-pressed={filtersVisible} onClick={runToolbarAction(onToggleFilters)}><FiltersPanelIcon /></button>}
+      {onToggleFilters && <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" aria-label="Mostrar/Ocultar filtros" aria-pressed={filtersVisible} data-shortcut="filters" onClick={runToolbarAction(onToggleFilters)}><FiltersPanelIcon /></button>}
       {/* Windows with a details panel on the right hide it with its own button (Dionel, 26-10). */}
       {onToggleDetails && <button type="button" className={detailsVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar detalles" aria-label="Mostrar/Ocultar detalles" aria-pressed={detailsVisible} onClick={runToolbarAction(onToggleDetails)}><DetailsPanelIcon /></button>}
       <button type="button" className="nav-tool" title="Mover al inicio" onClick={runToolbarAction(onFirst)}>|&lt;</button>
@@ -913,12 +950,12 @@ function LegacyToolbar({ onToggleFilters, filtersVisible = true, onToggleDetails
       <button type="button" className="nav-tool" title="Bajar" onClick={runToolbarAction(onNext)}>&gt;</button>
       <button type="button" className="nav-tool" title="Mover al final" onClick={runToolbarAction(onLast)}>&gt;|</button>
       <span className="mdi-toolbar-separator" />
-      <button type="button" title={newTitle} disabled={disableNew} onClick={runToolbarAction(onNew)}>{newIcon ?? <Plus size={15} />}</button>
+      <button type="button" title={newTitle} data-shortcut="new" disabled={disableNew} onClick={runToolbarAction(onNew)}>{newIcon ?? <Plus size={15} />}</button>
       {showEdit && <button type="button" title="Editar" disabled={disableEdit} onClick={runToolbarAction(onEdit)}><Pencil size={15} /></button>}
       {onAccept && <button type="button" title="Aceptar depósito" disabled={disableAccept} onClick={runToolbarAction(onAccept)}><ClipboardCheck size={15} /></button>}
       <button type="button" className="danger-tool" title={deleteTitle} disabled={disableDelete} onClick={runToolbarAction(onDelete)}>{deleteIcon === "x" ? <X size={15} /> : <Trash2 size={15} />}</button>
       <button type="button" title="Refrescar" onClick={runToolbarAction(onRefresh)}><RefreshCw size={15} /></button>
-      {onPrint && <button type="button" title="Imprimir" onClick={runToolbarAction(onPrint)}><Printer size={15} /></button>}
+      {onPrint && <button type="button" title="Imprimir" data-shortcut="print" onClick={runToolbarAction(onPrint)}><Printer size={15} /></button>}
       {extra && <span className="mdi-toolbar-extra">{extra}</span>}
     </div>
   );
@@ -1483,47 +1520,6 @@ function LegacyDenseTable({ columns, rows }: Readonly<{ columns: readonly string
 }
 function LegacySidePanel({ children }: Readonly<{ children: ReactNode }>) { return <aside className="legacy-mdi-side-panel">{children}</aside>; }
 
-function LegacyDialog({ title, onClose, children, className = "", overlayClassName = "" }: Readonly<{ title: string; onClose: () => void; children: ReactNode; className?: string; overlayClassName?: string }>) {
-  const [offset, setOffset] = useState({ x: 0, y: 0 });
-  const [drag, setDrag] = useState<null | { startX: number; startY: number; x: number; y: number }>(null);
-  const overlayRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const handler = (event: KeyboardEvent) => {
-      const overlays = document.querySelectorAll(".legacy-dialog-overlay");
-      if (event.key === "Escape" && overlays[overlays.length - 1] === overlayRef.current) onClose();
-    };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, [onClose]);
-  useEffect(() => {
-    if (!drag) return;
-    const onMouseMove = (event: MouseEvent) => setOffset({ x: drag.x + event.clientX - drag.startX, y: drag.y + event.clientY - drag.startY });
-    const onMouseUp = () => setDrag(null);
-    document.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("mouseup", onMouseUp, { once: true });
-    return () => { document.removeEventListener("mousemove", onMouseMove); document.removeEventListener("mouseup", onMouseUp); };
-  }, [drag]);
-  const startDialogDrag = (event: ReactMouseEvent<HTMLDivElement>) => {
-    if (event.button !== 0) return;
-    if ((event.target as HTMLElement).closest("button,input,select,textarea,a")) return;
-    event.preventDefault();
-    event.stopPropagation();
-    setDrag({ startX: event.clientX, startY: event.clientY, x: offset.x, y: offset.y });
-  };
-  return createPortal(
-    <div ref={overlayRef} className={`legacy-dialog-overlay ${overlayClassName}`} role="presentation">
-      <section className={`legacy-dialog ${className}`} style={{ transform: `translate(${offset.x}px, ${offset.y}px)` }} role="dialog" aria-modal="true" aria-label={title}>
-        <div className="legacy-dialog-titlebar" onMouseDown={startDialogDrag}>
-          <span>{title}</span>
-          <button type="button" aria-label={`Cerrar ${title}`} onMouseDown={(event) => event.stopPropagation()} onClick={onClose} title={`Cerrar ${title}`}>X</button>
-        </div>
-        <div className="legacy-dialog-body">{children}</div>
-      </section>
-    </div>,
-    document.body,
-  );
-}
-
 type CollectorFormDraft = {
   name: string;
   ident: string;
@@ -1572,7 +1568,7 @@ function LegacyConfirmDialog({ title = "Confirm", message, onYes, onNo }: Readon
   return (
     <LegacyDialog title={title} onClose={onNo} className="legacy-confirm-dialog">
       <div className="legacy-confirm-content"><span className="legacy-question-icon">?</span><p>{message}</p></div>
-      <div className="legacy-dialog-actions centered"><button type="button" onClick={onYes}>Sí</button><button type="button" onClick={onNo}>No</button></div>
+      <div className="legacy-dialog-actions centered"><button type="button" autoFocus onClick={onYes}>Sí</button><button type="button" onClick={onNo}>No</button></div>
     </LegacyDialog>
   );
 }
@@ -4767,6 +4763,7 @@ export default function App() {
     [commandQuery, setCommandQuery] = useState(""),
     [notificationsOpen, setNotificationsOpen] = useState(false),
     [helpOpen, setHelpOpen] = useState(false),
+    [keysOpen, setKeysOpen] = useState(false),
     [accountOpen, setAccountOpen] = useState(false),
     [ownPasswordOpen, setOwnPasswordOpen] = useState(false),
     [activeNavKey, setActiveNavKey] = useState(""),
@@ -4910,6 +4907,29 @@ export default function App() {
       window.removeEventListener("hashchange", hashHandler);
     };
   }, []);
+  // The same keys in every window, from the sign-in page on (shared/keyboard.ts).
+  useEffect(() => installKeyboard(), []);
+  // Signed in: the keyboard starts on the menu, where every window opens from.
+  const menuFocusedAfterLogin = useRef(false);
+  useEffect(() => {
+    if (!authenticated) { menuFocusedAfterLogin.current = false; return; }
+    if (!snapshot || menuFocusedAfterLogin.current) return;
+    menuFocusedAfterLogin.current = true;
+    window.requestAnimationFrame(() => { const active = document.activeElement; if (!active || active === document.body) focusMenu(); });
+  }, [authenticated, snapshot]);
+  useEffect(() => {
+    const onKeys = (event: Event) => { event.preventDefault(); setKeysOpen(true); };
+    const onMenu = (event: Event) => {
+      const sidebar = document.querySelector<HTMLElement>(".sidebar");
+      if (!sidebar || sidebar.getBoundingClientRect().right > 0) return;
+      event.preventDefault();
+      setMobileMenu(true);
+      window.requestAnimationFrame(() => focusMenu());
+    };
+    document.addEventListener("cyp-keyboard-help", onKeys);
+    document.addEventListener("cyp-keyboard-menu", onMenu);
+    return () => { document.removeEventListener("cyp-keyboard-help", onKeys); document.removeEventListener("cyp-keyboard-menu", onMenu); };
+  }, []);
   function navigate(next: Page, navKey = "") {
     if (!isUiPageVisible(next)) return;
     setPage(next);
@@ -5024,6 +5044,7 @@ export default function App() {
   return (
     <>
       {createPortal(<Toaster position="top-right" richColors closeButton style={{ zIndex: 2147483647 }} />, document.body)}
+      <KeyboardHelpDialog open={keysOpen} onClose={() => setKeysOpen(false)} />
       {!authenticated ? (
         <Login
           onLogin={(user, nextStation) => {
@@ -5070,7 +5091,7 @@ export default function App() {
               </span>
               <ChevronsUpDown size={15} />
             </button>
-            <nav aria-label="Navegación principal">
+            <nav aria-label="Navegación principal" data-keyboard-menu>
               {groupOrder.map((group) => {
                 const open = expandedGroups.includes(group) && !collapsed;
                 const groupItems = navigation.filter(
@@ -5729,6 +5750,7 @@ export default function App() {
                   </div>
                 </div>
               ))}
+              <KeyboardShortcutsTable />
               <p className="help-demo">
                 Pasa el puntero sobre cualquier opción del menú para ver para qué sirve.
               </p>
@@ -9029,7 +9051,7 @@ function PaymentDataDialog({ actorId, snapshot, onClose, onSaved }: Readonly<{ a
 function PaymentPayoutPickerDialog({ payouts, onClose, onSelect }: Readonly<{ payouts: Payout[]; onClose: () => void; onSelect: (payout: Payout) => void }>) {
   const [selectedId, setSelectedId] = useState(payouts[0]?.id ?? "");
   const selected = payouts.find((payout) => payout.id === selectedId);
-  return <LegacyDialog title="Seleccionar..." onClose={onClose} className="collection-charge-picker-dialog" overlayClassName="collection-receipt-suboverlay"><div className="collection-charge-picker-table-wrap"><table className="collection-receipt-table"><thead><tr><th>Servicio</th><th>Concepto</th><th>Importe</th></tr></thead><tbody>{payouts.length ? payouts.map((payout) => { const pending = Math.max(0, payout.amount - payout.paid); const active = selectedId === payout.id; return <tr key={payout.id} className={active ? "selected-row" : undefined} aria-selected={active} role="button" tabIndex={0} onClick={() => setSelectedId(payout.id)} onDoubleClick={() => onSelect(payout)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedId(payout.id))}><td>Pago autorizado</td><td>{payout.concept}</td><td className="numeric-cell">{nativeMoney(pending, payout.currency)}</td></tr>; }) : <tr><td colSpan={3} className="collection-receipt-empty">No hay pagos pendientes para seleccionar.</td></tr>}</tbody></table></div><div className="legacy-dialog-actions centered"><button type="button" onClick={onClose}>Cancelar</button><button type="button" disabled={!selected} onClick={() => selected && onSelect(selected)}>Aceptar</button></div></LegacyDialog>;
+  return <LegacyDialog title="Seleccionar..." onClose={onClose} className="collection-charge-picker-dialog" overlayClassName="collection-receipt-suboverlay"><div className="collection-charge-picker-table-wrap"><table className="collection-receipt-table"><thead><tr><th>Servicio</th><th>Concepto</th><th>Importe</th></tr></thead><tbody>{payouts.length ? payouts.map((payout) => { const pending = Math.max(0, payout.amount - payout.paid); const active = selectedId === payout.id; return <tr key={payout.id} className={active ? "selected-row" : undefined} aria-selected={active} role="button" tabIndex={0} onClick={() => setSelectedId(payout.id)} onDoubleClick={() => onSelect(payout)} onKeyDown={(event) => handleRowKeys(event, () => setSelectedId(payout.id), () => onSelect(payout))}><td>Pago autorizado</td><td>{payout.concept}</td><td className="numeric-cell">{nativeMoney(pending, payout.currency)}</td></tr>; }) : <tr><td colSpan={3} className="collection-receipt-empty">No hay pagos pendientes para seleccionar.</td></tr>}</tbody></table></div><div className="legacy-dialog-actions centered"><button type="button" onClick={onClose}>Cancelar</button><button type="button" disabled={!selected} onClick={() => selected && onSelect(selected)}>Aceptar</button></div></LegacyDialog>;
 }
 
 function PaymentAmountDialog({ line, maxAmount, onClose, onSave }: Readonly<{ line: PaymentDetailLine; maxAmount: number; onClose: () => void; onSave: (amount: number) => void }>) {
@@ -9833,7 +9855,7 @@ function CollectionChargePickerDialog({
           <tbody>{charges.length ? charges.map((charge) => {
             const pending = Math.max(0, charge.amount - charge.collected);
             const active = selectedChargeId === charge.id;
-            return <tr key={charge.id} className={active ? "selected-row" : undefined} aria-selected={active} role="button" tabIndex={0} onClick={() => setSelectedChargeId(charge.id)} onDoubleClick={() => onSelect(charge)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedChargeId(charge.id))}>
+            return <tr key={charge.id} className={active ? "selected-row" : undefined} aria-selected={active} role="button" tabIndex={0} onClick={() => setSelectedChargeId(charge.id)} onDoubleClick={() => onSelect(charge)} onKeyDown={(event) => handleRowKeys(event, () => setSelectedChargeId(charge.id), () => onSelect(charge))}>
               <td>{charge.service}</td><td>{charge.concept ?? charge.service}</td><td className="numeric-cell">{nativeMoney(pending, charge.currency)}</td>
             </tr>;
           }) : <tr><td colSpan={3} className="collection-receipt-empty">El cliente no tiene cargos pendientes.</td></tr>}</tbody>
@@ -9880,7 +9902,7 @@ function ClientSearchSubmodal({ clients, onSelect, onClose }: Readonly<{ clients
     <LegacyDialog title="Seleccionar cliente..." onClose={onClose} className="client-search-dialog" overlayClassName="client-search-overlay">
         <label className="legacy-toolbar-search wide">Digite:<input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} /></label>
         <div className="table-scroll legacy-table-scroll">
-          <table className="data-table legacy-data-table dense"><thead><tr><th>Cód.</th><th>Identificación</th><th>Cliente</th><th>Teléfono</th></tr></thead><tbody>{rows.map((client) => <tr key={client.id} className={selectedClient?.id === client.id ? "selected-row" : undefined} role="button" tabIndex={0} onClick={() => setSelected(client.id)} onDoubleClick={() => onSelect(client)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelected(client.id))}><td>{client.code}</td><td>{client.identification}</td><td>{client.name}</td><td>{client.phone || client.cellular}</td></tr>)}</tbody></table>
+          <table className="data-table legacy-data-table dense"><thead><tr><th>Cód.</th><th>Identificación</th><th>Cliente</th><th>Teléfono</th></tr></thead><tbody>{rows.map((client) => <tr key={client.id} className={selectedClient?.id === client.id ? "selected-row" : undefined} role="button" tabIndex={0} onClick={() => setSelected(client.id)} onDoubleClick={() => onSelect(client)} onKeyDown={(event) => handleRowKeys(event, () => setSelected(client.id), () => onSelect(client))}><td>{client.code}</td><td>{client.identification}</td><td>{client.name}</td><td>{client.phone || client.cellular}</td></tr>)}</tbody></table>
         </div>
         <div className="legacy-dialog-actions centered"><button type="button" onClick={onClose}>Cancelar</button><button type="button" disabled={!selectedClient} onClick={() => selectedClient && onSelect(selectedClient)}>Aceptar</button></div>
     </LegacyDialog>
@@ -10204,8 +10226,11 @@ function LegacyTable({
             <tr
               key={row.__id ?? index}
               className={selectedRowId && row.__id === selectedRowId ? "selected-row" : undefined}
+              aria-selected={Boolean(selectedRowId && row.__id === selectedRowId)}
+              tabIndex={0}
               onClick={() => onSelect?.(row)}
               onDoubleClick={() => onEdit?.(row)}
+              onKeyDown={(event) => handleRowKeys(event, () => onSelect?.(row), () => (onEdit ? onEdit(row) : onSelect?.(row)))}
             >
               {visibleColumns.map((column) => (
                 <td
