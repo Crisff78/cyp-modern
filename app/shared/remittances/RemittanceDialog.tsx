@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { closeAfterAsking, focusFirstUseful, giveFocusBack } from "../keyboard";
 
 export function RemittanceDialog({ title, children, onClose, locked = false }: { title: string; children: ReactNode; onClose: () => void; locked?: boolean }) {
   const element = useRef<HTMLDialogElement>(null);
@@ -8,11 +9,13 @@ export function RemittanceDialog({ title, children, onClose, locked = false }: {
     const dialog = element.current, opener = document.activeElement;
     dialog?.showModal();
     // React's autoFocus runs before the dialog opens; the field marked data-autofocus takes the focus once it is open.
-    dialog?.querySelector<HTMLElement>("[data-autofocus]")?.focus();
+    // Without one: its first field, else the main button of a question (Enter = Sí); never the × of its title.
+    const asked = dialog?.querySelector<HTMLElement>("[data-autofocus]");
+    if (asked) asked.focus(); else if (dialog) focusFirstUseful(dialog);
     // Closing gives the focus back to what opened the dialog while it is still on the page.
     return () => {
       dialog?.close();
-      if (opener instanceof HTMLElement && opener.isConnected) opener.focus();
+      giveFocusBack(opener);
     };
   }, []);
   useEffect(() => {
@@ -28,7 +31,7 @@ export function RemittanceDialog({ title, children, onClose, locked = false }: {
     document.addEventListener("mousemove", move); document.addEventListener("mouseup", stop);
     return () => { document.removeEventListener("mousemove", move); document.removeEventListener("mouseup", stop); };
   }, [drag, offset]);
-  return <dialog ref={element} className="remittances-dialog" style={{ transform: `translate(${offset.x}px, ${offset.y}px)` }} aria-label={title} onCancel={(event) => { event.preventDefault(); if (!locked) onClose(); }}>
+  return <dialog ref={element} className="remittances-dialog" style={{ transform: `translate(${offset.x}px, ${offset.y}px)` }} aria-label={title} onCancel={(event) => { event.preventDefault(); if (!locked) void closeAfterAsking(element.current, onClose); }}>
     <header style={{ cursor: "move" }} onMouseDown={(event) => {
       if (event.button !== 0 || (event.target as Element).closest("button")) return;
       event.preventDefault(); setDrag({ x: event.clientX, y: event.clientY, left: offset.x, top: offset.y });

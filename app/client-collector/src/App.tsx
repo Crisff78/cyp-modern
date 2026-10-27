@@ -61,6 +61,8 @@ import { INPUT_LIMITS, validateText } from "../../shared/inputRules";
 import { LoginPasswordInput, PasswordManagerHint } from "../../shared/LoginPasswordInput";
 import { loginCredentials } from "../../shared/loginCredentials";
 import { openAdminPortal } from "../../shared/sessionHandoff";
+import { installKeyboard } from "../../shared/keyboard";
+import "../../shared/keyboard.css";
 import { transformRouteToMap } from "./services/mapAdapter";
 import { businessDay as localDay, timeLabel } from "./services/dates";
 import { pocketBalances } from "./services/pocket";
@@ -144,6 +146,8 @@ export function App() {
     };
   }, [view]);
 
+  // The same keys as the Administration portal: lists, fields, F10 to the menu (shared/keyboard.ts).
+  useEffect(() => installKeyboard({ windows: false }), []);
   useEffect(() => {
     const on = () => setOnline(true);
     const off = () => setOnline(false);
@@ -555,7 +559,7 @@ export function App() {
           <span>CyP · Cobros y pagos, bajo control.</span>
         </div>
       </main>
-      <nav className="bottom-nav" aria-label="Navegación principal">
+      <nav className="bottom-nav" aria-label="Navegación principal" data-keyboard-menu>
         {allowedTabs.map(({ id, name, icon: Icon }) => (
           <button
             key={id}

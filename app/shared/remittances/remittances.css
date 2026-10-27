@@ -112,6 +112,8 @@
 .remittances-dialog::backdrop { background: #12233b99; }
 dialog.remittances-dialog { position: fixed; inset: 0; margin: auto; }
 .remittances-dialog > header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; background: var(--cyp-info-surface, #dce7f4); border-bottom: 1px solid var(--rem-edge); gap: 12px; }
+/* The title stays at the top of a long dialog: it is always in sight and always drags it. */
+.remittances-dialog > header { position: sticky; top: 0; z-index: 2; }
 .remittances-dialog > header h2 { margin: 0; }
 .remittances-dialog > header button { min-width: 40px; font-size: 22px; line-height: 1; }
 .remittances-dialog-body { padding: 18px; }
