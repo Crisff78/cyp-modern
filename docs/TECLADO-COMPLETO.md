@@ -190,7 +190,16 @@ la página pide algo fuera de la prueba. También comprueban que no se dibuja ni
   cierra, Mayús+Tab llega a «Nuevo», Intro lo abre y Esc lo cierra, y Esc cierra la ventana. Ninguna tecla guardó nada.
   De esta prueba sale la tabla «Qué hace cada tecla en cada ventana».
 
-<!-- resultados -->
+Además, todas estas en verde con el código final:
+
+- `pnpm -r typecheck`: verde.
+- Interfaz (`client-admin/test` y `tests`): 392 de 392 (contando subpruebas; la de todas las ventanas suma una por ventana).
+- Servidor: 410 en verde, 0 fallos (18 omitidas que piden PostgreSQL). El servidor no cambió, así que no hacía falta
+  PostgreSQL.
+- Cobrador: 17/17.
+
+Prueba existente ajustada a las reglas nuevas, sin cambiar lo que comprueba: `envios-review-corrections-ui` abría la
+revisión de la caja con F9; ahora llega a «Revisar apertura» con Tab y la abre con Intro (el dinero no va con Intro).
 
 ## Capturas
 
