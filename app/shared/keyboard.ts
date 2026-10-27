@@ -1,41 +1,27 @@
-// CyP with the keyboard only (cashiers work without a mouse). One set of rules for every window and dialog,
-// installed once per app: the same keys do the same thing everywhere. See docs/TECLADO-COMPLETO.md.
+// CyP with the keyboard only, and with simple keys only (Rardiel, 27-10-2026): the arrows, Enter, Tab, Esc and Space,
+// so anyone can use it fast without learning anything; nothing extra is drawn on the screen. One set of rules for every
+// window and dialog, installed once per app. See docs/TECLADO-COMPLETO.md.
 //
-//  F1 the keys · F2 Nuevo · F3 Buscar · F4 filters · F8 Imprimir · F9 Guardar / Aceptar · F10 menu · Esc close
-//  Enter moves to the next field (money is still confirmed with its own button or F9, never with a stray Enter)
-//  Lists: ↑ ↓ move the row, Inicio/Fin first and last, AvPág/RePág page, Enter opens it, Space selects it.
+//  Arrows   move: in the menu, in a list, between the buttons of a bar or a dialog, between the fields of a form.
+//  Enter    goes to the next field; on a row it does what the double click does; on a button it presses it.
+//  Tab      next (Shift+Tab, previous).
+//  Esc      closes the dialog or the window in front (asking first if something typed would be lost), back to the menu.
+//  Space    selects the row or ticks the box.
+//
+// Money is never confirmed by going through fields (Dionel, DIONEL-REMESAS-PERMISOS.md point 6): in a form with money,
+// Enter stops at its last field; its button is reached with Tab (or →) and pressed with Enter.
 //
 // The rules live here, on the page, and not in each of the ~100 screens: a window that already handles a key
 // (a client list, a combobox) calls preventDefault and this code leaves that key alone.
 
-export type ShortcutAction = "help" | "new" | "search" | "filters" | "print" | "save" | "menu";
-
-/** The keys, in the order the help and the cashiers' sheet show them. */
-export const KEYBOARD_SHORTCUTS: readonly { key: string; label: string; action?: ShortcutAction }[] = [
-  { key: "F1", label: "Ver estas teclas", action: "help" },
-  { key: "F2", label: "Nuevo", action: "new" },
-  { key: "F3", label: "Buscar", action: "search" },
-  { key: "F4", label: "Mostrar u ocultar los filtros", action: "filters" },
-  { key: "F8", label: "Imprimir", action: "print" },
-  { key: "F9", label: "Guardar o aceptar", action: "save" },
-  { key: "F10", label: "Ir al menú", action: "menu" },
-  { key: "Esc", label: "Cerrar o cancelar (avisa si hay cambios sin guardar)" },
-];
-
-/** How to move, for the same help. */
+/** The keys, as Soporte Técnico shows them. */
 export const KEYBOARD_MOVES: readonly { key: string; label: string }[] = [
-  { key: "Tab / Mayús+Tab", label: "Siguiente / anterior" },
-  { key: "Intro", label: "Siguiente campo; en una lista, abre el registro" },
-  { key: "↑ ↓", label: "Moverse en las listas y en el menú" },
-  { key: "→ ←", label: "Abrir / cerrar una sección del menú" },
-  { key: "Inicio / Fin", label: "Primera / última fila" },
-  { key: "AvPág / RePág", label: "Página siguiente / anterior" },
+  { key: "Flechas", label: "Moverse: en el menú, en las listas, entre botones y entre campos" },
+  { key: "Intro", label: "Siguiente campo; en una lista, abrir el registro; en un botón, pulsarlo" },
+  { key: "Tab", label: "Ir al siguiente (con Mayús, al anterior)" },
+  { key: "Esc", label: "Cerrar y volver (pregunta si hay algo escrito sin guardar)" },
   { key: "Espacio", label: "Seleccionar o marcar" },
-  { key: "Ctrl+K", label: "Buscar un cliente o una ruta" },
 ];
-
-const FUNCTION_KEYS: Record<string, ShortcutAction> = { F1: "help", F2: "new", F3: "search", F4: "filters", F8: "print", F9: "save", F10: "menu" };
-export const SHORTCUT_KEY: Record<ShortcutAction, string> = { help: "F1", new: "F2", search: "F3", filters: "F4", print: "F8", save: "F9", menu: "F10" };
 
 const FIELD = 'input:not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="image"]),select,textarea';
 // The parts of a window that only move or resize it.
@@ -44,12 +30,17 @@ const FRAME = ".mdi-window-titlebar,.legacy-dialog-titlebar,.remittance-receipt-
 const SCOPE = '[role="dialog"],dialog,[role="alertdialog"]';
 // Fields that only choose what a list shows: changing them is not a change to save.
 const FILTER_AREA = '[data-keyboard-filter],[class*="filter"],[class*="toolbar"],[class*="search"]';
+// The main button of a form or a dialog, by its name (the same names as always).
+const MAIN_BUTTON = /^(Aceptar|Guardar|Confirmar|Sí|Usar estos datos|Registrar|Consultar|Filtrar|Calcular|Revisar)\b/i;
 
 export const isShown = (element: Element | null | undefined): element is HTMLElement =>
   element instanceof HTMLElement && element.getClientRects().length > 0 && getComputedStyle(element).visibility !== "hidden";
 const isEnabled = (element: Element) => !(element as HTMLButtonElement).disabled && !element.closest("fieldset:disabled") && element.getAttribute("aria-disabled") !== "true";
 const isTextEntry = (element: Element): element is HTMLInputElement | HTMLTextAreaElement =>
   element instanceof HTMLTextAreaElement || (element instanceof HTMLInputElement && !["checkbox", "radio", "button", "submit", "reset", "image", "file", "range", "color"].includes(element.type));
+// A one-line text field, where ↑ and ↓ do nothing of their own (not a list of choices, a number, a date or a note).
+const isLineField = (element: Element): element is HTMLInputElement =>
+  element instanceof HTMLInputElement && ["text", "search", "tel", "email", "password", "url"].includes(element.type) && !element.getAttribute("role") && !element.getAttribute("list");
 const nameOf = (element: Element) => (element.getAttribute("aria-label") || element.getAttribute("title") || element.textContent || "").replace(/\s+/g, " ").trim();
 
 /** The window or dialog the keyboard is working in (the one in front when the focus is on the menu or the page). */
@@ -70,6 +61,16 @@ export function frontWindow(doc: Document = document): HTMLElement | null {
 
 /** The elements of a scope that belong to it, not to a dialog opened inside it. */
 const own = <T extends Element>(scope: Element, items: Iterable<T>) => [...items].filter((item) => item.closest(SCOPE) === scope || (!item.closest(SCOPE) && scope === document.body));
+
+/** The search of a window: the field that finds what its list shows. */
+function searchField(scope: Element): HTMLInputElement | null {
+  const usable = (input: HTMLInputElement) => isShown(input) && isEnabled(input) && !input.readOnly && input.getAttribute("role") !== "combobox";
+  const marked = own(scope, scope.querySelectorAll<HTMLInputElement>("input[data-keyboard-search]")).find(usable);
+  if (marked) return marked;
+  const inputs = own(scope, scope.querySelectorAll<HTMLInputElement>('input[type="search"],input[type="text"],input:not([type])')).filter(usable);
+  const labelled = (input: HTMLInputElement) => /buscar|digite|búsqueda/i.test(`${input.closest("label")?.textContent ?? ""} ${input.getAttribute("aria-label") ?? ""} ${input.placeholder}`);
+  return inputs.find((input) => input.type === "search") ?? inputs.find(labelled) ?? null;
+}
 
 // ── Lists ────────────────────────────────────────────────────────────────────────────────────────────────────
 // A row of a list: focusable itself (the classic listings) or holding the button that opens it (Envíos).
@@ -118,6 +119,12 @@ function moveInList(event: KeyboardEvent, target: HTMLElement) {
   const index = rows.indexOf(row as HTMLTableRowElement);
   if (index < 0) return false;
   const scope = row.closest<HTMLElement>(SCOPE);
+  // ↑ on the first row goes back up to the search of the window.
+  if (event.key === "ArrowUp" && index === 0 && scope) {
+    const search = searchField(scope);
+    if (search) { search.focus(); search.select?.(); }
+    return true;
+  }
   if ((event.key === "PageDown" || event.key === "PageUp") && scope) {
     // A list that comes in pages from the server (Clientes): the keys turn its page.
     const pager = own(scope, scope.querySelectorAll<HTMLButtonElement>("button")).find((button) => PAGE_BUTTONS[event.key as "PageDown" | "PageUp"].test(nameOf(button)));
@@ -151,86 +158,96 @@ function moveInList(event: KeyboardEvent, target: HTMLElement) {
 // ── Fields ───────────────────────────────────────────────────────────────────────────────────────────────────
 const fieldsOf = (container: Element, current: Element) => own(container.closest(SCOPE) ?? document.body, container.querySelectorAll<HTMLElement>(FIELD))
   .filter((field) => field === current || (isShown(field) && isEnabled(field) && !(field instanceof HTMLInputElement && field.readOnly) && field.tabIndex >= 0 && !field.closest('[aria-hidden="true"]')));
-// A money field (MoneyInput) makes its form a form of money: it is saved with its button or F9, never with Enter.
+// A money field (MoneyInput) makes its form a form of money: going through its fields never presses its button.
 const holdsMoney = (form: Element) => Boolean(form.querySelector("[data-money-input]")) || form.matches('[data-keyboard-enter="advance-only"]');
+
+/** The main button of a form (its own submit) or of a dialog (Aceptar, Guardar, Sí…). */
+function mainButton(container: Element): HTMLElement | null {
+  const buttons = own(container.closest(SCOPE) ?? document.body, container.querySelectorAll<HTMLElement>("button")).filter((button) => isShown(button) && isEnabled(button) && !button.closest(FRAME));
+  return buttons.find((button) => button instanceof HTMLButtonElement && button.type === "submit") ?? buttons.find((button) => MAIN_BUTTON.test(nameOf(button))) ?? null;
+}
+
+/** Goes to the field before or after; at the end of a form without money, to its main button (it does not press it). */
+function stepField(target: HTMLElement, backwards: boolean, fromEnter: boolean) {
+  const form = target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement ? target.form : null;
+  const container = form ?? target.closest<HTMLElement>(SCOPE);
+  if (!container) return false;
+  // A field outside any form (a filter, a search) goes through the other fields outside forms only.
+  const fields = fieldsOf(container, target).filter((field) => form || field === target || !(field as HTMLInputElement).form);
+  const next = fields[fields.indexOf(target) + (backwards ? -1 : 1)];
+  if (next) {
+    next.focus();
+    if (isTextEntry(next) && !(next instanceof HTMLInputElement && ["date", "time", "datetime-local", "month", "week", "number", "email"].includes(next.type))) next.select?.();
+    return true;
+  }
+  if (backwards) return true;
+  // After the last field. Money stays there: its button is reached with Tab (Dionel).
+  if (form ? holdsMoney(form) : container.matches('[data-keyboard-enter="advance-only"]') || fields.some((field) => field.matches("[data-money-input]"))) return true;
+  // A form: Enter sends it, as the browser always did.
+  const choice = target instanceof HTMLSelectElement || (target instanceof HTMLInputElement && (target.type === "checkbox" || target.type === "radio"));
+  if (form && fromEnter && !choice) return false;
+  // A window with a list goes down to it (after its search and filters); otherwise to the main button, without pressing it.
+  const scope = target.closest<HTMLElement>(SCOPE);
+  const list = scope && (!form || !fromEnter) ? scopeList(scope) : null;
+  if (list && !list.contains(target)) { focusRow(chosenRow(listRows(list)), false); return true; }
+  const button = mainButton(form ?? container);
+  if (button) button.focus();
+  return true;
+}
+
+/** ↓ from the search of a window goes straight down to its list. */
+function searchToList(target: HTMLElement) {
+  const scope = target.closest<HTMLElement>(SCOPE);
+  if (!scope || !(target instanceof HTMLInputElement) || (target.type !== "search" && searchField(scope) !== target)) return false;
+  const list = scopeList(scope);
+  if (!list || list.contains(target)) return false;
+  focusRow(chosenRow(listRows(list)), false);
+  return true;
+}
 
 function advanceField(event: KeyboardEvent, target: HTMLElement) {
   if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement) || (target instanceof HTMLInputElement && ["button", "submit", "reset", "image", "file"].includes(target.type))) return;
   if (target.closest('[data-keyboard-enter="native"]')) return;
-  const form = target instanceof HTMLInputElement || target instanceof HTMLSelectElement ? target.form : null;
-  const container = form ?? target.closest<HTMLElement>(SCOPE);
-  if (!container) return;
-  const fields = fieldsOf(container, target);
-  const next = fields[fields.indexOf(target) + (event.shiftKey ? -1 : 1)];
-  if (next) {
-    event.preventDefault();
-    next.focus();
-    if (isTextEntry(next) && !(next instanceof HTMLInputElement && ["date", "time", "datetime-local", "month", "week", "number", "email"].includes(next.type))) next.select?.();
-    return;
-  }
-  if (event.shiftKey) { event.preventDefault(); return; }
-  // The last field. A form that is not of money is sent as the browser always did (Iniciar sesión, a client);
-  // a form of money waits for its button (or F9). A window without a form goes on to its list.
-  if (form) { if (holdsMoney(form) || target instanceof HTMLSelectElement || target.type === "checkbox" || target.type === "radio") event.preventDefault(); return; }
-  event.preventDefault();
-  const scope = target.closest<HTMLElement>(SCOPE);
-  const list = scope ? scopeList(scope) : null;
-  if (list) focusRow(chosenRow(listRows(list)), false);
+  if (stepField(target, event.shiftKey, true)) event.preventDefault();
 }
 
-// ── Keys that act on the window or dialog in front ───────────────────────────────────────────────────────────
-const NAME_RULES: Partial<Record<ShortcutAction, RegExp>> = {
-  new: /^(Nuevo|Nueva|Agregar)\b/i,
-  save: /^(Guardar|Aceptar|Confirmar|Sí, guardar|Usar estos datos|Registrar entrega|Registrar)\b/i,
-  print: /^Imprimir\b/i,
-  filters: /^Mostrar\/Ocultar filtros$/i,
-  search: /^Buscar\b/i,
-};
-
-/** What F2, F3, F4, F8 and F9 act on inside a scope; the same rule puts its key on the button. */
-export function shortcutTarget(scope: Element, action: ShortcutAction): HTMLElement | null {
-  const usable = (element: HTMLElement) => isShown(element) && isEnabled(element) && !element.closest(FRAME);
-  const marked = own(scope, scope.querySelectorAll<HTMLElement>("[data-shortcut]")).filter((element) => element.dataset.shortcut!.split(/\s+/).includes(action) && usable(element));
-  if (marked.length) return marked[0];
-  if (action === "search") {
-    const inputs = own(scope, scope.querySelectorAll<HTMLInputElement>('input[type="search"],input[type="text"],input:not([type])')).filter((input) => usable(input) && input.getAttribute("role") !== "combobox" && !input.readOnly);
-    const labelled = (input: HTMLInputElement) => /buscar|digite|búsqueda/i.test(`${input.closest("label")?.textContent ?? ""} ${input.getAttribute("aria-label") ?? ""} ${input.placeholder}`);
-    const search = inputs.find((input) => input.type === "search") ?? inputs.find(labelled);
-    if (search) return search;
+// ── Buttons ──────────────────────────────────────────────────────────────────────────────────────────────────
+// The buttons that go together (a bar of a window, the answers of a dialog, the tiles of a launcher): ← and → go to the
+// one beside; in a grid of tiles, ↑ and ↓ too.
+const BUTTON_GROUP = '[role="toolbar"],[role="group"],.legacy-mdi-toolbar,[class*="actions"],[class*="toolbar"],.remittance-tabs,.remittance-window-controls,.control-panel-grid,.reports-launcher-grid,.cyp-keyboard-confirm-actions';
+const TILE_GRID = ".control-panel-grid,.reports-launcher-grid";
+function moveInButtons(event: KeyboardEvent, target: HTMLElement) {
+  if (!target.matches("button,a[href],[role=button]:not(tr)") || target.closest("[data-keyboard-menu],tbody,[role=listbox]")) return false;
+  const scope = target.closest(SCOPE);
+  const usable = (group: Element) => [...group.querySelectorAll<HTMLElement>("button,a[href]")]
+    .filter((button) => isShown(button) && isEnabled(button) && button.tabIndex >= 0 && button.closest(SCOPE) === scope && !button.closest("tbody,[data-keyboard-menu],[role=listbox]"));
+  // The group of the button: the nearest one with another button (a lone button in its own corner of a bar belongs to the bar).
+  let group = target.closest<HTMLElement>(BUTTON_GROUP), buttons: HTMLElement[] = [];
+  while (group && (buttons = usable(group)).length < 2) group = group.parentElement?.closest<HTMLElement>(BUTTON_GROUP) ?? null;
+  if (!group) return false;
+  const vertical = event.key === "ArrowDown" || event.key === "ArrowUp";
+  if (vertical && !group.matches(TILE_GRID)) return false;
+  const index = buttons.indexOf(target);
+  if (index < 0) return false;
+  if (vertical) {
+    // ↓ ↑ in a grid of tiles: the tile of the row below or above, the nearest to the same column.
+    const here = target.getBoundingClientRect(), down = event.key === "ArrowDown";
+    const middle = (rect: DOMRect) => rect.left + rect.width / 2;
+    // Every grid of the window counts: below the last row of a section come the tiles of the next one.
+    const tiles = [...(scope ?? document).querySelectorAll<HTMLElement>(TILE_GRID)].flatMap((grid) => usable(grid));
+    const rows = tiles.map((button) => ({ button, rect: button.getBoundingClientRect() })).filter(({ rect }) => down ? rect.top >= here.bottom - 2 : rect.bottom <= here.top + 2);
+    const row = rows.length ? (down ? Math.min(...rows.map(({ rect }) => rect.top)) : Math.max(...rows.map(({ rect }) => rect.top))) : null;
+    const candidates = rows.filter(({ rect }) => Math.abs(rect.top - (row ?? 0)) < 4);
+    candidates.sort((a, b) => Math.abs(middle(a.rect) - middle(here)) - Math.abs(middle(b.rect) - middle(here)))[0]?.button.focus();
+    return true;
   }
-  const rule = NAME_RULES[action];
-  if (!rule) return null;
-  const buttons = own(scope, scope.querySelectorAll<HTMLElement>('button,[role="button"]:not(tr)')).filter(usable);
-  if (action === "save") {
-    // The form the keyboard is in sends with its own button.
-    const form = document.activeElement instanceof HTMLElement ? document.activeElement.closest("form") : null;
-    const submit = form && scope.contains(form) ? buttons.find((button) => button instanceof HTMLButtonElement && button.type === "submit" && button.form === form) : undefined;
-    if (submit) return submit;
-  }
-  return buttons.find((button) => rule.test(nameOf(button))) ?? null;
+  const step = event.key === "ArrowRight" ? 1 : -1;
+  buttons[(index + step + buttons.length) % buttons.length]?.focus();
+  return true;
 }
 
-function runShortcut(action: ShortcutAction) {
-  if (action === "help" || action === "menu") {
-    const handled = !document.dispatchEvent(new CustomEvent(`cyp-keyboard-${action}`, { cancelable: true }));
-    if (!handled && action === "menu") focusMenu();
-    return;
-  }
-  const scope = activeScope();
-  const target = scope ? shortcutTarget(scope, action) : null;
-  if (!target) { announce(`${SHORTCUT_KEY[action]}: no hay ${KEYBOARD_SHORTCUTS.find((item) => item.action === action)?.label.toLocaleLowerCase("es-DO")} en esta ventana.`); return; }
-  if (target.matches(FIELD)) { target.focus(); if (isTextEntry(target)) target.select?.(); return; }
-  target.click();
-  if (action === "filters") window.setTimeout(() => {
-    // The panel just shown takes the keyboard; a hidden panel leaves it on the list.
-    const panel = scope && own(scope, scope.querySelectorAll<HTMLElement>('[class*="filter"]')).find((item) => isShown(item) && item.querySelector(FIELD));
-    const field = panel?.querySelector<HTMLElement>(FIELD);
-    if (field && isShown(field)) field.focus();
-    else if (scope && !scope.contains(document.activeElement)) { const list = scopeList(scope); if (list) focusRow(chosenRow(listRows(list)), false); }
-  }, 60);
-}
-
-/** F10: the option of the menu that is open, otherwise its first one. */
+// ── Menu ─────────────────────────────────────────────────────────────────────────────────────────────────────
+/** The option of the menu that is open, otherwise its first one (after signing in, after closing the last window). */
 export function focusMenu(doc: Document = document) {
   const menu = doc.querySelector<HTMLElement>("[data-keyboard-menu]");
   if (!menu) return false;
@@ -315,14 +332,14 @@ export function focusFirstUseful(scope: HTMLElement) {
   const usable = (element: HTMLElement) => isShown(element) && isEnabled(element) && !element.closest(FRAME);
   const pick = (selector: string) => own(scope, scope.querySelectorAll<HTMLElement>(selector)).find(usable);
   const list = scopeList(scope);
-  const search = shortcutTarget(scope, "search");
+  const search = searchField(scope);
   const fields = own(scope, scope.querySelectorAll<HTMLElement>(FIELD)).filter((field) => usable(field) && !(field instanceof HTMLInputElement && field.readOnly));
   const editing = fields.find((field) => !field.closest(FILTER_AREA));
   const buttons = own(scope, scope.querySelectorAll<HTMLElement>("button")).filter(usable);
   const target = pick("[data-autofocus],[autofocus]")
     // A form to fill (a dialog of data, Envíos): its first field. A listing: its search, else its list.
     ?? (editing && !list ? editing : undefined)
-    ?? (search && search.matches(FIELD) ? search : undefined)
+    ?? search
     ?? (list ? rowControl(chosenRow(listRows(list))) ?? undefined : undefined)
     ?? fields[0]
     ?? buttons.find((button) => /^Sí\b/.test(nameOf(button)))
@@ -358,12 +375,15 @@ export function focusAfterClosing(doc: Document = document) {
  * The keyboard is nowhere (what had it was closed, or disabled while saving): it goes to the dialog open, otherwise
  * to the window in front, otherwise to the menu.
  */
-export function rescueFocus(doc: Document = document) {
+export function rescueFocus(doc: Document = document, waited = 0) {
   const active = doc.activeElement;
   if (active && active !== doc.body) return;
   const modal = [...doc.querySelectorAll<HTMLElement>('dialog[open],[role="dialog"][aria-modal="true"],[role="dialog"][data-state="open"]')].filter(isShown).pop();
   if (modal) { focusFirstUseful(modal); return; }
   const front = frontWindow(doc);
+  // What had the keyboard is only disabled for a moment (a button while its request runs): it gets it back when it can.
+  const last = front ? lastFocusOf.get(front) : undefined;
+  if (front && last?.isConnected && front.contains(last) && isShown(last) && !isEnabled(last) && waited < 5000) { window.setTimeout(() => rescueFocus(doc, waited + 100), 100); return; }
   if (front && restoreWindowFocus(front)) return;
   focusMenu(doc);
 }
@@ -405,86 +425,6 @@ export const keyboardIsFree = (scope: Element, opener: Element | null) => {
   return !active || active === document.body || active === opener || Boolean(active.closest("[data-keyboard-menu]")) || Boolean(active.closest(FRAME) && scope.contains(active)) || active.closest("#main-content") === active;
 };
 
-// The browser's own modal dialogs (remesas, «¿Cerrar sin guardar?») are drawn above every element of the page: the
-// keys, the help of icons and the short messages go above them too, as manual popovers shown after them.
-function lift(element: HTMLElement) {
-  if (typeof element.showPopover !== "function") return;
-  if (!element.hasAttribute("popover")) element.setAttribute("popover", "manual");
-  const open = element.matches(":popover-open");
-  if (open && !document.querySelector("dialog[open]")) return;
-  if (open) element.hidePopover();
-  element.showPopover();
-}
-
-// ── Help for icon buttons ────────────────────────────────────────────────────────────────────────────────────
-// A button reached with the keyboard says what it does (a mouse sees its title); with its key when it has one.
-let hint: HTMLElement | null = null;
-function showHint(target: HTMLElement) {
-  hideHint();
-  const text = target.getAttribute("title") || target.getAttribute("aria-label") || "";
-  const visibleText = (target.innerText || "").replace(/\s+/g, " ").trim();
-  const key = target.getAttribute("aria-keyshortcuts");
-  if (!text || (visibleText.length > 3 && !key && visibleText === text)) return;
-  hint = document.createElement("div");
-  hint.className = "cyp-key-hint"; hint.setAttribute("role", "tooltip");
-  hint.textContent = key ? `${text} · ${key}` : text;
-  document.body.appendChild(hint);
-  lift(hint);
-  const box = target.getBoundingClientRect(), size = hint.getBoundingClientRect();
-  hint.style.left = `${Math.max(4, Math.min(box.left, window.innerWidth - size.width - 4))}px`;
-  hint.style.top = `${box.bottom + 4 + size.height > window.innerHeight ? box.top - size.height - 4 : box.bottom + 4}px`;
-}
-function hideHint() { hint?.remove(); hint = null; }
-
-// ── Keys on the buttons ──────────────────────────────────────────────────────────────────────────────────────
-// The buttons that F2, F3, F4, F8 and F9 press in the window in front show their key: the same rule that presses
-// them chooses them. The key is drawn on a layer of its own (aria-hidden), so it never changes the name of a button
-// that a screen reader says; the button itself carries aria-keyshortcuts.
-let markedScope: Element | null = null;
-const marks = new Map<HTMLElement, string>();
-let layer: HTMLElement | null = null;
-function markKeys() {
-  const scope = activeScope();
-  const next = new Map<HTMLElement, string>();
-  if (scope) for (const action of ["new", "search", "filters", "print", "save"] as const) {
-    const target = shortcutTarget(scope, action);
-    if (target && !next.has(target)) next.set(target, SHORTCUT_KEY[action]);
-  }
-  for (const element of marks.keys()) if (!next.has(element)) { element.removeAttribute("aria-keyshortcuts"); marks.delete(element); }
-  for (const [element, key] of next) { if (element.getAttribute("aria-keyshortcuts") !== key) element.setAttribute("aria-keyshortcuts", key); marks.set(element, key); }
-  markedScope = scope;
-  drawKeys();
-}
-function drawKeys() {
-  if (!layer) { layer = document.createElement("div"); layer.className = "cyp-key-layer"; layer.setAttribute("aria-hidden", "true"); document.body.appendChild(layer); }
-  const badges: HTMLElement[] = [];
-  for (const [element, key] of marks) {
-    // A field shows its key on its label; anything covered or scrolled out of sight shows none.
-    const host = element.matches(FIELD) ? element.closest("label") ?? element : element;
-    const box = host.getBoundingClientRect();
-    if (!box.width || box.bottom < 0 || box.top > window.innerHeight) continue;
-    const seen = document.elementFromPoint(Math.min(window.innerWidth - 1, box.left + box.width / 2), Math.min(window.innerHeight - 1, box.top + Math.min(box.height / 2, 8)));
-    if (!seen || !(host.contains(seen) || seen.contains(host))) continue;
-    const badge = document.createElement("span");
-    badge.className = "cyp-key-badge"; badge.textContent = key; badge.dataset.key = key;
-    badge.style.left = `${Math.min(window.innerWidth - 22, box.right - 12)}px`; badge.style.top = `${Math.max(0, box.top - 7)}px`;
-    badges.push(badge);
-  }
-  layer.replaceChildren(...badges);
-  if (badges.length) lift(layer);
-}
-let markFrame = 0;
-const scheduleMarks = () => { if (!markFrame) markFrame = window.requestAnimationFrame(() => { markFrame = 0; markKeys(); }); };
-
-// ── A short spoken and visible message ───────────────────────────────────────────────────────────────────────
-let live: HTMLElement | null = null, liveTimer = 0;
-export function announce(message: string) {
-  if (!live) { live = document.createElement("div"); live.className = "cyp-keyboard-status"; live.setAttribute("role", "status"); live.setAttribute("aria-live", "polite"); document.body.appendChild(live); }
-  live.textContent = message; live.classList.add("shown");
-  lift(live);
-  window.clearTimeout(liveTimer); liveTimer = window.setTimeout(() => live?.classList.remove("shown"), 2600);
-}
-
 // ── Installing ───────────────────────────────────────────────────────────────────────────────────────────────
 let installed = false;
 /** Installs the keyboard rules once for the page. `windows`: the desktop closes its window in front with Esc. */
@@ -496,17 +436,12 @@ export function installKeyboard({ windows = true }: { windows?: boolean } = {}) 
     if (target.matches?.(FIELD) && !firstValue.has(target)) firstValue.set(target, valueOf(target));
     const window_ = target.closest?.(".mdi-window");
     if (window_ && target instanceof HTMLElement && !target.closest(FRAME)) lastFocusOf.set(window_, target);
-    if (target instanceof HTMLElement && target.matches(":focus-visible") && target.matches("button,[role=button]:not(tr),a[href]")) showHint(target); else hideHint();
-    scheduleMarks();
   });
-  document.addEventListener("focusout", hideHint);
   // Working with the keyboard, it is never left nowhere (a closed dialog, a field disabled while saving).
   let lastInput: "keyboard" | "pointer" = "keyboard";
   document.addEventListener("keydown", () => { lastInput = "keyboard"; }, true);
   document.addEventListener("pointerdown", () => { lastInput = "pointer"; }, true);
   document.addEventListener("focusout", () => { if (lastInput === "keyboard") window.setTimeout(() => { if (lastInput === "keyboard") rescueFocus(); }, 150); });
-  document.addEventListener("scroll", () => { hideHint(); scheduleMarks(); }, true);
-  window.addEventListener("resize", scheduleMarks);
   document.addEventListener("input", (event) => typedIn.add(event.target as Element), true);
   // A money field writes its own digits (no input event): a key typed in a field counts as typing in it.
   document.addEventListener("keydown", (event) => {
@@ -515,8 +450,6 @@ export function installKeyboard({ windows = true }: { windows?: boolean } = {}) 
   }, true);
   document.addEventListener("paste", (event) => typedIn.add(event.target as Element), true);
   document.addEventListener("change", (event) => typedIn.add(event.target as Element), true);
-  document.addEventListener("click", scheduleMarks, true);
-  document.addEventListener("keyup", scheduleMarks, true);
   // Before Tab moves: one Tab stop per list.
   document.addEventListener("keydown", (event) => {
     if (event.key === "Tab") { const scope = activeScope(); if (scope) keepOneRowStop(scope); }
@@ -527,18 +460,15 @@ export function installKeyboard({ windows = true }: { windows?: boolean } = {}) 
   document.addEventListener("keydown", (event) => {
     if (event.defaultPrevented || event.isComposing) return;
     const target = event.target instanceof HTMLElement ? event.target : null;
-    const plain = !event.ctrlKey && !event.metaKey && !event.altKey;
-    const action = FUNCTION_KEYS[event.key];
-    if (action && plain && !event.shiftKey) { event.preventDefault(); hideHint(); runShortcut(action); return; }
-    if (!target || !plain) return;
-    if (["ArrowDown", "ArrowUp", "Home", "End", "PageDown", "PageUp"].includes(event.key)) {
-      if (moveInList(event, target)) { event.preventDefault(); return; }
-    }
-    if (["ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key) && moveInMenu(event, target)) { event.preventDefault(); return; }
-    // ↓ from the search of a listing goes down to its list.
-    if (event.key === "ArrowDown" && !event.shiftKey && target instanceof HTMLInputElement && ["text", "search"].includes(target.type) && !target.getAttribute("role") && !target.getAttribute("list") && !target.matches("[data-money-input]")) {
-      const scope = target.closest<HTMLElement>(SCOPE), list = scope ? scopeList(scope) : null;
-      if (list && !list.contains(target)) { event.preventDefault(); focusRow(chosenRow(listRows(list))); return; }
+    if (!target || event.ctrlKey || event.metaKey || event.altKey) return;
+    const arrow = ["ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight"].includes(event.key);
+    if ((arrow || ["Home", "End", "PageDown", "PageUp"].includes(event.key)) && !event.shiftKey) {
+      if (["ArrowDown", "ArrowUp", "Home", "End", "PageDown", "PageUp"].includes(event.key) && moveInList(event, target)) { event.preventDefault(); return; }
+      if (["ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key) && moveInMenu(event, target)) { event.preventDefault(); return; }
+      if (arrow && moveInButtons(event, target)) { event.preventDefault(); return; }
+      // ↓ from a search goes down to the list; ↓ and ↑ in a one-line field go to the next and previous field.
+      if (event.key === "ArrowDown" && searchToList(target)) { event.preventDefault(); return; }
+      if ((event.key === "ArrowDown" || event.key === "ArrowUp") && isLineField(target) && stepField(target, event.key === "ArrowUp", false)) { event.preventDefault(); return; }
     }
     if (event.key === "Enter") { advanceField(event, target); return; }
     if (event.key === "Escape" && windows) {
@@ -551,11 +481,4 @@ export function installKeyboard({ windows = true }: { windows?: boolean } = {}) 
       void closeAfterAsking(scope, () => close.click());
     }
   });
-  // The screens change (a dialog opens, a list arrives): the keys follow. Changes of this module's own layers do not count.
-  const ownLayer = (node: Node) => node === layer || node === hint || node === live || Boolean(layer?.contains(node));
-  new MutationObserver((records) => {
-    if (records.every((record) => ownLayer(record.target) || [...record.addedNodes, ...record.removedNodes].every(ownLayer))) return;
-    if (markedScope && !markedScope.isConnected) markedScope = null;
-    scheduleMarks();
-  }).observe(document.body, { childList: true, subtree: true });
 }

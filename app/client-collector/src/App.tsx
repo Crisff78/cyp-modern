@@ -146,7 +146,7 @@ export function App() {
     };
   }, [view]);
 
-  // The same keys as the Administration portal: lists, fields, F10 to the menu (shared/keyboard.ts).
+  // The same simple keys as the Administration portal: arrows, Enter, Tab, Esc and Space (shared/keyboard.ts).
   useEffect(() => installKeyboard({ windows: false }), []);
   useEffect(() => {
     const on = () => setOnline(true);

@@ -291,10 +291,13 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         assert.equal(await reference.evaluate((element: Element) => element === document.activeElement), false, "the receipt behind does not take the keyboard back");
         await waitForFocus(page, "[data-cash-opening-amount]");
         assert.equal(await cash.getByLabel("Moneda").inputValue(), "EUR");
-        // A form of money goes on with F9 (Enter never confirms money): the key acts in Caja.
-        await page.keyboard.press("F9");
+        // A form of money goes on with its button (Enter never confirms money): Tab reaches it in Caja, Enter presses it.
+        await page.keyboard.press("Tab");
+        await waitForFocus(page, "button");
+        assert.equal(await cash.getByRole("button", { name: "Revisar apertura", exact: true }).evaluate((element: Element) => element === document.activeElement), true);
+        await page.keyboard.press("Enter");
         await page.getByRole("dialog", { name: "Abrir caja de remesas", exact: true }).waitFor();
-        assert.equal(await detail.count(), 0, "F9 acts in Caja, not on the receipt behind");
+        assert.equal(await detail.count(), 0, "the keys act in Caja, not on the receipt behind");
       } finally { await context.close(); }
     });
 

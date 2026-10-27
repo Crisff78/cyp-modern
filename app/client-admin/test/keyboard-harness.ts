@@ -8,6 +8,7 @@ import type { NodeRequire } from "node:module";
 // Shared by the keyboard-only tests (teclado-*.test.ts): the real Admin shell built with Vite, served next to the API
 // (Fastify inject over a MemoryStore), and an Edge page driven only with page.keyboard. Every trusted pointer event
 // on the page is counted: a test that clicked anything fails in assertNoPointer().
+const SIMPLE_KEY = /^(?:Shift\+)?(?:Enter|Tab|Escape|Space| |ArrowUp|ArrowDown|ArrowLeft|ArrowRight|Home|End|PageUp|PageDown|Backspace|Delete)$/;
 type Options = { app: { inject: (options: any) => Promise<any> }; adminRoot: string; output: string; playwrightEntry: string; edge: string; localRequire: NodeRequire; idempotencyKey: () => string };
 
 export async function keyboardHarness({ app, adminRoot, output, playwrightEntry, edge, localRequire }: Options) {
@@ -67,7 +68,8 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
     return {
       page, requests,
       /** Presses keys one after another, leaving the screen a moment after each. */
-      keys: async (...names: string[]) => { for (const name of names) { await page.keyboard.press(name); await page.waitForTimeout(120); } },
+      // Only the simple keys of CyP: no F key and no combination with Ctrl or Alt.
+      keys: async (...names: string[]) => { for (const name of names) { assert.match(name, SIMPLE_KEY, `${name} is not a simple key`); await page.keyboard.press(name); await page.waitForTimeout(120); } },
       /** The element with the keyboard: its type and the name a person reads next to it. */
       // Plain JavaScript text: the transpiler would add helpers (__name) that the page does not have.
       focused: () => page.evaluate(`(() => {
@@ -81,9 +83,9 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         const where = await page.evaluate(`(() => { const a = document.activeElement; const alerts = [...document.querySelectorAll('[role="alert"]')].map((item) => item.textContent.trim()).filter(Boolean).join(" | "); return (a ? a.tagName + " «" + ((a.getAttribute("aria-label") || a.textContent || "").replace(/\\s+/g, " ").trim().slice(0, 60)) + "» in «" + (a.closest('[role="dialog"],dialog')?.getAttribute("aria-label") ?? "") + "»" : "none") + (alerts ? " · alerts: " + alerts : ""); })()`);
         throw new Error(`${error.message}\nwaiting for: ${predicate.toString()}\nkeyboard at: ${where}`);
       }),
-      /** F10, then the arrows of the menu until its option (→ opens the section that holds it). */
+      /** Back to the menu (Shift+Tab, when a window is open), then its arrows until the option (→ opens its section). */
       menuTo: async (name: string) => {
-        await page.keyboard.press("F10"); await page.waitForTimeout(120);
+        for (let step = 0; step < 120 && !(await page.evaluate(() => Boolean(document.activeElement?.closest("[data-keyboard-menu]")))); step += 1) { await page.keyboard.press("Shift+Tab"); await page.waitForTimeout(40); }
         for (let step = 0; step < 60; step += 1) {
           const next = await page.evaluate((target: string) => {
             const active = document.activeElement;
@@ -101,10 +103,11 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
       },
       /** Tab until the element with the keyboard satisfies the condition (written in plain JavaScript). */
       // The condition runs in the page: what it needs from the test goes in `value` (its second argument).
-      tabTo: async (condition: (element: Element, value?: any) => boolean, limit = 80, value?: unknown) => {
+      // `key`: "Shift+Tab" to go back (up the window).
+      tabTo: async (condition: (element: Element, value?: any) => boolean, limit = 80, value?: unknown, key: "Tab" | "Shift+Tab" = "Tab") => {
         for (let step = 0; step < limit; step += 1) {
           if (await page.evaluate(`(${condition.toString()})(document.activeElement, ${JSON.stringify(value ?? null)})`)) return;
-          await page.keyboard.press("Tab"); await page.waitForTimeout(40);
+          await page.keyboard.press(key); await page.waitForTimeout(40);
         }
         assert.fail(`Tab never reached: ${condition.toString()}`);
       },
