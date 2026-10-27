@@ -5,7 +5,7 @@ import { monitorLedger } from "./monitorLedger";
 import { MIN_NEW_PASSWORD_LENGTH } from "../../shared/passwordPolicy.mjs";
 import { DetailsPanelIcon, FiltersPanelIcon } from "./PanelIcons";
 import { LegacyDialog } from "./LegacyConnectedUi";
-import { focusAfterClosing, focusFirstUseful, focusMenu, installKeyboard, keyboardIsFree, restoreWindowFocus } from "../../shared/keyboard";
+import { focusAfterClosing, focusFirstUseful, focusMenu, installKeyboard, keyboardIsFree, MENU_KEYS, restoreWindowFocus, TILE_KEYS } from "../../shared/keyboard";
 import "../../shared/keyboard.css";
 import { KeyboardShortcutsTable } from "./KeyboardHelp";
 import { CLIENT_PAGE_SIZE, NOT_DEFINED, NOT_DEFINED_ROUTE, type ClientPage, type ClientPageStatus } from "../../shared/clientPage.mjs";
@@ -614,7 +614,7 @@ function ControlPanelContent({ onLaunch }: Readonly<{ onLaunch: (page: Page, nav
     </button>
   );
   return (
-    <div className="control-panel-body in-mdi">
+    <div className="control-panel-body in-mdi" {...TILE_KEYS}>
       <section className="control-panel-section"><div className="control-panel-section-heading"><span>Codificadores</span><small>Accesos rápidos</small></div><div className="control-panel-grid">{codifierTiles.filter((tile) => canOpenPage(actor, tile.page)).map(renderTile)}</div></section>
       <section className="control-panel-section tools-section"><div className="control-panel-section-heading"><span>Herramientas</span><small>Control interno</small></div><div className="control-panel-grid tools-grid">{toolTiles.filter((tile) => canOpenPage(actor, tile.page)).map(renderTile)}</div></section>
     </div>
@@ -647,7 +647,7 @@ function ReportesLauncher({ onLaunch }: Readonly<{ onLaunch: (page: ReportPageId
     );
   };
   return (
-    <div className="reports-launcher">
+    <div className="reports-launcher" {...TILE_KEYS}>
       {renderGroup("-- Cargos --")}
       {renderGroup("-- Cobros --")}
       {renderGroup("-- Pagos --")}
@@ -5076,7 +5076,7 @@ export default function App() {
               </span>
               <ChevronsUpDown size={15} />
             </button>
-            <nav aria-label="Navegación principal" data-keyboard-menu>
+            <nav aria-label="Navegación principal" data-keyboard-menu {...MENU_KEYS}>
               {groupOrder.map((group) => {
                 const open = expandedGroups.includes(group) && !collapsed;
                 const groupItems = navigation.filter(

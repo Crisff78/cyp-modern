@@ -1,4 +1,5 @@
 import { MoneyInput } from "../../shared/MoneyInput";
+import { dialogKeys } from "../../shared/keyboard";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
@@ -191,6 +192,7 @@ export function CollectionSheet({
         <Dialog.Overlay className="sheet-overlay" />
         <Dialog.Content
           className="sheet collection-sheet"
+          {...dialogKeys("collector-collection")}
           onEscapeKeyDown={(event) => {
             if (busy) event.preventDefault();
           }}

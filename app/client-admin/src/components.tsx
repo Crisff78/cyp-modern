@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { focusFirstUseful } from "../../shared/keyboard";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { dialogKeys, focusFirstUseful } from "../../shared/keyboard";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
   ArrowDownLeft,
@@ -79,6 +79,7 @@ export function Modal({
   // The keyboard starts at the first useful place of the content (not the × of the title) and, on closing, goes back to
   // what was focused when it opened: these dialogs open from buttons that are not Radix triggers.
   const content = useRef<HTMLDivElement>(null);
+  const tabsterId = useId();
   const opener = useRef<HTMLElement | null>(null);
   // Read while rendering the opening, before a field of the content takes the focus with autoFocus.
   const wasOpen = useRef(false);
@@ -95,6 +96,7 @@ export function Modal({
         <Dialog.Overlay className={`dialog-overlay ${overlayClassName}`} />
         <Dialog.Content
           ref={content}
+          {...dialogKeys(tabsterId)}
           className={`${sheet ? "sheet" : "dialog"} ${className}`}
           onOpenAutoFocus={(event) => { if (content.current && focusFirstUseful(content.current)) event.preventDefault(); }}
           onCloseAutoFocus={onCloseAutoFocus ?? ((event) => {

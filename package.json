@@ -25,6 +25,9 @@
     "db:restore": "node --env-file-if-exists=.env app/server/scripts/db-restore.mjs",
     "db:parity": "node --env-file-if-exists=.env app/server/scripts/db-parity.mjs"
   },
+  "dependencies": {
+    "tabster": "8.8.1"
+  },
   "devDependencies": {
     "concurrently": "^9.2.1",
     "typescript": "^5.9.3",
