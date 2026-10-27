@@ -90,7 +90,7 @@ test("Dionel's review (26-10): header, double click, funnel, paged Clientes, «N
       const frame = page.getByRole("dialog", { name: window, exact: true }); await frame.waitFor(); return frame;
     };
     const shot = (name: string) => page.screenshot({ path: path.join(output, `${name}.png`) });
-    const filterIcon = (frame: any) => frame.getByRole("button", { name: "Mostrar/Ocultar filtros", exact: true }).first().locator("svg").getAttribute("class");
+    const filterIcon = (frame: any) => frame.getByRole("button", { name: "Mostrar/Ocultar filtros", exact: true }).first().locator("svg").getAttribute("data-icon");
 
     await t.test("1.1 and 1.2: Facturas and Pagos together; no backup button", async () => {
       await reset();
@@ -184,15 +184,17 @@ test("Dionel's review (26-10): header, double click, funnel, paged Clientes, «N
       }
     });
 
-    await t.test("2.2: a funnel shows and hides the filters; Depósitos hides its details panel too", async () => {
+    await t.test("2.2: Dionel's panel icons show and hide the filters; Depósitos hides its details panel too", async () => {
       for (const [option, window] of [["Clientes", "Clientes"], ["Cargos", "Cargos"], ["Cobros", "Cobros"], ["Depósitos por Cobradores", "Depósitos por Cobradores"]]) {
         const frame = await openNav(option, window);
-        assert.match(String(await filterIcon(frame)), /lucide-filter/, option);
+        assert.equal(await filterIcon(frame), "panel-filtros", option);
+        assert.equal(await frame.locator(".lucide-filter").count(), 0, option);
         assert.equal(await frame.locator(".lucide-key-round").count(), 0, option);
       }
       const deposits = await openNav("Depósitos por Cobradores", "Depósitos por Cobradores");
       const details = deposits.getByRole("complementary", { name: "Panel de detalles", exact: true });
       await details.waitFor();
+      assert.equal(await deposits.getByRole("button", { name: "Mostrar/Ocultar detalles", exact: true }).locator("svg").getAttribute("data-icon"), "panel-detalles");
       await deposits.getByRole("button", { name: "Mostrar/Ocultar detalles", exact: true }).click();
       await details.waitFor({ state: "detached" });
       await deposits.getByRole("button", { name: "Mostrar/Ocultar filtros", exact: true }).click();
