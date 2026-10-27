@@ -51,12 +51,12 @@ Pasar esas pantallas a búsquedas del servidor es otro cambio, más grande, que 
   ya fallaban en `main` y se corrigieron sin tocar el programa: `october-nine-postgres` usaba una clave de 14 caracteres
   (la regla pide 15) y `remittance-effective-rates-postgres` migraba solo hasta 039 antes de usar el almacén actual.
 - Cobrador: 17/17.
-- Interfaz: 334 en verde. Nueva `app/client-admin/test/revision-dionel-ui.test.ts` (Edge, la App real con datos
+- Interfaz: 336/336 en verde. Nueva `app/client-admin/test/revision-dionel-ui.test.ts` (Edge, la App real con datos
   sintéticos, 120 clientes): cabecera, doble clic e Intro en los seis listados, embudo y panel de detalle, páginas de
   Clientes, «No Definida» en Clientes y reportes, y Envíos sin los textos fijos; `login-notifications` ajustada al
-  nuevo orden de la cabecera. **Falla 1 prueba ajena:** «U9 a retry refused because the permission was withdrawn…» de
-  `user-permissions-ui.test.ts`; falla igual en `main` sin estos cambios (comprobado), y con el PR #58 había pasado.
-  Causa no investigada a fondo.
+  nuevo orden de la cabecera. Dos pruebas ajenas fallaban a veces también en `main` por esperar poco y se corrigieron
+  solo en la prueba: `user-permissions-ui` («U9…») miraba los permisos mientras la ventana decía «Cargando permisos…», y
+  `audit-integrity-ui` leía el total del monitor antes de que llegara la vista general recargada.
 - Revisión visual en Edge de la app compilada como en Render (`VITE_PUBLIC_DEMO`, `CYP_PUBLIC_DEMO`, PostgreSQL
   desechable): todos los puntos correctos y cero errores de página; capturas en `docs/revision-dionel-2026-10-26/`.
   Los descargos de la demo no tienen fecha, así que para la captura se vació «Fecha Inicial» (solo el filtro).
