@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import { Download, KeyRound, Printer, RefreshCw } from "lucide-react";
+import { Download, Filter as Funnel, Printer, RefreshCw } from "lucide-react";
 import { exportSections, formatMoney, printSections, type OutputSection } from "../../shared/remittances/output";
 import { LegacyDialog } from "./LegacyConnectedUi";
 import type { Snapshot } from "./types";
 import { currentOperationalWeek } from "../../shared/operationalWeek";
+import { NOT_DEFINED, NOT_DEFINED_ROUTE } from "../../shared/clientPage.mjs";
 import "./connected-report-layout.css";
 
 type ReportRow = { id: string; date: string; clientId: string; routeId: string; zoneId: string; client: string; route: string; zone: string; collector: string; concept: string; currency: string; amount: number; received: number; pending: number };
 const businessDay = (value: string) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Santo_Domingo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(value));
+// A row without a route or zone; «No Definida» in the filters selects these rows (Dionel, 26-10).
+const NO_ZONE_ID = "sector:Sin zona";
 const currencyOf = (value?: string) => !value || ["DOP", "Peso Dominicano"].includes(value) ? "DOP" : ["USD", "Dólar Americano", "Dólar Estadounidense"].includes(value) ? "USD" : ["EUR", "Euro"].includes(value) ? "EUR" : value;
 
 export function ConnectedLegacyReports({ page, title, snapshot, onRefresh }: { page: string; title: string; snapshot: Snapshot; onRefresh: () => void }) {
@@ -31,7 +34,7 @@ export function ConnectedLegacyReports({ page, title, snapshot, onRefresh }: { p
     const client = snapshot.clients.find((row) => row.id === clientId);
     const route = snapshot.routes.find((row) => row.id === client?.routeId);
     const assignedZone = snapshot.zones?.find((row) => row.id === route?.zoneId);
-    return { clientId: clientId ?? "", client: client?.name ?? "Cliente no disponible", route: route?.name ?? "Sin ruta", zone: assignedZone?.name || route?.sector || "Sin zona", zoneId: assignedZone?.id || `sector:${route?.sector || "Sin zona"}`, collector: snapshot.collectors.find((row) => row.id === collector)?.name ?? "Sin cobrador", routeId: route?.id ?? "", collectorId: collector ?? "" };
+    return { clientId: clientId ?? "", client: client?.name ?? "Cliente no disponible", route: route?.name ?? "Sin ruta", zone: assignedZone?.name || route?.sector || "Sin zona", zoneId: assignedZone?.id || (route?.sector ? `sector:${route.sector}` : NO_ZONE_ID), collector: snapshot.collectors.find((row) => row.id === collector)?.name ?? "Sin cobrador", routeId: route?.id ?? "", collectorId: collector ?? "" };
   };
   const source = pendingReport ? snapshot.payouts.filter((payout) => payout.status !== "cancelled" && payout.amount > payout.paid).map((payout) => ({ ...metadata(payout.clientId, payout.collectorId), id: payout.id, date: "", concept: payout.concept, currency: "DOP", amount: payout.amount, received: payout.paid, pending: payout.amount - payout.paid })) : servicesReport ? snapshot.charges.filter((charge) => charge.status !== "cancelled").map((charge) => {
     const client = snapshot.clients.find((row) => row.id === charge.clientId);
@@ -42,7 +45,7 @@ export function ConnectedLegacyReports({ page, title, snapshot, onRefresh }: { p
     return { ...metadata(movement.clientId ?? payout?.clientId, movement.collectorId), id: movement.id, date: businessDay(movement.createdAt), concept: payout?.concept ?? "Concepto no disponible", currency: "DOP", amount: movement.amount, received: 0, pending: 0 };
   });
   const invalidRange = !pendingReport && from && to && from > to;
-  const rows: ReportRow[] = invalidRange ? [] : source.filter((row) => (!routeId || row.routeId === routeId) && (!zone || row.zoneId === zone) && (!collectorId || row.collectorId === collectorId) && (!concept || row.concept === concept) && (currency === "all" || row.currency === currency) && (pendingReport || ((!from || row.date >= from) && (!to || row.date <= to))));
+  const rows: ReportRow[] = invalidRange ? [] : source.filter((row) => (!routeId || (routeId === NOT_DEFINED_ROUTE ? !row.routeId : row.routeId === routeId)) && (!zone || (zone === NOT_DEFINED_ROUTE ? row.zoneId === NO_ZONE_ID : row.zoneId === zone)) && (!collectorId || row.collectorId === collectorId) && (!concept || row.concept === concept) && (currency === "all" || row.currency === currency) && (pendingReport || ((!from || row.date >= from) && (!to || row.date <= to))));
   const notes = pendingReport ? "Saldo pendiente actual de las autorizaciones. El sistema no expone su fecha de alta ni vencimiento; por eso no se puede reconstruir un saldo histórico o diario con estos datos." : servicesReport ? "Servicios facturados por zona según fecha de vencimiento del cargo. Recibido y pendiente son sus saldos actuales, no saldos históricos del día indicado." : "Pagos registrados por fecha del movimiento (hora de República Dominicana). El sistema vincula el pago a un concepto, no a un catálogo de servicios; las agrupaciones por servicio se presentan por ese concepto.";
   const sections: OutputSection[] = [];
   const currencies = Array.from(new Set(rows.map((row) => row.currency))).sort();
@@ -73,7 +76,7 @@ export function ConnectedLegacyReports({ page, title, snapshot, onRefresh }: { p
     sections.push({ title: code, columns, rows: data });
     sections.push({ title: `Totales ${code}`, columns: ["Registros", "Importe", ...(pendingReport || servicesReport ? [pendingReport ? "Pagado" : "Recibido", "Pendiente"] : [])], rows: [[entries.length, formatMoney(entries.reduce((sum, row) => sum + row.amount, 0), code), ...(pendingReport || servicesReport ? [formatMoney(entries.reduce((sum, row) => sum + row.received, 0), code), formatMoney(entries.reduce((sum, row) => sum + row.pending, 0), code)] : [])]] });
   }
-  const output = [{ title: "Criterios y alcance", columns: ["Dato", "Valor"], rows: [["Período", pendingReport ? `Saldo actual · ${snapshot.businessDate}` : `${from || "Inicio"} a ${to || "Fin"}`], ["Ruta", snapshot.routes.find((row) => row.id === routeId)?.name ?? "Todas"], ["Zona", source.find((row) => row.zoneId === zone)?.zone ?? "Todas"], ["Cobrador", snapshot.collectors.find((row) => row.id === collectorId)?.name ?? "Todos"], ["Concepto / servicio", concept || "Todos"], ["Moneda", currency === "all" ? "Todas, separadas" : currency], ["Alcance", notes]] }, ...sections] satisfies OutputSection[];
+  const output = [{ title: "Criterios y alcance", columns: ["Dato", "Valor"], rows: [["Período", pendingReport ? `Saldo actual · ${snapshot.businessDate}` : `${from || "Inicio"} a ${to || "Fin"}`], ["Ruta", routeId === NOT_DEFINED_ROUTE ? NOT_DEFINED : snapshot.routes.find((row) => row.id === routeId)?.name ?? "Todas"], ["Zona", zone === NOT_DEFINED_ROUTE ? NOT_DEFINED : source.find((row) => row.zoneId === zone)?.zone ?? "Todas"], ["Cobrador", snapshot.collectors.find((row) => row.id === collectorId)?.name ?? "Todos"], ["Concepto / servicio", concept || "Todos"], ["Moneda", currency === "all" ? "Todas, separadas" : currency], ["Alcance", notes]] }, ...sections] satisfies OutputSection[];
   const outputAction = (kind: "csv" | "print") => {
     if (invalidRange) return;
     setError("");
@@ -93,7 +96,7 @@ export function ConnectedLegacyReports({ page, title, snapshot, onRefresh }: { p
   };
   return <div className="connected-report-mdi">
     <div className="legacy-mdi-toolbar" aria-label="Herramientas del reporte">
-      <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" aria-label="Mostrar/Ocultar filtros" aria-pressed={filtersVisible} onClick={() => setFiltersVisible((visible) => !visible)}><KeyRound size={15} /></button>
+      <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" aria-label="Mostrar/Ocultar filtros" aria-pressed={filtersVisible} onClick={() => setFiltersVisible((visible) => !visible)}><Funnel size={15} aria-hidden="true" /></button>
       <button type="button" className="nav-tool" title="Primer registro" disabled={!selectionKeys.length} onClick={() => moveSelection("first")}>|&lt;</button>
       <button type="button" className="nav-tool" title="Registro anterior" disabled={!selectionKeys.length} onClick={() => moveSelection("previous")}>&lt;</button>
       <button type="button" className="nav-tool" title="Registro siguiente" disabled={!selectionKeys.length} onClick={() => moveSelection("next")}>&gt;</button>
@@ -109,8 +112,8 @@ export function ConnectedLegacyReports({ page, title, snapshot, onRefresh }: { p
           <label>Fecha inicial:<input type="date" disabled={pendingReport} value={from} onChange={(event) => setFrom(event.target.value)} /></label>
           <label>Fecha final:<input type="date" disabled={pendingReport} value={to} onChange={(event) => setTo(event.target.value)} /></label>
           <label>Moneda:<select value={currency} onChange={(event) => setCurrency(event.target.value)}><option value="all">Todas, separadas</option>{Array.from(new Set(source.map((row) => row.currency))).sort().map((value) => <option key={value}>{value}</option>)}</select></label>
-          <label>Ruta:<select value={routeId} onChange={(event) => setRouteId(event.target.value)}><option value="">Todas</option>{snapshot.routes.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select></label>
-          <label>Zona:<select value={zone} onChange={(event) => setZone(event.target.value)}><option value="">Todas</option>{Array.from(new Map(source.map((row) => [row.zoneId, row.zone])).entries()).sort((a, b) => a[1].localeCompare(b[1])).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+          <label>Ruta:<select value={routeId} onChange={(event) => setRouteId(event.target.value)}><option value="">Todas</option><option value={NOT_DEFINED_ROUTE}>{NOT_DEFINED}</option>{snapshot.routes.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select></label>
+          <label>Zona:<select value={zone} onChange={(event) => setZone(event.target.value)}><option value="">Todas</option><option value={NOT_DEFINED_ROUTE}>{NOT_DEFINED}</option>{Array.from(new Map(source.filter((row) => row.zoneId !== NO_ZONE_ID).map((row) => [row.zoneId, row.zone])).entries()).sort((a, b) => a[1].localeCompare(b[1])).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           <label>Cobrador:<select value={collectorId} onChange={(event) => setCollectorId(event.target.value)}><option value="">Todos</option>{snapshot.collectors.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select></label>
           <label>{servicesReport ? "Servicio:" : "Concepto:"}<select value={concept} onChange={(event) => setConcept(event.target.value)}><option value="">Todos</option>{Array.from(new Set(source.map((row) => row.concept))).sort().map((value) => <option key={value}>{value}</option>)}</select></label>
           <label>Presentación:<select value={grouping} onChange={(event) => setGrouping(event.target.value)}><option value="detail">Detalle / agrupación del reporte</option><option value="range">Resumen del rango</option><option value="day" disabled={pendingReport}>Resumen diario</option></select></label>

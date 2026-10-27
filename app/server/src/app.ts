@@ -1,4 +1,5 @@
 import { MIN_NEW_PASSWORD_LENGTH } from "../../shared/passwordPolicy.mjs";
+import { CLIENT_PAGE_MAX, CLIENT_PAGE_SIZE, pageClients } from "../../shared/clientPage.mjs";
 import { requestStore } from "./request-store.js";
 import { visibleRemittanceResult } from "./remittances.js";
 import Fastify, { type FastifyRequest } from "fastify";
@@ -49,6 +50,7 @@ import {
   publicAccount,
   saveSystemConfigData,
   snapshot,
+  visibleRoutesAndClients,
   updateRecurringPayout,
   verifyPassword,
   type Account,
@@ -883,6 +885,21 @@ export async function buildApp(config: Config) {
     );
     describe("get", path, `Consultar ${key}`);
   }
+  // The Clientes window asks for one page with its own filters instead of every client (Dionel, 26-10).
+  const clientPageQuery = z.object({
+    mode: z.enum(["all", "search", "identification", "name", "zone", "route"]).default("all"),
+    q: singleLine(160).default(""),
+    status: z.enum(["Activo", "Inactivo", "Todos"]).default("Activo"),
+    limit: z.coerce.number().int().min(1).max(CLIENT_PAGE_MAX).default(CLIENT_PAGE_SIZE),
+    offset: z.coerce.number().int().min(0).max(1_000_000).default(0),
+    focus: id.optional(),
+  }).strict();
+  app.get("/api/clientes/pagina", async (req) => {
+    const query = clientPageQuery.parse(req.query);
+    const { routes, clients } = visibleRoutesAndClients(await config.store.read(), user(req));
+    return pageClients(clients, routes, query);
+  });
+  describe("get", "/api/clientes/pagina", "Una página de clientes con los filtros de la ventana Clientes");
   for (const [path, type] of [
     ["/api/cobros", "collection"],
     ["/api/pagos", "payout"],
