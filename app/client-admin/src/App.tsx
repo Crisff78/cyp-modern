@@ -3,6 +3,7 @@ import { lazy, Suspense } from "react";
 const FinancialMonitorView = lazy(() => import("./FinancialMonitorView"));
 import { monitorLedger } from "./monitorLedger";
 import { MIN_NEW_PASSWORD_LENGTH } from "../../shared/passwordPolicy.mjs";
+import { DetailsPanelIcon, FiltersPanelIcon } from "./PanelIcons";
 import { CLIENT_PAGE_SIZE, NOT_DEFINED, NOT_DEFINED_ROUTE, type ClientPage, type ClientPageStatus } from "../../shared/clientPage.mjs";
 import {
   isValidElement,
@@ -44,7 +45,6 @@ import {
   Printer,
   FolderOpen,
   KeyRound,
-  Filter as Funnel,
   LayoutDashboard,
   ListFilter,
   LoaderCircle,
@@ -67,7 +67,6 @@ import {
   Users,
   Wallet,
   X,
-  PanelRight,
 } from "lucide-react";
 import { createPortal } from "react-dom";
 import { Toaster, toast } from "sonner";
@@ -906,9 +905,9 @@ function LegacyToolbar({ onToggleFilters, filtersVisible = true, onToggleDetails
   disableAccept ||= !access.canAccept;
   return (
     <div className="legacy-mdi-toolbar" aria-label="Barra de herramientas legacy" onMouseDown={stopToolbarEvent} onClick={stopToolbarEvent}>
-      {onToggleFilters && <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" aria-label="Mostrar/Ocultar filtros" aria-pressed={filtersVisible} onClick={runToolbarAction(onToggleFilters)}><Funnel size={15} aria-hidden="true" /></button>}
+      {onToggleFilters && <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" aria-label="Mostrar/Ocultar filtros" aria-pressed={filtersVisible} onClick={runToolbarAction(onToggleFilters)}><FiltersPanelIcon /></button>}
       {/* Windows with a details panel on the right hide it with its own button (Dionel, 26-10). */}
-      {onToggleDetails && <button type="button" className={detailsVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar detalles" aria-label="Mostrar/Ocultar detalles" aria-pressed={detailsVisible} onClick={runToolbarAction(onToggleDetails)}><PanelRight size={15} aria-hidden="true" /></button>}
+      {onToggleDetails && <button type="button" className={detailsVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar detalles" aria-label="Mostrar/Ocultar detalles" aria-pressed={detailsVisible} onClick={runToolbarAction(onToggleDetails)}><DetailsPanelIcon /></button>}
       <button type="button" className="nav-tool" title="Mover al inicio" onClick={runToolbarAction(onFirst)}>|&lt;</button>
       <button type="button" className="nav-tool" title="Subir" onClick={runToolbarAction(onPrevious)}>&lt;</button>
       <button type="button" className="nav-tool" title="Bajar" onClick={runToolbarAction(onNext)}>&gt;</button>
@@ -2271,7 +2270,7 @@ function SessionToolbar({ filtersVisible, selectedSession, onToggleFilters, onFi
   const action = (handler: () => void) => (event: ReactMouseEvent<HTMLButtonElement>) => { event.stopPropagation(); handler(); };
   return (
     <div className="legacy-mdi-toolbar session-toolbar" aria-label="Barra de herramientas de sesiones" onMouseDown={stopToolbarEvent} onClick={stopToolbarEvent}>
-      <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" aria-label="Mostrar/Ocultar filtros" aria-pressed={filtersVisible} onClick={action(onToggleFilters)}><Funnel size={15} aria-hidden="true" /></button>
+      <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" aria-label="Mostrar/Ocultar filtros" aria-pressed={filtersVisible} onClick={action(onToggleFilters)}><FiltersPanelIcon /></button>
       <button type="button" className="nav-tool" title="Mover al inicio" onClick={action(onFirst)}>|&lt;</button>
       <button type="button" className="nav-tool" title="Subir" onClick={action(onPrevious)}>&lt;</button>
       <button type="button" className="nav-tool" title="Bajar" onClick={action(onNext)}>&gt;</button>
@@ -2737,7 +2736,7 @@ function ClientToolbar({ filtersVisible, onToggleFilters, canGoBack, canGoForwar
   const action = (handler: () => void) => (event: ReactMouseEvent<HTMLButtonElement>) => { event.stopPropagation(); handler(); };
   return (
     <div className="legacy-mdi-toolbar clients-toolbar" aria-label="Barra de herramientas de clientes" onMouseDown={stopToolbarEvent} onClick={stopToolbarEvent}>
-      <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" aria-label="Mostrar/Ocultar filtros" aria-pressed={filtersVisible} onClick={action(onToggleFilters)}><Funnel size={15} aria-hidden="true" /></button>
+      <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" aria-label="Mostrar/Ocultar filtros" aria-pressed={filtersVisible} onClick={action(onToggleFilters)}><FiltersPanelIcon /></button>
       {/* The list arrives in pages: these buttons move between them. */}
       <button type="button" className="nav-tool" title="Primera página" aria-label="Primera página" disabled={!canGoBack} onClick={action(onFirst)}>|&lt;</button>
       <button type="button" className="nav-tool" title="Página anterior" aria-label="Página anterior" disabled={!canGoBack} onClick={action(onPrevious)}>&lt;</button>
@@ -2999,7 +2998,7 @@ function AuthorizationToolbar({ filtersVisible, onToggleFilters, onFirst, onPrev
   const action = (handler: () => void) => (event: ReactMouseEvent<HTMLButtonElement>) => { event.stopPropagation(); handler(); };
   return (
     <div className="legacy-mdi-toolbar authorization-toolbar" aria-label="Barra de herramientas de solicitudes" onMouseDown={stopToolbarEvent} onClick={stopToolbarEvent}>
-      <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" aria-label="Mostrar/Ocultar filtros" aria-pressed={filtersVisible} onClick={action(onToggleFilters)}><Funnel size={15} aria-hidden="true" /></button>
+      <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" aria-label="Mostrar/Ocultar filtros" aria-pressed={filtersVisible} onClick={action(onToggleFilters)}><FiltersPanelIcon /></button>
       <button type="button" className="nav-tool" title="Mover al inicio" onClick={action(onFirst)}>|&lt;</button>
       <button type="button" className="nav-tool" title="Subir" onClick={action(onPrevious)}>&lt;</button>
       <button type="button" className="nav-tool" title="Bajar" onClick={action(onNext)}>&gt;</button>
@@ -3524,7 +3523,7 @@ function TraceToolbar({ filtersVisible, onToggleFilters, onFirst, onPrevious, on
   const action = (handler: () => void) => (event: ReactMouseEvent<HTMLButtonElement>) => { event.stopPropagation(); handler(); };
   return (
     <div className="legacy-mdi-toolbar traces-toolbar" aria-label="Barra de herramientas de trazas" onMouseDown={stopToolbarEvent} onClick={stopToolbarEvent}>
-      <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" aria-label="Mostrar/Ocultar filtros" aria-pressed={filtersVisible} onClick={action(onToggleFilters)}><Funnel size={15} aria-hidden="true" /></button>
+      <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" aria-label="Mostrar/Ocultar filtros" aria-pressed={filtersVisible} onClick={action(onToggleFilters)}><FiltersPanelIcon /></button>
       <button type="button" className="nav-tool" title="Mover al inicio" onClick={action(onFirst)}>|&lt;</button>
       <button type="button" className="nav-tool" title="Subir" onClick={action(onPrevious)}>&lt;</button>
       <button type="button" className="nav-tool" title="Bajar" onClick={action(onNext)}>&gt;</button>
@@ -3960,7 +3959,7 @@ function PcpToolbar({ filtersVisible, selectedPcp, onToggleFilters, onFirst, onP
   const action = (handler: () => void) => (event: ReactMouseEvent<HTMLButtonElement>) => { event.stopPropagation(); handler(); };
   return (
     <div className="legacy-mdi-toolbar pcp-toolbar" aria-label="Barra de herramientas de PCP" onMouseDown={stopToolbarEvent} onClick={stopToolbarEvent}>
-      <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" aria-label="Mostrar/Ocultar filtros" aria-pressed={filtersVisible} onClick={action(onToggleFilters)}><Funnel size={15} aria-hidden="true" /></button>
+      <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" aria-label="Mostrar/Ocultar filtros" aria-pressed={filtersVisible} onClick={action(onToggleFilters)}><FiltersPanelIcon /></button>
       <button type="button" className="nav-tool" title="Mover al inicio" onClick={action(onFirst)}>|&lt;</button>
       <button type="button" className="nav-tool" title="Subir" onClick={action(onPrevious)}>&lt;</button>
       <button type="button" className="nav-tool" title="Bajar" onClick={action(onNext)}>&gt;</button>

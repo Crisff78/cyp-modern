@@ -1,6 +1,7 @@
 import { isValidElement, useEffect, useRef, useState, type ReactNode, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
-import { ClipboardCheck, Eye, Filter as Funnel, Pencil, Plus, Printer, RefreshCw, Trash2, X } from "lucide-react";
+import { ClipboardCheck, Eye, Pencil, Plus, Printer, RefreshCw, Trash2, X } from "lucide-react";
+import { FiltersPanelIcon } from "./PanelIcons";
 import { usePageAccess } from "./PageAccess";
 
 // Original MDI presentation shared by the connected screens.
@@ -42,7 +43,7 @@ export function LegacyToolbar({ onToggleFilters, filtersVisible = true, onFirst,
   const consult = consultOnEdit && !access.canEdit;
   return (
     <div className="legacy-mdi-toolbar" aria-label="Barra de herramientas legacy" onMouseDown={stopToolbarEvent} onClick={stopToolbarEvent}>
-      {onToggleFilters && <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" aria-label="Mostrar/Ocultar filtros" aria-pressed={filtersVisible} onClick={runToolbarAction(onToggleFilters)}><Funnel size={15} aria-hidden="true" /></button>}
+      {onToggleFilters && <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" aria-label="Mostrar/Ocultar filtros" aria-pressed={filtersVisible} onClick={runToolbarAction(onToggleFilters)}><FiltersPanelIcon /></button>}
       <button type="button" className="nav-tool" title="Primer registro" onClick={runToolbarAction(onFirst)}>|&lt;</button>
       <button type="button" className="nav-tool" title="Registro anterior" onClick={runToolbarAction(onPrevious)}>&lt;</button>
       <button type="button" className="nav-tool" title="Registro siguiente" onClick={runToolbarAction(onNext)}>&gt;</button>
