@@ -48,11 +48,20 @@ test("Administración with the keyboard only: menu, Clientes pages and record, u
     await page.keyboard.type(DEMO_PASSWORD);
     await keys("Enter");
     await waitFor(() => Boolean(document.activeElement?.closest("[data-keyboard-menu]")));
+    // Tabster moves the keyboard: the menu carries its mark and is one Tab stop that remembers its option.
+    assert.equal(await page.locator('[data-keyboard-menu][data-tabster*="mover"]').count(), 1);
+    await menuTo("Clientes");
+    await keys("Tab");
+    assert.equal(await page.evaluate(`Boolean(document.activeElement?.closest("[data-keyboard-menu]"))`), false);
+    await keys("Shift+Tab");
+    assert.equal((await focused()).label, "Clientes");
 
     // ── Clientes ──
     await menuTo("Clientes");
     await keys("Enter");
     await inWindow("Clientes");
+    // Its list and its bar of buttons are Tabster's too (marked by their shape).
+    await waitFor(() => document.querySelector(".clients-grid")?.getAttribute("data-tabster")?.includes("mover") === true && document.querySelector('.mdi-window[aria-label="Clientes"] .legacy-mdi-toolbar')?.getAttribute("data-tabster")?.includes("mover") === true);
     // The listing opens on its search, and nothing is drawn on its buttons.
     assert.equal((await focused()).label, "Buscar clientes por código, teléfono o nota");
     await waitFor(() => document.querySelectorAll(".clients-grid tbody tr[role=button]").length === 50);
@@ -115,6 +124,12 @@ test("Administración with the keyboard only: menu, Clientes pages and record, u
     await keys("Enter");
     await inWindow("Datos del Cliente...");
     assert.equal(await page.locator('[role="dialog"][aria-label="Datos del Cliente..."] input').first().inputValue(), "");
+    // Tab does not leave an open dialog (Tabster's Modalizer): round and round, forwards and backwards.
+    const dialogStops = await page.evaluate(`document.querySelectorAll('[role="dialog"][aria-label="Datos del Cliente..."] :is(button,input,select,textarea):not(:disabled)').length`) as number;
+    for (let step = 0; step < dialogStops + 4; step += 1) await keys("Tab");
+    await inWindow("Datos del Cliente...");
+    for (let step = 0; step < dialogStops + 4; step += 1) await keys("Shift+Tab");
+    await inWindow("Datos del Cliente...");
     await keys("Escape");
     await waitFor(() => !document.querySelector('[role="dialog"][aria-label="Datos del Cliente..."]'));
     // Esc closes the window; the keyboard goes back to the menu.

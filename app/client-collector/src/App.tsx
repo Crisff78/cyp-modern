@@ -61,7 +61,7 @@ import { INPUT_LIMITS, validateText } from "../../shared/inputRules";
 import { LoginPasswordInput, PasswordManagerHint } from "../../shared/LoginPasswordInput";
 import { loginCredentials } from "../../shared/loginCredentials";
 import { openAdminPortal } from "../../shared/sessionHandoff";
-import { installKeyboard } from "../../shared/keyboard";
+import { BAR_MENU_KEYS, dialogKeys, installKeyboard } from "../../shared/keyboard";
 import "../../shared/keyboard.css";
 import { transformRouteToMap } from "./services/mapAdapter";
 import { businessDay as localDay, timeLabel } from "./services/dates";
@@ -559,7 +559,7 @@ export function App() {
           <span>CyP · Cobros y pagos, bajo control.</span>
         </div>
       </main>
-      <nav className="bottom-nav" aria-label="Navegación principal" data-keyboard-menu>
+      <nav className="bottom-nav" aria-label="Navegación principal" data-keyboard-menu {...BAR_MENU_KEYS}>
         {allowedTabs.map(({ id, name, icon: Icon }) => (
           <button
             key={id}
@@ -592,7 +592,7 @@ export function App() {
       <Dialog.Root open={installHelp} onOpenChange={setInstallHelp}>
         <Dialog.Portal>
           <Dialog.Overlay className="sheet-overlay" />
-          <Dialog.Content className="sheet help-sheet">
+          <Dialog.Content className="sheet help-sheet" {...dialogKeys("collector-help")}>
             <div className="sheet-handle" />
             <div className="sheet-heading">
               <span className="action-icon green">
@@ -1134,7 +1134,7 @@ function RouteView({
         >
           <Dialog.Portal>
             <Dialog.Overlay className="sheet-overlay" />
-            <Dialog.Content className="sheet delay-reason-sheet">
+            <Dialog.Content className="sheet delay-reason-sheet" {...dialogKeys("collector-delay")}>
               <div className="sheet-handle" />
               <Dialog.Title>Motivo de atraso</Dialog.Title>
               <Dialog.Description>

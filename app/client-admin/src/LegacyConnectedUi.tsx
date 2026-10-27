@@ -1,9 +1,9 @@
-import { isValidElement, useEffect, useRef, useState, type ReactNode, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { isValidElement, useEffect, useId, useRef, useState, type ReactNode, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { ClipboardCheck, Eye, Pencil, Plus, Printer, RefreshCw, Trash2, X } from "lucide-react";
 import { FiltersPanelIcon } from "./PanelIcons";
 import { usePageAccess } from "./PageAccess";
-import { closeAfterAsking, focusFirstUseful, giveFocusBack } from "../../shared/keyboard";
+import { closeAfterAsking, dialogKeys, focusFirstUseful, giveFocusBack } from "../../shared/keyboard";
 
 // Original MDI presentation shared by the connected screens.
 type LegacyToolbarAction = () => void;
@@ -97,36 +97,21 @@ export function LegacyDialog({ title, onClose, children, className = "", overlay
   const [drag, setDrag] = useState<null | { startX: number; startY: number; x: number; y: number }>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const previousFocus = useRef(document.activeElement instanceof HTMLElement ? document.activeElement : null);
+  // Tab stays in the dialog (Tabster, dialogKeys); it opens on its first useful place and, closed, gives the keyboard
+  // back to what opened it.
+  const tabsterId = useId();
   useEffect(() => {
-    const overlay = overlayRef.current;
-    const dialog = overlay?.querySelector<HTMLElement>('[role="dialog"]');
+    const overlay = overlayRef.current, dialog = overlay?.querySelector<HTMLElement>('[role="dialog"]');
     if (!overlay || !dialog) return;
-    const isTopmost = () => {
-      const overlays = document.querySelectorAll(".legacy-dialog-overlay");
-      return overlays[overlays.length - 1] === overlay;
-    };
-    const controls = () => Array.from(dialog.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href],[tabindex]:not([tabindex="-1"])')).filter((element) => element.getClientRects().length > 0);
     const focusInside = () => { if (!focusFirstUseful(dialog)) dialog.focus(); };
     if (!dialog.contains(document.activeElement)) focusInside();
-    const containFocus = (event: FocusEvent) => {
-      if (isTopmost() && event.target instanceof Node && !dialog.contains(event.target)) focusInside();
+    // The keyboard taken out of the dialog in front by the screen behind it (not by Tab) comes back into it.
+    const keepInside = (event: FocusEvent) => {
+      const overlays = document.querySelectorAll(".legacy-dialog-overlay");
+      if (overlays[overlays.length - 1] === overlay && event.target instanceof Node && !dialog.contains(event.target)) focusInside();
     };
-    const trapTab = (event: KeyboardEvent) => {
-      if (event.key !== "Tab" || !isTopmost()) return;
-      const items = controls();
-      const first = items[0];
-      const last = items[items.length - 1];
-      if (!first) { event.preventDefault(); dialog.focus(); }
-      else if (event.shiftKey && (document.activeElement === first || !items.includes(document.activeElement as HTMLElement))) { event.preventDefault(); last.focus(); }
-      else if (!event.shiftKey && (document.activeElement === last || !items.includes(document.activeElement as HTMLElement))) { event.preventDefault(); first.focus(); }
-    };
-    document.addEventListener("focusin", containFocus);
-    document.addEventListener("keydown", trapTab, true);
-    return () => {
-      document.removeEventListener("focusin", containFocus);
-      document.removeEventListener("keydown", trapTab, true);
-      giveFocusBack(previousFocus.current);
-    };
+    document.addEventListener("focusin", keepInside);
+    return () => { document.removeEventListener("focusin", keepInside); giveFocusBack(previousFocus.current); };
   }, []);
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -155,7 +140,7 @@ export function LegacyDialog({ title, onClose, children, className = "", overlay
   };
   return createPortal(
     <div ref={overlayRef} className={`legacy-dialog-overlay ${overlayClassName}`} role="presentation">
-      <section className={`legacy-dialog ${className}`} style={{ transform: `translate(${offset.x}px, ${offset.y}px)` }} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1}>
+      <section className={`legacy-dialog ${className}`} style={{ transform: `translate(${offset.x}px, ${offset.y}px)` }} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} {...dialogKeys(tabsterId)}>
         <div className="legacy-dialog-titlebar" onMouseDown={startDialogDrag}>
           <span>{title}</span>
           <button type="button" aria-label={`Cerrar ${title}`} onMouseDown={(event) => event.stopPropagation()} onClick={onClose} title={`Cerrar ${title}`}>X</button>
