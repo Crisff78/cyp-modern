@@ -1171,14 +1171,20 @@ export function closeDay(
   state.settlements.push(settlement);
   return settlement;
 }
+// The routes and clients an account may see; the snapshot and the paged Clientes window share them.
+export function visibleRoutesAndClients(state: State, user: User) {
+  const administration = canReadAdministration(user);
+  const routes = state.routes.filter((r) => administration || (user.role === "collector" && user.collectorId === r.collectorId));
+  const clients = state.clients.filter((c) =>
+    routes.some((r) => r.id === c.routeId),
+  ).map((client) => ({ ...client, preferredCurrency: client.preferredCurrency ?? "DOP" }));
+  return { routes, clients };
+}
 export function snapshot(state: State, user: User) {
   const administration = canReadAdministration(user);
   const allowed = (id: string) =>
     administration || (user.role === "collector" && user.collectorId === id);
-  const routes = state.routes.filter((r) => allowed(r.collectorId));
-  const clients = state.clients.filter((c) =>
-    routes.some((r) => r.id === c.routeId),
-  ).map((client) => ({ ...client, preferredCurrency: client.preferredCurrency ?? "DOP" }));
+  const { routes, clients } = visibleRoutesAndClients(state, user);
   const movements = state.movements
     .filter((m) => allowed(m.collectorId) && (administration || ledgerCurrency(m.currency) === "DOP"))
     .map(({ actorId, receiptRevoked, ...m }) => ({
