@@ -219,11 +219,14 @@ createRoot(document.getElementById("root")).render(<App />);
       await page.getByRole("button", { name: /^Notificaciones,/ }).click();
       await menu.waitFor(); assert.equal(await receipt.count(), 0);
     });
-    await t.test("theme toggle sits between Help and Wallet, preserves drafts, persists and keeps print light", async () => {
+    await t.test("header groups Facturas and Pagos, has no backup button, theme toggle preserves drafts, persists and keeps print light", async () => {
       const key = "cyp-admin-color-theme";
       await page.locator(".notifications-menu").getByRole("button", { name: "Cerrar", exact: true }).click();
       const themeButton = () => page.locator(".theme-toggle");
-      assert.deepEqual(await themeButton().evaluate((node: HTMLElement) => ({ before: node.previousElementSibling?.getAttribute("aria-label"), after: node.nextElementSibling?.getAttribute("aria-label") })), { before: "Qué hay de nuevo", after: "Ventana de Pagos" });
+      // Dionel (26-10): buttons grouped by topic, Facturas and Pagos together; the backup is not made from the browser.
+      const headerOrder = await page.locator(".topbar-actions").evaluate((bar: HTMLElement) => [...bar.querySelectorAll(":scope > button")].map((button) => button.getAttribute("aria-label") ?? button.getAttribute("title")));
+      assert.deepEqual(headerOrder.slice(headerOrder.findIndex((label) => label?.startsWith("Notificaciones"))).map((label) => label?.startsWith("Notificaciones") ? "Notificaciones" : label), ["Notificaciones", "Facturas", "Ventana de Pagos", "Qué hay de nuevo", await themeButton().getAttribute("aria-label"), "Abrir cuenta"]);
+      assert.equal(await page.getByRole("button", { name: "Hacer copia de respaldo", exact: true }).count(), 0);
       assert.equal(await themeButton().getAttribute("aria-pressed"), "false");
       const token = await page.evaluate(() => sessionStorage.getItem("cyp-admin-token"));
       // The quick buttons above the desktop were removed (2026-10-20): everything opens from the side menu.

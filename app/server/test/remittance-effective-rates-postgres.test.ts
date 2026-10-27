@@ -57,6 +57,8 @@ test("PostgreSQL 037–039 preserve history, freeze applied buy/sell rates, paym
     for (const file of ["038_remittance_payments_receipts.sql", "039_remittance_applied_commercial_rates.sql"]) await sql.query(await readFile(new URL(file, directory), "utf8"));
     assert.equal((await sql.query("SELECT count(*)::int AS count FROM remittance_transfers WHERE payment IS NOT NULL OR receipt_issuer IS NOT NULL OR source_rate_kind IS NOT NULL")).rows[0].count, 0, "No invented historical payment, issuer or applied rate kind");
     assert.equal((await sql.query("SELECT tgenabled FROM pg_trigger WHERE tgname='immutable_remittance_transfers'")).rows[0].tgenabled, "O");
+    // The current store also needs the later migrations (040 onwards).
+    for (const file of (await readdir(directory)).filter((name) => /^\d{3}_.+\.sql$/.test(name) && Number(name.slice(0, 3)) > 39).sort()) await sql.query(await readFile(new URL(file, directory), "utf8"));
     store = new PostgresStore(target.toString());
     const admin: User = { id: "rate-admin", name: "Synthetic office", role: "admin" }, now = new Date("2026-10-21T16:00:00Z");
     const saved = await store.transaction((state) => {

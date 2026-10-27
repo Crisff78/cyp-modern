@@ -659,6 +659,8 @@ createRoot(document.getElementById("root")).render(<Fixture />);`, "utf8");
       await cancel.click(); await dialog().waitFor({ state: "detached" });
       await page.getByRole("cell", { name: second.name, exact: true }).click(); await page.getByRole("button", { name: "Permisos", exact: true }).click();
       await retry.waitFor();
+      // Reopened by hand: wait until the permissions have loaded, as open() does.
+      await page.waitForFunction(() => !document.querySelector(".connected-user-permissions-dialog")?.textContent?.includes("Cargando permisos…"));
       assert.equal(await isAssigned(500), true); assert.equal(await choice(500).isDisabled(), true, "the kept attempt stays frozen");
       // With the permission back, the same key recovers the saved result instead of writing twice.
       const restored = await getProfile(delegate.id);

@@ -88,11 +88,11 @@ test("PostgreSQL 001–029 preserve new contracts, serialized reservations and i
     await store.transaction((state) => { state.clients.find((row) => row.id === reopenedClient.id)!.identification = "DOCUMENTO-POSTERIOR-FICTICIO"; });
     assert.equal((await parallel.read()).remittances.transfers.find((row) => row.id === remittance.id)?.senderContact?.identification, body.identification);
 
-    const changed = await post("/api/usuarios/demo-admin/clave", { currentPassword: "Demo-CyP-2026!", password: "Nuevo-ficticio" });
+    const changed = await post("/api/usuarios/demo-admin/clave", { currentPassword: "Demo-CyP-2026!", password: "Nuevo-ficticio-2026" });
     assert.equal(changed.statusCode, 200, changed.body);
     const persistedAccount = (await parallel.read()).accounts.find((row) => row.id === "demo-admin")!;
-    assert.equal(persistedAccount.credentialVersion, 1); assert.notEqual(persistedAccount.passwordHash, "Nuevo-ficticio");
-    assert.equal((await login()).statusCode, 401); assert.equal((await login("Nuevo-ficticio")).statusCode, 200);
+    assert.equal(persistedAccount.credentialVersion, 1); assert.notEqual(persistedAccount.passwordHash, "Nuevo-ficticio-2026");
+    assert.equal((await login()).statusCode, 401); assert.equal((await login("Nuevo-ficticio-2026")).statusCode, 200);
     assert.equal((await app.inject({ url: "/api/auth/me", headers: { authorization: `Bearer ${token}` } })).statusCode, 401);
   } finally { if (app) await app.close(); else await store.close(); await sql.end(); await parallel.close(); }
 });

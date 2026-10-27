@@ -8,6 +8,7 @@ import {
 } from "./types";
 import { PERMISSION_CATALOG, PERMISSION_CATEGORIES, defaultPermissionIds, isUserPermissions, type UserPermissions } from "../../shared/permissionCatalog";
 import { effectiveAccess, roleRemittancePermissions } from "../../shared/access.mjs";
+import { pageClients, type ClientPageQuery } from "../../shared/clientPage.mjs";
 
 const MOCK_USER_KEY = "cyp-admin-mock-user";
 const today = () => new Date().toISOString().slice(0, 10);
@@ -806,6 +807,12 @@ export async function mockApi<T>(
       permissionReceipts.set(scope, { body: fingerprint, response: structuredClone(result) });
       return structuredClone(result) as T;
     }
+  }
+  if (path.split("?")[0] === "/clientes/pagina" && method === "GET") {
+    currentUser();
+    const params = new URLSearchParams(path.split("?")[1] ?? "");
+    const query = Object.fromEntries(params) as unknown as ClientPageQuery;
+    return structuredClone(pageClients(state.clients, state.routes, query)) as T;
   }
   if (path === "/clientes" && method === "GET") {
     currentUser();

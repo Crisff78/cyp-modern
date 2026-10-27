@@ -3,6 +3,7 @@ import { lazy, Suspense } from "react";
 const FinancialMonitorView = lazy(() => import("./FinancialMonitorView"));
 import { monitorLedger } from "./monitorLedger";
 import { MIN_NEW_PASSWORD_LENGTH } from "../../shared/passwordPolicy.mjs";
+import { CLIENT_PAGE_SIZE, NOT_DEFINED, NOT_DEFINED_ROUTE, type ClientPage, type ClientPageStatus } from "../../shared/clientPage.mjs";
 import {
   isValidElement,
   type FocusEvent as ReactFocusEvent,
@@ -43,6 +44,7 @@ import {
   Printer,
   FolderOpen,
   KeyRound,
+  Filter as Funnel,
   LayoutDashboard,
   ListFilter,
   LoaderCircle,
@@ -65,6 +67,7 @@ import {
   Users,
   Wallet,
   X,
+  PanelRight,
 } from "lucide-react";
 import { createPortal } from "react-dom";
 import { Toaster, toast } from "sonner";
@@ -564,6 +567,11 @@ const handleKeyboardActivation = (event: ReactKeyboardEvent<HTMLElement>, action
   event.preventDefault();
   action();
 };
+// A listing row: Space selects it; Enter does what a double click does (Dionel, 26-10).
+const handleRowKeys = (event: ReactKeyboardEvent<HTMLElement>, select: () => void, open: () => void) => {
+  if (event.key === "Enter") { event.preventDefault(); open(); }
+  else if (event.key === " ") { event.preventDefault(); select(); }
+};
 
 const operationTypeForPage = (targetPage: Page): Operation["type"] => {
   if (targetPage === "payouts" || targetPage === "payments") return "payout";
@@ -690,10 +698,10 @@ function CompactReportLayout({ page, title, snapshot, onRefresh }: Readonly<{ pa
           <label>Fecha final:<input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} /></label>
           <label>Moneda:<select value={currency} onChange={(event) => setCurrency(event.target.value)}><option>No definido</option><option>Peso Dominicano</option><option>Dólar Americano</option><option>Euro</option></select></label>
           {(page === "reportClientPendingChargesByRoutes") && (
-            <label>Ruta:<select value={routeId} onChange={(event) => setRouteId(event.target.value)}><option value="">Todas</option>{snapshot.routes.map((route) => <option key={route.id} value={route.id}>{route.name}</option>)}</select></label>
+            <label>Ruta:<select value={routeId} onChange={(event) => setRouteId(event.target.value)}><option value="">Todas</option><option value={NOT_DEFINED_ROUTE}>{NOT_DEFINED}</option>{snapshot.routes.map((route) => <option key={route.id} value={route.id}>{route.name}</option>)}</select></label>
           )}
           {(page === "reportClientPendingChargesByZones" || page === "reportClientChargesByZoneService" || page === "reportCollectionsByService") && (
-            <label>Zona:<select value={zone} onChange={(event) => setZone(event.target.value)}><option value="">Todas</option>{zones.map((zoneName) => <option key={zoneName} value={zoneName}>{zoneName}</option>)}</select></label>
+            <label>Zona:<select value={zone} onChange={(event) => setZone(event.target.value)}><option value="">Todas</option><option value={NOT_DEFINED_ROUTE}>{NOT_DEFINED}</option>{zones.map((zoneName) => <option key={zoneName} value={zoneName}>{zoneName}</option>)}</select></label>
           )}
           {(page === "reportClientChargesByZoneService" || page === "reportCollectionsByService") && (
             <label>Servicio:<select value={service} onChange={(event) => setService(event.target.value)}><option value="">Todos</option>{services.map((serviceName) => <option key={serviceName} value={serviceName}>{serviceName}</option>)}</select></label>
@@ -775,7 +783,6 @@ function ReportViewContent({ page, snapshot, onRefresh }: Readonly<{ page: Repor
     return <PendingClientChargesReport snapshot={snapshot} onRefresh={onRefresh} />;
   }
 
-  const definition = reportDefinitions.find((report) => report.id === page);
   const title = reportTitle(page);
   const compactReportPages: ReportPageId[] = [
     "reportClientPendingChargesByRoutes",
@@ -788,24 +795,6 @@ function ReportViewContent({ page, snapshot, onRefresh }: Readonly<{ page: Repor
     "reportCollectionsByService",
   ];
   if (compactReportPages.includes(page)) return <CompactReportLayout page={page} title={title} snapshot={snapshot} onRefresh={onRefresh} />;
-  const zones = Array.from(new Set(snapshot.routes.map((route) => route.sector)));
-  const services = Array.from(new Set([...snapshot.charges.map((charge) => charge.service), ...snapshot.payouts.map((payout) => payout.concept)]));
-  const filters = (
-    <>
-      {definition?.filters.includes("route") && (
-        <label>Ruta:<select defaultValue=""><option value="">Todas</option>{snapshot.routes.map((route) => <option key={route.id}>{route.name}</option>)}</select></label>
-      )}
-      {definition?.filters.includes("zone") && (
-        <label>Zona:<select defaultValue=""><option value="">Todas</option>{zones.map((zone) => <option key={zone}>{zone}</option>)}</select></label>
-      )}
-      {definition?.filters.includes("service") && (
-        <label>Servicio:<select defaultValue=""><option value="">Todos</option>{services.map((service) => <option key={service} value={service}>{service}</option>)}</select></label>
-      )}
-      {definition?.filters.includes("collectorCheck") && (
-        <label className="report-inline-check"><span><input type="checkbox" /> Cobrador</span><select defaultValue=""><option value="">Todos</option>{snapshot.collectors.map((collector) => <option key={collector.id}>{collector.name}</option>)}</select></label>
-      )}
-    </>
-  );
   return <ConnectedLegacyReports page={page} title={title} snapshot={snapshot} onRefresh={onRefresh} />;
 }
 
@@ -909,7 +898,7 @@ const runToolbarAction = (action?: LegacyToolbarAction) => (event: ReactMouseEve
   action?.();
 };
 
-function LegacyToolbar({ onToggleFilters, filtersVisible = true, onFirst, onPrevious, onNext, onLast, onNew, onEdit, onAccept, onDelete, onRefresh, onPrint, disableNew = false, disableEdit = false, disableAccept = false, disableDelete = false, showEdit = true, deleteIcon = "trash", deleteTitle = "Eliminar", newTitle = "Nuevo", newIcon, extra }: Readonly<{ onToggleFilters?: () => void; filtersVisible?: boolean; onFirst?: () => void; onPrevious?: () => void; onNext?: () => void; onLast?: () => void; onNew?: () => void; onEdit?: () => void; onAccept?: () => void; onDelete?: () => void; onRefresh?: () => void; onPrint?: () => void; disableNew?: boolean; disableEdit?: boolean; disableAccept?: boolean; disableDelete?: boolean; showEdit?: boolean; deleteIcon?: "trash" | "x"; deleteTitle?: string; newTitle?: string; newIcon?: ReactNode; extra?: ReactNode }>) {
+function LegacyToolbar({ onToggleFilters, filtersVisible = true, onToggleDetails, detailsVisible = true, onFirst, onPrevious, onNext, onLast, onNew, onEdit, onAccept, onDelete, onRefresh, onPrint, disableNew = false, disableEdit = false, disableAccept = false, disableDelete = false, showEdit = true, deleteIcon = "trash", deleteTitle = "Eliminar", newTitle = "Nuevo", newIcon, extra }: Readonly<{ onToggleFilters?: () => void; filtersVisible?: boolean; onToggleDetails?: () => void; detailsVisible?: boolean; onFirst?: () => void; onPrevious?: () => void; onNext?: () => void; onLast?: () => void; onNew?: () => void; onEdit?: () => void; onAccept?: () => void; onDelete?: () => void; onRefresh?: () => void; onPrint?: () => void; disableNew?: boolean; disableEdit?: boolean; disableAccept?: boolean; disableDelete?: boolean; showEdit?: boolean; deleteIcon?: "trash" | "x"; deleteTitle?: string; newTitle?: string; newIcon?: ReactNode; extra?: ReactNode }>) {
   const access = usePageAccess();
   disableNew ||= !access.canCreate;
   disableEdit ||= !access.canEdit;
@@ -917,7 +906,9 @@ function LegacyToolbar({ onToggleFilters, filtersVisible = true, onFirst, onPrev
   disableAccept ||= !access.canAccept;
   return (
     <div className="legacy-mdi-toolbar" aria-label="Barra de herramientas legacy" onMouseDown={stopToolbarEvent} onClick={stopToolbarEvent}>
-      {onToggleFilters && <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" onClick={runToolbarAction(onToggleFilters)}><KeyRound size={15} /></button>}
+      {onToggleFilters && <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" aria-label="Mostrar/Ocultar filtros" aria-pressed={filtersVisible} onClick={runToolbarAction(onToggleFilters)}><Funnel size={15} aria-hidden="true" /></button>}
+      {/* Windows with a details panel on the right hide it with its own button (Dionel, 26-10). */}
+      {onToggleDetails && <button type="button" className={detailsVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar detalles" aria-label="Mostrar/Ocultar detalles" aria-pressed={detailsVisible} onClick={runToolbarAction(onToggleDetails)}><PanelRight size={15} aria-hidden="true" /></button>}
       <button type="button" className="nav-tool" title="Mover al inicio" onClick={runToolbarAction(onFirst)}>|&lt;</button>
       <button type="button" className="nav-tool" title="Subir" onClick={runToolbarAction(onPrevious)}>&lt;</button>
       <button type="button" className="nav-tool" title="Bajar" onClick={runToolbarAction(onNext)}>&gt;</button>
@@ -969,8 +960,13 @@ type CompactReportFilters = {
   collectorId: string;
 };
 
+// «No Definida» in a report filter keeps the rows without a route or zone (Dionel, 26-10).
+const reportRouteMatches = (filter: string, routeId: string | undefined, routeKnown: boolean) => !filter || (filter === NOT_DEFINED_ROUTE ? !routeKnown : routeId === filter);
+const reportZoneMatches = (filter: string, zone: string | undefined) => !filter || (filter === NOT_DEFINED_ROUTE ? !zone : zone === filter);
 type ChargeReportRow = {
   id: string;
+  routeKnown: boolean;
+  zoneKey: string;
   date: string;
   currency: string;
   overdueDays: number;
@@ -1008,6 +1004,8 @@ function buildCompactReportTable(page: ReportPageId, snapshot: Snapshot, filters
       routeId: client?.routeId ?? "",
       routeName: route?.name ?? "Sin ruta",
       zoneName: route?.sector ?? "Sin zona",
+      routeKnown: Boolean(route),
+      zoneKey: route?.sector ?? "",
       service: charge.service || "No definido",
       concept: charge.concept ?? "",
       amount: charge.amount,
@@ -1017,8 +1015,8 @@ function buildCompactReportTable(page: ReportPageId, snapshot: Snapshot, filters
   });
   const pendingRows = chargeRows.filter((row) => row.pending > 0);
   const chargeRowMatchesLocation = (row: ChargeReportRow) => {
-    if (page === "reportClientPendingChargesByRoutes" && filters.routeId && row.routeId !== filters.routeId) return false;
-    if ((page === "reportClientPendingChargesByZones" || page === "reportClientChargesByZoneService") && filters.zone && row.zoneName !== filters.zone) return false;
+    if (page === "reportClientPendingChargesByRoutes" && !reportRouteMatches(filters.routeId, row.routeId, row.routeKnown)) return false;
+    if ((page === "reportClientPendingChargesByZones" || page === "reportClientChargesByZoneService") && !reportZoneMatches(filters.zone, row.zoneKey)) return false;
     if ((page === "reportClientChargesByZoneService" || page === "reportCollectionsByService") && filters.service && row.service !== filters.service) return false;
     return true;
   };
@@ -1096,7 +1094,7 @@ function buildCompactReportTable(page: ReportPageId, snapshot: Snapshot, filters
     if ((page === "reportCollectionsSummary" || page === "reportCollectionsGeneralSummary") && filters.filterCollector && filters.collectorId && movement.collectorId !== filters.collectorId) return false;
     const client = movement.clientId ? clientById.get(movement.clientId) : undefined;
     const route = client ? routeById.get(client.routeId) : undefined;
-    if ((page === "reportCollectionsByService") && filters.zone && route?.sector !== filters.zone) return false;
+    if ((page === "reportCollectionsByService") && !reportZoneMatches(filters.zone, route?.sector)) return false;
     const charge = movement.chargeId ? chargeById.get(movement.chargeId) : undefined;
     if (page === "reportCollectionsByService" && filters.service && charge?.service !== filters.service) return false;
     const selectedCurrency = movement.currency ?? "DOP";
@@ -2273,7 +2271,7 @@ function SessionToolbar({ filtersVisible, selectedSession, onToggleFilters, onFi
   const action = (handler: () => void) => (event: ReactMouseEvent<HTMLButtonElement>) => { event.stopPropagation(); handler(); };
   return (
     <div className="legacy-mdi-toolbar session-toolbar" aria-label="Barra de herramientas de sesiones" onMouseDown={stopToolbarEvent} onClick={stopToolbarEvent}>
-      <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" onClick={action(onToggleFilters)}><KeyRound size={15} /></button>
+      <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" aria-label="Mostrar/Ocultar filtros" aria-pressed={filtersVisible} onClick={action(onToggleFilters)}><Funnel size={15} aria-hidden="true" /></button>
       <button type="button" className="nav-tool" title="Mover al inicio" onClick={action(onFirst)}>|&lt;</button>
       <button type="button" className="nav-tool" title="Subir" onClick={action(onPrevious)}>&lt;</button>
       <button type="button" className="nav-tool" title="Bajar" onClick={action(onNext)}>&gt;</button>
@@ -2412,7 +2410,6 @@ const clientRecordFromSnapshot = (client: Client): ClientLegacyRecord => ({
   lng: client.lng,
 });
 
-const defaultClientRecords = (snapshot: Snapshot): ClientLegacyRecord[] => snapshot.clients.map((client) => clientRecordFromSnapshot(client));
 
 export function ClientDataDialog({ client, readOnly = false, zones, routes, defaultCode = "", onClose, onSave }: Readonly<{ client?: ClientLegacyRecord; readOnly?: boolean; zones: readonly string[]; routes: Snapshot["routes"]; defaultCode?: string; onClose: () => void; onSave: (draft: ClientLegacyDraft) => Promise<string | void> | string | void }>) {
   const [draft, setDraft] = useState<ClientLegacyDraft>({
@@ -2735,16 +2732,17 @@ function ClientMachinesDialog({ client, actorId, onClose }: Readonly<{ client: C
   return <LegacyDialog title="Tragamonedas del Cliente..." onClose={onClose} className="client-machines-dialog"><div className="client-machines-view"><div className="client-machines-toolbar"><button type="button" title="Agregar" onClick={() => setFormMode("new")}><Plus size={15} />Agregar</button><button type="button" title="Modificar" disabled={!selected} onClick={() => selected ? setFormMode("edit") : undefined}><Pencil size={15} />Modificar</button><button type="button" title="Refrescar" onClick={() => void refresh()}><RefreshCw size={15} />Refrescar</button><button type="button" title="Registros" onClick={() => setLogsOpen(true)}><History size={15} />Registros</button><span className="client-machines-client">{client.code} · {client.name}</span></div><div className="client-machines-grid"><div className="legacy-mdi-table-wrap"><table className="legacy-mdi-table"><thead><tr>{["Nro.", "Entrada", "Salida", "Valor", "Porc.", "Registro"].map((column) => <th key={column}>{column}</th>)}</tr></thead><tbody>{machines.map((machine) => <tr key={machine.id} className={machine.id === selectedId ? "selected-row" : ""} role="button" tabIndex={0} onClick={() => setSelectedId(machine.id)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedId(machine.id))}><td>{machine.number}</td><td>{machine.entry}</td><td>{machine.exit}</td><td>{machine.value.toFixed(2)}</td><td>{machine.percentage}%</td><td>{businessTimestamp(machine.registeredAt)}</td></tr>)}</tbody></table></div></div><div className="legacy-footerbar"><span>Cantidad</span><strong>{machines.length}</strong></div></div>{formMode && <ClientMachineFormDialog actorId={actorId} clientId={client.id} machine={formMode === "edit" ? selected : undefined} defaultNumber={Math.max(0, ...machines.map((machine) => machine.number)) + 1} onClose={() => setFormMode(null)} onSave={saveMachine} />}{logsOpen && <ClientMachineLogsDialog client={client} machines={machines} logs={logs} onClose={() => setLogsOpen(false)} onRefresh={refresh} />}</LegacyDialog>;
 }
 
-function ClientToolbar({ filtersVisible, onToggleFilters, onFirst, onPrevious, onNext, onLast, onNew, onEdit, onDelete, onRefresh, onFinance, onMap, onMachines }: Readonly<{ filtersVisible: boolean; onToggleFilters: () => void; onFirst: () => void; onPrevious: () => void; onNext: () => void; onLast: () => void; onNew: () => void; onEdit: () => void; onDelete: () => void; onRefresh: () => void; onFinance: () => void; onMap: () => void; onMachines: () => void }>) {
+function ClientToolbar({ filtersVisible, onToggleFilters, canGoBack, canGoForward, onFirst, onPrevious, onNext, onLast, onNew, onEdit, onDelete, onRefresh, onFinance, onMap, onMachines }: Readonly<{ filtersVisible: boolean; onToggleFilters: () => void; canGoBack: boolean; canGoForward: boolean; onFirst: () => void; onPrevious: () => void; onNext: () => void; onLast: () => void; onNew: () => void; onEdit: () => void; onDelete: () => void; onRefresh: () => void; onFinance: () => void; onMap: () => void; onMachines: () => void }>) {
   const access = usePageAccess();
   const action = (handler: () => void) => (event: ReactMouseEvent<HTMLButtonElement>) => { event.stopPropagation(); handler(); };
   return (
     <div className="legacy-mdi-toolbar clients-toolbar" aria-label="Barra de herramientas de clientes" onMouseDown={stopToolbarEvent} onClick={stopToolbarEvent}>
-      <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" onClick={action(onToggleFilters)}><KeyRound size={15} /></button>
-      <button type="button" className="nav-tool" title="Mover al inicio" onClick={action(onFirst)}>|&lt;</button>
-      <button type="button" className="nav-tool" title="Subir" onClick={action(onPrevious)}>&lt;</button>
-      <button type="button" className="nav-tool" title="Bajar" onClick={action(onNext)}>&gt;</button>
-      <button type="button" className="nav-tool" title="Mover al final" onClick={action(onLast)}>&gt;|</button>
+      <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" aria-label="Mostrar/Ocultar filtros" aria-pressed={filtersVisible} onClick={action(onToggleFilters)}><Funnel size={15} aria-hidden="true" /></button>
+      {/* The list arrives in pages: these buttons move between them. */}
+      <button type="button" className="nav-tool" title="Primera página" aria-label="Primera página" disabled={!canGoBack} onClick={action(onFirst)}>|&lt;</button>
+      <button type="button" className="nav-tool" title="Página anterior" aria-label="Página anterior" disabled={!canGoBack} onClick={action(onPrevious)}>&lt;</button>
+      <button type="button" className="nav-tool" title="Página siguiente" aria-label="Página siguiente" disabled={!canGoForward} onClick={action(onNext)}>&gt;</button>
+      <button type="button" className="nav-tool" title="Última página" aria-label="Última página" disabled={!canGoForward} onClick={action(onLast)}>&gt;|</button>
       <span className="mdi-toolbar-separator" />
       <button type="button" title="Nuevo" disabled={!access.canCreate} onClick={action(onNew)}><Plus size={15} /></button>
       <button type="button" title={access.canEdit ? "Editar" : "Consultar"} onClick={action(onEdit)}>{access.canEdit ? <Pencil size={15} /> : <Eye size={15} />}</button>
@@ -2766,59 +2764,85 @@ function ClientsLegacyView({ snapshot, actorId, onRefresh }: Readonly<{ snapshot
   const openClientForm = (mode: "new" | "edit") => { if (mode === "new" && !access.canCreate) return; clientDialogVersion.current++; setFormMode(mode); };
   const closeMap = () => { mapDialogVersion.current++; setMapOpen(false); };
   const openMap = () => { mapDialogVersion.current++; setMapOpen(true); };
-  const [clientsData, setClientsData] = useState<ClientLegacyRecord[]>(() => defaultClientRecords(snapshot));
-  const [selectedClientId, setSelectedClientId] = useState(clientsData[0]?.id ?? "");
+  // Dionel (26-10): the window never loads every client. The server filters and sends one page.
+  const [clientPage, setClientPage] = useState<ClientPage<ClientLegacyRecord>>({ items: [], total: 0, limit: CLIENT_PAGE_SIZE, offset: 0, zones: [NOT_DEFINED] });
+  const [clientPageLoading, setClientPageLoading] = useState(true);
+  const [clientPageError, setClientPageError] = useState("");
+  const clientsData = clientPage.items;
+  const setClientsData = (update: (current: ClientLegacyRecord[]) => ClientLegacyRecord[]) => setClientPage((current) => ({ ...current, items: update(current.items) }));
+  const [selectedClientId, setSelectedClientId] = useState("");
   const [filtersVisible, setFiltersVisible] = useState(true);
   const [filterMode, setFilterMode] = useState<ClientFilterMode>("all");
   const [identificationFilter, setIdentificationFilter] = useState("");
   const [nameFilter, setNameFilter] = useState("");
   const [searchFilter, setSearchFilter] = useState("");
-  const [zoneFilter, setZoneFilter] = useState("No Definida");
-  const [routeFilter, setRouteFilter] = useState(snapshot.routes[0]?.id ?? "");
-  const [statusFilter, setStatusFilter] = useState("Activo");
+  const [zoneFilter, setZoneFilter] = useState<string>(NOT_DEFINED);
+  const [routeFilter, setRouteFilter] = useState(snapshot.routes[0]?.id ?? NOT_DEFINED_ROUTE);
+  const [statusFilter, setStatusFilter] = useState<ClientPageStatus>("Activo");
   const [formMode, setFormMode] = useState<"new" | "edit" | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [financeOpen, setFinanceOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
   const [machinesOpen, setMachinesOpen] = useState(false);
   const chooseClient = (id: string) => { if (id !== selectedClientId) { clientDialogVersion.current++; mapDialogVersion.current++; } setSelectedClientId(id); };
+  const filterText = { all: "", search: searchFilter, identification: identificationFilter, name: nameFilter, zone: zoneFilter, route: routeFilter }[filterMode];
+  // Typing waits a moment before asking the server; a list choice asks at once.
+  const [appliedFilter, setAppliedFilter] = useState({ mode: filterMode, q: filterText, status: statusFilter });
   useEffect(() => {
-    setClientsData(defaultClientRecords(snapshot));
-    setSelectedClientId((selected) => snapshot.clients.some((client) => client.id === selected) ? selected : snapshot.clients[0]?.id ?? "");
-  }, [snapshot.clients, snapshot.routes]);
-  const zones = Array.from(new Set(["No Definida", ...clientsData.map((client) => client.zone).filter(Boolean), ...snapshot.routes.map((route) => route.sector).filter(Boolean)]));
-  const visibleClients = clientsData.filter((client) => {
-    const statusMatches = statusFilter === "Todos" || (statusFilter === "Activo" ? client.active : !client.active);
-    if (!statusMatches) return false;
-    if (filterMode === "search") return matchesClientSearch(client, searchFilter);
-    if (filterMode === "identification") return client.identification.toLowerCase().includes(identificationFilter.toLowerCase());
-    if (filterMode === "name") return client.name.toLowerCase().includes(nameFilter.toLowerCase());
-    if (filterMode === "zone") return client.zone === zoneFilter;
-    if (filterMode === "route") return client.routeId === routeFilter;
-    return true;
-  });
+    const next = { mode: filterMode, q: filterText, status: statusFilter };
+    if (!["search", "identification", "name"].includes(filterMode)) { setAppliedFilter(next); return; }
+    const timer = setTimeout(() => setAppliedFilter(next), 300);
+    return () => clearTimeout(timer);
+  }, [filterText, filterMode, statusFilter]);
+  const clientPageKey = JSON.stringify(appliedFilter);
+  const clientPageRequest = useRef(0);
+  const clientPageShown = useRef({ key: "", offset: 0 });
+  // A client just saved: its page is shown until a load finds it.
+  const clientPageFocus = useRef("");
+  const loadClientPage = async (offset: number, focus = clientPageFocus.current) => {
+    const ticket = ++clientPageRequest.current;
+    setClientPageLoading(true);
+    const params = new URLSearchParams({ ...appliedFilter, offset: String(Math.max(0, offset)), limit: String(CLIENT_PAGE_SIZE) });
+    if (focus) params.set("focus", focus);
+    try {
+      const page = await api<ClientPage<Client>>(`/clientes/pagina?${params}`);
+      if (ticket !== clientPageRequest.current) return false;
+      const items = page.items.map(clientRecordFromSnapshot);
+      if (focus && items.some((client) => client.id === focus)) clientPageFocus.current = "";
+      clientPageShown.current = { key: clientPageKey, offset: page.offset };
+      setClientPage({ ...page, items });
+      setSelectedClientId((selected) => items.some((client) => client.id === selected) ? selected : focus && items.some((client) => client.id === focus) ? focus : items[0]?.id ?? "");
+      setClientPageError("");
+      return true;
+    } catch (error) {
+      if (ticket === clientPageRequest.current) setClientPageError(error instanceof Error ? error.message : "No se pudieron cargar los clientes.");
+      return false;
+    } finally {
+      if (ticket === clientPageRequest.current) setClientPageLoading(false);
+    }
+  };
+  // New filters start at the first page; a refresh of the general view keeps the page being read.
+  useEffect(() => {
+    void loadClientPage(clientPageShown.current.key === clientPageKey ? clientPageShown.current.offset : 0);
+  }, [clientPageKey, snapshot.clients]);
+  const zones = Array.from(new Set([...clientPage.zones, ...clientsData.map((client) => client.zone).filter(Boolean), ...snapshot.routes.map((route) => route.sector).filter(Boolean)]));
+  const visibleClients = clientsData;
   const selectedClient = visibleClients.find((client) => client.id === selectedClientId) ?? visibleClients[0];
-  const moveSelectedClient = (direction: "first" | "up" | "down" | "last") => {
-    const currentIndex = clientsData.findIndex((client) => client.id === selectedClient?.id);
-    if (currentIndex < 0) return toast.info("Seleccione un cliente.");
-    const targetIndexByDirection = { first: 0, up: Math.max(0, currentIndex - 1), down: Math.min(clientsData.length - 1, currentIndex + 1), last: clientsData.length - 1 } satisfies Record<typeof direction, number>;
-    const targetIndex = targetIndexByDirection[direction];
-    if (targetIndex === currentIndex) return toast.info("El cliente ya está en esa posición.");
-    chooseClient(clientsData[currentIndex].id);
-    setClientsData((current) => {
-      const reordered = [...current];
-      const [selected] = reordered.splice(currentIndex, 1);
-      reordered.splice(targetIndex, 0, selected);
-      return reordered;
-    });
+  const pageCount = Math.max(1, Math.ceil(clientPage.total / clientPage.limit));
+  const pageNumber = Math.floor(clientPage.offset / clientPage.limit) + 1;
+  const goToClientPage = (target: "first" | "previous" | "next" | "last") => {
+    const offset = { first: 0, previous: clientPage.offset - clientPage.limit, next: clientPage.offset + clientPage.limit, last: (pageCount - 1) * clientPage.limit }[target];
+    if (offset < 0 || offset >= Math.max(clientPage.total, 1) || offset === clientPage.offset) return;
+    clientPageFocus.current = "";
+    void loadClientPage(offset, "");
   };
   const refreshClients = async () => {
     setFilterMode("all");
     setIdentificationFilter("");
     setNameFilter("");
     setSearchFilter("");
-    setZoneFilter("No Definida");
-    setRouteFilter(snapshot.routes[0]?.id ?? "");
+    setZoneFilter(NOT_DEFINED);
+    setRouteFilter(snapshot.routes[0]?.id ?? NOT_DEFINED_ROUTE);
     setStatusFilter("Activo");
     try { await onRefresh(); toast.success("Clientes recargados"); }
     catch (error) { toast.error(error instanceof Error ? error.message : "No se pudieron recargar los clientes."); }
@@ -2844,6 +2868,9 @@ function ClientsLegacyView({ snapshot, actorId, onRefresh }: Readonly<{ snapshot
       invalidateSnapshotReads();
       setClientsData((current) => isEdit ? current.map((client) => client.id === record.id ? record : client) : [...current, record]);
       if (version === clientDialogVersion.current) { setSelectedClientId(record.id); closeClientForm(); }
+      // Show the page that holds the saved client, even when the general view cannot be read again.
+      clientPageFocus.current = record.id;
+      void loadClientPage(clientPageShown.current.offset, record.id);
       await onRefresh().catch(() => toast.warning("El cliente quedó guardado; no se pudo actualizar el listado."));
       toast.success(isEdit ? "Cliente actualizado" : "Cliente creado");
     } catch (error) {
@@ -2851,7 +2878,7 @@ function ClientsLegacyView({ snapshot, actorId, onRefresh }: Readonly<{ snapshot
       // The form decides what a rejected code means. The list is read again because an earlier attempt
       // whose answer was lost may have saved this client.
       const code = (error as { code?: unknown } | null)?.code;
-      if (code === "CLIENT_CODE_EXISTS" || code === "CLIENT_RESERVATION_UNAVAILABLE" || code === "CLIENT_IDENTITY_IMMUTABLE") void onRefresh().catch(() => undefined);
+      if (code === "CLIENT_CODE_EXISTS" || code === "CLIENT_RESERVATION_UNAVAILABLE" || code === "CLIENT_IDENTITY_IMMUTABLE") { void loadClientPage(clientPageShown.current.offset); void onRefresh().catch(() => undefined); }
       return typeof code === "string" ? code : undefined;
     }
   };
@@ -2866,6 +2893,7 @@ function ClientsLegacyView({ snapshot, actorId, onRefresh }: Readonly<{ snapshot
       });
       invalidateSnapshotReads();
       setClientsData((current) => current.map((client) => client.id === saved.id ? { ...client, lat: saved.lat, lng: saved.lng } : client));
+      void loadClientPage(clientPageShown.current.offset);
       await onRefresh().catch(() => toast.warning("La ubicación quedó guardada; no se pudo actualizar el listado."));
       toast.success("Ubicación del cliente guardada");
       return version === mapDialogVersion.current;
@@ -2877,24 +2905,25 @@ function ClientsLegacyView({ snapshot, actorId, onRefresh }: Readonly<{ snapshot
       const saved = await remittancesApi<Client>(`/clientes/${encodeURIComponent(selectedClient.id)}/actividad`, { method: "POST", body: JSON.stringify({ active: !selectedClient.active }) });
       setClientsData((current) => current.map((client) => client.id === saved.id ? { ...client, active: saved.active ?? true } : client));
       setConfirmDelete(false);
+      void loadClientPage(clientPageShown.current.offset);
       await onRefresh();
       toast.success(saved.active ? "Cliente activado" : "Cliente inactivado");
     } catch (error) { toast.error(error instanceof Error ? error.message : "No se pudo actualizar la actividad del cliente."); }
   };
   return (
     <div className="clients-mdi-view">
-      <ClientToolbar filtersVisible={filtersVisible} onToggleFilters={() => setFiltersVisible((visible) => !visible)} onFirst={() => moveSelectedClient("first")} onPrevious={() => moveSelectedClient("up")} onNext={() => moveSelectedClient("down")} onLast={() => moveSelectedClient("last")} onNew={() => openClientForm("new")} onEdit={() => selectedClient ? openClientForm("edit") : toast.info("Seleccione un cliente.")} onDelete={() => selectedClient ? setConfirmDelete(true) : toast.info("Seleccione un cliente.")} onRefresh={() => void refreshClients()} onFinance={() => selectedClient ? setFinanceOpen(true) : toast.info("Seleccione un cliente.")} onMap={() => selectedClient ? openMap() : toast.info("Seleccione un cliente.")} onMachines={() => selectedClient ? setMachinesOpen(true) : toast.info("Seleccione un cliente.")} />
+      <ClientToolbar filtersVisible={filtersVisible} onToggleFilters={() => setFiltersVisible((visible) => !visible)} canGoBack={pageNumber > 1} canGoForward={pageNumber < pageCount} onFirst={() => goToClientPage("first")} onPrevious={() => goToClientPage("previous")} onNext={() => goToClientPage("next")} onLast={() => goToClientPage("last")} onNew={() => openClientForm("new")} onEdit={() => selectedClient ? openClientForm("edit") : toast.info("Seleccione un cliente.")} onDelete={() => selectedClient ? setConfirmDelete(true) : toast.info("Seleccione un cliente.")} onRefresh={() => void refreshClients()} onFinance={() => selectedClient ? setFinanceOpen(true) : toast.info("Seleccione un cliente.")} onMap={() => selectedClient ? openMap() : toast.info("Seleccione un cliente.")} onMachines={() => selectedClient ? setMachinesOpen(true) : toast.info("Seleccione un cliente.")} />
       <div className="clients-workspace">
         {filtersVisible && <aside className="clients-filter-panel" aria-label="Filtros de clientes">
           <label>Buscar código, teléfono o nota:<input aria-label="Buscar clientes por código, teléfono o nota" value={searchFilter} onChange={(event) => { setSearchFilter(event.target.value); setFilterMode("search"); }} /></label>
           <label className="client-radio-line"><input type="radio" name="client-filter" checked={filterMode === "all"} onChange={() => setFilterMode("all")} /> <span>Todos</span></label>
           <label className="client-radio-line"><input type="radio" name="client-filter" checked={filterMode === "identification"} onChange={() => setFilterMode("identification")} /> <span>por Identificación:</span></label><input value={identificationFilter} disabled={filterMode !== "identification"} onChange={(event) => setIdentificationFilter(event.target.value)} />
           <label className="client-radio-line"><input type="radio" name="client-filter" checked={filterMode === "name"} onChange={() => setFilterMode("name")} /> <span>por Nombre:</span></label><input value={nameFilter} disabled={filterMode !== "name"} onChange={(event) => setNameFilter(event.target.value)} />
-          <label className="client-radio-line"><input type="radio" name="client-filter" checked={filterMode === "zone"} onChange={() => setFilterMode("zone")} /> <span>por Zona:</span></label><select value={zoneFilter} disabled={filterMode !== "zone"} onChange={(event) => setZoneFilter(event.target.value)}>{zones.map((zone) => <option key={zone}>{zone}</option>)}</select>
-          <label className="client-radio-line"><input type="radio" name="client-filter" checked={filterMode === "route"} onChange={() => setFilterMode("route")} /> <span>por Ruta:</span></label><select value={routeFilter} disabled={filterMode !== "route"} onChange={(event) => setRouteFilter(event.target.value)}>{snapshot.routes.map((route) => <option key={route.id} value={route.id}>{route.name}</option>)}</select>
-          <label>Estado:<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option>Activo</option><option>Inactivo</option><option>Todos</option></select></label>
+          <label className="client-radio-line"><input type="radio" name="client-filter" checked={filterMode === "zone"} onChange={() => setFilterMode("zone")} /> <span>por Zona:</span></label><select aria-label="Zona" value={zoneFilter} disabled={filterMode !== "zone"} onChange={(event) => setZoneFilter(event.target.value)}>{zones.map((zone) => <option key={zone}>{zone}</option>)}</select>
+          <label className="client-radio-line"><input type="radio" name="client-filter" checked={filterMode === "route"} onChange={() => setFilterMode("route")} /> <span>por Ruta:</span></label><select aria-label="Ruta" value={routeFilter} disabled={filterMode !== "route"} onChange={(event) => setRouteFilter(event.target.value)}><option value={NOT_DEFINED_ROUTE}>{NOT_DEFINED}</option>{snapshot.routes.map((route) => <option key={route.id} value={route.id}>{route.name}</option>)}</select>
+          <label>Estado:<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as ClientPageStatus)}><option>Activo</option><option>Inactivo</option><option>Todos</option></select></label>
         </aside>}
-        <div className="clients-grid-panel"><div className="legacy-mdi-table-wrap"><table className="legacy-mdi-table clients-grid"><thead><tr><th>Código</th><th>Identificación</th><th>Cliente</th><th>Zona</th><th>Ruta</th><th>Teléfono</th><th>Celular</th><th>Activo</th></tr></thead><tbody>{visibleClients.map((client) => { const isSelected = selectedClient?.id === client.id; return <tr key={client.id} className={isSelected ? "selected-row" : ""} role="button" tabIndex={0} onClick={() => chooseClient(client.id)} onKeyDown={(event) => handleKeyboardActivation(event, () => chooseClient(client.id))}><td><span className={`mdi-row-select ${isSelected ? "selected" : ""}`}>{client.code}</span></td><td>{client.identification || "No registrada"}</td><td>{client.name}</td><td>{client.zone}</td><td>{snapshot.routes.find((route) => route.id === client.routeId)?.name ?? ""}</td><td>{client.phone}</td><td>{client.cellular}</td><td><LegacyCheck checked={client.active} /></td></tr>; })}</tbody></table></div><div className="legacy-footerbar"><span>Cantidad</span><strong>{visibleClients.length}</strong></div></div>
+        <div className="clients-grid-panel"><div className="legacy-mdi-table-wrap"><table className="legacy-mdi-table clients-grid"><thead><tr><th>Código</th><th>Identificación</th><th>Cliente</th><th>Zona</th><th>Ruta</th><th>Teléfono</th><th>Celular</th><th>Activo</th></tr></thead><tbody aria-busy={clientPageLoading}>{visibleClients.map((client) => { const isSelected = selectedClient?.id === client.id; const openClient = () => { chooseClient(client.id); openClientForm("edit"); }; return <tr key={client.id} className={isSelected ? "selected-row" : ""} aria-selected={isSelected} role="button" tabIndex={0} title={access.canEdit ? "Doble clic o Intro para editar" : "Doble clic o Intro para consultar"} onClick={() => chooseClient(client.id)} onDoubleClick={openClient} onKeyDown={(event) => handleRowKeys(event, () => chooseClient(client.id), openClient)}><td><span className={`mdi-row-select ${isSelected ? "selected" : ""}`}>{client.code}</span></td><td>{client.identification || "No registrada"}</td><td>{client.name}</td><td>{client.zone}</td><td>{snapshot.routes.find((route) => route.id === client.routeId)?.name ?? NOT_DEFINED}</td><td>{client.phone}</td><td>{client.cellular}</td><td><LegacyCheck checked={client.active} /></td></tr>; })}{!visibleClients.length && <tr><td colSpan={8} className="clients-empty-cell">{clientPageLoading ? "Cargando clientes…" : clientPageError ? clientPageError : "No hay clientes para estos filtros."}</td></tr>}</tbody></table></div><div className="legacy-footerbar"><span>Cantidad</span><strong>{clientPage.total}</strong><span className="clients-page-status" aria-live="polite">Página {pageNumber} de {pageCount}{clientPage.total ? ` · ${clientPage.offset + 1}–${clientPage.offset + visibleClients.length}` : ""}</span>{clientPageError && visibleClients.length > 0 && <span role="alert">{clientPageError}</span>}</div></div>
       </div>
       {formMode && <ClientDataDialog key={`${clientDialogVersion.current}-${formMode === "edit" ? selectedClient?.id ?? "" : "nuevo"}`} client={formMode === "edit" ? selectedClient : undefined} readOnly={formMode === "edit" && !access.canEdit} zones={zones} routes={snapshot.routes} onClose={closeClientForm} onSave={saveClient} />}
       {confirmDelete && <LegacyConfirmDialog message={selectedClient?.active ? "¿Inactivar cliente? Se conserva su historial." : "¿Activar cliente?"} onYes={() => void inactivateClient()} onNo={() => setConfirmDelete(false)} />}
@@ -2970,7 +2999,7 @@ function AuthorizationToolbar({ filtersVisible, onToggleFilters, onFirst, onPrev
   const action = (handler: () => void) => (event: ReactMouseEvent<HTMLButtonElement>) => { event.stopPropagation(); handler(); };
   return (
     <div className="legacy-mdi-toolbar authorization-toolbar" aria-label="Barra de herramientas de solicitudes" onMouseDown={stopToolbarEvent} onClick={stopToolbarEvent}>
-      <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" onClick={action(onToggleFilters)}><KeyRound size={15} /></button>
+      <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" aria-label="Mostrar/Ocultar filtros" aria-pressed={filtersVisible} onClick={action(onToggleFilters)}><Funnel size={15} aria-hidden="true" /></button>
       <button type="button" className="nav-tool" title="Mover al inicio" onClick={action(onFirst)}>|&lt;</button>
       <button type="button" className="nav-tool" title="Subir" onClick={action(onPrevious)}>&lt;</button>
       <button type="button" className="nav-tool" title="Bajar" onClick={action(onNext)}>&gt;</button>
@@ -3495,7 +3524,7 @@ function TraceToolbar({ filtersVisible, onToggleFilters, onFirst, onPrevious, on
   const action = (handler: () => void) => (event: ReactMouseEvent<HTMLButtonElement>) => { event.stopPropagation(); handler(); };
   return (
     <div className="legacy-mdi-toolbar traces-toolbar" aria-label="Barra de herramientas de trazas" onMouseDown={stopToolbarEvent} onClick={stopToolbarEvent}>
-      <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" onClick={action(onToggleFilters)}><KeyRound size={15} /></button>
+      <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" aria-label="Mostrar/Ocultar filtros" aria-pressed={filtersVisible} onClick={action(onToggleFilters)}><Funnel size={15} aria-hidden="true" /></button>
       <button type="button" className="nav-tool" title="Mover al inicio" onClick={action(onFirst)}>|&lt;</button>
       <button type="button" className="nav-tool" title="Subir" onClick={action(onPrevious)}>&lt;</button>
       <button type="button" className="nav-tool" title="Bajar" onClick={action(onNext)}>&gt;</button>
@@ -3931,7 +3960,7 @@ function PcpToolbar({ filtersVisible, selectedPcp, onToggleFilters, onFirst, onP
   const action = (handler: () => void) => (event: ReactMouseEvent<HTMLButtonElement>) => { event.stopPropagation(); handler(); };
   return (
     <div className="legacy-mdi-toolbar pcp-toolbar" aria-label="Barra de herramientas de PCP" onMouseDown={stopToolbarEvent} onClick={stopToolbarEvent}>
-      <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" onClick={action(onToggleFilters)}><KeyRound size={15} /></button>
+      <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" aria-label="Mostrar/Ocultar filtros" aria-pressed={filtersVisible} onClick={action(onToggleFilters)}><Funnel size={15} aria-hidden="true" /></button>
       <button type="button" className="nav-tool" title="Mover al inicio" onClick={action(onFirst)}>|&lt;</button>
       <button type="button" className="nav-tool" title="Subir" onClick={action(onPrevious)}>&lt;</button>
       <button type="button" className="nav-tool" title="Bajar" onClick={action(onNext)}>&gt;</button>
@@ -4963,26 +4992,6 @@ export default function App() {
   const [auxWindow, setAuxWindow] = useState<
     null | "facturas" | "novedades" | "pagos"
   >(null);
-  const downloadBackup = async () => {
-    if (!user || !hasPermission(user, 6)) return;
-    try {
-      const data = await api<unknown>("/snapshot");
-      const blob = new Blob([JSON.stringify(data, null, 2)], {
-        type: "application/json",
-      });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `cyp-respaldo-${new Date().toISOString().slice(0, 10)}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-      toast.success("Copia de respaldo descargada");
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "No se pudo generar el respaldo.",
-      );
-    }
-  };
   const [notificationReceiptId, setNotificationReceiptId] = useState<string | null>(null);
   const notificationReceiptTrigger = useRef<HTMLButtonElement | null>(null);
   // The balance needs collections, accepted deposits and closed days: without them the snapshot is partial.
@@ -5270,6 +5279,8 @@ export default function App() {
                   <Bell size={19} />
                   {alertCount > 0 && <i />}
                 </button>
+                {/* Grouped by topic (Dionel, 26-10): Facturas and Pagos together, then help and the theme.
+                    The backup is made by the hosting in the background, so it has no button here. */}
                 {hasPermission(effectiveUser, 320) && <button
                   className="icon-button tablet-secondary"
                   aria-label="Facturas"
@@ -5277,6 +5288,14 @@ export default function App() {
                   onClick={() => setAuxWindow("facturas")}
                 >
                   <ReceiptText size={19} />
+                </button>}
+                {hasPermission(effectiveUser, 370) && <button
+                  className="icon-button tablet-secondary"
+                  aria-label="Ventana de Pagos"
+                  title="Ventana de Pagos"
+                  onClick={() => setAuxWindow("pagos")}
+                >
+                  <Wallet size={19} />
                 </button>}
                 <button
                   className="icon-button tablet-secondary"
@@ -5287,22 +5306,6 @@ export default function App() {
                   <CircleHelp size={19} />
                 </button>
                 <ThemeToggle />
-                {hasPermission(effectiveUser, 370) && <button
-                  className="icon-button tablet-secondary"
-                  aria-label="Ventana de Pagos"
-                  title="Ventana de Pagos"
-                  onClick={() => setAuxWindow("pagos")}
-                >
-                  <Wallet size={19} />
-                </button>}
-                {hasPermission(effectiveUser, 6) && <button
-                  className="icon-button tablet-secondary"
-                  aria-label="Hacer copia de respaldo"
-                  title="Hacer copia de respaldo"
-                  onClick={() => void downloadBackup()}
-                >
-                  <Database size={19} />
-                </button>}
                 {auxWindow === "facturas" && hasPermission(effectiveUser, 320) && snapshot && (
                   <LegacyDialog
                     title="Ventana de Facturas"
@@ -6726,7 +6729,8 @@ function ChargesOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{
                   const client = clientById(charge.clientId);
                   const pending = Math.max(0, charge.amount - charge.collected);
                   const isSelected = selectedCharge?.id === charge.id;
-                  return <tr key={charge.id} className={isSelected ? "selected-row" : undefined} aria-selected={isSelected} role="button" tabIndex={0} onPointerDown={() => setSelectedCharge(charge)} onClick={() => setSelectedCharge(charge)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedCharge(charge))}>
+                  const editCharge = () => { setSelectedCharge(charge); if (permissions.canEdit) setDialogMode("edit"); else toast.info("Tu cuenta no tiene permiso para modificar cargos."); };
+                  return <tr key={charge.id} className={isSelected ? "selected-row" : undefined} aria-selected={isSelected} role="button" tabIndex={0} title="Doble clic o Intro para editar" onPointerDown={() => setSelectedCharge(charge)} onClick={() => setSelectedCharge(charge)} onDoubleClick={editCharge} onKeyDown={(event) => handleRowKeys(event, () => setSelectedCharge(charge), editCharge)}>
                     <td>{index + 1}</td><td>{safeDateLabel(charge.dueDate)}</td><td>{client?.code ?? ""}</td><td>{client?.identification ?? ""}</td><td>{client?.name ?? "Cliente sin nombre"}</td><td>{abbreviation(charge.service)}</td><td>{charge.service}</td><td>{nativeMoney(charge.amount, charge.currency)}</td><td>{nativeTotals(obligationReceived(charge), charge.currency)}</td><td>{charge.currencyConflict ? "Revisar moneda" : nativeMoney(pending, charge.currency)}</td><td><LegacyCheck checked={charge.status !== "cancelled"} /></td>
                   </tr>;
                 })}
@@ -7480,7 +7484,9 @@ function LegacyOperationView({
                     const client = movement.clientId ? snapshot.clients.find((item) => item.id === movement.clientId) : undefined;
                     const collector = snapshot.collectors.find((item) => item.id === movement.collectorId);
                     const isSelected = selectedRow?.__id === row.__id;
-                    return <tr key={String(row.__id ?? index)} className={isSelected ? "selected-row" : undefined} aria-selected={isSelected} role="button" tabIndex={0} onClick={() => setSelectedRow(row)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedRow(row))}>
+                    // Double click or Enter opens the receipt of that collection (Dionel, 26-10).
+                    const openReceipt = () => { setSelectedRow(row); setCollectionPrintTickets([collectionTicketFromRow(row, index, snapshot)]); };
+                    return <tr key={String(row.__id ?? index)} className={isSelected ? "selected-row" : undefined} aria-selected={isSelected} role="button" tabIndex={0} title="Doble clic o Intro para ver el recibo" onClick={() => setSelectedRow(row)} onDoubleClick={openReceipt} onKeyDown={(event) => handleRowKeys(event, () => setSelectedRow(row), openReceipt)}>
                       <td>{index + 1}</td><td>{client?.identification ?? ""}</td><td>{client?.name ?? "Cliente sin nombre"}</td><td>{String(row.date ?? "")}</td><td>{collector?.name ?? String(row.line ?? "")}</td><td>{(movement as Movement & { registeredCentrally?: boolean }).registeredCentrally === undefined ? "—" : (movement as Movement & { registeredCentrally?: boolean }).registeredCentrally ? "Sí" : "No"}</td><td>{String(row.receipt ?? "")}</td><td>{String(row.amount ?? money(Number(row.__amount ?? 0)))}</td><td><LegacyCheck checked={!movement.cancelledAt} /></td><td>{String(row.registry ?? "")}</td>
                     </tr>;
                   }) : <tr><td className="collections-empty-cell" colSpan={10}>Sin cobros registrados.</td></tr>}</tbody>
@@ -7833,6 +7839,7 @@ function DepositsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
   const [acceptQuantities, setAcceptQuantities] = useState<Record<number, string>>({});
   const [acceptRows, setAcceptRows] = useState<number[]>([...DENOMS]);
   const [printTickets, setPrintTickets] = useState<CollectionTicketModel[] | null>(null);
+  const [detailsVisible, setDetailsVisible] = useState(true);
   const [flash, setFlash] = useState(false);
   const [detailRevision, setDetailRevision] = useState(0);
   const orderKey = snapshot.movements.filter((movement) => movement.type === "deposit").map((movement) => movement.id).join("|");
@@ -8021,6 +8028,8 @@ function DepositsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
         <LegacyToolbar
           filtersVisible={filtersVisible}
           onToggleFilters={() => setFiltersVisible((visible) => !visible)}
+          detailsVisible={detailsVisible}
+          onToggleDetails={() => setDetailsVisible((visible) => !visible)}
           onFirst={() => moveSelected("first")}
           onPrevious={() => moveSelected("previous")}
           onNext={() => moveSelected("next")}
@@ -8057,19 +8066,21 @@ function DepositsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
               <tbody>{orderedRows.length ? orderedRows.map((row, index) => {
                 const movement = row.__raw as unknown as Movement;
                 const active = currentSelection?.__id === row.__id;
-                return <tr key={String(row.__id)} className={active ? "selected-row" : undefined} aria-selected={active} role="button" tabIndex={0} onClick={() => setSelectedRow(row)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedRow(row))}>
+                // Double click or Enter opens the deposit voucher (Dionel, 26-10).
+                const openVoucher = () => { setSelectedRow(row); setPrintTickets([depositTicketFromRow(row, snapshot)]); };
+                return <tr key={String(row.__id)} className={active ? "selected-row" : undefined} aria-selected={active} role="button" tabIndex={0} title="Doble clic o Intro para ver el comprobante" onClick={() => setSelectedRow(row)} onDoubleClick={openVoucher} onKeyDown={(event) => handleRowKeys(event, () => setSelectedRow(row), openVoucher)}>
                   <td>{index + 1}</td><td>{String(row.date ?? "")}</td><td>{String(row.collector ?? "")}</td><td>{String(row.currency ?? "")}</td><td className="numeric-cell">{String(row.amount ?? "")}</td><td title="Forma de depósito">{depositFormLabel(movement.depositComponents?.map((line) => line.method) ?? ["cash"])}</td><td>{String(row.checks ?? "0")}</td><td className="numeric-cell">{String(row.checkAmount ?? money(0))}</td><td><LegacyCheck checked={!movement.cancelledAt} /></td><td><LegacyCheck checked={Boolean(movement.acceptedAt)} /></td>
                 </tr>;
               }) : <tr><td colSpan={10} className="collections-empty-cell">Sin depósitos registrados.</td></tr>}</tbody>
             </table></div>
             <div className="legacy-footerbar"><span>Cantidad: <strong>{orderedRows.length}</strong></span><span>Total: <strong>{totals}</strong></span></div>
           </section>
-          <aside className="legacy-detail-panel deposit-detail-panel" aria-label="Panel de detalles">
+          {detailsVisible && <aside className="legacy-detail-panel deposit-detail-panel" aria-label="Panel de detalles">
             <h2>Panel de Detalles</h2>
             <div className="deposit-detail-meta">{currentSelection ? <><strong>{String(currentSelection.collector ?? "Cobrador")}</strong><span>{String(currentSelection.currency ?? "Peso Dominicano")} · {nativeMoney(Number(currentSelection.__amount ?? 0), currentMovement?.currency)}</span>{(currentMovement as Movement & { note?: string } | undefined)?.note && <small>{(currentMovement as Movement & { note?: string }).note}</small>}</> : <p>Seleccione un depósito para ver sus detalles.</p>}</div>
             <div className="deposit-detail-table-wrap"><table className="deposit-detail-table"><thead><tr><th>Método / Banco</th><th>Referencia / Denominación</th><th>Importe</th></tr></thead><tbody>{detailDenominations.map((item) => <tr key={`${item.denominacion}-${item.cantidad}`}><td>Efectivo</td><td>{nativeMoney(item.denominacion, currentMovement?.currency)} × {item.cantidad}</td><td>{nativeMoney(item.denominacion * item.cantidad, currentMovement?.currency)}</td></tr>)}{detailCashWithoutBreakdown > 0 && <tr><td>Efectivo</td><td>Sin desglose registrado</td><td>{nativeMoney(detailCashWithoutBreakdown, currentMovement?.currency)}</td></tr>}{detailNonCash.map((line, index) => <tr key={`component-${index}`}><td>{depositMethodLabel(line.method)} · {line.bank}</td><td>{line.reference}</td><td>{nativeMoney(line.amount, currentMovement?.currency)}</td></tr>)}{!detailDenominations.length && !detailCashWithoutBreakdown && !detailNonCash.length && <tr><td colSpan={3} className="deposit-detail-empty">Sin desglose registrado.</td></tr>}</tbody><tfoot><tr><td colSpan={2}>Total</td><td>{nativeMoney(detailsTotal, currentMovement?.currency)}</td></tr></tfoot></table></div>
             <div className="deposit-detail-actions"><button type="button" onClick={() => { setDetailRevision((revision) => revision + 1); onRefresh(); toast.success("Detalles refrescados."); }}><RefreshCw size={14} /> Refrescar</button><span className="sr-only">Actualización {detailRevision}</span></div>
-          </aside>
+          </aside>}
         </div>
       </div>
       {formTarget && <DepositDataDialog actorId={currentUser.id} snapshot={snapshot} movement={formMovement} initialDraft={formInitial} onClose={() => setFormTarget(null)} onSave={saveDeposit} />}
@@ -8682,7 +8693,9 @@ function PayoutsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<{
               {orderedRecords.length ? orderedRecords.map((payout, index) => {
                 const client = snapshot.clients.find((item) => item.id === payout.clientId);
                 const selected = payout.id === selectedPayout?.id;
-                return <tr key={payout.id} className={selected ? "selected-row" : undefined} aria-selected={selected} role="button" tabIndex={0} onClick={() => setSelectedId(payout.id)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedId(payout.id))}>
+                // Double click or Enter edits the payout, as «Editar» does (Dionel, 26-10).
+                const editPayout = () => { setSelectedId(payout.id); if (permissions.canEdit) setFormTarget(payout.id); else toast.info("Tu cuenta no tiene permiso para modificar descargos."); };
+                return <tr key={payout.id} className={selected ? "selected-row" : undefined} aria-selected={selected} role="button" tabIndex={0} title="Doble clic o Intro para editar" onClick={() => setSelectedId(payout.id)} onDoubleClick={editPayout} onKeyDown={(event) => handleRowKeys(event, () => setSelectedId(payout.id), editPayout)}>
                   <td>{index + 1}</td><td>{client?.identification ?? ""}</td><td>{client?.name ?? "Cliente sin nombre"}</td><td>{safeDateLabel(payout.date)}</td><td>{payout.currency}</td><td>{payout.service}</td><td>{nativeMoney(payout.amount, payout.currency)}</td><td><LegacyCheck checked={payout.status !== "cancelled"} /></td>
                 </tr>;
               }) : <tr><td colSpan={8} className="payouts-empty-cell">Sin descargos registrados.</td></tr>}
@@ -8801,24 +8814,28 @@ function PaymentsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
     window.setTimeout(() => setFlash(false), 280);
     onRefresh();
   };
-  const paymentSaved = (draft: PendingPaymentDraft, savedMovements: Movement[]) => {
-    const client = snapshot.clients.find((item) => item.id === savedMovements[0].clientId)!;
-    const collector = snapshot.collectors.find((item) => item.id === savedMovements[0].collectorId);
-    const ticket: CollectionTicketModel = {
-      id: savedMovements.map((item) => item.id).join("-"),
-      receiptNumber: savedMovements.map((item) => item.id).join(", "),
-      date: movementBusinessDate(savedMovements[0].createdAt),
-      currency: currencyName(savedMovements[0].currency),
-      clientName: client.name,
-      clientIdentification: client.identification ?? "",
+  const paymentTicket = (movements: Movement[]): CollectionTicketModel => {
+    const client = snapshot.clients.find((item) => item.id === movements[0].clientId);
+    const collector = snapshot.collectors.find((item) => item.id === movements[0].collectorId);
+    const cancelled = movements.filter((movement) => movement.cancelledAt);
+    return {
+      id: movements.map((item) => item.id).join("-"),
+      receiptNumber: movements.map((item) => item.id).join(", "),
+      date: movementBusinessDate(movements[0].createdAt),
+      currency: currencyName(movements[0].currency),
+      clientName: client?.name ?? "Cliente sin nombre",
+      clientIdentification: client?.identification ?? "",
       collectorName: collector?.name ?? "Administración",
       paymentForm: "Efectivo",
       bank: "No Definido",
       checkNumber: "",
-      note: "",
-      amount: savedMovements.reduce((sum, movement) => sum + movement.amount, 0),
-      lines: savedMovements.map((movement) => ({ service: "Pago autorizado", concept: snapshot.payouts.find((item) => item.id === movement.payoutId)?.concept ?? "Pago autorizado", amount: movement.amount })),
+      note: cancelled.map((movement) => "ANULADO · " + (movement.cancellationNote ?? "")).join("\n"),
+      amount: movements.reduce((sum, movement) => sum + movement.amount, 0),
+      lines: movements.map((movement) => ({ service: "Pago autorizado", concept: snapshot.payouts.find((item) => item.id === movement.payoutId)?.concept ?? "Pago autorizado", amount: movement.amount })),
     };
+  };
+  const paymentSaved = (draft: PendingPaymentDraft, savedMovements: Movement[]) => {
+    const ticket = paymentTicket(savedMovements);
     setFormOpen(false);
     if (draft.print) setPrintTicket(ticket);
     toast.success(`${savedMovements.length} pago(s) registrado(s).`);
@@ -8867,7 +8884,9 @@ function PaymentsOperationalView({ snapshot, currentUser, onRefresh }: Readonly<
               {orderedPayments.length ? orderedPayments.map((movement, index) => {
                 const client = snapshot.clients.find((item) => item.id === movement.clientId);
                 const active = selectedId === movement.id;
-                return <tr key={movement.id} className={active ? "selected-row" : undefined} aria-selected={active} role="button" tabIndex={0} onClick={() => setSelectedId(movement.id)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedId(movement.id))}>
+                // Double click or Enter opens the receipt of that payment (Dionel, 26-10).
+                const openReceipt = () => { setSelectedId(movement.id); setPrintTicket(paymentTicket([movement])); };
+                return <tr key={movement.id} className={active ? "selected-row" : undefined} aria-selected={active} role="button" tabIndex={0} title="Doble clic o Intro para ver el recibo" onClick={() => setSelectedId(movement.id)} onDoubleClick={openReceipt} onKeyDown={(event) => handleRowKeys(event, () => setSelectedId(movement.id), openReceipt)}>
                   <td>{index + 1}</td><td>{client?.identification ?? ""}</td><td>{client?.name ?? "Cliente sin nombre"}</td><td>{safeDateLabel(movementBusinessDate(movement.createdAt))}</td><td><LegacyCheck checked={Boolean(movement.receiptToken)} /></td><td>{(movement as Movement & { registeredCentrally?: boolean }).registeredCentrally === undefined ? "—" : (movement as Movement & { registeredCentrally?: boolean }).registeredCentrally ? "Sí" : "No"}</td><td className="numeric-cell">{nativeMoney(movement.amount, movement.currency)}</td><td>{movement.cancellationNote || ""}</td>
                 </tr>;
               }) : <tr><td colSpan={8} className="payouts-empty-cell">Sin pagos registrados.</td></tr>}

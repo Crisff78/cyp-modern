@@ -54,7 +54,8 @@ function Fixture(){const [snapshot,setSnapshot]=useState(first),[page,setPage]=u
     await page.getByRole("button",{name:"Generar vencimientos",exact:true}).click();await page.getByText(/0 cargo\(s\) generado/).waitFor();
     await store.transaction((state)=>state.movements.push({id:"monitor-synthetic",collectorId:owner.id,clientId:initial.clients[0].id,type:"collection",amount:10000,currency:"DOP",createdAt:new Date().toISOString(),actorId:"demo-admin",receiptToken:"synthetic"}));
     await page.getByRole("button",{name:"monitorRoutes",exact:true}).click();await page.locator(".collector-monitor-table").waitFor();await page.waitForFunction(()=>document.querySelectorAll('.collector-monitor-table tbody tr').length>0);
-    const collected=page.locator(".collector-monitor-total").nth(2);assert.match(await collected.textContent(),/100\.00/);await page.getByLabel("Moneda:",{exact:true}).selectOption("Dólar Americano");assert.match(await collected.textContent(),/0\.00/);assert.doesNotMatch(await collected.textContent(),/RD\$/);
+    // Opening the monitor reloads the general view: wait until it brings the collection added above.
+    const collected=page.locator(".collector-monitor-total").nth(2);await page.waitForFunction(()=>/100\.00/.test(document.querySelectorAll(".collector-monitor-total")[2]?.textContent??""));assert.match(await collected.textContent(),/100\.00/);await page.getByLabel("Moneda:",{exact:true}).selectOption("Dólar Americano");assert.match(await collected.textContent(),/0\.00/);assert.doesNotMatch(await collected.textContent(),/RD\$/);
     await page.screenshot({path:path.join(output,"monitor-currency-and-total.png"),fullPage:true});assert.deepEqual(errors,[]);console.log(`UI evidence: ${output}`);
   }finally{await browser?.close();if(server)await new Promise<void>((resolve)=>server!.close(()=>resolve()));await app.close();}
 });
