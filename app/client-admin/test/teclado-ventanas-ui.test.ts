@@ -24,9 +24,9 @@ const canRunBrowser = process.platform === "win32" && fs.existsSync(edge) && Boo
 
 // Every window of the portal with the keyboard only (goal of 27-10-2026, «para toda la aplicación»): each option of
 // the menu, of Configuración de administración and of Reportes opens with the keys, takes the keyboard, moves its
-// list with the arrows, opens its «Nuevo» (F2) and its record (Enter) and closes them with Esc, and closes with Esc.
+// list with the arrows, opens its «Nuevo» (Tab up to it, Enter) and its record (Enter) and closes them with Esc, and closes with Esc.
 // Nothing is typed, so nothing is saved: no request that writes may happen.
-test("Every window of the portal with the keyboard only: opens, takes the keyboard, ↓ in its list, F2 and Enter open, Esc closes", { skip: canRunBrowser ? false : "Installed Windows Edge and Playwright required; no download attempted." }, async (t) => {
+test("Every window of the portal with the keyboard only: opens, takes the keyboard, ↓ in its list, «Nuevo» and Enter open, Esc closes, simple keys only", { skip: canRunBrowser ? false : "Installed Windows Edge and Playwright required; no download attempted." }, async (t) => {
   const output = fs.mkdtempSync(path.join(os.tmpdir(), "cyp-teclado-ventanas-"));
   const store = new MemoryStore(seed());
   const app = await buildApp({ store, demo: true, secret: "synthetic-keyboard-windows-secret-at-least-32-chars", origins: [], collectorUrl: "/collector/" });
@@ -56,7 +56,7 @@ test("Every window of the portal with the keyboard only: opens, takes the keyboa
 
     const checked: string[] = [];
     // What each window did with the keys: the inventory of docs/TECLADO-COMPLETO.md comes from here.
-    const inventory: { window: string; from: string; focus: string; list: boolean; enter: string; f2: string; esc: boolean }[] = [];
+    const inventory: { window: string; from: string; focus: string; list: boolean; enter: string; nuevo: string; esc: boolean }[] = [];
     const describeFocus = () => page.evaluate(`(() => { const a = document.activeElement; if (!a) return ""; if (a.closest("tbody")) return "la lista"; if (a.matches("input[type=search]") || /buscar|digite|búsqueda/i.test((a.closest("label")?.textContent ?? "") + " " + (a.getAttribute("aria-label") ?? "") + " " + (a.getAttribute("placeholder") ?? ""))) return "la búsqueda"; if (a.matches("input,select,textarea")) return "el primer campo: " + ([...(a.closest("label")?.childNodes ?? [])].filter((n) => n.nodeType === 3).map((n) => n.textContent).join("").trim() || a.getAttribute("aria-label") || a.id || "campo"); return "el botón " + (a.getAttribute("aria-label") || a.textContent || "").replace(/\s+/g, " ").trim(); })()`) as Promise<string>;
     const openedTitle = () => page.evaluate(`(() => { const d = [...document.querySelectorAll('.legacy-dialog, dialog[open], .remittance-receipt-window, [role="dialog"][data-state="open"]')].pop(); return d ? (d.getAttribute("aria-label") || d.querySelector("h2")?.textContent || "diálogo") : ""; })()`) as Promise<string>;
     const visit = async (name: string, open: () => Promise<void>) => {
@@ -66,7 +66,7 @@ test("Every window of the portal with the keyboard only: opens, takes the keyboa
         // A new window in front, with the keyboard inside it.
         await waitFor((count: number) => document.querySelectorAll(".mdi-window").length > count && Boolean(document.activeElement?.closest(".mdi-window.focused")), windowsBefore);
         const title = await page.evaluate(`document.activeElement.closest(".mdi-window").getAttribute("aria-label")`) as string;
-        const entry = { window: title, from: name.split(" → ")[0], focus: "", list: false, enter: "—", f2: "—", esc: false };
+        const entry = { window: title, from: name.split(" → ")[0], focus: "", list: false, enter: "—", nuevo: "—", esc: false };
         await page.waitForTimeout(500);
         entry.focus = await describeFocus();
         // Its list, once it has arrived: ↓ moves the chosen row.
@@ -95,11 +95,13 @@ test("Every window of the portal with the keyboard only: opens, takes the keyboa
             await waitFor((name: string) => document.activeElement?.closest(".mdi-window")?.getAttribute("aria-label") === name, title);
           }
         }
-        // F2 opens «Nuevo» when the window has one; Esc closes it at once (nothing typed) and the keyboard comes back.
-        if (await page.evaluate(`Boolean(document.querySelector('.mdi-window.focused [aria-keyshortcuts="F2"]:not([role="combobox"])'))`)) {
-          await keys("F2");
+        // «Nuevo», when the window has one: Mayús+Tab goes up to it and Enter opens it; Esc closes it at once (nothing typed) and
+        // the keyboard comes back.
+        if (await page.evaluate(`Boolean([...document.querySelectorAll(".mdi-window.focused .legacy-mdi-toolbar button")].find((button) => button.title.startsWith("Nuevo") && !button.disabled))`)) {
+          await tabTo((element) => element.closest(".legacy-mdi-toolbar") !== null && (element.getAttribute("title") ?? "").startsWith("Nuevo"), 60, null, "Shift+Tab");
+          await keys("Enter");
           await waitFor(() => Boolean(document.activeElement?.closest(".legacy-dialog, dialog[open]")) || Boolean(document.querySelector('[role="dialog"][data-state="open"]')));
-          entry.f2 = "abre «" + await openedTitle() + "»";
+          entry.nuevo = "abre «" + await openedTitle() + "»";
           await keys("Escape");
           await waitFor(() => !document.querySelector(".legacy-dialog-overlay, dialog[open]"));
           await waitFor((name: string) => document.activeElement?.closest(".mdi-window")?.getAttribute("aria-label") === name, title);

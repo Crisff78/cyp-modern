@@ -7,7 +7,7 @@ import { DetailsPanelIcon, FiltersPanelIcon } from "./PanelIcons";
 import { LegacyDialog } from "./LegacyConnectedUi";
 import { focusAfterClosing, focusFirstUseful, focusMenu, installKeyboard, keyboardIsFree, restoreWindowFocus } from "../../shared/keyboard";
 import "../../shared/keyboard.css";
-import { KeyboardHelpDialog, KeyboardShortcutsTable } from "./KeyboardHelp";
+import { KeyboardShortcutsTable } from "./KeyboardHelp";
 import { CLIENT_PAGE_SIZE, NOT_DEFINED, NOT_DEFINED_ROUTE, type ClientPage, type ClientPageStatus } from "../../shared/clientPage.mjs";
 import {
   isValidElement,
@@ -942,7 +942,7 @@ function LegacyToolbar({ onToggleFilters, filtersVisible = true, onToggleDetails
   disableAccept ||= !access.canAccept;
   return (
     <div className="legacy-mdi-toolbar" aria-label="Barra de herramientas legacy" onMouseDown={stopToolbarEvent} onClick={stopToolbarEvent}>
-      {onToggleFilters && <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" aria-label="Mostrar/Ocultar filtros" aria-pressed={filtersVisible} data-shortcut="filters" onClick={runToolbarAction(onToggleFilters)}><FiltersPanelIcon /></button>}
+      {onToggleFilters && <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" aria-label="Mostrar/Ocultar filtros" aria-pressed={filtersVisible} onClick={runToolbarAction(onToggleFilters)}><FiltersPanelIcon /></button>}
       {/* Windows with a details panel on the right hide it with its own button (Dionel, 26-10). */}
       {onToggleDetails && <button type="button" className={detailsVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar detalles" aria-label="Mostrar/Ocultar detalles" aria-pressed={detailsVisible} onClick={runToolbarAction(onToggleDetails)}><DetailsPanelIcon /></button>}
       <button type="button" className="nav-tool" title="Mover al inicio" onClick={runToolbarAction(onFirst)}>|&lt;</button>
@@ -950,12 +950,12 @@ function LegacyToolbar({ onToggleFilters, filtersVisible = true, onToggleDetails
       <button type="button" className="nav-tool" title="Bajar" onClick={runToolbarAction(onNext)}>&gt;</button>
       <button type="button" className="nav-tool" title="Mover al final" onClick={runToolbarAction(onLast)}>&gt;|</button>
       <span className="mdi-toolbar-separator" />
-      <button type="button" title={newTitle} data-shortcut="new" disabled={disableNew} onClick={runToolbarAction(onNew)}>{newIcon ?? <Plus size={15} />}</button>
+      <button type="button" title={newTitle} disabled={disableNew} onClick={runToolbarAction(onNew)}>{newIcon ?? <Plus size={15} />}</button>
       {showEdit && <button type="button" title="Editar" disabled={disableEdit} onClick={runToolbarAction(onEdit)}><Pencil size={15} /></button>}
       {onAccept && <button type="button" title="Aceptar depósito" disabled={disableAccept} onClick={runToolbarAction(onAccept)}><ClipboardCheck size={15} /></button>}
       <button type="button" className="danger-tool" title={deleteTitle} disabled={disableDelete} onClick={runToolbarAction(onDelete)}>{deleteIcon === "x" ? <X size={15} /> : <Trash2 size={15} />}</button>
       <button type="button" title="Refrescar" onClick={runToolbarAction(onRefresh)}><RefreshCw size={15} /></button>
-      {onPrint && <button type="button" title="Imprimir" data-shortcut="print" onClick={runToolbarAction(onPrint)}><Printer size={15} /></button>}
+      {onPrint && <button type="button" title="Imprimir" onClick={runToolbarAction(onPrint)}><Printer size={15} /></button>}
       {extra && <span className="mdi-toolbar-extra">{extra}</span>}
     </div>
   );
@@ -4763,7 +4763,6 @@ export default function App() {
     [commandQuery, setCommandQuery] = useState(""),
     [notificationsOpen, setNotificationsOpen] = useState(false),
     [helpOpen, setHelpOpen] = useState(false),
-    [keysOpen, setKeysOpen] = useState(false),
     [accountOpen, setAccountOpen] = useState(false),
     [ownPasswordOpen, setOwnPasswordOpen] = useState(false),
     [activeNavKey, setActiveNavKey] = useState(""),
@@ -4917,19 +4916,6 @@ export default function App() {
     menuFocusedAfterLogin.current = true;
     window.requestAnimationFrame(() => { const active = document.activeElement; if (!active || active === document.body) focusMenu(); });
   }, [authenticated, snapshot]);
-  useEffect(() => {
-    const onKeys = (event: Event) => { event.preventDefault(); setKeysOpen(true); };
-    const onMenu = (event: Event) => {
-      const sidebar = document.querySelector<HTMLElement>(".sidebar");
-      if (!sidebar || sidebar.getBoundingClientRect().right > 0) return;
-      event.preventDefault();
-      setMobileMenu(true);
-      window.requestAnimationFrame(() => focusMenu());
-    };
-    document.addEventListener("cyp-keyboard-help", onKeys);
-    document.addEventListener("cyp-keyboard-menu", onMenu);
-    return () => { document.removeEventListener("cyp-keyboard-help", onKeys); document.removeEventListener("cyp-keyboard-menu", onMenu); };
-  }, []);
   function navigate(next: Page, navKey = "") {
     if (!isUiPageVisible(next)) return;
     setPage(next);
@@ -5044,7 +5030,6 @@ export default function App() {
   return (
     <>
       {createPortal(<Toaster position="top-right" richColors closeButton style={{ zIndex: 2147483647 }} />, document.body)}
-      <KeyboardHelpDialog open={keysOpen} onClose={() => setKeysOpen(false)} />
       {!authenticated ? (
         <Login
           onLogin={(user, nextStation) => {

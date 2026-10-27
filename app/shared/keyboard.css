@@ -1,29 +1,4 @@
-/* CyP with the keyboard only: the key of each button, the help of icon buttons and «¿Cerrar sin guardar?». See shared/keyboard.ts. */
-
-/* The key a button answers to (F2, F3, F4, F8, F9), in the corner of the button, on a layer that never takes clicks. */
-.cyp-key-layer { position: fixed; inset: 0; pointer-events: none; z-index: 2147483600; }
-/* Shown as popovers (above the browser's modal dialogs): without the browser's own frame, size and place of a popover. */
-.cyp-key-layer[popover] { width: 100%; height: 100%; margin: 0; padding: 0; border: 0; background: transparent; overflow: visible; }
-.cyp-key-hint[popover], .cyp-keyboard-status[popover] { right: auto; bottom: auto; margin: 0; border: 0; overflow: visible; }
-.cyp-keyboard-status[popover] { top: auto; bottom: 18px; }
-.cyp-key-badge {
-  position: fixed; padding: 0 3px; border-radius: 3px; border: 1px solid #1e3a8a;
-  background: #eff6ff; color: #1e3a8a; font: 700 9px/12px system-ui, "Segoe UI", sans-serif; letter-spacing: 0.02em;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.18); white-space: nowrap;
-}
-
-/* What an icon button does, when the keyboard reaches it (the mouse sees its title). */
-.cyp-key-hint {
-  position: fixed; z-index: 2147483601; max-width: 320px; padding: 3px 7px; border-radius: 4px; pointer-events: none;
-  background: #0f172a; color: #ffffff; font: 500 12px/1.35 system-ui, "Segoe UI", sans-serif; box-shadow: 0 3px 10px rgba(15, 23, 42, 0.28);
-}
-
-/* A key with nothing to do here says so for a moment. */
-.cyp-keyboard-status {
-  position: fixed; left: 50%; bottom: 18px; z-index: 2147483602; transform: translateX(-50%); padding: 6px 12px; border-radius: 6px;
-  background: #0f172a; color: #ffffff; font: 500 13px/1.35 system-ui, "Segoe UI", sans-serif; opacity: 0; pointer-events: none; transition: opacity 160ms ease;
-}
-.cyp-keyboard-status.shown { opacity: 0.94; }
+/* CyP with the keyboard only: «¿Cerrar sin guardar?» and the row that has the keyboard. See shared/keyboard.ts. */
 
 /* «Hay cambios sin guardar»: Enter = Sí, Esc = No. */
 .cyp-keyboard-confirm {
@@ -40,6 +15,3 @@
 
 /* The row that has the keyboard is always marked, in every list. */
 tbody tr[tabindex]:focus-visible { outline: 2px solid var(--cyp-focus, #2563eb); outline-offset: -2px; }
-
-@media (prefers-reduced-motion: reduce) { .cyp-keyboard-status { transition: none; } }
-@media print { .cyp-key-layer, .cyp-key-hint, .cyp-keyboard-status { display: none !important; } }
