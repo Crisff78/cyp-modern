@@ -53,13 +53,11 @@ test("Administración with the keyboard only: menu, Clientes pages and record, u
     await menuTo("Clientes");
     await keys("Enter");
     await inWindow("Clientes");
-    // The listing opens on its search (F3), with the keys of its toolbar shown on the buttons.
+    // The listing opens on its search, and nothing is drawn on its buttons.
     assert.equal((await focused()).label, "Buscar clientes por código, teléfono o nota");
     await waitFor(() => document.querySelectorAll(".clients-grid tbody tr[role=button]").length === 50);
-    const keysShown = await page.locator('.mdi-window[aria-label="Clientes"] [aria-keyshortcuts]').evaluateAll((items) => items.map((item) => item.getAttribute("aria-keyshortcuts")).sort());
-    assert.deepEqual(keysShown, ["F2", "F3", "F4"]);
-    assert.equal(await page.locator(".cyp-key-badge").count(), 3);
-    // ↓ goes down to the list and moves the chosen row; Inicio and Fin go to its ends.
+    assert.equal(await page.locator("[aria-keyshortcuts], .cyp-key-badge, .cyp-key-hint").count(), 0);
+    // ↓ goes down to the list and moves the chosen row; Inicio and Fin go to its ends; ↑ on the first row, back to the search.
     await keys("ArrowDown");
     const first = await selectedRow();
     assert.ok(first);
@@ -69,6 +67,10 @@ test("Administración with the keyboard only: menu, Clientes pages and record, u
     await keys("End");
     assert.equal(await page.evaluate(`document.activeElement === [...document.querySelectorAll(".clients-grid tbody tr[role=button]")].at(-1)`), true);
     await keys("Home");
+    assert.equal(await selectedRow(), first);
+    await keys("ArrowUp");
+    assert.equal((await focused()).label, "Buscar clientes por código, teléfono o nota");
+    await keys("ArrowDown");
     assert.equal(await selectedRow(), first);
     // The list is one Tab stop: Tab leaves it, Mayús+Tab comes back to the chosen row.
     await keys("Tab");
@@ -98,14 +100,19 @@ test("Administración with the keyboard only: menu, Clientes pages and record, u
     assert.equal(writes(/^\/api\/clientes/).length, 0);
     // The keyboard is back on the row of the record.
     await waitFor(() => document.activeElement?.tagName === "TR");
-    // F4 hides and shows the filters; F2 opens a new record, which closes at once with nothing typed.
+    // The buttons of the toolbar: Mayús+Tab goes up to them, ← and → go from one to the next, Enter presses.
     const pressed = () => page.locator('.mdi-window[aria-label="Clientes"] button[aria-label="Mostrar/Ocultar filtros"]').getAttribute("aria-pressed");
     const before = await pressed();
-    await keys("F4");
+    await tabTo((element) => element.closest(".legacy-mdi-toolbar") !== null, 10, null, "Shift+Tab");
+    for (let step = 0; step < 12 && (await focused()).label !== "Mostrar/Ocultar filtros"; step += 1) await keys("ArrowLeft");
+    assert.equal((await focused()).label, "Mostrar/Ocultar filtros");
+    await keys("Enter");
     assert.notEqual(await pressed(), before);
-    await keys("F4");
+    await keys("Enter");
     assert.equal(await pressed(), before);
-    await keys("F2");
+    for (let step = 0; step < 12 && !(await page.evaluate(`document.activeElement?.getAttribute("title")?.startsWith("Nuevo") === true`)); step += 1) await keys("ArrowRight");
+    assert.equal(await page.evaluate(`document.activeElement?.closest(".legacy-mdi-toolbar") !== null && document.activeElement.getAttribute("title").startsWith("Nuevo")`), true);
+    await keys("Enter");
     await inWindow("Datos del Cliente...");
     assert.equal(await page.locator('[role="dialog"][aria-label="Datos del Cliente..."] input').first().inputValue(), "");
     await keys("Escape");
@@ -120,7 +127,9 @@ test("Administración with the keyboard only: menu, Clientes pages and record, u
     await menuTo("Cargos");
     await keys("Enter");
     await inWindow("Cargos");
-    await keys("F2");
+    await tabTo((element) => element.closest(".legacy-mdi-toolbar") !== null, 10, null, "Shift+Tab");
+    for (let step = 0; step < 12 && !(await page.evaluate(`document.activeElement?.getAttribute("title")?.startsWith("Nuevo") === true`)); step += 1) await keys("ArrowLeft");
+    await keys("Enter");
     await inWindow("Datos del Cargo...");
     assert.equal(await page.evaluate(`document.activeElement?.id`), "cargo-client-code");
     await page.keyboard.type(client.code);
@@ -132,7 +141,7 @@ test("Administración with the keyboard only: menu, Clientes pages and record, u
     }
     assert.equal(await page.evaluate(`document.activeElement?.id`), "cargo-amount");
     await page.keyboard.type("12345");
-    // Enter up to the last field, and there it stays: money is saved with F9 (or the button), never with Enter.
+    // Enter up to the last field, and there it stays: money is saved with its button (Tab, Enter), never with Enter alone.
     let last = "";
     for (let step = 0; step < 6; step += 1) {
       const now = await page.evaluate(`document.activeElement?.id || document.activeElement?.closest("label")?.textContent || ""`) as string;
@@ -141,7 +150,8 @@ test("Administración with the keyboard only: menu, Clientes pages and record, u
     }
     assert.equal(await page.evaluate(`document.activeElement?.id`), "cargo-note");
     assert.equal(writes(/^\/api\/cargos/).length, 0);
-    await keys("F9");
+    await tabTo((element) => (element as HTMLButtonElement).type === "submit" && element.closest('[role="dialog"]')?.getAttribute("aria-label") === "Datos del Cargo...", 10);
+    await keys("Enter");
     await waitFor(() => !document.querySelector('[role="dialog"][aria-label="Datos del Cargo..."]'));
     assert.equal(writes(/^\/api\/cargos$/).filter((request) => request.status === 200).length, 1);
     await inWindow("Cargos");
@@ -159,18 +169,23 @@ test("Administración with the keyboard only: menu, Clientes pages and record, u
     await keys("Enter");
     await waitFor(() => !document.querySelector('.mdi-window[aria-label="Envíos de dinero"]'));
 
-    // ── Reportes: a report of remesas, consulted with F9 and printed with F8 ──
+    // ── Reportes: a report of remesas, consulted with Enter and printed with its button ──
     await menuTo("Reportes");
     await keys("Enter");
     await inWindow("Reportes");
     await tabTo((element) => element.textContent?.trim() === "Montos y cantidad de envíos");
     await keys("Enter");
     await waitFor(() => document.querySelector('.mdi-window[aria-label*="Montos y cantidad"]') !== null && document.activeElement?.closest(".mdi-window")?.getAttribute("aria-label")?.includes("Montos y cantidad") === true);
+    // Enter goes through its filters and, from the last one, to «Consultar», which Enter presses.
     const consulted = requests.length;
-    await keys("F9");
-    await waitFor((count: number) => document.querySelector('.mdi-window[aria-label*="Montos y cantidad"] button[aria-label="Imprimir"]:not(:disabled)') !== null, consulted);
+    for (let step = 0; step < 12 && !requests.slice(consulted).some((request) => request.path.startsWith("/api/envios/reportes")); step += 1) await keys("Enter");
+    await waitFor(() => document.querySelector('.mdi-window[aria-label*="Montos y cantidad"] button[aria-label="Imprimir"]:not(:disabled)') !== null);
     assert.ok(requests.slice(consulted).some((request) => request.path.startsWith("/api/envios/reportes")));
-    await keys("F8");
+    // Tab reaches «Consultar»; → goes on to «Imprimir», beside it; Enter prints.
+    await tabTo((element) => element.textContent?.trim() === "Consultar" && element.closest(".mdi-window")?.getAttribute("aria-label")?.includes("Montos y cantidad") === true, 40);
+    await keys("ArrowRight");
+    assert.equal(await page.evaluate(`document.activeElement?.textContent?.trim()`), "Imprimir");
+    await keys("Enter");
     await keys("Escape");
     await waitFor(() => !document.querySelector('.mdi-window[aria-label*="Montos y cantidad"]'));
 
@@ -178,7 +193,10 @@ test("Administración with the keyboard only: menu, Clientes pages and record, u
     await menuTo("Configuración de administración");
     await keys("Enter");
     await inWindow("Configuración de administración");
-    await tabTo((element) => element.textContent?.trim() === "Rutas");
+    // Tab reaches the tiles of its section; → goes from one tile to the next until Rutas.
+    await tabTo((element) => element.matches(".control-panel-tile") && [...(element.closest(".control-panel-grid")?.querySelectorAll(".control-panel-tile") ?? [])].some((tile) => tile.textContent?.trim() === "Rutas"));
+    for (let step = 0; step < 30 && await page.evaluate(`document.activeElement?.textContent?.trim()`) !== "Rutas"; step += 1) await keys("ArrowRight");
+    assert.equal(await page.evaluate(`document.activeElement?.textContent?.trim()`), "Rutas");
     await keys("Enter");
     await waitFor(() => document.activeElement?.closest(".mdi-window")?.getAttribute("aria-label") === "Rutas");
     // It opens on its search; ↓ goes down to the routes once they have arrived, and moves between them.
@@ -194,22 +212,18 @@ test("Administración with the keyboard only: menu, Clientes pages and record, u
     await inWindow("Configuración de administración");
     await keys("Escape");
 
-    // ── Header: Facturas, and the search of Ctrl+K ──
-    await keys("F10");
+    // ── Header: Facturas ── Esc, Esc… closes the windows still open (Reportes, behind); with none left the keyboard
+    // is on the menu, and Tab reaches the header.
+    for (let step = 0; step < 4 && !(await page.evaluate(() => Boolean(document.activeElement?.closest("[data-keyboard-menu]")))); step += 1) await keys("Escape");
+    await waitFor(() => Boolean(document.activeElement?.closest("[data-keyboard-menu]")) && !document.querySelector(".mdi-window"));
     await tabTo((element) => element.getAttribute("aria-label") === "Facturas");
     await keys("Enter");
     await inWindow("Ventana de Facturas");
     await keys("Escape");
     await waitFor(() => document.activeElement?.getAttribute("aria-label") === "Facturas");
-    await keys("Control+k");
-    await waitFor(() => document.activeElement?.getAttribute("placeholder")?.startsWith("Nombre, código") === true);
-    await page.keyboard.type(client.name.slice(0, 5));
-    await keys("Escape");
-    await waitFor(() => document.querySelector('[role="dialog"][data-state="open"]') === null);
 
-    // A key with nothing to do says so instead of doing something else.
-    await keys("F10", "F8");
-    await waitFor(() => /F8: no hay imprimir/.test(document.querySelector(".cyp-keyboard-status")?.textContent ?? ""));
+    // Nothing extra was drawn on the screen at any moment of the way.
+    assert.equal(await page.locator("[aria-keyshortcuts], .cyp-key-badge, .cyp-key-hint, .cyp-keyboard-status").count(), 0);
 
     await harness.assertNoPointer();
     await page.screenshot({ path: path.join(output, "teclado-admin.png") });

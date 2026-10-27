@@ -28,7 +28,7 @@ const canRunBrowser = process.platform === "win32" && fs.existsSync(edge) && Boo
 
 // The cashier works with the keyboard only (goal of 27-10-2026): from signing in to signing out, without one click.
 // Real Admin shell, API and MemoryStore with synthetic data; no external request, no .env, no download.
-test("Cajero with the keyboard only: sign in, open the box, send, deliver, count and close the box, notices, keys and sign out", { skip: canRunBrowser ? false : "Installed Windows Edge and Playwright required; no download attempted." }, async () => {
+test("Cajero with the keyboard only: sign in, open the box, send, deliver, count and close the box, notices and sign out, with simple keys only", { skip: canRunBrowser ? false : "Installed Windows Edge and Playwright required; no download attempted." }, async () => {
   const output = fs.mkdtempSync(path.join(os.tmpdir(), "cyp-teclado-cajero-"));
   const state = seed(), now = new Date(), today = businessDate(now);
   const admin = { id: "demo-admin", name: "Administración", role: "admin" as const };
@@ -70,9 +70,10 @@ test("Cajero with the keyboard only: sign in, open the box, send, deliver, count
     await keys("Enter");
     assert.equal((await focused()).label, "Efectivo inicial");
     assert.equal(await page.locator('dialog[open]').count(), 0);
-    // The key shown on the button is the one that presses it.
-    assert.equal(await page.getByRole("button", { name: "Revisar apertura", exact: true }).getAttribute("aria-keyshortcuts"), "F9");
-    await keys("F9");
+    // Tab reaches its button and Enter presses it.
+    await keys("Tab");
+    assert.equal((await focused()).label, "Revisar apertura");
+    await keys("Enter");
     await waitFor(() => document.activeElement?.closest("dialog")?.getAttribute("aria-label") === "Abrir caja de remesas");
     assert.equal((await focused()).label, "Confirmar");
     await keys("Enter");
@@ -106,18 +107,21 @@ test("Cajero with the keyboard only: sign in, open the box, send, deliver, count
     await waitFor((code: string) => [...document.querySelectorAll('[data-client-side="recipient"] [role="option"]')].some((option) => option.textContent?.includes(code)) && !document.querySelector('[data-client-side="recipient"]')?.textContent?.includes("Buscando contactos"), recipient.code);
     await keys("ArrowDown", "Enter");
     await waitFor((name: string) => document.querySelector('[data-client-side="recipient"] .remittance-client-selection')?.textContent?.includes(name) === true, recipient.name);
-    // F9 quotes, F9 again reviews.
-    await keys("F9");
-    await page.getByRole("button", { name: "Revisar y confirmar envío", exact: true }).waitFor();
-    await keys("F9");
+    // Tab up to «Calcular cotización», Enter: the quote comes and the keyboard is already on the next step.
+    await tabTo((element) => element.textContent === "Calcular cotización", 40);
+    await keys("Enter");
+    await waitFor(() => document.activeElement?.textContent === "Revisar y confirmar envío");
+    await keys("Enter");
     await waitFor(() => document.activeElement?.closest("dialog")?.getAttribute("aria-label") === "Confirmar envío");
     assert.equal((await focused()).label, "Forma de pago");
-    // Enter goes on to the money received and stops there: the send waits for F9 (or its button).
+    // Enter goes on to the money received and stops there: the send waits for its button.
     await keys("Enter");
     assert.match((await focused()).label, /^Dinero recibido/);
     await keys("Enter");
+    assert.match((await focused()).label, /^Dinero recibido/);
     assert.equal(posts("/api/envios").length, 0);
-    await keys("F9");
+    await tabTo((element) => element.textContent === "Aceptar" && element.closest("dialog") !== null, 20);
+    await keys("Enter");
     await waitFor(() => document.activeElement?.closest("dialog")?.getAttribute("aria-label") === "¿Quieres imprimir el recibo?");
     assert.equal(posts("/api/envios").length, 1);
     assert.equal((await focused()).label, "Imprimir");
@@ -137,8 +141,11 @@ test("Cajero with the keyboard only: sign in, open the box, send, deliver, count
     assert.equal((await focused()).label, waiting.reciboReference);
     await keys("Enter");
     await waitFor(() => document.activeElement?.closest(".remittance-receipt-window") !== null);
-    assert.deepEqual(await page.locator("[aria-keyshortcuts]").evaluateAll((items) => items.filter((item) => item.closest(".remittance-receipt-window")).map((item) => `${item.getAttribute("aria-keyshortcuts")} ${item.textContent}`)), ["F8 Imprimir comprobante", "F9 Registrar entrega"]);
-    await keys("F9");
+    // Its buttons go together: → from «Imprimir comprobante» reaches «Registrar entrega».
+    await tabTo((element) => element.textContent === "Imprimir comprobante" && element.closest(".remittance-receipt-window") !== null, 30);
+    await keys("ArrowRight");
+    assert.equal((await focused()).label, "Registrar entrega");
+    await keys("Enter");
     await waitFor(() => document.activeElement?.closest("dialog")?.getAttribute("aria-label") === "Confirmar entrega al destinatario");
     await keys("Enter");
     await waitFor(() => !document.querySelector("dialog[open]"));
@@ -160,7 +167,10 @@ test("Cajero with the keyboard only: sign in, open the box, send, deliver, count
     // Typed from the cents: the digits of the expected amount.
     const expected = (await page.locator("dialog[open] p strong").first().textContent())!.replace(/\D/g, "");
     await page.keyboard.type(expected);
-    await keys("F9");
+    await keys("Enter");
+    assert.equal(await page.locator('dialog[open][aria-label="Confirmar cierre de caja"]').count(), 0, "Enter does not close the box");
+    await tabTo((element) => element.textContent === "Revisar cierre", 10);
+    await keys("Enter");
     await waitFor(() => document.activeElement?.closest("dialog")?.getAttribute("aria-label") === "Confirmar cierre de caja");
     await keys("Enter");
     await waitFor(() => !document.querySelector("dialog[open]"));
@@ -168,19 +178,16 @@ test("Cajero with the keyboard only: sign in, open the box, send, deliver, count
     await keys("Escape");
     await waitFor(() => !document.querySelector('.mdi-window[aria-label="Cuadres Diarios"]'));
 
-    // Notices: from the menu, Tab reaches the bell; Esc gives the keyboard back to it.
-    await keys("F10");
+    // Notices: the last window closed, the keyboard is on the menu; Tab reaches the bell; Esc gives the keyboard back to it.
+    await waitFor(() => Boolean(document.activeElement?.closest("[data-keyboard-menu]")));
     await tabTo((element) => (element.getAttribute("aria-label") ?? "").startsWith("Notificaciones"));
     await keys("Enter");
     await waitFor(() => document.activeElement?.closest('[role="dialog"]')?.getAttribute("aria-labelledby") !== undefined && document.querySelector('[role="dialog"][data-state="open"]') !== null);
     await keys("Escape");
     await waitFor(() => (document.activeElement?.getAttribute("aria-label") ?? "").startsWith("Notificaciones"));
 
-    // F1: the keys, the same that the cashiers' sheet lists.
-    await keys("F1");
-    await page.getByRole("dialog", { name: "Teclas de CyP", exact: true }).waitFor();
-    for (const key of ["F2", "F3", "F4", "F8", "F9", "F10", "Esc"]) assert.equal(await page.getByRole("dialog", { name: "Teclas de CyP" }).locator("kbd", { hasText: new RegExp(`^${key}$`) }).count(), 1, key);
-    await keys("Escape");
+    // Nothing extra on the screen: no key is drawn on the buttons.
+    assert.equal(await page.locator("[aria-keyshortcuts], .cyp-key-badge, .cyp-key-hint").count(), 0);
 
     // Sign out: the account, then «Cerrar sesión».
     await tabTo((element) => element.getAttribute("aria-label") === "Abrir cuenta");
