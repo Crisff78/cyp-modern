@@ -9,7 +9,7 @@ export function KeyboardShortcutsTable() {
       <table>
         <tbody>{KEYBOARD_MOVES.map((item) => <tr key={item.key}><th scope="row"><kbd>{item.key}</kbd></th><td>{item.label}</td></tr>)}</tbody>
       </table>
-      <p>El dinero se confirma siempre con su botón: Intro solo pasa de un campo a otro.</p>
+      <p>El dinero se confirma siempre con su botón: Intro llega a él sin pulsarlo. ¿Hiciste clic fuera? Una flecha devuelve el teclado.</p>
     </section>
   );
 }

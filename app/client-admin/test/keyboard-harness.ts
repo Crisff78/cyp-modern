@@ -9,9 +9,10 @@ import type { NodeRequire } from "node:module";
 // (Fastify inject over a MemoryStore), and an Edge page driven only with page.keyboard. Every trusted pointer event
 // on the page is counted: a test that clicked anything fails in assertNoPointer().
 const SIMPLE_KEY = /^(?:Shift\+)?(?:Enter|Tab|Escape|Space| |ArrowUp|ArrowDown|ArrowLeft|ArrowRight|Home|End|PageUp|PageDown|Backspace|Delete)$/;
-type Options = { app: { inject: (options: any) => Promise<any> }; adminRoot: string; output: string; playwrightEntry: string; edge: string; localRequire: NodeRequire; idempotencyKey: () => string };
+// collectorRoot: also build the collector app (served at /collector/), for its own keyboard tests.
+type Options = { app: { inject: (options: any) => Promise<any> }; adminRoot: string; output: string; playwrightEntry: string; edge: string; localRequire: NodeRequire; idempotencyKey: () => string; collectorRoot?: string };
 
-export async function keyboardHarness({ app, adminRoot, output, playwrightEntry, edge, localRequire }: Options) {
+export async function keyboardHarness({ app, adminRoot, output, playwrightEntry, edge, localRequire, collectorRoot }: Options) {
   const requests: { method: string; path: string; status: number }[] = [];
   const [{ build }, { default: react }, { default: tailwind }, { chromium }] = await Promise.all([
     import(pathToFileURL(localRequire.resolve("vite")).href), import(pathToFileURL(localRequire.resolve("@vitejs/plugin-react")).href),
@@ -27,6 +28,17 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
   await build({ root: adminRoot, configFile: false, envFile: false, publicDir: false, cacheDir: path.join(output, "cache"), resolve: { dedupe: ["react", "react-dom"] }, plugins: [react(), tailwind()],
     define: { "process.env.NODE_ENV": JSON.stringify("production"), "import.meta.env.BASE_URL": JSON.stringify("/admin/"), "import.meta.env.VITE_COLLECTOR_URL": JSON.stringify("/collector/") }, logLevel: "error",
     build: { outDir: path.join(output, "admin"), emptyOutDir: false, cssCodeSplit: false, rollupOptions: { output: { inlineDynamicImports: true } }, lib: { entry: fixture, formats: ["es"], fileName: () => "admin.js", cssFileName: "admin" } } });
+  if (collectorRoot) {
+    const collectorFixture = path.join(output, "collector.tsx");
+    const collectorModule = (name: string) => JSON.stringify(path.join(collectorRoot, "src", name).replaceAll("\\", "/"));
+    fs.writeFileSync(collectorFixture, `import { createRoot } from "react-dom/client";
+import { App } from ${collectorModule("App.tsx")};
+import ${collectorModule("styles.css")};
+createRoot(document.getElementById("root")).render(<App />);`, "utf8");
+    await build({ root: collectorRoot, configFile: false, envFile: false, publicDir: false, cacheDir: path.join(output, "cache-collector"), resolve: { dedupe: ["react", "react-dom"] }, plugins: [react(), tailwind()],
+      define: { "process.env.NODE_ENV": JSON.stringify("production"), "import.meta.env.BASE_URL": JSON.stringify("/collector/") }, logLevel: "error",
+      build: { outDir: path.join(output, "collector"), emptyOutDir: false, cssCodeSplit: false, rollupOptions: { output: { inlineDynamicImports: true } }, lib: { entry: collectorFixture, formats: ["es"], fileName: () => "collector.js", cssFileName: "collector" } } });
+  }
   let address = 0;
   const remoteAddress = () => { address += 1; return `10.64.${Math.floor(address / 250) % 250}.${address % 250 + 1}`; };
   const server = createServer(async (request, response) => {
@@ -41,6 +53,8 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         response.writeHead(result.statusCode, { "Content-Type": "application/json" }); response.end(result.body); return;
       }
       if (url.pathname === "/admin/") { response.writeHead(200, { "Content-Type": "text/html" }); response.end(`<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/admin/admin.css"><div id="root"></div><script type="module" src="/admin/admin.js"></script></html>`); return; }
+      if (collectorRoot && url.pathname === "/collector/") { response.writeHead(200, { "Content-Type": "text/html" }); response.end(`<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/collector/collector.css"><div id="root"></div><script type="module" src="/collector/collector.js"></script></html>`); return; }
+      if (collectorRoot && (url.pathname === "/collector/collector.js" || url.pathname === "/collector/collector.css")) { response.writeHead(200, { "Content-Type": url.pathname.endsWith(".js") ? "text/javascript" : "text/css" }); response.end(fs.readFileSync(path.join(output, "collector", path.basename(url.pathname)))); return; }
       if (url.pathname === "/admin/admin.js" || url.pathname === "/admin/admin.css") { response.writeHead(200, { "Content-Type": url.pathname.endsWith(".js") ? "text/javascript" : "text/css" }); response.end(fs.readFileSync(path.join(output, "admin", path.basename(url.pathname)))); return; }
       response.writeHead(404); response.end();
     } catch { response.writeHead(500); response.end('{"error":{"message":"Synthetic keyboard fixture failure"}}'); }
@@ -52,7 +66,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
   const pageErrors: string[] = [], external: string[] = [];
   let page: any;
 
-  const signedOut = async (viewport = { width: 1440, height: 1000 }) => {
+  const signedOut = async (viewport = { width: 1440, height: 1000 }, portal: "/admin/" | "/collector/" = "/admin/") => {
     const context = await browser.newContext({ viewport, locale: "es-DO", timezoneId: "America/Santo_Domingo", serviceWorkers: "block" });
     await context.addInitScript(() => {
       const counted = window as unknown as { __pointer: number };
@@ -63,7 +77,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
     await context.route("**/*", (route: any) => { const target = new URL(route.request().url()); if (target.origin === origin) return route.continue(); external.push(target.origin); return route.abort("blockedbyclient"); });
     page = await context.newPage(); page.setDefaultTimeout(15000);
     page.on("pageerror", (error: Error) => pageErrors.push(error.message));
-    await page.goto(`${origin}/admin/`);
+    await page.goto(`${origin}${portal}`);
     await page.getByLabel("Usuario o correo", { exact: true }).waitFor();
     return {
       page, requests,
@@ -119,7 +133,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
     assertNoPointer: async () => {
       assert.equal(await page.evaluate(() => (window as unknown as { __pointer: number }).__pointer), 0, "a pointer event reached the page");
       assert.deepEqual(pageErrors, []);
-      assert.deepEqual([...new Set(external)].filter((item) => !["http://me.kis.v2.scr.kaspersky-labs.com", "https://fonts.googleapis.com", "https://fonts.gstatic.com"].includes(item)), []);
+      assert.deepEqual([...new Set(external)].filter((item) => !["http://me.kis.v2.scr.kaspersky-labs.com", "https://fonts.googleapis.com", "https://fonts.gstatic.com", "https://tile.openstreetmap.org"].includes(item)), []);
     },
     close: async () => { await browser.close(); await new Promise<void>((resolve) => server.close(() => resolve())); },
   };

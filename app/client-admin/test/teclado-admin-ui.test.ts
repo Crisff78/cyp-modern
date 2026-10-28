@@ -184,16 +184,22 @@ test("Administración with the keyboard only: menu, Clientes pages and record, u
     }
     assert.equal(await page.evaluate(`document.activeElement?.id`), "cargo-amount");
     await page.keyboard.type("12345");
-    // Enter up to the last field, and there it stays: money is saved with its button (Tab, Enter), never with Enter alone.
-    let last = "";
-    for (let step = 0; step < 6; step += 1) {
-      const now = await page.evaluate(`document.activeElement?.id || document.activeElement?.closest("label")?.textContent || ""`) as string;
-      if (now === last) break;
-      last = now; await keys("Enter");
+    // Enter field by field and, after the last one, to the button without pressing it (Rardiel, 28-10-2026: Enter never
+    // stays still); the next Enter saves. One Enter alone never saves money.
+    const onSave = `(document.activeElement?.type === "submit" && document.activeElement.closest('[role="dialog"]')?.getAttribute("aria-label") === "Datos del Cargo...")`;
+    const here = () => page.evaluate(`document.activeElement?.id || document.activeElement?.textContent || ""`) as Promise<string>;
+    for (let step = 0; step < 8 && !(await page.evaluate(onSave)); step += 1) {
+      const before = await here();
+      await keys("Enter");
+      assert.notEqual(await here(), before, "Enter never stays still");
     }
-    assert.equal(await page.evaluate(`document.activeElement?.id`), "cargo-note");
-    assert.equal(writes(/^\/api\/cargos/).length, 0);
-    await tabTo((element) => (element as HTMLButtonElement).type === "submit" && element.closest('[role="dialog"]')?.getAttribute("aria-label") === "Datos del Cargo...", 10);
+    assert.equal(await page.evaluate(onSave), true);
+    assert.equal(writes(/^\/api\/cargos/).length, 0, "reaching the button saves nothing");
+    // Back from the button to the amount with ← and forth again with →: the side arrows go both ways.
+    for (let step = 0; step < 8 && await page.evaluate(`document.activeElement?.id`) !== "cargo-amount"; step += 1) await keys("ArrowLeft");
+    assert.equal(await page.evaluate(`document.activeElement?.id`), "cargo-amount");
+    for (let step = 0; step < 8 && !(await page.evaluate(onSave)); step += 1) await keys("ArrowRight");
+    assert.equal(await page.evaluate(onSave), true);
     await keys("Enter");
     await waitFor(() => !document.querySelector('[role="dialog"][aria-label="Datos del Cargo..."]'));
     assert.equal(writes(/^\/api\/cargos$/).filter((request) => request.status === 200).length, 1);

@@ -36,11 +36,12 @@ class ErrorBoundary extends React.Component<
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
+    {/* First on the page (it is drawn on top): Shift+Tab reaches «Actualizar ahora» from anywhere. */}
+    <NewVersionNotice pageUrl={import.meta.env.BASE_URL} isSignedIn={() => Boolean(getToken())} />
     <ErrorBoundary>
       <App />
       <Toaster position="top-center" richColors closeButton />
     </ErrorBoundary>
-    <NewVersionNotice pageUrl={import.meta.env.BASE_URL} isSignedIn={() => Boolean(getToken())} />
   </React.StrictMode>,
 );
 if (import.meta.env.PROD && "serviceWorker" in navigator)

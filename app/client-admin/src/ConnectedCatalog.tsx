@@ -65,6 +65,10 @@ export function ConnectedCatalog({ page, snapshot, actorId, canManagePermissions
   const [message, setMessage] = useState("");
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<RecordRow | "new" | null>(null);
+  // The code of the client typed in a recurring charge (null: the code of the client chosen). Typing it chooses the
+  // client, as in Cargos and Descargos, so the form can be filled going down with Enter (28-10-2026).
+  const [clientCodeDraft, setClientCodeDraft] = useState<string | null>(null);
+  useEffect(() => setClientCodeDraft(null), [editing]);
   // Accounts that may see but not modify the record (Supervisor, consultation) open it read-only.
   const [viewOnly, setViewOnly] = useState(false);
   const [passwordTarget, setPasswordTarget] = useState<RecordRow | null>(null);
@@ -245,7 +249,7 @@ export function ConnectedCatalog({ page, snapshot, actorId, canManagePermissions
   };
   const pickClient = () => {
     if (!pickedClientId) return;
-    if (clientPicker === "form") setDraft((current) => ({ ...current, clientId: pickedClientId }));
+    if (clientPicker === "form") { setDraft((current) => ({ ...current, clientId: pickedClientId })); setClientCodeDraft(null); }
     else setFilterClientId(pickedClientId);
     setClientPicker(null);
   };
@@ -371,7 +375,7 @@ export function ConnectedCatalog({ page, snapshot, actorId, canManagePermissions
     </>;
     const client = snapshot.clients.find((item) => item.id === draft.clientId);
     return <>
-      <div className="recurring-charge-row recurring-charge-client-row"><span>Cliente:</span><input aria-label="Código del cliente" value={client?.code ?? ""} readOnly /><input aria-label="Nombre del cliente" value={client?.name ?? ""} readOnly placeholder="Seleccione un cliente" /><button type="button" disabled={busy} onClick={() => openPicker("form")} aria-label="Buscar cliente" title="Buscar cliente">[...]</button></div>
+      <div className="recurring-charge-row recurring-charge-client-row"><span>Cliente:</span><input aria-label="Código del cliente" value={clientCodeDraft ?? client?.code ?? ""} disabled={busy} maxLength={INPUT_LIMITS.id} onChange={(event) => { const code = event.target.value; setClientCodeDraft(code); const match = snapshot.clients.find((item) => item.code.toLowerCase() === code.trim().toLowerCase()); setDraft((current) => ({ ...current, clientId: match?.id ?? "" })); }} /><input aria-label="Nombre del cliente" value={client?.name ?? ""} readOnly placeholder="Seleccione un cliente" /><button type="button" disabled={busy} onClick={() => openPicker("form")} aria-label="Buscar cliente" title="Buscar cliente">[...]</button></div>
       <div className="recurring-charge-row recurring-charge-date-row"><span>F. Inicial:</span>{control("startDate")}<span>F. final:</span>{control("endDate")}</div>
       <div className="recurring-charge-row recurring-charge-frequency-row"><span>Frecuencia:</span>{control("frequency")}<span>Día1:</span>{control("day1", undefined, "recurring-charge-day")}<span>Día2:</span>{control("day2", undefined, "recurring-charge-day")}</div>
       <p className="catalog-scope-note">Quincenal: cada 15 días desde la fecha inicial. Si indicas ambos, Día1 y Día2, se usan esos días del mes; con uno solo se conserva el intervalo de 15 días. Mensual y las frecuencias de varios meses o anual generan un cargo por periodo, usando Día1 o el día inicial; Día2 solo se usa en Quincenal. Un día inexistente se ajusta al último día del mes. Diaria, Bidiaria y Semanal conservan la fecha inicial como referencia.</p>

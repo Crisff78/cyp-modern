@@ -5,7 +5,7 @@ import { monitorLedger } from "./monitorLedger";
 import { MIN_NEW_PASSWORD_LENGTH } from "../../shared/passwordPolicy.mjs";
 import { DetailsPanelIcon, FiltersPanelIcon } from "./PanelIcons";
 import { LegacyDialog } from "./LegacyConnectedUi";
-import { focusAfterClosing, focusFirstUseful, focusMenu, installKeyboard, keyboardIsFree, MENU_KEYS, restoreWindowFocus, TILE_KEYS, WINDOW_KEYS } from "../../shared/keyboard";
+import { focusAfterClosing, focusFirstUseful, focusMenu, installKeyboard, keyboardIsFree, MENU_KEYS, RAISE_WINDOW, restoreWindowFocus, TILE_KEYS, WINDOW_KEYS } from "../../shared/keyboard";
 import "../../shared/keyboard.css";
 import { BUILD, updatedLabel } from "../../shared/buildInfo";
 import { KeyboardShortcutsTable } from "./KeyboardHelp";
@@ -873,6 +873,14 @@ function MdiWindow({ windowState, onClose, onFocus, onMove, onResize, onToggleMa
     const target = event.target as Element;
     if (activateOnFocus && !windowState.isFocused && frame.current?.contains(target) && !target.closest("dialog")) onFocus(windowState.id);
   };
+  // The keyboard starting where the pointer is brings the window under it to the front, as a click does (28-10-2026).
+  useEffect(() => {
+    const node = frame.current;
+    if (!node) return;
+    const raise = () => { if (!windowState.isFocused) onFocus(windowState.id); };
+    node.addEventListener(RAISE_WINDOW, raise);
+    return () => node.removeEventListener(RAISE_WINDOW, raise);
+  }, [windowState.isFocused, windowState.id, onFocus]);
   const startDrag = (event: ReactMouseEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
     if ((event.target as HTMLElement).closest("button,input,select,textarea,a")) return;
@@ -1295,6 +1303,10 @@ function reportTableHtml(title: string, table: ReportTableModel) {
 }
 
 function printReportTable(title: string, table: ReportTableModel) {
+  // The keyboard comes back to the button that printed (28-10-2026: it stayed inside the hidden page that prints,
+  // and the window did not answer the keys any more).
+  const opener = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
+  const giveBack = () => { if (opener?.isConnected) opener.focus({ preventScroll: true }); };
   const frame = document.createElement("iframe");
   frame.setAttribute("aria-hidden", "true");
   frame.style.position = "fixed";
@@ -1311,10 +1323,12 @@ function printReportTable(title: string, table: ReportTableModel) {
       return;
     }
     printWindow.focus();
-    const cleanup = () => { window.clearTimeout(fallback); frame.remove(); };
+    const cleanup = () => { window.clearTimeout(fallback); frame.remove(); giveBack(); };
     const fallback = window.setTimeout(() => frame.remove(), 120_000);
     printWindow.addEventListener("afterprint", cleanup, { once: true });
     printWindow.print();
+    // print() returns when its window closes (or at once, where there is none): the keyboard goes back.
+    giveBack();
   };
   document.body.appendChild(frame);
 }
@@ -4648,6 +4662,7 @@ function Login({
           </strong>
           <p className="login-instructions">Escribe tu usuario y tu contraseña para entrar.</p>
           <form
+            data-keyboard-enter="send"
             name="login"
             autoComplete="on"
             onSubmit={(event) => {
