@@ -2,9 +2,11 @@
 const SCOPE = new URL(self.registration.scope).pathname;
 const ASSETS = `${SCOPE}assets/`;
 const CACHE_PREFIX = `cyp-static-${encodeURIComponent(SCOPE)}-`;
-const CACHE = `${CACHE_PREFIX}v3`;
+const CACHE = `${CACHE_PREFIX}v4`;
 const SHELL = [SCOPE, `${SCOPE}icon.svg`, `${SCOPE}manifest.webmanifest`];
+// A new version takes over at once, without waiting for every tab to close (28-10-2026: the portal must reach everyone).
 self.addEventListener("install", (event) => {
+  self.skipWaiting();
   event.waitUntil(
     (async () => {
       const shellResponse = await fetch(SCOPE, { cache: "reload" });
@@ -51,9 +53,10 @@ self.addEventListener("fetch", (event) => {
     request.headers.has("Authorization")
   )
     return;
-  if (request.mode === "navigate") {
-    // Query navigations receive only the generic offline shell. Neither their URL
-    // nor their receipt/API data is ever written to the cache.
+  if (request.mode === "navigate" || url.pathname === SCOPE) {
+    // The page itself always comes from the server, so a new version is seen (the portal asks for it to compare its
+    // program); the saved copy only serves offline. Query navigations receive only the generic offline shell.
+    // Neither their URL nor their receipt/API data is ever written to the cache.
     event.respondWith(
       fetch(request).catch(
         async () =>

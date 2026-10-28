@@ -343,6 +343,13 @@ export function hasUnsavedChanges(scope: Element) {
   return own(scope, scope.querySelectorAll(FIELD)).some((field) => typedIn.has(field) && !field.closest(FILTER_AREA) && isShown(field) && !(field as HTMLInputElement).readOnly && firstValue.get(field) !== valueOf(field));
 }
 
+/** Whether reloading the page now would lose something: a dialog open (a question, a confirmation, a form), or
+ *  something typed and not saved in any window. */
+export function workInProgress(doc: Document = document) {
+  if (doc.querySelector(`${MODAL},.legacy-dialog-overlay,[role="alertdialog"]`)) return true;
+  return [doc.body, ...doc.querySelectorAll(SCOPE)].some((scope) => hasUnsavedChanges(scope));
+}
+
 /** Esc and Cerrar ask first when something typed would be lost: Enter = Sí, Esc = No. */
 export async function closeAfterAsking(scope: Element | null, close: () => void) {
   if (!scope || !hasUnsavedChanges(scope) || await askDiscard()) close();

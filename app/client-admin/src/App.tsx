@@ -7,6 +7,7 @@ import { DetailsPanelIcon, FiltersPanelIcon } from "./PanelIcons";
 import { LegacyDialog } from "./LegacyConnectedUi";
 import { focusAfterClosing, focusFirstUseful, focusMenu, installKeyboard, keyboardIsFree, MENU_KEYS, restoreWindowFocus, TILE_KEYS, WINDOW_KEYS } from "../../shared/keyboard";
 import "../../shared/keyboard.css";
+import { BUILD, updatedLabel } from "../../shared/buildInfo";
 import { KeyboardShortcutsTable } from "./KeyboardHelp";
 import { CLIENT_PAGE_SIZE, NOT_DEFINED, NOT_DEFINED_ROUTE, type ClientPage, type ClientPageStatus } from "../../shared/clientPage.mjs";
 import {
@@ -5220,7 +5221,7 @@ export default function App() {
           <div className="main-shell">
             <header className="topbar" {...WINDOW_KEYS}>
               <div className="topbar-system" aria-label="Telemetría del sistema legacy">
-                <span>Versión: CyP Web v0.1.0</span>
+                <span title={BUILD?.commit ? `Versión publicada: ${BUILD.commit}` : undefined}>Versión: CyP Web v0.1.0{updatedLabel() ? ` · Actualizada: ${updatedLabel()}` : ""}</span>
                 <span>
                   Fecha/Hora del Servidor: {clock.toLocaleDateString("es-DO", {
                     day: "2-digit",

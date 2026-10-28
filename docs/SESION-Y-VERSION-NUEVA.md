@@ -37,20 +37,47 @@ El servidor ya pide no guardar copias (`Cache-Control: no-store`) de la página 
 queda viejo es una pestaña que se deja abierta: sigue ejecutando la versión que cargó, aunque pasen
 días (pasa mucho en el teléfono). Desde la oficina o la app del cobrador:
 
-- Cada 5 minutos, y al volver a la pestaña (como mucho una vez por minuto), la página pregunta al
+- Cada minuto, y al volver a la pestaña (como mucho cada 15 segundos), la página pregunta al
   servidor qué programa publica y lo compara con el que está ejecutando.
-- Si cambió, con sesión abierta aparece arriba: «Hay una versión nueva del sistema. Guarda lo que
-  estés haciendo y pulsa «Actualizar ahora».» No se recarga sola para no perder lo que se esté
-  escribiendo.
 - En la pantalla de inicio de sesión no hay nada que perder: se recarga sola.
+- **Con sesión abierta, también se carga sola** (28-10-2026, Rardiel: «Tienes que asegurarte de que a
+  todos les salgan la versión actualizada, fuérzalo si es necesario»). Lo hace en cuanto no se pierde
+  nada: ningún diálogo abierto (una pregunta, una confirmación, un formulario), nada escrito sin
+  guardar en ninguna ventana y ni una tecla ni un clic durante 20 segundos (lo que se acaba de enviar
+  tiene tiempo de responder). La sesión sigue: vive en la pestaña. Mientras tanto aparece arriba:
+  «Hay una versión nueva del sistema. Se cargará sola en cuanto termines lo que estás haciendo (guarda
+  o cierra lo abierto), o pulsa «Actualizar ahora».» Lo que se pierde al recargar son solo las
+  ventanas abiertas sin nada escrito.
 - Si el servidor está despertando (Render gratuito) o falla, no se avisa nada y se vuelve a intentar.
 
-Código: `app/shared/versionWatch.ts` y `app/shared/NewVersionNotice.tsx`.
+- **App del cobrador:** su service worker devolvía la página guardada cuando la app preguntaba por
+  la versión nueva, así que no la veía nunca. Ahora la página se pide siempre al servidor (la copia
+  guardada queda solo para usarla sin conexión) y un service worker nuevo entra en uso al momento, sin
+  esperar a que se cierren todas las pestañas.
+- Las pestañas que ya estaban abiertas antes de este cambio tienen el aviso viejo: verán el aviso y
+  tendrán que pulsar «Actualizar ahora» (o recargar) una vez; desde ahí se actualizan solas.
+
+### Fecha de la versión
+
+Arriba del todo, junto a la versión, aparece cuándo se publicó la que se está usando: «Versión: CyP
+Web v0.1.0 · Actualizada: 28/10/2026, 11:21 a. m.» (hora de Santo Domingo). Es la fecha del último
+cambio publicado; al pasar el ratón se ve su código (el commit). Si en un equipo sale una fecha más
+vieja que la del último cambio, esa pestaña aún no se ha actualizado. En la app del cobrador sale en
+la ayuda («Tu ruta a un toque»). El servidor dice también qué versión publica en `/api/health`
+(`version`, el commit que da Render), para comprobarlo sin entrar.
+
+Código: `app/shared/versionWatch.ts`, `app/shared/NewVersionNotice.tsx`, `app/shared/buildInfo.ts`
+(la fecha, que Vite escribe al compilar desde `vite.config.ts`) y `app/client-collector/public/sw.js`.
 
 ## Pruebas
 
 - `app/client-collector/test/session-and-version.test.ts`: cuándo una pestaña cuenta como cerrada y
   cuándo hay versión nueva.
 - `app/client-admin/test/session-version-ui.test.ts` (Edge real): la sesión vieja en `localStorage` ya
-  no abre sesión; recargar la conserva; una pestaña reabierta empieza sin sesión; con sesión sale el
-  aviso y «Actualizar ahora» carga la versión nueva; sin sesión se recarga sola.
+  no abre sesión; recargar la conserva; una pestaña reabierta empieza sin sesión; con un diálogo
+  abierto sale el aviso, no se recarga sola y «Actualizar ahora» la carga; con algo escrito sin guardar
+  espera y se carga sola en cuanto se borra; sin nada abierto se carga sola y conserva la sesión; sin
+  sesión se recarga sola.
+- `app/client-collector/test/session-and-version.test.ts`: también la fecha que se muestra (hora de
+  Santo Domingo) y de dónde sale (el último commit, o la hora de compilar sin git).
+- `app/server/test/health-version.test.ts`: `/api/health` dice la versión publicada por Render.
