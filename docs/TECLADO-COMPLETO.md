@@ -25,6 +25,12 @@ abre con ↓ y muestra todas sus opciones, como con el ratón; Tab ya no se esca
 el teclado hasta un clic): al final de la ventana vuelve a su primera opción; y Envíos de dinero sigue el orden de la
 pizarra: DF, el dinero a enviar → DR, el dinero que se recibe → DT, la tasa.
 
+**De punta a punta (28-10-2026, goal de Rardiel):** «Debes revisar todo el flujo de verdad con el teclado». Intro ya
+no se queda quieto en ningún sitio (en Envíos se paraba en «Moneda del destinatario»); las flechas ← → sirven para ir
+atrás y adelante en todas partes; tras un clic en el fondo, la primera tecla devuelve el teclado (antes la pantalla no
+respondía), y empieza donde está el ratón; y todo se recorre de inicio a fin y de fin a inicio, también en la app del
+cobrador.
+
 Para repartir a los cajeros: [hoja de una página](teclado-completo/hoja-atajos-cajeros.pdf)
 ([versión HTML](teclado-completo/hoja-atajos-cajeros.html)).
 
@@ -32,8 +38,9 @@ Para repartir a los cajeros: [hoja de una página](teclado-completo/hoja-atajos-
 
 | Tecla | Qué hace |
 |---|---|
-| ↑ ↓ ← → | Moverse: en el menú, en las listas, entre los botones que van juntos y entre los campos. En una lista para elegir, ↓ la abre |
-| Intro | Siguiente campo, igual que Tab. En una lista, abre el registro (lo mismo que el doble clic). En un botón, lo pulsa |
+| ↑ ↓ | Moverse en el menú, en las listas y entre campos de una línea. En una lista para elegir, ↓ la abre |
+| ← → | Atrás y adelante, en todas partes (como Mayús+Tab y Tab). En lo escrito mueven el cursor y salen del campo desde su principio o su final |
+| Intro | Siguiente campo; después del último, al botón (sin pulsarlo). En una lista, abre el registro (lo mismo que el doble clic). En un botón, lo pulsa |
 | Tab / Mayús+Tab | Ir al siguiente / al anterior. Al final de la ventana, Tab vuelve a su primera opción |
 | Esc | Cerrar y volver. Si hay algo escrito sin guardar, pregunta primero. Cerrada la última ventana, el teclado queda en el menú |
 | Espacio | Seleccionar la fila o marcar la casilla |
@@ -64,9 +71,21 @@ Clientes, la página del servidor). Nada de esto choca con el navegador.
   línea. Un grupo de opciones (Todos / por Cliente / Por Zona / Por Ruta) es una sola parada, como con Tab: Intro pasa
   de la opción marcada al campo que sigue, y la opción se cambia con ↑ ↓. En una nota de una o dos líneas Intro también
   pasa al siguiente; en un cuadro de texto grande (tres líneas o más) Intro hace una línea nueva y se sale con Tab. En el
-  último campo, un formulario normal se envía con Intro como siempre (Iniciar sesión, un cliente, un reporte…); un
-  diálogo sin formulario lleva el teclado a su botón principal sin pulsarlo, y un segundo Intro lo pulsa. En los
-  filtros de una ventana con lista, después del último se baja a la lista.
+  último campo, **Intro nunca se queda quieto** (28-10-2026): en cualquier formulario o diálogo lleva el teclado a su
+  botón (Guardar, Aceptar, Calcular cotización…) sin pulsarlo, y un segundo Intro lo pulsa; en los filtros de una
+  ventana con lista baja a la lista; si no hay ni lista ni botón, va adonde iría Tab. Solo «Iniciar sesión» entra con
+  Intro en la clave, como siempre (su formulario lleva `data-keyboard-enter="send"`). Un campo obligatorio vacío hace
+  que el navegador avise «Completa este campo». Un campo para subir un archivo no es parada de Intro (Intro abriría la
+  ventana para elegir el archivo); Tab sí llega a él.
+- **← y →, atrás y adelante en todas partes (28-10-2026):** hacen lo mismo que Mayús+Tab y Tab. En lo escrito primero
+  mueven el cursor y salen del campo desde su principio (←) o su final (→); a un campo al que se llega con ellas se le
+  elige todo el texto, así que otra pulsación sigue (y escribir lo reemplaza). Un campo que no se puede escribir (de
+  solo lectura) sigue a la primera. En una lista para elegir, una opción o una casilla nunca cambian lo elegido. En una
+  fecha, ← → pasan al campo de al lado: la fecha se escribe de corrido (día, mes y año se llenan solos) y ↑ ↓ cambian la
+  parte donde está el cursor. Las barras de botones y los mosaicos ya no dan la vuelta: desde su primer botón ← sale
+  al anterior y desde el último → sale al siguiente. En el menú, → y ← siguen abriendo y cerrando las secciones.
+- **Listas de entradas con su botón** (los permisos de una cuenta, los avisos): son una sola parada de Tab y ↑ ↓ pasan
+  de una a otra. Antes, con muchas entradas, Tab pedía una pulsación por cada una antes de llegar a «Guardar».
 - **Listas para elegir** (Estado, Moneda, Zona, Ruta, Servicio…): ↓ o ↑ la abren y muestran todas sus opciones, como
   un clic del ratón, sin cambiar lo que tiene; ↓ ↑ se mueven dentro, Intro elige y la cierra, y el siguiente Intro pasa
   al campo de abajo. Espacio también la abre. Antes ↓ cambiaba la opción a ciegas, sin ver la lista.
@@ -74,9 +93,11 @@ Clientes, la página del servidor). Nada de esto choca con el navegador.
   navegador y el teclado no respondía hasta un clic. Ahora, al final de una ventana, Tab vuelve a su primera opción (la
   barra de botones), una y otra vez. Mayús+Tab sigue subiendo por el título de la ventana hasta la cabecera y el menú.
   Sin ventanas, Tab da la vuelta a la página.
-- **El dinero nunca va con un Intro sin querer** (regla de Dionel, `DIONEL-REMESAS-PERMISOS.md` punto 6): en un
-  formulario con dinero, Intro solo pasa de campo en campo y se queda en el último. A su botón se llega con Tab, y ahí
-  Intro lo pulsa. Después viene siempre la confirmación de siempre.
+- **El dinero nunca va con un Intro sin querer** (regla de Dionel, `DIONEL-REMESAS-PERMISOS.md` punto 6, ajustada por
+  orden de Rardiel el 28-10-2026: «aún yo dándole se queda ahí y no avanza»): en un formulario con dinero, Intro pasa
+  de campo en campo y, después del último, lleva el teclado al botón **sin pulsarlo**; el segundo Intro lo pulsa y
+  después viene siempre la confirmación de siempre (Confirmar envío, Abrir caja, Confirmar cierre…). Un solo Intro nunca
+  guarda dinero. Antes, Intro se quedaba en el último campo y al botón se llegaba con Tab.
 - **Envíos de dinero, como en la pizarra (28-10-2026):** primero quién envía y quién recibe (Remitente → Destinatario →
   su teléfono; elegido el remitente, el teclado pasa solo al destinatario), cómo se escribe el importe y la nota, y
   después el dinero en el orden de la pizarra: **Dinero a enviar** (DF: moneda, monto, tasa, comisión) → **Dinero que se
@@ -88,6 +109,13 @@ Clientes, la página del servidor). Nada de esto choca con el navegador.
 - **Esc** cierra el diálogo, el recibo o la ventana de delante. Si hay algo escrito que se perdería, pregunta «Hay
   cambios sin guardar. ¿Cerrar sin guardarlos?» (Intro = Sí, cerrar; Esc = No). Los filtros y las búsquedas no cuentan
   como cambios, y lo que ya se guardó tampoco. Esc dentro de una lista desplegada (clientes de Envíos) solo la pliega.
+- **Tras un clic en el fondo, la primera tecla devuelve el teclado (28-10-2026):** antes, después de hacer clic en una
+  zona vacía (el fondo del escritorio, fuera de las ventanas) o de volver de otro programa, las teclas no hacían nada.
+  Ahora la primera tecla sencilla (flechas, Intro, Tab, Mayús+Tab, Espacio, Inicio/Fin, AvPág/RePág) pone el teclado en
+  su sitio y no hace nada más (no escribe, no abre nada). Ese sitio es, por este orden: un diálogo abierto; si no, **lo
+  que está bajo el ratón** (el campo o botón bajo el puntero, o la ventana bajo el puntero, que pasa al frente, con el
+  teclado donde estaba en ella o en su primer campo; el menú; la cabecera); si no, la ventana de delante; si no, el
+  menú. Esc conserva su sentido: cierra la ventana de delante.
 - **El teclado nunca se pierde:** si lo que lo tenía desaparece (un diálogo que se cierra), vuelve a donde estaba antes
   (lo que abrió el diálogo, o lo último de esa ventana que sigue ahí). Nunca va a una ventana de detrás ni sale de la
   ventana en la que estaba mientras siga abierta: entonces se queda en la ventana de delante. Cerrada una ventana, va a la ventana que queda delante o al menú. Si solo se deshabilitó un momento (un
@@ -244,12 +272,13 @@ sencillas (flechas, Intro, Tab, Esc, Espacio, Inicio/Fin, AvPág/RePág, con o s
 la página pide algo fuera de la prueba. También comprueban que no se dibuja ninguna tecla en la pantalla.
 
 - `app/client-admin/test/teclado-cajero-ui.test.ts`: el Cajero de punta a punta. Entra (Intro de usuario a clave y
-  entra), abre su caja (Intro en el efectivo no la envía; Tab a «Revisar apertura», Intro, Intro confirma), registra un
-  envío completo (remitente y destinatario con la lista, monto, Tab a «Calcular cotización», Intro, el teclado pasa solo a
-  «Revisar y confirmar envío», Intro, Intro en el dinero recibido no registra nada, Tab a «Aceptar», Intro, la pregunta de
-  imprimir), entrega una remesa (busca, ↓ a la lista, Intro abre el recibo, → de «Imprimir comprobante» a «Registrar
-  entrega», Intro, Intro confirma, Esc cierra), cuenta y cierra su caja (Intro no la cierra; Tab a «Revisar cierre»),
-  abre las notificaciones y cierra la sesión.
+  entra), abre su caja (Intro en el efectivo llega a «Revisar apertura» sin abrirla; otro Intro la revisa e Intro
+  confirma), registra un envío completo (remitente y destinatario con la lista, monto; Intro en «Moneda del
+  destinatario» llega a «Calcular cotización» sin pulsarlo, ← vuelve al remitente y → regresa, sin registrar nada; Intro
+  calcula, el teclado pasa solo a «Revisar y confirmar envío», Intro; Intro en el dinero recibido llega a «Aceptar» sin
+  registrar nada, Intro, la pregunta de imprimir), entrega una remesa (busca, ↓ a la lista, Intro abre el recibo, → de
+  «Imprimir comprobante» a «Registrar entrega», Intro, Intro confirma, Esc cierra), cuenta y cierra su caja (Intro llega
+  a «Revisar cierre» sin cerrarla), abre las notificaciones y cierra la sesión.
 - `app/client-admin/test/teclado-admin-ui.test.ts`: Clientes (búsqueda, ↓, Inicio, Fin, ↑ desde la primera fila vuelve
   a la búsqueda, una sola parada de Tab, AvPág y RePág cambian la página del servidor, Intro abre la ficha, Esc con algo
   escrito pregunta y «No» vuelve a la ficha, la barra con Mayús+Tab y ← →, «Nuevo» con Intro), un cargo con dinero (Intro
@@ -300,22 +329,47 @@ clásico.
   Esc 55/55, flechas 31/31, cabecera 7/7, cero solo-ratón, cero errores); cajero 3/3; cobrador 6/6 vistas hasta la
   barra. A 1366×768 el formulario de Envíos cabe entero y se ven tres envíos, también con el aviso de caja.
 
+**De punta a punta (28-10-2026).** Tres pruebas nuevas y tres ampliadas, en Edge con la aplicación real:
+- `teclado-altas-ui` (nueva, solo teclado): alta con Intro de campo en campo hasta el botón, ← hasta el primer campo,
+  → de vuelta al botón e Intro guarda, en Clientes, Cargos Recurrentes, Descargos, Cobros, Cobradores, Zonas, Rutas,
+  Bancos, Motivos de Atraso, Grupos de PCPs, Servicios y Productos y Usuarios; además Cambiar Clave, Permisos (quitar,
+  «Sí», Guardar), Configuración General, Reportes (Imprimir y Exportar) y editar un cliente. 18/18.
+- `teclado-cobrador-ui` (nueva, solo teclado, tamaño de teléfono): entra; la hoja de cobro abre en el monto, Intro
+  llega a «Confirmar cobro» sin registrar nada, ← vuelve al monto, → regresa e Intro registra; el recibo con el teclado
+  en «Compartir recibo» y Mayús+Tab hasta «Volver a mi ruta»; un atraso con → e Intro; las seis vistas del menú, de ida
+  y de vuelta; la ayuda con Esc; y cerrar sesión.
+- `teclado-raton-ui` (nueva, **usa el ratón a propósito**): clic en el fondo y ↓ devuelve el teclado a la ventana de
+  delante; el ratón sobre la ventana de detrás y Tab la trae delante con el teclado dentro; el ratón sobre el menú e
+  Intro (no abre nada); sobre un campo y → (empieza en ese campo sin escribir nada); y Esc con el teclado perdido sigue
+  cerrando la ventana de delante.
+- `teclado-ventanas-ui`: además, en cada una de las 55 ventanas y en su «Nuevo», ← → e Intro campo por campo (hasta 30
+  campos): ninguno se queda quieto.
+- `teclado-cajero-ui` y `teclado-admin-ui`: Intro llega a «Revisar apertura», «Calcular cotización», «Aceptar» y
+  «Revisar cierre» sin pulsarlos; ← y → entre el remitente y el botón sin registrar nada.
+- Resultados: `pnpm -r typecheck` verde; interfaz **431 de 431** (en la corrida completa, `user-permissions-ui` agotó
+  el tiempo una vez con la máquina cargada; sola, 24/24; no usa el módulo del teclado); servidor 411 en verde, 0 fallos
+  (18 omitidas que piden PostgreSQL); cobrador 18/18.
+- Revisión en Edge con la compilación como en Render: auditoría de las 55 ventanas en tema claro y oscuro (teclado
+  dentro 55/55, Esc 55/55, listas 29/29, cero solo-ratón, foco visible); cajero 3/3; cobrador 6/6 a tamaño de teléfono
+  e Intro en la clave entra. La ayuda de Soporte Técnico se salía de su cuadro (una regla general no dejaba partir las
+  líneas de la tabla): ahora se parte y no aparece barra horizontal.
+
 Prueba existente ajustada en la versión anterior, sin cambiar lo que comprueba: `envios-review-corrections-ui` abría la
 revisión de la caja con F9; ahora llega a «Revisar apertura» con Tab y la abre con Intro (el dinero no va con Intro).
 
 ## Capturas
 
-Rehechas con Tabster el 27-10, de la compilación como en Render (`VITE_PUBLIC_DEMO`, `CYP_PUBLIC_DEMO`, `DEMO_MODE`)
+Rehechas el 28-10 (teclado de punta a punta), de la compilación como en Render (`VITE_PUBLIC_DEMO`, `CYP_PUBLIC_DEMO`, `DEMO_MODE`)
 en Edge, con datos ficticios, manejando la aplicación solo con teclas sencillas. Están en `docs/teclado-completo/`.
 
 | Captura | Qué muestra |
 |---|---|
 | `1-envios-revisar.png` | Envíos de dinero tras «Calcular cotización»: el teclado ya está en «Revisar y confirmar envío» |
-| `2-confirmar-envio.png` | La confirmación del envío: el teclado en «Dinero recibido» (Intro no envía); a «Aceptar» se llega con Tab |
+| `2-confirmar-envio.png` | La confirmación del envío: el teclado en «Dinero recibido»; un Intro más lleva a «Aceptar» sin pulsarlo |
 | `3-cambios-sin-guardar.png` | Esc con un envío a medias: «¿Cerrar sin guardarlos?», con el teclado en «Sí, cerrar» |
 | `4-clientes-flechas.png` | Clientes movida con las flechas: la fila con el teclado marcada, sin nada dibujado en los botones |
 | `5-barra-con-flechas.png` | La barra de Clientes recorrida con ← →: el teclado en «Nuevo» |
-| `6-soporte-teclas.png` | Soporte Técnico: las cinco teclas |
+| `6-soporte-teclas.png` | Soporte Técnico: las cinco teclas, ← → atrás y adelante, y el aviso del dinero y del clic fuera |
 | `7-envios-pizarra.png` | Envíos de dinero en el orden de la pizarra: quién envía y quién recibe, y luego Dinero a enviar → Dinero que se recibe → Tasa (debajo, entre las dos) |
 | `hoja-atajos-cajeros.png` | La hoja de una página para los cajeros (también en PDF y HTML) |
 
@@ -323,6 +377,10 @@ en Edge, con datos ficticios, manejando la aplicación solo con teclas sencillas
 
 - Mover o cambiar el tamaño de una ventana con el teclado no se añadió: no forma parte de ningún flujo. El botón de
   maximizar sí se alcanza con Tab.
+- Las fechas: ← → no recorren el día, el mes y el año; pasan al campo de al lado. La fecha se escribe de corrido con
+  los números y ↑ ↓ cambian la parte donde está el cursor (lo normal del navegador).
+- El teclado del navegador fuera de la página (la barra de direcciones, las pestañas) no lo controla CyP: si se hace
+  clic allí, se vuelve con un clic o con F6 hasta la página, y entonces la primera tecla sencilla devuelve el teclado.
 - Los mapas (Monitor, ubicación del cliente) usan las teclas propias del mapa: flechas para moverse, + y − para el zoom.
 - Para ir al menú con una ventana abierta sin cerrarla se usa Mayús+Tab; Esc la cierra y deja el teclado en el menú.
 - En la app del cobrador las teclas de lista, campos, botones y menú funcionan igual; sus pantallas son de teléfono y no

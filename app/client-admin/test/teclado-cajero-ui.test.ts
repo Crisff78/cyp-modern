@@ -66,13 +66,11 @@ test("Cajero with the keyboard only: sign in, open the box, send, deliver, count
     assert.equal((await focused()).label, "Efectivo inicial");
     // Money fields are typed from the cents (IMPORTES-DESDE-CENTAVOS): 200000 is 2,000.00.
     await page.keyboard.type("200000");
-    // Money is never confirmed with Enter: the last field of the form keeps the keyboard and nothing is sent.
+    // Enter never stays still (28-10-2026): after the last field it goes to the button without pressing it, and nothing
+    // is sent; the next Enter presses it, and the box still asks its confirmation.
     await keys("Enter");
-    assert.equal((await focused()).label, "Efectivo inicial");
-    assert.equal(await page.locator('dialog[open]').count(), 0);
-    // Tab reaches its button and Enter presses it.
-    await keys("Tab");
     assert.equal((await focused()).label, "Revisar apertura");
+    assert.equal(await page.locator('dialog[open]').count(), 0);
     await keys("Enter");
     await waitFor(() => document.activeElement?.closest("dialog")?.getAttribute("aria-label") === "Abrir caja de remesas");
     assert.equal((await focused()).label, "Confirmar");
@@ -117,23 +115,27 @@ test("Cajero with the keyboard only: sign in, open the box, send, deliver, count
     await page.keyboard.type("500");
     await keys("Enter");
     assert.deepEqual([(await focused()).label, await box()], ["Moneda del destinatario", "Dinero que se recibe"]);
-    // The last field of money: Enter stays, the button is reached with Tab (Dionel).
+    // The last field of money: Enter goes on to «Calcular cotización» without pressing it (Rardiel, 28-10-2026: there it
+    // used to stay still). Back to the sender with ← and forth again with →, without changing anything.
     await keys("Enter");
-    assert.equal((await focused()).label, "Moneda del destinatario");
-    // Tab up to «Calcular cotización», Enter: the quote comes and the keyboard is already on the next step.
-    await tabTo((element) => element.textContent === "Calcular cotización", 40);
+    assert.equal((await focused()).label, "Calcular cotización");
+    for (let step = 0; step < 30 && (await focused()).label !== "Remitente"; step += 1) await keys("ArrowLeft");
+    assert.equal((await focused()).label, "Remitente");
+    for (let step = 0; step < 30 && (await focused()).label !== "Calcular cotización"; step += 1) await keys("ArrowRight");
+    assert.equal((await focused()).label, "Calcular cotización");
+    assert.equal(posts("/api/envios").length, 0);
+    // Enter: the quote comes and the keyboard is already on the next step.
     await keys("Enter");
     await waitFor(() => document.activeElement?.textContent === "Revisar y confirmar envío");
     await keys("Enter");
     await waitFor(() => document.activeElement?.closest("dialog")?.getAttribute("aria-label") === "Confirmar envío");
     assert.equal((await focused()).label, "Forma de pago");
-    // Enter goes on to the money received and stops there: the send waits for its button.
+    // Enter goes on to the money received and then to «Aceptar», without pressing it: nothing is sent yet.
     await keys("Enter");
     assert.match((await focused()).label, /^Dinero recibido/);
     await keys("Enter");
-    assert.match((await focused()).label, /^Dinero recibido/);
+    assert.equal((await focused()).label, "Aceptar");
     assert.equal(posts("/api/envios").length, 0);
-    await tabTo((element) => element.textContent === "Aceptar" && element.closest("dialog") !== null, 20);
     await keys("Enter");
     await waitFor(() => document.activeElement?.closest("dialog")?.getAttribute("aria-label") === "¿Quieres imprimir el recibo?");
     assert.equal(posts("/api/envios").length, 1);
@@ -180,9 +182,10 @@ test("Cajero with the keyboard only: sign in, open the box, send, deliver, count
     // Typed from the cents: the digits of the expected amount.
     const expected = (await page.locator("dialog[open] p strong").first().textContent())!.replace(/\D/g, "");
     await page.keyboard.type(expected);
-    await keys("Enter");
-    assert.equal(await page.locator('dialog[open][aria-label="Confirmar cierre de caja"]').count(), 0, "Enter does not close the box");
-    await tabTo((element) => element.textContent === "Revisar cierre", 10);
+    // Enter goes on to «Revisar cierre» without pressing it; the next Enter asks the confirmation.
+    for (let step = 0; step < 6 && (await focused()).label !== "Revisar cierre"; step += 1) await keys("Enter");
+    assert.equal((await focused()).label, "Revisar cierre");
+    assert.equal(await page.locator('dialog[open][aria-label="Confirmar cierre de caja"]').count(), 0, "reaching the button does not close the box");
     await keys("Enter");
     await waitFor(() => document.activeElement?.closest("dialog")?.getAttribute("aria-label") === "Confirmar cierre de caja");
     await keys("Enter");

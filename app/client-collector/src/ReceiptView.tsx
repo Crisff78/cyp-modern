@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   Check,
@@ -28,6 +28,14 @@ export function ReceiptView({
   const [error, setError] = useState("");
   const [width, setWidth] = useState<ReceiptPaper>("auto");
   const [downloading, setDownloading] = useState(false);
+  // The receipt arrived: the keyboard, if it is nowhere (the sheet that registered it has just closed), goes to its
+  // first action, «Compartir recibo» (28-10-2026: never left without anything to do).
+  const shareButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!receipt) return;
+    const frame = requestAnimationFrame(() => { const active = document.activeElement; if (!active || active === document.body) shareButton.current?.focus({ preventScroll: true }); });
+    return () => cancelAnimationFrame(frame);
+  }, [receipt]);
   const url = new URL(
     `${import.meta.env.BASE_URL}?receipt=${encodeURIComponent(token)}`,
     window.location.origin,
@@ -202,7 +210,7 @@ export function ReceiptView({
               className="receipt-actions no-print"
               aria-label="Compartir e imprimir"
             >
-              <button className="primary" onClick={() => void share()}>
+              <button ref={shareButton} className="primary" onClick={() => void share()}>
                 <Share2 size={20} />
                 Compartir recibo
               </button>

@@ -1,5 +1,6 @@
 import { MoneyInput } from "../../shared/MoneyInput";
 import { dialogKeys } from "../../shared/keyboard";
+import { useDialogFocus } from "../../shared/dialogFocus";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
@@ -36,6 +37,8 @@ export function CollectionSheet({
   onClose: () => void;
   onSuccess: (token: string) => void;
 }) {
+  // Opens on the amount, never on the X; closed, the keyboard goes back to the button that opened it.
+  const sheetFocus = useDialogFocus<HTMLDivElement>();
   const [mockScope] = useState(() => {
     try { return isMockToken(getToken()) ? mockLedgerId : null; } catch { return null; }
   });
@@ -193,6 +196,7 @@ export function CollectionSheet({
         <Dialog.Content
           className="sheet collection-sheet"
           {...dialogKeys("collector-collection")}
+          {...sheetFocus}
           onEscapeKeyDown={(event) => {
             if (busy) event.preventDefault();
           }}
