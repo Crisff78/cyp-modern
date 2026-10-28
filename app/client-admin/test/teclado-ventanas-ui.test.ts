@@ -59,6 +59,29 @@ test("Every window of the portal with the keyboard only: opens, takes the keyboa
     const inventory: { window: string; from: string; focus: string; list: boolean; enter: string; nuevo: string; esc: boolean }[] = [];
     const describeFocus = () => page.evaluate(`(() => { const a = document.activeElement; if (!a) return ""; if (a.closest("tbody")) return "la lista"; if (a.matches("input[type=search]") || /buscar|digite|búsqueda/i.test((a.closest("label")?.textContent ?? "") + " " + (a.getAttribute("aria-label") ?? "") + " " + (a.getAttribute("placeholder") ?? ""))) return "la búsqueda"; if (a.matches("input,select,textarea")) return "el primer campo: " + ([...(a.closest("label")?.childNodes ?? [])].filter((n) => n.nodeType === 3).map((n) => n.textContent).join("").trim() || a.getAttribute("aria-label") || a.id || "campo"); return "el botón " + (a.getAttribute("aria-label") || a.textContent || "").replace(/\s+/g, " ").trim(); })()`) as Promise<string>;
     const openedTitle = () => page.evaluate(`(() => { const d = [...document.querySelectorAll('.legacy-dialog, dialog[open], .remittance-receipt-window, [role="dialog"][data-state="open"]')].pop(); return d ? (d.getAttribute("aria-label") || d.querySelector("h2")?.textContent || "diálogo") : ""; })()`) as Promise<string>;
+    // ← → and Enter in every field of a window or dialog (28-10-2026, «cero sitios donde el teclado se quede quieto»): each
+    // key, from each field, takes the keyboard somewhere else (Enter may also send its form, open what the field opens,
+    // or, in a form with a required field still empty, the browser asks to fill it in). Nothing is sent: while these keys are tried a form that would be sent is held back before the screen sees it.
+    const stuck: string[] = [];
+    await page.evaluate(`window.addEventListener("submit", (event) => { if (!window.__holdSubmit) return; event.preventDefault(); event.stopImmediatePropagation(); window.__submitted = (window.__submitted || 0) + 1; }, true)`);
+    const OPEN = '.legacy-dialog-overlay, dialog[open], [role="dialog"][data-state="open"], .remittance-receipt-window';
+    const checkFields = async (scope: string, label: string) => {
+      const count = await page.evaluate(`(() => {
+        const scope = [...document.querySelectorAll(${JSON.stringify(scope)})].filter((item) => item.getClientRects().length).pop();
+        const owner = scope?.closest('[role="dialog"],dialog') ?? scope;
+        window.__fields = scope ? [...scope.querySelectorAll('input:not([type=hidden]):not([type=button]):not([type=submit]):not([type=file]),select,textarea')].filter((field) => field.closest('[role="dialog"],dialog') === owner && field.getClientRects().length && !field.disabled && !field.closest("fieldset:disabled") && !field.readOnly && field.tabIndex >= 0) : [];
+        return window.__fields.length;
+      })()`) as number;
+      for (let index = 0; index < Math.min(count, 30); index += 1) for (const key of ["ArrowLeft", "ArrowRight", "Enter"]) {
+        const name = await page.evaluate(`(() => { const field = window.__fields[${index}]; if (!field?.isConnected || !field.getClientRects().length) return null; window.__holdSubmit = true; window.__submitted = 0; window.__opened = document.querySelectorAll(${JSON.stringify(OPEN)}).length; field.focus(); if (${JSON.stringify(key)} !== "Enter") { try { field.select(); } catch {} } return (field.getAttribute("aria-label") || [...(field.closest("label")?.childNodes ?? [])].filter((node) => node.nodeType === 3).map((node) => node.textContent).join("").trim() || field.name || field.type).slice(0, 40); })()`) as string | null;
+        if (name === null) continue;
+        await page.keyboard.press(key); await page.waitForTimeout(140);
+        const moved = await page.evaluate(`(() => { const field = window.__fields[${index}]; const moved = document.activeElement !== field || window.__submitted > 0 || document.querySelectorAll(${JSON.stringify(OPEN)}).length !== window.__opened || (${JSON.stringify(key)} === "Enter" && Boolean(field.form) && !field.form.checkValidity()); window.__holdSubmit = false; return moved; })()`);
+        if (!moved) stuck.push(`${label}: «${name}» con ${key}`);
+        // Whatever the key opened closes again.
+        for (let guard = 0; guard < 3 && await page.evaluate(`document.querySelectorAll(${JSON.stringify(OPEN)}).length > window.__opened`); guard += 1) { await page.keyboard.press("Escape"); await page.waitForTimeout(200); }
+      }
+    };
     const visit = async (name: string, open: () => Promise<void>) => {
       await t.test(name, async () => {
         const windowsBefore = await page.evaluate(`document.querySelectorAll(".mdi-window").length`) as number;
@@ -95,6 +118,7 @@ test("Every window of the portal with the keyboard only: opens, takes the keyboa
             await waitFor((name: string) => document.activeElement?.closest(".mdi-window")?.getAttribute("aria-label") === name, title);
           }
         }
+        await checkFields(".mdi-window.focused", title);
         // «Nuevo», when the window has one: Mayús+Tab goes up to it and Enter opens it; Esc closes it at once (nothing typed) and
         // the keyboard comes back.
         if (await page.evaluate(`Boolean([...document.querySelectorAll(".mdi-window.focused .legacy-mdi-toolbar button")].find((button) => button.title.startsWith("Nuevo") && !button.disabled))`)) {
@@ -102,6 +126,7 @@ test("Every window of the portal with the keyboard only: opens, takes the keyboa
           await keys("Enter");
           await waitFor(() => Boolean(document.activeElement?.closest(".legacy-dialog, dialog[open]")) || Boolean(document.querySelector('[role="dialog"][data-state="open"]')));
           entry.nuevo = "abre «" + await openedTitle() + "»";
+          await checkFields('.legacy-dialog, dialog[open], [role="dialog"][data-state="open"]', `${title} › Nuevo`);
           await keys("Escape");
           await waitFor(() => !document.querySelector(".legacy-dialog-overlay, dialog[open]"));
           await waitFor((name: string) => document.activeElement?.closest(".mdi-window")?.getAttribute("aria-label") === name, title);
@@ -127,6 +152,7 @@ test("Every window of the portal with the keyboard only: opens, takes the keyboa
       await waitFor((title: string) => document.activeElement?.closest(".mdi-window")?.getAttribute("aria-label") !== title, launcher);
     });
     t.diagnostic(`${checked.length} windows checked with the keyboard only: ${checked.join(" · ")}`);
+    assert.deepEqual(stuck, [], "every field takes ←, → and Enter somewhere else");
     fs.writeFileSync(path.join(output, "inventario-teclado.json"), JSON.stringify(inventory, null, 2));
     t.diagnostic(`inventory: ${path.join(output, "inventario-teclado.json")}`);
     await harness.assertNoPointer();

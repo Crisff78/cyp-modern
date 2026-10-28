@@ -61,8 +61,9 @@ import { INPUT_LIMITS, validateText } from "../../shared/inputRules";
 import { LoginPasswordInput, PasswordManagerHint } from "../../shared/LoginPasswordInput";
 import { loginCredentials } from "../../shared/loginCredentials";
 import { openAdminPortal } from "../../shared/sessionHandoff";
-import { BAR_MENU_KEYS, dialogKeys, installKeyboard } from "../../shared/keyboard";
+import { BAR_MENU_KEYS, dialogKeys, focusMenu, installKeyboard } from "../../shared/keyboard";
 import { updatedLabel } from "../../shared/buildInfo";
+import { useDialogFocus } from "../../shared/dialogFocus";
 import "../../shared/keyboard.css";
 import { transformRouteToMap } from "./services/mapAdapter";
 import { businessDay as localDay, timeLabel } from "./services/dates";
@@ -117,6 +118,7 @@ export function App() {
   const [operation, setOperation] = useState<Operation | null>(null);
   const [installEvent, setInstallEvent] = useState<InstallEvent | null>(null);
   const [installHelp, setInstallHelp] = useState(false);
+  const helpFocus = useDialogFocus<HTMLDivElement>();
   const [tracking, setTracking] = useState(false);
   const [trackingBusy, setTrackingBusy] = useState(false);
   const trackingRef = useRef<number | null>(null);
@@ -149,6 +151,13 @@ export function App() {
 
   // The same simple keys as the Administration portal: arrows, Enter, Tab, Esc and Space (shared/keyboard.ts).
   useEffect(() => installKeyboard({ windows: false }), []);
+  // Signed in, the keyboard starts on the menu of the app (the option open), as in the office: it is never left nowhere
+  // (28-10-2026).
+  useEffect(() => {
+    if (!user) return;
+    const frame = requestAnimationFrame(() => { const active = document.activeElement; if (!active || active === document.body) focusMenu(); });
+    return () => cancelAnimationFrame(frame);
+  }, [user]);
   useEffect(() => {
     const on = () => setOnline(true);
     const off = () => setOnline(false);
@@ -593,7 +602,7 @@ export function App() {
       <Dialog.Root open={installHelp} onOpenChange={setInstallHelp}>
         <Dialog.Portal>
           <Dialog.Overlay className="sheet-overlay" />
-          <Dialog.Content className="sheet help-sheet" {...dialogKeys("collector-help")}>
+          <Dialog.Content className="sheet help-sheet" {...dialogKeys("collector-help")} {...helpFocus}>
             <div className="sheet-handle" />
             <div className="sheet-heading">
               <span className="action-icon green">
@@ -749,11 +758,13 @@ function Login({
           <h2>Iniciar sesión</h2>
           <p>Escribe tu usuario y tu contraseña para entrar.</p>
         </div>
-        <form name="collector-login" autoComplete="on" onSubmit={(event) => void submit(event)}>
+        <form name="collector-login" autoComplete="on" data-keyboard-enter="send" onSubmit={(event) => void submit(event)}>
           <label>
             Usuario o correo
             <input
               id="collector-login-username"
+              // The keyboard starts here: what is typed on opening the app is the user (28-10-2026).
+              autoFocus
               name="username"
               type="text"
               inputMode="email"
@@ -841,6 +852,7 @@ function RouteView({
     clientId: string;
     chargeId: string;
   } | null>(null);
+  const delayFocus = useDialogFocus<HTMLDivElement>();
   const [gpsStatus, setGpsStatus] = useState("GPS sin solicitar");
   const [origin, setOrigin] = useState<{ lat: number; lng: number } | null>(
     null,
@@ -1136,7 +1148,7 @@ function RouteView({
         >
           <Dialog.Portal>
             <Dialog.Overlay className="sheet-overlay" />
-            <Dialog.Content className="sheet delay-reason-sheet" {...dialogKeys("collector-delay")}>
+            <Dialog.Content className="sheet delay-reason-sheet" {...dialogKeys("collector-delay")} {...delayFocus}>
               <div className="sheet-handle" />
               <Dialog.Title>Motivo de atraso</Dialog.Title>
               <Dialog.Description>
