@@ -104,11 +104,14 @@ test("Administración with the keyboard only: menu, Clientes pages and record, u
     await inWindow("Datos del Cliente...");
     await keys("Escape");
     await waitFor(() => document.activeElement?.closest("dialog")?.getAttribute("aria-label") === "Cambios sin guardar");
+    // Who gives the keyboard back when the record closes: Tabster (its Deloser).
+    await page.evaluate(`window.__givenBack = []; window.addEventListener("tabster:movefocus", (event) => { if (event.detail.by === "deloser") window.__givenBack.push(event.detail.next?.tagName); })`);
     await keys("Enter");
     await waitFor(() => !document.querySelector('[role="dialog"][aria-label="Datos del Cliente..."]'));
     assert.equal(writes(/^\/api\/clientes/).length, 0);
-    // The keyboard is back on the row of the record.
+    // The keyboard is back on the row of the record, given back by Tabster.
     await waitFor(() => document.activeElement?.tagName === "TR");
+    assert.equal((await page.evaluate(`window.__givenBack`) as string[]).at(-1), "TR");
     // The buttons of the toolbar: Mayús+Tab goes up to them, ← and → go from one to the next, Enter presses.
     const pressed = () => page.locator('.mdi-window[aria-label="Clientes"] button[aria-label="Mostrar/Ocultar filtros"]').getAttribute("aria-pressed");
     const before = await pressed();

@@ -68,9 +68,10 @@ Clientes, la página del servidor). Nada de esto choca con el navegador.
 - **Esc** cierra el diálogo, el recibo o la ventana de delante. Si hay algo escrito que se perdería, pregunta «Hay
   cambios sin guardar. ¿Cerrar sin guardarlos?» (Intro = Sí, cerrar; Esc = No). Los filtros y las búsquedas no cuentan
   como cambios, y lo que ya se guardó tampoco. Esc dentro de una lista desplegada (clientes de Envíos) solo la pliega.
-- **El teclado nunca se pierde:** si lo que lo tenía desaparece (un diálogo que se cierra), vuelve a lo que abrió el
-  diálogo; si eso ya no está, al diálogo abierto, a la ventana de delante o al menú. Si solo se deshabilitó un momento
-  (un botón mientras calcula o guarda), lo espera y vuelve a él.
+- **El teclado nunca se pierde:** si lo que lo tenía desaparece (un diálogo que se cierra), vuelve a donde estaba antes
+  (lo que abrió el diálogo, o lo último de esa ventana que sigue ahí). Nunca va a una ventana de detrás ni sale de la
+  ventana en la que estaba mientras siga abierta: entonces se queda en la ventana de delante. Cerrada una ventana, va a la ventana que queda delante o al menú. Si solo se deshabilitó un momento (un
+  botón mientras calcula o guarda), lo espera y vuelve a él.
 - **Foco visible:** el elemento con el teclado siempre está marcado, también las filas de todas las listas. Es la
   única marca: no hay teclas dibujadas en los botones ni avisos flotantes.
 
@@ -83,28 +84,29 @@ Tabster se crea una sola vez en cada aplicación (el portal y la app del cobrado
 |---|---|
 | Mover | Las flechas, Inicio / Fin y AvPág / RePág en el menú, las listas, las barras de botones y los mosaicos. El menú y cada lista son una sola parada de Tab que recuerda la opción o la fila |
 | Modalizer | Tab no sale de un diálogo abierto: da la vuelta dentro de él, hacia delante y hacia atrás |
+| Deloser | Si desaparece lo que tenía el teclado (un diálogo que se cierra), lo devuelve a donde estaba antes: lo que abrió el diálogo, o lo último de esa ventana, del menú o de la cabecera que sigue ahí |
+| ObservedElement | Un botón que se deshabilita un momento mientras calcula o guarda recupera el teclado en cuanto puede (hasta 5 s), salvo que el teclado ya haya ido a otro sitio |
 
 Tabster lee sus marcas (`data-tabster`) de los componentes compartidos: el menú (`MENU_KEYS`, en el cobrador
-`BAR_MENU_KEYS`), los diálogos clásicos, los de Radix y los nativos (`dialogKeys`) y los dos lanzadores de mosaicos
-(`TILE_KEYS`). Las listas y las barras de botones las dibuja cada
-pantalla por su cuenta, así que `keyboard.ts` las marca por su forma (una tabla con filas que se pueden elegir o con
-botones; un grupo de botones que van juntos): no se tocó ninguna de las ~100 pantallas. Tabster lleva el Tab él mismo
-(su modo normal), así que no mete nada dentro de las barras ni de las listas, y no oculta nada a los lectores de
-pantalla: los diálogos ya dicen por sí mismos que son modales.
+`BAR_MENU_KEYS`), las ventanas, el recibo, la barra lateral y la cabecera (`WINDOW_KEYS`), los diálogos clásicos, los
+de Radix y los nativos (`dialogKeys`) y los dos lanzadores de mosaicos (`TILE_KEYS`). Las listas y las barras de
+botones las dibuja cada pantalla por su cuenta, así que `keyboard.ts` las marca por su forma (una tabla con filas que se
+pueden elegir o con botones; un grupo de botones que van juntos): no se tocó ninguna de las ~100 pantallas. Tabster
+lleva el Tab él mismo (su modo normal), así que no mete nada dentro de las barras ni de las listas, y no oculta nada a
+los lectores de pantalla: los diálogos ya dicen por sí mismos que son modales.
 
 Lo que queda en `keyboard.ts` es solo lo propio de CyP, que Tabster no hace: Intro de campo en campo y la regla del
 dinero de Dionel, ↓ ↑ entre campos de una línea, ↓ de la búsqueda a la lista y ↑ de vuelta, elegir la fila a la que se
-llega con las flechas, AvPág / RePág con la página del servidor en Clientes, → ← en las secciones del menú, Esc con el
-aviso de cambios sin guardar, dónde entra el teclado al abrir una ventana o un diálogo y a qué vuelve al cerrarlo. El
-diálogo clásico ya no tiene su propia trampa de Tab: la hace Tabster; solo conserva una guarda pequeña que le devuelve
-el foco si la pantalla de detrás se lo quita (Tabster, a propósito, no corrige el foco que mueve el propio programa).
-Una pantalla que ya maneja una tecla (la lista de clientes de Envíos, un combo) la conserva. Soporte Técnico muestra
-las cinco teclas.
-
-Una parte de Tabster se probó y se dejó fuera: el **Deloser**, que devuelve el teclado cuando desaparece lo que lo
-tenía. No sabe qué ventana está delante y, al cancelar un envío desde su recibo, llevaba el teclado a la ventana de
-Envíos y la ponía encima del recibo (lo detectó la prueba `envios-review-corrections-ui`). Para eso se queda la regla de
-CyP de la lista de arriba («El teclado nunca se pierde»).
+llega con las flechas (cuando el Mover de Tabster la mueve), AvPág / RePág con la página del servidor en Clientes, → ←
+en las secciones del menú, Esc con el aviso de cambios sin guardar, dónde entra el teclado al abrir una ventana o un
+diálogo, y **el orden de las ventanas**, que Tabster no conoce: si el Deloser quiere llevar el teclado a una ventana que
+está detrás (al cancelar un envío desde su recibo, a la lista de Envíos, que se pondría encima del recibo) o sacarlo de
+la ventana en la que estaba mientras se redibuja (al abrir la caja, al menú), CyP lo para y lo deja en la ventana de
+delante en cuanto tiene algo que enfocar; y al cerrar una ventana, el teclado va a la que queda delante o al menú. El diálogo
+clásico ya no tiene su propia trampa de Tab ni su propio «volver a lo que lo abrió»: lo hace Tabster; solo conserva una
+guarda pequeña que le devuelve el foco si la pantalla de detrás se lo quita (Tabster, a propósito, no corrige el foco
+que mueve el propio programa). Una pantalla que ya maneja una tecla (la lista de clientes de Envíos, un combo) la
+conserva. Soporte Técnico muestra las cinco teclas.
 
 ## Qué no cambia
 
@@ -112,8 +114,9 @@ No se tocaron validaciones, permisos ni el servidor. Los nombres de ventanas, op
 El ratón funciona igual que antes. Ctrl+K (buscar un cliente o una ruta) sigue como estaba.
 
 Frente a la versión anterior (PR #67/#68), las teclas son las mismas. Cambia quién mueve el teclado (Tabster en vez del
-código hecho a mano: el menú, las listas, las barras, los mosaicos y la trampa de Tab de los diálogos) y una cosa que
-se nota: el menú pasa a ser una sola parada de Tab, como las listas.
+código hecho a mano: el menú, las listas, las barras, los mosaicos, la trampa de Tab de los diálogos, la vuelta del
+teclado al cerrar un diálogo y la espera de un botón deshabilitado) y una cosa que se nota: el menú pasa a ser una sola
+parada de Tab, como las listas.
 
 ## Inventario: cada ventana, antes y ahora
 
@@ -234,8 +237,8 @@ la página pide algo fuera de la prueba. También comprueban que no se dibuja ni
   remesas (Intro por los filtros hasta «Consultar», → a «Imprimir»), un codificador desde Configuración (→ entre
   mosaicos hasta Rutas), Esc, Esc… hasta el menú y la ventana de Facturas de la cabecera. Con Tabster comprueba además
   que el menú, la lista de Clientes y su barra llevan la marca de Tabster, que el menú es una sola parada de Tab (Tab sale,
-  Mayús+Tab vuelve a la misma opción) y que Tab da vueltas dentro de la ficha abierta, hacia delante y hacia atrás, sin
-  salir de ella.
+  Mayús+Tab vuelve a la misma opción), que Tab da vueltas dentro de la ficha abierta, hacia delante y hacia atrás, sin
+  salir de ella, y que al cerrar la ficha es el Deloser de Tabster quien devuelve el teclado a la fila.
 - `app/client-admin/test/teclado-ventanas-ui.test.ts`: **todas las ventanas**, una por una (53 más las dos que las
   lanzan): se abren con las teclas, el teclado entra, ↓ mueve la lista, Intro abre lo que abre el doble clic y Esc lo
   cierra, Mayús+Tab llega a «Nuevo», Intro lo abre y Esc lo cierra, y Esc cierra la ventana. Ninguna tecla guardó nada.
@@ -249,10 +252,15 @@ Además, todas estas en verde con el código final de Tabster:
   PostgreSQL.
 - Cobrador: 17/17.
 
-La primera corrida con Tabster dio 379 de 392 y enseñó tres cosas que se corrigieron antes de entregar: Tabster
-ocultaba a los lectores de pantalla los diálogos que no tenían el foco (ahora no oculta nada), metía elementos
-invisibles dentro de las barras para atrapar el Tab (ahora lleva el Tab él mismo y no añade nada) y su Deloser llevaba
-el teclado a otra ventana (se dejó fuera). También volvió la guarda de foco del diálogo clásico.
+La primera corrida con Tabster dio 379 de 392 y, con las siguientes, enseñó cinco cosas que se corrigieron antes de
+entregar: Tabster ocultaba a los lectores de pantalla los diálogos que no tenían el foco (ahora no oculta nada); metía
+elementos invisibles dentro de las barras para atrapar el Tab (ahora lleva el Tab él mismo y no añade nada); su Deloser
+llevaba el teclado a una ventana de detrás o al menú mientras la ventana se redibujaba (ahora CyP le marca el orden de
+las ventanas); los diálogos nativos de remesas se cerraban cuando React ya los había quitado y el navegador no podía
+devolver el foco (ahora se cierran antes); y un diálogo que se enfoca solo al abrirse (los campos con autoenfoque)
+quedaba apuntado como «la página» y al cerrarse el teclado iba al menú (ahora solo las ventanas, el recibo, los
+diálogos, la barra lateral y la cabecera guardan dónde estaba el teclado). También volvió la guarda de foco del diálogo
+clásico.
 
 Prueba existente ajustada en la versión anterior, sin cambiar lo que comprueba: `envios-review-corrections-ui` abría la
 revisión de la caja con F9; ahora llega a «Revisar apertura» con Tab y la abre con Intro (el dinero no va con Intro).
