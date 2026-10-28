@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { ClipboardCheck, Eye, Pencil, Plus, Printer, RefreshCw, Trash2, X } from "lucide-react";
 import { FiltersPanelIcon } from "./PanelIcons";
 import { usePageAccess } from "./PageAccess";
-import { closeAfterAsking, dialogKeys, focusFirstUseful, giveFocusBack } from "../../shared/keyboard";
+import { closeAfterAsking, dialogKeys, focusFirstUseful } from "../../shared/keyboard";
 
 // Original MDI presentation shared by the connected screens.
 type LegacyToolbarAction = () => void;
@@ -96,22 +96,23 @@ export function LegacyDialog({ title, onClose, children, className = "", overlay
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [drag, setDrag] = useState<null | { startX: number; startY: number; x: number; y: number }>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
-  const previousFocus = useRef(document.activeElement instanceof HTMLElement ? document.activeElement : null);
-  // Tab stays in the dialog (Tabster, dialogKeys); it opens on its first useful place and, closed, gives the keyboard
-  // back to what opened it.
+  // Tab stays in the dialog and, closed, the keyboard goes back to what opened it (Tabster, dialogKeys); it opens on its
+  // first useful place.
   const tabsterId = useId();
   useEffect(() => {
     const overlay = overlayRef.current, dialog = overlay?.querySelector<HTMLElement>('[role="dialog"]');
     if (!overlay || !dialog) return;
     const focusInside = () => { if (!focusFirstUseful(dialog)) dialog.focus(); };
-    if (!dialog.contains(document.activeElement)) focusInside();
+    // Right after Tabster has read the mark of the dialog (it reads it once React has drawn it), so it knows where the
+    // keyboard is and can give it back when the dialog closes.
+    queueMicrotask(() => { if (dialog.isConnected && !dialog.contains(document.activeElement)) focusInside(); });
     // The keyboard taken out of the dialog in front by the screen behind it (not by Tab) comes back into it.
     const keepInside = (event: FocusEvent) => {
       const overlays = document.querySelectorAll(".legacy-dialog-overlay");
       if (overlays[overlays.length - 1] === overlay && event.target instanceof Node && !dialog.contains(event.target)) focusInside();
     };
     document.addEventListener("focusin", keepInside);
-    return () => { document.removeEventListener("focusin", keepInside); giveFocusBack(previousFocus.current); };
+    return () => document.removeEventListener("focusin", keepInside);
   }, []);
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {

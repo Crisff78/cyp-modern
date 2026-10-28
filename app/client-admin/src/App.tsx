@@ -5,7 +5,7 @@ import { monitorLedger } from "./monitorLedger";
 import { MIN_NEW_PASSWORD_LENGTH } from "../../shared/passwordPolicy.mjs";
 import { DetailsPanelIcon, FiltersPanelIcon } from "./PanelIcons";
 import { LegacyDialog } from "./LegacyConnectedUi";
-import { focusAfterClosing, focusFirstUseful, focusMenu, installKeyboard, keyboardIsFree, MENU_KEYS, restoreWindowFocus, TILE_KEYS } from "../../shared/keyboard";
+import { focusAfterClosing, focusFirstUseful, focusMenu, installKeyboard, keyboardIsFree, MENU_KEYS, restoreWindowFocus, TILE_KEYS, WINDOW_KEYS } from "../../shared/keyboard";
 import "../../shared/keyboard.css";
 import { KeyboardShortcutsTable } from "./KeyboardHelp";
 import { CLIENT_PAGE_SIZE, NOT_DEFINED, NOT_DEFINED_ROUTE, type ClientPage, type ClientPageStatus } from "../../shared/clientPage.mjs";
@@ -917,7 +917,7 @@ function MdiWindow({ windowState, onClose, onFocus, onMove, onResize, onToggleMa
   return (
     <section ref={frame} className={`mdi-window ${windowState.isFocused ? "focused" : ""} ${windowState.page === "remittances" || windowState.page === "remittancePayouts" ? "remittances-mdi-window" : ""}${maximized ? " maximized" : ""}${resizing ? " resizing" : ""}`} style={{ left: windowState.x, top: windowState.y, width: windowState.width, height: windowState.height, zIndex: windowState.zIndex }} onPointerDownCapture={focusIfNeeded} onFocusCapture={activateIfNeeded} role="dialog" aria-label={windowState.title}>
       <div className="mdi-window-titlebar" onMouseDown={startDrag} onDoubleClick={(event) => { if (!(event.target as HTMLElement).closest("button")) onToggleMaximize(windowState.id); }}><span>{windowState.title}</span><div className="mdi-window-controls"><button type="button" className="mdi-window-maximize" aria-label={`${sizeAction} ${windowState.title}`} onMouseDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onToggleMaximize(windowState.id); }} title={`${sizeAction} ${windowState.title}`}>{maximized ? <Minimize2 size={13} /> : <Maximize2 size={13} />}</button><button type="button" aria-label={`Cerrar ${windowState.title}`} onMouseDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onClose(windowState.id); }} title={`Cerrar ${windowState.title}`}><X size={15} /></button></div></div>
-      <div className="mdi-window-content">{children}</div><span className="mdi-resize-cue" aria-hidden="true" />
+      <div className="mdi-window-content" {...WINDOW_KEYS}>{children}</div><span className="mdi-resize-cue" aria-hidden="true" />
       {!maximized && RESIZE_EDGES.map((edge) => <span key={edge} className={`mdi-resize-handle mdi-resize-${edge}`} data-edge={edge} aria-hidden="true" onPointerDown={(event) => startResize(event, edge)} onPointerMove={moveResize} onPointerUp={endResize} onPointerCancel={endResize} onLostPointerCapture={endResize} />)}
     </section>
   );
@@ -5050,7 +5050,7 @@ export default function App() {
               onClick={() => setMobileMenu(false)}
             />
           )}
-          <aside className={`sidebar ${mobileMenu ? "mobile-open" : ""}`}>
+          <aside className={`sidebar ${mobileMenu ? "mobile-open" : ""}`} {...WINDOW_KEYS}>
             <div className="sidebar-brand">
               <Logo compact={collapsed} />
               <button
@@ -5218,7 +5218,7 @@ export default function App() {
             </div>
           </aside>
           <div className="main-shell">
-            <header className="topbar">
+            <header className="topbar" {...WINDOW_KEYS}>
               <div className="topbar-system" aria-label="Telemetría del sistema legacy">
                 <span>Versión: CyP Web v0.1.0</span>
                 <span>

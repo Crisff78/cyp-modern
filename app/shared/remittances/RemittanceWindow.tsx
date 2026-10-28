@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { closeAfterAsking } from "../keyboard";
+import { closeAfterAsking, WINDOW_KEYS } from "../keyboard";
 // Shared code cannot import the icon package of each app (it is not resolvable from app/shared): small inline icons.
 const Icon = ({ size = 16, children }: { size?: number; children: ReactNode }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">{children}</svg>;
 const Minus = ({ size }: { size?: number }) => <Icon size={size}><path d="M5 12h14" /></Icon>;
@@ -98,7 +98,7 @@ export function RemittanceWindow({ title, children, onClose, desktopId, nextZInd
           <button type="button" title={`Cerrar ${title}`} aria-label={`Cerrar ${title}`} onClick={onClose}><X size={15} /></button>
         </div>
       </header>
-      <div className="remittances-dialog-body remittance-receipt-body">{children}</div>
+      <div className="remittances-dialog-body remittance-receipt-body" {...WINDOW_KEYS}>{children}</div>
     </section>
     {minimized && tray && createPortal(<button className="remittance-window-restore" type="button" onClick={restore} title={`Restaurar ${title}`} aria-label={`Restaurar ${title}`}><ReceiptText size={16} />{title}</button>, tray)}
   </>, host ?? document.body);
