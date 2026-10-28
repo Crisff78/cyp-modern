@@ -19,6 +19,12 @@ nada nuevo en la pantalla: solo el marco del elemento que tiene el teclado, como
 un solo clic y sin teclas F ni combinaciones: el Cajero de punta a punta, el Administrador y todas las ventanas una por
 una.
 
+**Ajustes del 28-10-2026** (pedido de Rardiel con fotos del Panel de Filtro de Cargos y Cargos Recurrentes y la
+pizarra de Envíos): Intro hace lo mismo que Tab para pasar de campo; una lista para elegir (Estado, Moneda, Zona…) se
+abre con ↓ y muestra todas sus opciones, como con el ratón; Tab ya no se escapa de la página (el navegador se quedaba
+el teclado hasta un clic): al final de la ventana vuelve a su primera opción; y Envíos de dinero sigue el orden de la
+pizarra: DF, el dinero a enviar → DR, el dinero que se recibe → DT, la tasa.
+
 Para repartir a los cajeros: [hoja de una página](teclado-completo/hoja-atajos-cajeros.pdf)
 ([versión HTML](teclado-completo/hoja-atajos-cajeros.html)).
 
@@ -26,9 +32,9 @@ Para repartir a los cajeros: [hoja de una página](teclado-completo/hoja-atajos-
 
 | Tecla | Qué hace |
 |---|---|
-| ↑ ↓ ← → | Moverse: en el menú, en las listas, entre los botones que van juntos y entre los campos |
-| Intro | Siguiente campo. En una lista, abre el registro (lo mismo que el doble clic). En un botón, lo pulsa |
-| Tab / Mayús+Tab | Ir al siguiente / al anterior |
+| ↑ ↓ ← → | Moverse: en el menú, en las listas, entre los botones que van juntos y entre los campos. En una lista para elegir, ↓ la abre |
+| Intro | Siguiente campo, igual que Tab. En una lista, abre el registro (lo mismo que el doble clic). En un botón, lo pulsa |
+| Tab / Mayús+Tab | Ir al siguiente / al anterior. Al final de la ventana, Tab vuelve a su primera opción |
 | Esc | Cerrar y volver. Si hay algo escrito sin guardar, pregunta primero. Cerrada la última ventana, el teclado queda en el menú |
 | Espacio | Seleccionar la fila o marcar la casilla |
 
@@ -54,15 +60,29 @@ Clientes, la página del servidor). Nada de esto choca con el navegador.
 - **Botones que van juntos** (la barra de una ventana, las respuestas de un diálogo, los botones de un recibo, los
   mosaicos de Configuración y Reportes): ← → pasan al de al lado; en los mosaicos, ↑ ↓ también. Tab sigue pasando por
   cada uno, como siempre.
-- **Campos:** Intro pasa al siguiente (Mayús+Intro, al anterior), y ↓ ↑ también en los campos de una línea. En el
+- **Campos:** Intro pasa al siguiente, igual que Tab (Mayús+Intro, al anterior), y ↓ ↑ también en los campos de una
+  línea. Un grupo de opciones (Todos / por Cliente / Por Zona / Por Ruta) es una sola parada, como con Tab: Intro pasa
+  de la opción marcada al campo que sigue, y la opción se cambia con ↑ ↓. En una nota de una o dos líneas Intro también
+  pasa al siguiente; en un cuadro de texto grande (tres líneas o más) Intro hace una línea nueva y se sale con Tab. En el
   último campo, un formulario normal se envía con Intro como siempre (Iniciar sesión, un cliente, un reporte…); un
   diálogo sin formulario lleva el teclado a su botón principal sin pulsarlo, y un segundo Intro lo pulsa. En los
   filtros de una ventana con lista, después del último se baja a la lista.
+- **Listas para elegir** (Estado, Moneda, Zona, Ruta, Servicio…): ↓ o ↑ la abren y muestran todas sus opciones, como
+  un clic del ratón, sin cambiar lo que tiene; ↓ ↑ se mueven dentro, Intro elige y la cierra, y el siguiente Intro pasa
+  al campo de abajo. Espacio también la abre. Antes ↓ cambiaba la opción a ciegas, sin ver la lista.
+- **Tab nunca sale de la página:** antes, Tab desde la última opción de la última ventana se iba a la barra del
+  navegador y el teclado no respondía hasta un clic. Ahora, al final de una ventana, Tab vuelve a su primera opción (la
+  barra de botones), una y otra vez. Mayús+Tab sigue subiendo por el título de la ventana hasta la cabecera y el menú.
+  Sin ventanas, Tab da la vuelta a la página.
 - **El dinero nunca va con un Intro sin querer** (regla de Dionel, `DIONEL-REMESAS-PERMISOS.md` punto 6): en un
   formulario con dinero, Intro solo pasa de campo en campo y se queda en el último. A su botón se llega con Tab, y ahí
   Intro lo pulsa. Después viene siempre la confirmación de siempre.
-- **Envíos de dinero:** tras «Calcular cotización», el teclado pasa solo a «Revisar y confirmar envío», el paso
-  siguiente.
+- **Envíos de dinero, como en la pizarra (28-10-2026):** primero quién envía y quién recibe (Remitente → Destinatario →
+  su teléfono; elegido el remitente, el teclado pasa solo al destinatario), cómo se escribe el importe y la nota, y
+  después el dinero en el orden de la pizarra: **Dinero a enviar** (DF: moneda, monto, tasa, comisión) → **Dinero que se
+  recibe** (DR: moneda, monto, tasa) → **Tasa** (DT, debajo y entre los dos: el equivalente en pesos y la tasa de origen
+  a destino). Las tasas y los montos calculados los pone la cotización del servidor. Tras «Calcular cotización», el
+  teclado pasa solo a «Revisar y confirmar envío», el paso siguiente.
 - **Diálogos:** el teclado entra en su primer campo; en una pregunta, en «Sí» (Intro = Sí, Esc = No); nunca en la X del
   título. No se escapa mientras están abiertos y, al cerrarse, vuelve a lo que los abrió.
 - **Esc** cierra el diálogo, el recibo o la ventana de delante. Si hay algo escrito que se perdería, pregunta «Hay
@@ -262,6 +282,24 @@ quedaba apuntado como «la página» y al cerrarse el teclado iba al menú (ahor
 diálogos, la barra lateral y la cabecera guardan dónde estaba el teclado). También volvió la guarda de foco del diálogo
 clásico.
 
+**Ajustes del 28-10-2026.** Las pruebas solo con teclado comprueban además:
+- `teclado-cajero-ui`: el envío en el orden de la pizarra. Elegido el remitente, el teclado está en el destinatario; luego
+  su teléfono, «Ingresar importe de», la nota, «Moneda del remitente» en Dinero a enviar, el monto, «Moneda del
+  destinatario» en Dinero que se recibe, y ahí Intro se queda (dinero).
+- `teclado-admin-ui`: 30 Tab seguidos en Clientes sin salir de la ventana ni de la página, dando la vuelta a su primera
+  opción; el Panel de Filtro de Cargos con Intro (de «Todos» a «Fecha Inicial», a «Estado»); ↓ abre la lista de Estado
+  sin cambiarla, ↓ e Intro eligen «Todos» y el siguiente Intro pasa a «Relación de Pago»; el servicio del cargo se elige
+  con la lista abierta (↓, ↓, Intro).
+- Pruebas ajustadas, sin cambiar lo que comprueban: la lista de Clientes como una sola parada se mira ahora con Mayús+Tab
+  y Tab (con Tab al revés da la vuelta a la ventana); en `remittance-workspace-corrections-ui` (W2), Intro desde un campo
+  de solo lectura y desde el monto llega a «Moneda del destinatario» sin pasar por ningún botón, y Mayús+Intro desde el
+  teléfono vuelve al remitente.
+- Resultados: `pnpm -r typecheck` verde; interfaz **392 de 392**; cobrador 17/17; servidor sin cambios. En Edge, con la
+  compilación de Render: Intro probado campo por campo en las 16 ventanas del menú (y sus «Nuevo»): solo se queda en el
+  último campo de los cuatro formularios con dinero; auditoría de las 55 ventanas igual que antes (teclado dentro 55/55,
+  Esc 55/55, flechas 31/31, cabecera 7/7, cero solo-ratón, cero errores); cajero 3/3; cobrador 6/6 vistas hasta la
+  barra. A 1366×768 el formulario de Envíos cabe entero y se ven tres envíos, también con el aviso de caja.
+
 Prueba existente ajustada en la versión anterior, sin cambiar lo que comprueba: `envios-review-corrections-ui` abría la
 revisión de la caja con F9; ahora llega a «Revisar apertura» con Tab y la abre con Intro (el dinero no va con Intro).
 
@@ -278,6 +316,7 @@ en Edge, con datos ficticios, manejando la aplicación solo con teclas sencillas
 | `4-clientes-flechas.png` | Clientes movida con las flechas: la fila con el teclado marcada, sin nada dibujado en los botones |
 | `5-barra-con-flechas.png` | La barra de Clientes recorrida con ← →: el teclado en «Nuevo» |
 | `6-soporte-teclas.png` | Soporte Técnico: las cinco teclas |
+| `7-envios-pizarra.png` | Envíos de dinero en el orden de la pizarra: quién envía y quién recibe, y luego Dinero a enviar → Dinero que se recibe → Tasa (debajo, entre las dos) |
 | `hoja-atajos-cajeros.png` | La hoja de una página para los cajeros (también en PDF y HTML) |
 
 ## Límites

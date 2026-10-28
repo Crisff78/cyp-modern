@@ -96,17 +96,30 @@ test("Cajero with the keyboard only: sign in, open the box, send, deliver, count
     // The list is ready once the search by phone has answered.
     await waitFor((code: string) => [...document.querySelectorAll('[data-client-side="sender"] [role="option"]')].some((option) => option.textContent?.includes(code)) && !document.querySelector('[data-client-side="sender"]')?.textContent?.includes("Buscando contactos"), sender.code);
     await keys("ArrowDown", "Enter");
-    await waitFor(() => document.activeElement?.closest("label")?.textContent?.startsWith("Moneda del remitente") === true);
-    await keys("Enter", "Enter");
-    assert.match((await focused()).label, /^Monto a enviar/);
-    await page.keyboard.type("500");
-    await keys("Enter");
+    // Who sends and who receives first, then the money in the order of the whiteboard (Rardiel, 28-10-2026): Dinero a
+    // enviar → Dinero que se recibe → Tasa. The sender chosen, the keyboard is on the recipient.
     await waitFor(() => document.activeElement?.closest("[data-client-side]")?.getAttribute("data-client-side") === "recipient");
     await page.keyboard.type(recipient.code);
     // The list is ready once the search by phone has answered.
     await waitFor((code: string) => [...document.querySelectorAll('[data-client-side="recipient"] [role="option"]')].some((option) => option.textContent?.includes(code)) && !document.querySelector('[data-client-side="recipient"]')?.textContent?.includes("Buscando contactos"), recipient.code);
     await keys("ArrowDown", "Enter");
     await waitFor((name: string) => document.querySelector('[data-client-side="recipient"] .remittance-client-selection')?.textContent?.includes(name) === true, recipient.name);
+    await waitFor(() => document.activeElement?.closest("label")?.textContent?.startsWith("Teléfono del destinatario") === true);
+    const box = () => page.evaluate(`document.activeElement?.closest("fieldset.remittance-money")?.querySelector("legend")?.textContent ?? ""`) as Promise<string>;
+    await keys("Enter");
+    assert.equal((await focused()).label, "Ingresar importe de");
+    await keys("Enter");
+    assert.equal((await focused()).label, "Nota (opcional)");
+    await keys("Enter");
+    assert.deepEqual([(await focused()).label, await box()], ["Moneda del remitente", "Dinero a enviar"]);
+    await keys("Enter");
+    assert.match((await focused()).label, /^Monto a enviar/);
+    await page.keyboard.type("500");
+    await keys("Enter");
+    assert.deepEqual([(await focused()).label, await box()], ["Moneda del destinatario", "Dinero que se recibe"]);
+    // The last field of money: Enter stays, the button is reached with Tab (Dionel).
+    await keys("Enter");
+    assert.equal((await focused()).label, "Moneda del destinatario");
     // Tab up to «Calcular cotización», Enter: the quote comes and the keyboard is already on the next step.
     await tabTo((element) => element.textContent === "Calcular cotización", 40);
     await keys("Enter");
