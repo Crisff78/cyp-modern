@@ -81,10 +81,11 @@ test("Administración with the keyboard only: menu, Clientes pages and record, u
     assert.equal((await focused()).label, "Buscar clientes por código, teléfono o nota");
     await keys("ArrowDown");
     assert.equal(await selectedRow(), first);
-    // The list is one Tab stop: Tab leaves it, Mayús+Tab comes back to the chosen row.
-    await keys("Tab");
-    assert.notEqual((await focused()).tag, "TR");
+    // The list is one Tab stop: Mayús+Tab leaves it, Tab comes back to the chosen row (the list is the last stop of the
+    // window: Tab from it goes round to the first one).
     await keys("Shift+Tab");
+    assert.notEqual((await focused()).tag, "TR");
+    await keys("Tab");
     assert.equal(await selectedRow(), first);
     // AvPág and RePág turn the page of the server.
     await keys("PageDown");
@@ -135,8 +136,17 @@ test("Administración with the keyboard only: menu, Clientes pages and record, u
     await inWindow("Datos del Cliente...");
     await keys("Escape");
     await waitFor(() => !document.querySelector('[role="dialog"][aria-label="Datos del Cliente..."]'));
-    // Esc closes the window; the keyboard goes back to the menu.
+    // Tab never leaves the page (the browser kept the keyboard until a click, Rardiel 28-10-2026): after the last stop of
+    // the window it goes back to its first one, round and round.
     await inWindow("Clientes");
+    const tabStops: string[] = [];
+    for (let step = 0; step < 30; step += 1) {
+      await page.keyboard.press("Tab"); await page.waitForTimeout(40);
+      assert.equal(await page.evaluate(`document.hasFocus() && Boolean(document.activeElement?.closest('.mdi-window[aria-label="Clientes"] .mdi-window-content'))`), true, `Tab ${step + 1} stays in the window`);
+      tabStops.push((await focused()).label);
+    }
+    assert.ok(tabStops.filter((label) => label === "Mostrar/Ocultar filtros").length >= 2, `Tab goes round the window: ${tabStops.join(" · ")}`);
+    // Esc closes the window; the keyboard goes back to the menu.
     await keys("Escape");
     await waitFor(() => !document.querySelector('.mdi-window[aria-label="Clientes"]'));
     await waitFor(() => Boolean(document.activeElement?.closest("[data-keyboard-menu]")));
@@ -145,16 +155,31 @@ test("Administración with the keyboard only: menu, Clientes pages and record, u
     await menuTo("Cargos");
     await keys("Enter");
     await inWindow("Cargos");
+    // Its filter panel with Enter, as with Tab: the options are one stop (Todos, then Fecha Inicial); ↓ opens a list to
+    // choose from, as a click does (every option is seen), ↓ moves in it, Enter chooses, the next Enter goes on.
+    await tabTo((element) => element.matches('.charges-filter-panel input[type="radio"]:checked'));
+    await keys("Enter");
+    assert.equal((await focused()).label, "Fecha Inicial:");
+    await keys("Enter", "Enter");
+    assert.equal((await focused()).label, "Estado:");
+    const state = () => page.evaluate(`({ value: document.activeElement.value, open: document.activeElement.matches(":open") })`) as Promise<{ value: string; open: boolean }>;
+    assert.deepEqual(await state(), { value: "Activo", open: false });
+    await keys("ArrowDown");
+    assert.deepEqual(await state(), { value: "Activo", open: true }, "↓ opens the list without changing what it shows");
+    await keys("ArrowDown", "Enter");
+    assert.deepEqual(await state(), { value: "Todos", open: false });
+    await keys("Enter");
+    assert.equal((await focused()).label, "Relación de Pago:");
     await tabTo((element) => element.closest(".legacy-mdi-toolbar") !== null, 10, null, "Shift+Tab");
     for (let step = 0; step < 12 && !(await page.evaluate(`document.activeElement?.getAttribute("title")?.startsWith("Nuevo") === true`)); step += 1) await keys("ArrowLeft");
     await keys("Enter");
     await inWindow("Datos del Cargo...");
     assert.equal(await page.evaluate(`document.activeElement?.id`), "cargo-client-code");
     await page.keyboard.type(client.code);
-    // Enter goes field by field; the service is chosen with the arrows of its list.
+    // Enter goes field by field; the service is chosen in its list: ↓ opens it, ↓ moves, Enter chooses.
     for (let step = 0; step < 12 && !(await page.evaluate(`document.activeElement?.matches("[data-money-input]")`)); step += 1) {
       if (await page.evaluate(`document.activeElement?.id === "cargo-service"`)) await page.waitForFunction(`!document.querySelector("#cargo-service")?.disabled && document.querySelector("#cargo-service").options.length > 1`);
-      if (await page.evaluate(`document.activeElement?.id === "cargo-service" && !document.activeElement.value`)) await keys("ArrowDown");
+      if (await page.evaluate(`document.activeElement?.id === "cargo-service" && !document.activeElement.value`)) await keys("ArrowDown", "ArrowDown", "Enter");
       await keys("Enter");
     }
     assert.equal(await page.evaluate(`document.activeElement?.id`), "cargo-amount");

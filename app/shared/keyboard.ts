@@ -1,9 +1,12 @@
 // CyP with the keyboard only, and with simple keys only (Rardiel, 27-10-2026): the arrows, Enter, Tab, Esc and Space,
 // so anyone can use it fast without learning anything; nothing extra is drawn on the screen. See docs/TECLADO-COMPLETO.md.
 //
-//  Arrows   move: in the menu, in a list, between the buttons of a bar or a dialog, between the fields of a form.
-//  Enter    goes to the next field; on a row it does what the double click does; on a button it presses it.
-//  Tab      next (Shift+Tab, previous).
+//  Arrows   move: in the menu, in a list, between the buttons of a bar or a dialog, between the fields of a form. On a
+//           list to choose from (a select) ↓ and ↑ open it, as a click does, so every option is seen before choosing.
+//  Enter    goes to the next field, as Tab does (a group of options is one stop); on a row it does what the double click
+//           does; on a button it presses it.
+//  Tab      next (Shift+Tab, previous). It never leaves the page: after the last stop of a window it goes back to its
+//           first one (Rardiel, 28-10-2026: the browser kept the keyboard until a click).
 //  Esc      closes the dialog or the window in front (asking first if something typed would be lost), back to the menu.
 //  Space    selects the row or ticks the box.
 //
@@ -26,9 +29,9 @@ import { createTabster, DeloserRestoreFocusEvent, getDeloser, getModalizer, getM
 
 /** The keys, as Soporte Técnico shows them. */
 export const KEYBOARD_MOVES: readonly { key: string; label: string }[] = [
-  { key: "Flechas", label: "Moverse: en el menú, en las listas, entre botones y entre campos" },
-  { key: "Intro", label: "Siguiente campo; en una lista, abrir el registro; en un botón, pulsarlo" },
-  { key: "Tab", label: "Ir al siguiente (con Mayús, al anterior)" },
+  { key: "Flechas", label: "Moverse: en el menú, en las listas, entre botones y entre campos; en una lista para elegir, abrirla" },
+  { key: "Intro", label: "Siguiente campo, como Tab; en una lista, abrir el registro; en un botón, pulsarlo" },
+  { key: "Tab", label: "Ir al siguiente (con Mayús, al anterior); al final de la ventana vuelve al principio" },
   { key: "Esc", label: "Cerrar y volver (pregunta si hay algo escrito sin guardar)" },
   { key: "Espacio", label: "Seleccionar o marcar" },
 ];
@@ -211,8 +214,15 @@ function searchToList(target: HTMLElement) {
 }
 
 // ── Fields ───────────────────────────────────────────────────────────────────────────────────────────────────
+const usableField = (field: HTMLElement) => isShown(field) && isEnabled(field) && !((field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) && field.readOnly) && field.tabIndex >= 0 && !field.closest('[aria-hidden="true"]');
+const isOption = (field: Element): field is HTMLInputElement => field instanceof HTMLInputElement && field.type === "radio" && Boolean(field.name);
+/** A group of options (radio buttons) is one stop, as for Tab: the one chosen, otherwise the first one. */
+function optionStop(option: HTMLInputElement) {
+  const group = [...(option.form ?? option.closest(SCOPE) ?? document).querySelectorAll<HTMLInputElement>('input[type="radio"]')].filter((item) => item.name === option.name && usableField(item));
+  return group.find((item) => item.checked) ?? group[0];
+}
 const fieldsOf = (container: Element, current: Element) => own(container.closest(SCOPE) ?? document.body, container.querySelectorAll<HTMLElement>(FIELD))
-  .filter((field) => field === current || (isShown(field) && isEnabled(field) && !(field instanceof HTMLInputElement && field.readOnly) && field.tabIndex >= 0 && !field.closest('[aria-hidden="true"]')));
+  .filter((field) => field === current || (usableField(field) && (!isOption(field) || (!(isOption(current) && current.name === field.name) && optionStop(field) === field))));
 // A money field (MoneyInput) makes its form a form of money: going through its fields never presses its button.
 const holdsMoney = (form: Element) => Boolean(form.querySelector("[data-money-input]")) || form.matches('[data-keyboard-enter="advance-only"]');
 
@@ -238,21 +248,67 @@ function stepField(target: HTMLElement, backwards: boolean, fromEnter: boolean) 
   if (backwards) return true;
   // After the last field. Money stays there: its button is reached with Tab (Dionel).
   if (form ? holdsMoney(form) : container.matches('[data-keyboard-enter="advance-only"]') || fields.some((field) => field.matches("[data-money-input]"))) return true;
-  // A form: Enter sends it, as the browser always did.
+  // A form: Enter sends it, as the browser always did (a note does not send: it goes to the button, without pressing it).
   const choice = target instanceof HTMLSelectElement || (target instanceof HTMLInputElement && (target.type === "checkbox" || target.type === "radio"));
-  if (form && fromEnter && !choice) return false;
+  if (form && fromEnter && !choice && !(target instanceof HTMLTextAreaElement)) return false;
   // A window with a list goes down to it (after its search and filters); otherwise to the main button, without pressing it.
   const scope = target.closest<HTMLElement>(SCOPE);
   const list = scope && (!form || !fromEnter) ? scopeList(scope) : null;
   if (list && !list.contains(target)) { focusRow(chosenRow(listRows(list))); return true; }
-  mainButton(form ?? container)?.focus();
+  const main = mainButton(form ?? container);
+  if (main) { main.focus(); return true; }
+  // The filters of a window whose list is empty, without a button of their own: Enter goes where Tab goes.
+  const body = target.closest<HTMLElement>(WINDOW_BODY);
+  if (!form && fromEnter && body && tabsterApi) {
+    const after = tabsterApi.focusable.findNext({ currentElement: target, container: body });
+    if (after) after.focus(); else tabsterApi.focusedElement.focusFirst({ container: body });
+  }
   return true;
 }
 
+// A note of one or two lines: Enter goes on, as in any field. A big box of text (three lines or more) keeps Enter for a
+// new line; Tab leaves it.
+const isShortNote = (element: Element) => element instanceof HTMLTextAreaElement && element.rows <= 2;
+
+/** The keyboard on the field after this one, as Enter would take it (a choice made in a list goes on to the next field). */
+export function focusNextField(from: HTMLElement) {
+  return stepField(from, false, false);
+}
+
 function advanceField(event: KeyboardEvent, target: HTMLElement) {
-  if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement) || (target instanceof HTMLInputElement && ["button", "submit", "reset", "image", "file"].includes(target.type))) return;
+  if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement || isShortNote(target)) || (target instanceof HTMLInputElement && ["button", "submit", "reset", "image", "file"].includes(target.type))) return;
   if (target.closest('[data-keyboard-enter="native"]')) return;
   if (stepField(target, event.shiftKey, true)) event.preventDefault();
+}
+
+/** ↓ or ↑ on a list to choose from (a select) open it, as a click does: every option is seen before one is chosen
+ *  (Rardiel, 28-10-2026). Open, its own arrows move and Enter chooses; the next Enter goes on to the next field. */
+function openChoices(target: HTMLElement) {
+  if (!(target instanceof HTMLSelectElement) || target.multiple || target.size > 1 || typeof target.showPicker !== "function") return false;
+  try { target.showPicker(); return true; } catch { return false; }
+}
+
+// ── Tab ──────────────────────────────────────────────────────────────────────────────────────────────────────
+// The body of a window or a receipt (without its title bar): where Tab goes round.
+const WINDOW_BODY = ".mdi-window-content,.remittance-receipt-body";
+let tabsterApi: Types.Tabster | null = null;
+
+/**
+ * Tab never takes the keyboard out of the page: the browser would keep it in its own bar until a click (Rardiel,
+ * 28-10-2026). After the last stop of a window Tab goes back to its first one; Shift+Tab still goes back, through its
+ * title bar, to the header and the menu. At either end of the page it goes round to the other end.
+ */
+function keepTabInPage(event: TabsterMoveFocusEvent) {
+  const { next, relatedEvent } = event.detail;
+  if (!tabsterApi || !(relatedEvent instanceof KeyboardEvent) || relatedEvent.key !== "Tab") return;
+  const backwards = relatedEvent.shiftKey;
+  const body = document.activeElement?.closest<HTMLElement>(WINDOW_BODY) ?? null;
+  const container = !backwards && body && !(next && body.contains(next)) ? body : !next ? document.body : null;
+  if (!container) return;
+  event.preventDefault();
+  relatedEvent.preventDefault();
+  if (backwards && container === document.body) tabsterApi.focusedElement.focusLast({ container });
+  else tabsterApi.focusedElement.focusFirst({ container });
 }
 
 // ── Menu ─────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -435,6 +491,7 @@ export function installKeyboard({ windows = true }: { windows?: boolean } = {}) 
   }, true);
   // Tabster moves Tab itself, so it adds nothing inside the bars and lists of the screens.
   const tabster = createTabster(window, { autoRoot: {}, controlTab: true });
+  tabsterApi = tabster;
   getMover(tabster);
   // The dialogs already say they are modal (aria-modal, showModal, Radix): Tabster keeps Tab in them and hides nothing.
   getModalizer(tabster, undefined, () => true);
@@ -447,11 +504,12 @@ export function installKeyboard({ windows = true }: { windows?: boolean } = {}) 
   new MutationObserver((records) => { if (records.some((record) => record.addedNodes.length)) markAreas(document); })
     .observe(document.body, { childList: true, subtree: true });
   // Tabster moves the keyboard: a row reached with the arrows is chosen, as a click chooses it; the keyboard given back
-  // is checked against the order of the windows.
+  // is checked against the order of the windows; Tab goes round in the window and never leaves the page.
   window.addEventListener("tabster:movefocus", (event) => {
     const { by, next } = event.detail;
     if (by === "mover" && next instanceof HTMLTableRowElement && next.hasAttribute("tabindex") && !isChosen(next)) next.click();
     if (by === "deloser") checkGivenBack(event);
+    if (by === "root") keepTabInPage(event);
   });
   document.addEventListener("focusin", (event) => {
     const target = event.target as Element;
@@ -481,6 +539,7 @@ export function installKeyboard({ windows = true }: { windows?: boolean } = {}) 
     const target = event.target instanceof HTMLElement ? event.target : null;
     if (!target || event.ctrlKey || event.metaKey || event.altKey) return;
     if (!event.shiftKey) {
+      if ((event.key === "ArrowDown" || event.key === "ArrowUp") && openChoices(target)) { event.preventDefault(); return; }
       if ((event.key === "ArrowRight" || event.key === "ArrowLeft") && openOrCloseSection(event, target)) { event.preventDefault(); return; }
       if (event.key === "ArrowUp" && upToSearch(target)) { event.preventDefault(); return; }
       // ↓ from a search goes down to the list; ↓ and ↑ in a one-line field go to the next and previous field.

@@ -240,20 +240,19 @@ createRoot(document.getElementById("root")).render(<App />);`);
       const { context, page, workspace } = await open(admin);
       try {
         const outcome: Record<string, unknown> = {};
-        const recipient = workspace.getByRole("combobox", { name: "Destinatario", exact: true });
         const where = () => page.evaluate(() => { const element = document.activeElement as HTMLElement | null; return element ? `${element.tagName}:${element.tagName === "BUTTON" ? element.textContent : element.closest("label")?.firstChild?.textContent ?? ""}` : ""; });
-        await workspace.getByRole("textbox", { name: "Equivalente del principal en DOP", exact: true }).focus(); await page.keyboard.press("Enter");
-        outcome["Enter in a readonly field"] = await focused(recipient);
+        await workspace.getByRole("textbox", { name: "Comisión (%)", exact: true }).focus(); await page.keyboard.press("Enter");
+        outcome["Enter in a readonly field"] = await where();
         await workspace.getByLabel("Monto a enviar (DOP)", { exact: true }).focus(); await page.keyboard.press("Enter");
-        outcome["Enter in Monto, before «Registrar cliente nuevo» of the recipient"] = await where();
+        outcome["Enter in Monto, before the money received"] = await where();
         await quickClient(page, workspace, "destinatario", { name: "Destinatario con teclado", identification: "QA-W2-TECLADO" });
         await workspace.getByLabel("Teléfono del destinatario", { exact: true }).focus();
         await page.keyboard.press("Shift+Enter"); outcome["one Shift+Enter from the phone"] = await where();
         await page.keyboard.press("Shift+Enter");
         outcome["the new recipient after two Shift+Enter"] = await workspace.getByText("Nuevo destinatario: Destinatario con teclado", { exact: true }).count();
         assert.deepEqual(outcome, {
-          "Enter in a readonly field": true, "Enter in Monto, before «Registrar cliente nuevo» of the recipient": "INPUT:Destinatario",
-          "one Shift+Enter from the phone": "INPUT:Monto a enviar (DOP)", "the new recipient after two Shift+Enter": 1,
+          "Enter in a readonly field": "SELECT:Moneda del destinatario", "Enter in Monto, before the money received": "SELECT:Moneda del destinatario",
+          "one Shift+Enter from the phone": "INPUT:Remitente", "the new recipient after two Shift+Enter": 1,
         });
       } finally { await context.close(); }
     });

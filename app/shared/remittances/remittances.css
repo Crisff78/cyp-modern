@@ -57,6 +57,12 @@
 .remittance-client-options small { display: block; color: var(--cyp-text, #43566f); }
 .remittance-client-options p { margin: 10px; font-size: 12px; }
 .remittance-wide { grid-column: 1 / -1; }
+/* «Nuevo envío»: who sends and who receives, how the amount is typed, and then the money in the order of the whiteboard
+   (Rardiel, 28-10-2026): Dinero a enviar → Dinero que se recibe, and the rate under both, between them. */
+.remittance-form-grid:has(.remittance-operator-field) .remittance-note-field { grid-column: 1 / -1; }
+.remittances fieldset.remittance-money { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; align-items: end; gap: 10px 12px; min-width: 0; margin: 0; padding: 2px 12px 12px; border: 1px solid var(--rem-edge); border-radius: 5px; }
+.remittances .remittance-money > legend { padding: 0 6px; color: var(--rem-ink); font-size: 13px; font-weight: 700; }
+.remittance-money-rate { grid-column: 1 / -1; justify-self: center; width: calc((100% - 14px) / 2); }
 .remittance-manager-toggle > span { display: flex; align-items: center; gap: 9px; }
 .remittance-manager-toggle input[type="checkbox"] { display: inline-block; width: 18px; height: 18px; min-height: 18px; flex: 0 0 auto; }
 .remittance-help { color: var(--cyp-text, #43566f); font-size: 13px; }
@@ -158,7 +164,10 @@ dialog.remittances-dialog { position: fixed; inset: 0; margin: auto; }
   .remittances-fixed > :is(.remittance-send-form, .remittance-list-area) :is(input, select, textarea) { min-height: 30px; padding: 4px 8px; font-size: 13px; line-height: 1.4; }
   .remittances-fixed > .remittance-send-form textarea { height: 30px; }
   .remittances-fixed > .remittance-send-form :is(.remittance-client-picker, .remittance-phone-field) input { min-height: 34px; padding: 5px 9px; font-size: 14px; }
-  .remittances-fixed > .remittance-send-form .remittance-form-grid { gap: 5px 10px; }
+  .remittances-fixed > .remittance-send-form .remittance-form-grid { gap: 4px 10px; }
+  .remittances-fixed > .remittance-send-form fieldset.remittance-money { gap: 4px 10px; padding: 0 8px 4px; }
+  .remittances-fixed > .remittance-send-form .remittance-money > legend { padding: 0 4px; font-size: 12px; line-height: 1.1; }
+  .remittances-fixed > .remittance-send-form .remittance-money-rate { width: calc((100% - 10px) / 2); }
   /* Two columns per block: the client takes the whole line and the other fields go in pairs. */
   .remittances-fixed > .remittance-send-form .remittance-party-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-flow: row dense; gap: 5px 10px; }
   .remittances-fixed > .remittance-send-form .remittance-party-fields > :is([data-client-side], .remittance-client-warning) { grid-column: 1 / -1; }
@@ -191,14 +200,22 @@ dialog.remittances-dialog { position: fixed; inset: 0; margin: auto; }
   .remittances-fixed .remittance-list-area .remittance-table small { margin-top: 1px; }
   .remittances-fixed .remittance-list-area .remittance-table .remittance-link { min-height: 0; padding: 0; }
   .remittances-fixed .remittance-list-area .remittance-status { padding: 1px 6px; }
-  /* A wide window: operator and note go under the recipient, beside the sender. */
+  /* A wide window, four columns: the clients (the phone beside the recipient); how the amount is typed, the operator and
+     the note; Dinero a enviar → Dinero que se recibe; the rate under both, between them. */
   @container (min-width: 861px) {
-    .remittances-fixed > .remittance-send-form .remittance-form-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: auto auto 1fr; }
-    .remittances-fixed > .remittance-send-form .remittance-form-grid > .remittance-party-fields:first-child { grid-column: 1 / span 2; grid-row: 1 / span 3; }
-    .remittances-fixed > .remittance-send-form .remittance-form-grid > .remittance-party-fields + .remittance-party-fields { grid-column: 3 / span 2; grid-row: 1; }
-    .remittances-fixed > .remittance-send-form .remittance-operator-field { grid-column: 3; grid-row: 2; }
-    .remittances-fixed > .remittance-send-form .remittance-note-field { grid-column: 4; grid-row: 2; }
-    .remittances-fixed > .remittance-send-form .remittance-form-grid:not(:has(.remittance-operator-field)) .remittance-note-field { grid-column: 3 / span 2; }
+    .remittances-fixed > .remittance-send-form .remittance-form-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .remittances-fixed > .remittance-send-form .remittance-form-grid > .remittance-party-fields { grid-column: span 2; }
+    .remittances-fixed > .remittance-send-form .remittance-form-grid > .remittance-party-fields + .remittance-party-fields { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); }
+    .remittances-fixed > .remittance-send-form .remittance-form-grid > .remittance-party-fields + .remittance-party-fields > .remittance-client-picker { grid-column: auto; }
+    .remittances-fixed > .remittance-send-form .remittance-form-grid:has(.remittance-operator-field) .remittance-note-field { grid-column: span 2; }
+    .remittances-fixed > .remittance-send-form .remittance-form-grid:not(:has(.remittance-operator-field)) .remittance-note-field { grid-column: span 3; }
+    .remittances-fixed > .remittance-send-form :is(.remittance-money-send, .remittance-money-receive) { grid-column: span 2; }
+    /* Each box in one row: its names may take two lines, its fields stay in line. */
+    .remittances-fixed > .remittance-send-form .remittance-money-send { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .remittances-fixed > .remittance-send-form .remittance-money-receive { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    /* The data of the recipient chosen, beside its phone, in two columns. */
+    .remittances-fixed > .remittance-send-form .remittance-party-fields + .remittance-party-fields .remittance-contact { grid-template-columns: repeat(auto-fit, minmax(88px, 1fr)); }
+    .remittances-fixed > .remittance-send-form .remittance-money-rate { grid-column: 2 / span 2; width: auto; justify-self: stretch; }
   }
   /* A narrow window: one column. */
   @container (max-width: 600px) {
@@ -254,6 +271,7 @@ dialog.remittances-dialog { position: fixed; inset: 0; margin: auto; }
 @media (max-width: 700px) { .remittance-receipt-columns { grid-template-columns: 1fr; gap: 12px; } .remittance-window-tray { bottom: 88px; } }
 @container (max-width: 600px) {
   .remittance-form-grid { grid-template-columns: 1fr; }
+  .remittance-money-rate { width: auto; justify-self: stretch; }
   .remittance-heading { align-items: flex-start; }
   .remittance-heading h1 { font-size: 19px; }
   .remittance-table-wrap { border: 0; overflow: visible; background: transparent; }
