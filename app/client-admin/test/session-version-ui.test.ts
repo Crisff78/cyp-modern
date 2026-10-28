@@ -29,10 +29,12 @@ test("the session ends with its tab and an open tab learns about a new version",
 import { NewVersionNotice } from ${shared("NewVersionNotice.tsx")};
 import { startSessionLifetime } from ${shared("sessionLifetime.ts")};
 import { ADMIN_TOKEN_KEY, COLLECTOR_TOKEN_KEY } from ${shared("sessionHandoff.ts")};
+import { installKeyboard } from ${shared("keyboard.ts")};
+installKeyboard({ windows: false });
 startSessionLifetime([ADMIN_TOKEN_KEY, COLLECTOR_TOKEN_KEY]);
 sessionStorage.setItem("qa-loads", String(Number(sessionStorage.getItem("qa-loads") || 0) + 1));
 const token = () => sessionStorage.getItem(ADMIN_TOKEN_KEY);
-createRoot(document.getElementById("root")).render(<><p id="state">{token() ? "con sesión" : "sin sesión"}</p><NewVersionNotice pageUrl="/" isSignedIn={() => Boolean(token())} /></>);`, "utf8");
+createRoot(document.getElementById("root")).render(<><p id="state">{token() ? "con sesión" : "sin sesión"}</p><dialog id="qa-dialog"><p>Algo abierto</p></dialog><section role="dialog" aria-label="Ventana"><label>Nombre<input id="qa-field" /></label></section><NewVersionNotice pageUrl="/" isSignedIn={() => Boolean(token())} quietMs={1000} /></>);`, "utf8");
     const [{ build }, { default: react }, { chromium }] = await Promise.all([
       import(pathToFileURL(localRequire.resolve("vite")).href), import(pathToFileURL(localRequire.resolve("@vitejs/plugin-react")).href),
       import(pathToFileURL(playwrightEntry!).href),
@@ -82,18 +84,45 @@ createRoot(document.getElementById("root")).render(<><p id="state">{token() ? "c
       assert.equal(await page.evaluate(() => sessionStorage.getItem("cyp-admin-token")), null);
     });
 
-    await t.test("signed in: a new version shows the notice and «Actualizar ahora» loads it", async () => {
+    const running = () => page.evaluate(() => document.querySelector('script[type="module"]')?.getAttribute("src"));
+    await t.test("signed in with something open: the notice waits for the person, and «Actualizar ahora» loads it", async () => {
       await page.evaluate(() => sessionStorage.setItem("cyp-admin-token", "qa-token"));
       await page.reload(); assert.equal(await state(), "con sesión");
       await page.waitForTimeout(400);
       assert.equal(await notice.count(), 0, "nothing new published: no notice");
-      // The first return to the tab checks at once (later ones, at most once a minute).
+      await page.evaluate(() => (document.getElementById("qa-dialog") as HTMLDialogElement).show());
+      // The first return to the tab checks at once (later ones, at most every 15 s).
       published = 2;
       await page.evaluate(() => window.dispatchEvent(new Event("focus")));
       await notice.waitFor();
-      assert.equal(await state(), "con sesión", "it waits for the person instead of reloading");
+      await page.waitForTimeout(3_000);
+      assert.equal(await running(), "/fixture.js?v=1", "a dialog is open: it does not reload by itself");
+      assert.equal(await state(), "con sesión");
       await notice.getByRole("button", { name: "Actualizar ahora", exact: true }).click();
       await page.waitForFunction(() => document.querySelector('script[type="module"]')?.getAttribute("src") === "/fixture.js?v=2");
+      assert.equal(await state(), "con sesión");
+      assert.equal(await notice.count(), 0);
+    });
+
+    await t.test("signed in with something typed and not saved: it waits, and loads by itself once that is gone", async () => {
+      await page.locator("#qa-field").focus();
+      await page.keyboard.type("Ana");
+      published = 3;
+      await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+      await notice.waitFor();
+      await page.waitForTimeout(3_000);
+      assert.equal(await running(), "/fixture.js?v=2", "something typed: it does not reload by itself");
+      const loads = Number(await page.evaluate(() => sessionStorage.getItem("qa-loads")));
+      for (let step = 0; step < 3; step += 1) await page.keyboard.press("Backspace");
+      await page.waitForFunction((before: number) => Number(sessionStorage.getItem("qa-loads")) > before && document.querySelector('script[type="module"]')?.getAttribute("src") === "/fixture.js?v=3", loads);
+      assert.equal(await state(), "con sesión");
+    });
+
+    await t.test("signed in with nothing open or typed: the new version loads by itself and the session stays", async () => {
+      const loads = Number(await page.evaluate(() => sessionStorage.getItem("qa-loads")));
+      published = 4;
+      await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+      await page.waitForFunction((before: number) => Number(sessionStorage.getItem("qa-loads")) > before && document.querySelector('script[type="module"]')?.getAttribute("src") === "/fixture.js?v=4", loads);
       assert.equal(await state(), "con sesión");
       assert.equal(await notice.count(), 0);
     });
@@ -102,9 +131,9 @@ createRoot(document.getElementById("root")).render(<><p id="state">{token() ? "c
       await page.evaluate(() => sessionStorage.removeItem("cyp-admin-token"));
       await page.reload(); assert.equal(await state(), "sin sesión");
       const loads = Number(await page.evaluate(() => sessionStorage.getItem("qa-loads")));
-      published = 3;
+      published = 5;
       await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-      await page.waitForFunction((before: number) => Number(sessionStorage.getItem("qa-loads")) > before && document.querySelector('script[type="module"]')?.getAttribute("src") === "/fixture.js?v=3", loads);
+      await page.waitForFunction((before: number) => Number(sessionStorage.getItem("qa-loads")) > before && document.querySelector('script[type="module"]')?.getAttribute("src") === "/fixture.js?v=5", loads);
       assert.equal(await notice.count(), 0);
     });
 

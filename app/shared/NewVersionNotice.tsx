@@ -1,8 +1,24 @@
 import { useEffect, useState } from "react";
 import { isNewVersion, publishedModuleScript, runningModuleScript } from "./versionWatch";
+import { workInProgress } from "./keyboard";
 
-const CHECK_EVERY_MS = 5 * 60_000;
-const MIN_GAP_MS = 60_000;
+// Every minute, and when the person comes back to the tab (at most every 15 s): a new version reaches everyone soon
+// (Rardiel, 28-10-2026: «Tienes que asegurarte de que a todos les salgan la versión actualizada, fuérzalo si es necesario»).
+const CHECK_EVERY_MS = 60_000;
+const MIN_GAP_MS = 15_000;
+// Signed in, the new version loads by itself once nothing would be lost: no dialog open, nothing typed and not saved,
+// and no key or click for this long (a request just sent has time to answer). The session stays: it lives in the tab.
+const QUIET_MS = 20_000;
+const SAFE_CHECK_MS = 2_000;
+
+let lastActivity = 0;
+let watchingActivity = false;
+function watchActivity() {
+  if (watchingActivity) return;
+  watchingActivity = true;
+  lastActivity = performance.now();
+  for (const type of ["keydown", "pointerdown", "input", "wheel", "touchstart"]) document.addEventListener(type, () => { lastActivity = performance.now(); }, { capture: true, passive: true });
+}
 
 /** Watches for a newly published version while the tab stays open; see versionWatch.ts. */
 export function useNewVersionPublished(pageUrl: string): boolean {
@@ -39,15 +55,22 @@ export function useNewVersionPublished(pageUrl: string): boolean {
 }
 
 /**
- * Tells the person that a new version is out. Signed in, it waits for them so nothing being typed is
- * lost; on the sign-in page there is nothing to lose, so it reloads straight away.
+ * Brings the new version as soon as it is out. On the sign-in page there is nothing to lose: it reloads straight away.
+ * Signed in, it reloads by itself as soon as nothing would be lost (see QUIET_MS); meanwhile a notice says so and lets
+ * the person load it at once.
  */
-export function NewVersionNotice({ pageUrl, isSignedIn }: { pageUrl: string; isSignedIn: () => boolean }) {
+export function NewVersionNotice({ pageUrl, isSignedIn, quietMs = QUIET_MS }: { pageUrl: string; isSignedIn: () => boolean; quietMs?: number }) {
   const available = useNewVersionPublished(pageUrl);
   const signedIn = available && isSignedIn();
+  useEffect(watchActivity, []);
   useEffect(() => {
-    if (available && !signedIn) window.location.reload();
-  }, [available, signedIn]);
+    if (!available) return;
+    if (!signedIn) { window.location.reload(); return; }
+    const loadWhenSafe = () => { if (performance.now() - lastActivity >= quietMs && !workInProgress()) window.location.reload(); };
+    loadWhenSafe();
+    const timer = window.setInterval(loadWhenSafe, SAFE_CHECK_MS);
+    return () => window.clearInterval(timer);
+  }, [available, signedIn, quietMs]);
   if (!available || !signedIn) return null;
   return (
     <div
@@ -61,7 +84,7 @@ export function NewVersionNotice({ pageUrl, isSignedIn }: { pageUrl: string; isS
         font: "500 14px/1.35 system-ui, sans-serif", textAlign: "center",
       }}
     >
-      <span>Hay una versión nueva del sistema. Guarda lo que estés haciendo y pulsa «Actualizar ahora».</span>
+      <span>Hay una versión nueva del sistema. Se cargará sola en cuanto termines lo que estás haciendo (guarda o cierra lo abierto), o pulsa «Actualizar ahora».</span>
       <button
         type="button"
         onClick={() => window.location.reload()}
