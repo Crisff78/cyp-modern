@@ -452,6 +452,8 @@ export async function buildApp(config: Config) {
     status: "ok",
     mode: config.demo ? "demo" : "configured",
     businessDate: businessDate(),
+    // The version published (Render gives its commit): anyone can check that the latest one is the one running.
+    ...(process.env.RENDER_GIT_COMMIT ? { version: process.env.RENDER_GIT_COMMIT.slice(0, 7) } : {}),
   }));
   describe("get", "/api/health", "Estado del servicio", undefined, true);
   const salt = randomUUID(),

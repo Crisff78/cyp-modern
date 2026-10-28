@@ -62,6 +62,7 @@ import { LoginPasswordInput, PasswordManagerHint } from "../../shared/LoginPassw
 import { loginCredentials } from "../../shared/loginCredentials";
 import { openAdminPortal } from "../../shared/sessionHandoff";
 import { BAR_MENU_KEYS, dialogKeys, installKeyboard } from "../../shared/keyboard";
+import { updatedLabel } from "../../shared/buildInfo";
 import "../../shared/keyboard.css";
 import { transformRouteToMap } from "./services/mapAdapter";
 import { businessDay as localDay, timeLabel } from "./services/dates";
@@ -618,6 +619,7 @@ export function App() {
               inicio». En Android, abre el menú del navegador y elige «Instalar
               aplicación» o «Agregar a pantalla principal».
             </p>
+            {updatedLabel() && <p className="help-version">Versión actualizada: {updatedLabel()}</p>}
             <p>
               La instalación requiere HTTPS o localhost y un navegador
               compatible. La aplicación conserva sus recursos visuales; para

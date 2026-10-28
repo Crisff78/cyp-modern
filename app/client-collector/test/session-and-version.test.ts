@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { CLOSED_TAB_AFTER_MS, tabWasClosed } from "../../shared/sessionLifetime.ts";
 import { isNewVersion, moduleScriptOf, publishedModuleScript } from "../../shared/versionWatch.ts";
+import { BUILD, buildInfoFromGit, updatedLabel } from "../../shared/buildInfo.ts";
 
 test("a tab reopened after being closed ends its session; a reload or a woken tab keeps it", () => {
   const now = 1_800_000_000_000;
@@ -35,4 +36,20 @@ test("the published program is read from the portal page and compared with the r
   await publishedModuleScript("/collector/", (async (_url: string, init: RequestInit) => { asked = init; return new Response(vite, { headers: { "Content-Type": "text/html" } }); }) as unknown as typeof fetch);
   assert.equal(asked?.cache, "no-store", "always asks the server, never a stored copy");
   assert.equal(asked?.credentials, "same-origin");
+});
+
+test("the date of the version published is shown in Santo Domingo, and comes from the last commit", () => {
+  // 15:23 UTC is 11:23 in Santo Domingo (UTC−4, no summer time).
+  assert.match(updatedLabel({ updatedAt: "2026-10-28T15:23:42Z", commit: "45ea3e8" }), /^28\/10\/2026,? 11:23\s?a\.?\s?m\.?$/);
+  assert.equal(updatedLabel(null), "", "no build: nothing is shown");
+  assert.equal(updatedLabel({ updatedAt: "not a date", commit: "" }), "");
+  assert.equal(BUILD, null, "outside a Vite build there is no build information");
+  const asked: string[][] = [];
+  const git = (args: string[]) => { asked.push(args); return args[0] === "log" ? "2026-10-28T11:23:42-04:00\n" : "45ea3e8f00d\n"; };
+  assert.deepEqual(buildInfoFromGit(git), { updatedAt: "2026-10-28T11:23:42-04:00", commit: "45ea3e8" });
+  assert.deepEqual(buildInfoFromGit(git, "ad9b1430123"), { updatedAt: "2026-10-28T11:23:42-04:00", commit: "ad9b143" }, "Render names its commit");
+  const withoutGit = buildInfoFromGit(() => { throw new Error("no git"); });
+  assert.equal(withoutGit.commit, "");
+  assert.ok(Math.abs(Date.parse(withoutGit.updatedAt) - Date.now()) < 60_000, "without git: the time of the build");
+  assert.ok(asked.some((args) => args.join(" ") === "log -1 --format=%cI"));
 });
