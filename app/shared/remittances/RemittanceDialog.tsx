@@ -1,5 +1,5 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { closeAfterAsking, dialogKeys, focusFirstUseful, giveFocusBack } from "../keyboard";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { closeAfterAsking, dialogKeys, focusFirstUseful } from "../keyboard";
 
 export function RemittanceDialog({ title, children, onClose, locked = false }: { title: string; children: ReactNode; onClose: () => void; locked?: boolean }) {
   const element = useRef<HTMLDialogElement>(null);
@@ -7,17 +7,23 @@ export function RemittanceDialog({ title, children, onClose, locked = false }: {
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [drag, setDrag] = useState<null | { x: number; y: number; left: number; top: number }>(null);
   useEffect(() => {
-    const dialog = element.current, opener = document.activeElement;
-    dialog?.showModal();
-    // React's autoFocus runs before the dialog opens; the field marked data-autofocus takes the focus once it is open.
-    // Without one: its first field, else the main button of a question (Enter = Sí); never the × of its title.
-    const asked = dialog?.querySelector<HTMLElement>("[data-autofocus]");
-    if (asked) asked.focus(); else if (dialog) focusFirstUseful(dialog);
-    // Closing gives the focus back to what opened the dialog while it is still on the page.
-    return () => {
-      dialog?.close();
-      giveFocusBack(opener);
-    };
+    const dialog = element.current;
+    // Opened right after Tabster has read its mark (once React has drawn it), so Tabster knows the keyboard is in the
+    // dialog and, closed, gives it back to what opened it (dialogKeys).
+    queueMicrotask(() => {
+      if (!dialog?.isConnected || dialog.open) return;
+      dialog.showModal();
+      // React's autoFocus runs before the dialog opens; the field marked data-autofocus takes the focus once it is open.
+      // Without one: its first field, else the main button of a question (Enter = Sí); never the × of its title.
+      const asked = dialog.querySelector<HTMLElement>("[data-autofocus]");
+      if (asked) asked.focus(); else focusFirstUseful(dialog);
+    });
+  }, []);
+  // Closed while it is still on the page: the browser gives the keyboard back at once to what opened it (Tabster does it
+  // when that is gone).
+  useLayoutEffect(() => {
+    const dialog = element.current;
+    return () => dialog?.close();
   }, []);
   useEffect(() => {
     if (!drag) return;

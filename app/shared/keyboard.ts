@@ -11,16 +11,18 @@
 //  - Mover: the arrows, Inicio/Fin and AvPág/RePág in the menu, the lists, the bars of buttons and the tiles. The menu
 //    and each list are one Tab stop that remembers where the keyboard was.
 //  - Modalizer: Tab does not leave an open dialog.
-// Tabster reads its marks (data-tabster) from the shared components (the menu, the dialogs, the launchers); the lists
-// and the bars of buttons, that each screen draws itself, are marked here by their shape (markAreas).
+//  - Deloser: when what had the keyboard disappears (a dialog closed), it goes back to where it was before.
+//  - ObservedElement: a button disabled while its request runs gets the keyboard back when it can take it again.
+// Tabster reads its marks (data-tabster) from the shared components (the menu, the windows, the dialogs, the launchers);
+// the lists and the bars of buttons, that each screen draws itself, are marked here by their shape (markAreas).
 //
 // What is left in this file is CyP's own: Enter goes field by field and never confirms money (Dionel,
 // DIONEL-REMESAS-PERMISOS.md point 6: the button of money is reached with Tab and pressed with Enter); a row reached with
-// the keys is chosen; the search and its list are joined by ↓ and ↑; AvPág and RePág turn the page of the server; → and ←
-// open and close the sections of the menu; Esc asks before losing what was typed; where the keyboard starts in a window
-// and where it goes when what had it disappears. That last one is not Tabster's Deloser on purpose: it does not know
-// which window is in front, and taking the keyboard to another window brings that window over the one in front.
-import { createTabster, getModalizer, getMover, getTabsterAttribute, MoverDirections, TABSTER_ATTRIBUTE_NAME } from "tabster";
+// the arrows is chosen; the search and its list are joined by ↓ and ↑; AvPág and RePág turn the page of the server; → and
+// ← open and close the sections of the menu; Esc asks before losing what was typed; where the keyboard starts in a
+// window; and the order of the windows, that Tabster does not know: it never takes the keyboard into a window behind
+// (that would bring the window over the one in front), and a window closed leaves it on the one in front or the menu.
+import { createTabster, DeloserRestoreFocusEvent, getDeloser, getModalizer, getMover, getObservedElement, getTabsterAttribute, MoverDirections, setTabsterAttribute, TABSTER_ATTRIBUTE_NAME, type TabsterMoveFocusEvent, type Types } from "tabster";
 
 /** The keys, as Soporte Técnico shows them. */
 export const KEYBOARD_MOVES: readonly { key: string; label: string }[] = [
@@ -38,8 +40,13 @@ export const MENU_KEYS = getTabsterAttribute({ mover: { direction: MoverDirectio
 export const BAR_MENU_KEYS = getTabsterAttribute({ mover: { direction: MoverDirections.Horizontal, cyclic: true, memorizeCurrent: true } });
 /** Tiles (Configuración, Reportes): the four arrows, as they are drawn; each tile is still a Tab stop. */
 export const TILE_KEYS = getTabsterAttribute({ mover: { direction: MoverDirections.GridLinear, cyclic: true, tabbable: true } });
-/** A dialog: Tab does not leave it. `id`: one per dialog. */
-export const dialogKeys = (id: string) => getTabsterAttribute({ modalizer: { id, isTrapped: true, isOthersAccessible: true } });
+// Where the keyboard was is remembered by the element itself, never guessed again from its place in the page (which
+// could be another element by then).
+const BACK_TO_WHERE_IT_WAS = { noSelectorCheck: true };
+/** What a window, a receipt, the menu or the header holds: the keyboard lost in it goes back to where it was. */
+export const WINDOW_KEYS = getTabsterAttribute({ deloser: BACK_TO_WHERE_IT_WAS });
+/** A dialog: Tab does not leave it, and closed, the keyboard goes back to where it was. `id`: one per dialog. */
+export const dialogKeys = (id: string) => getTabsterAttribute({ modalizer: { id, isTrapped: true, isOthersAccessible: true }, deloser: BACK_TO_WHERE_IT_WAS });
 
 // A list of rows: ↑ ↓, Inicio/Fin, AvPág/RePág; one Tab stop, its row. A list of buttons in rows (Envíos): the arrows
 // as they are drawn, the column kept; with fields in it, Tab goes through them as always.
@@ -120,6 +127,12 @@ export function frontWindow(doc: Document = document): HTMLElement | null {
   const windows = [...doc.querySelectorAll<HTMLElement>(".mdi-window")].filter(isShown);
   return windows.find((item) => item.classList.contains("focused")) ?? windows.sort((a, b) => Number(b.style.zIndex || 0) - Number(a.style.zIndex || 0))[0] ?? null;
 }
+
+// The windows of the desktop and the receipts, drawn one over another.
+const WINDOW = ".mdi-window,.remittance-receipt-window";
+const layer = (element: Element) => Number((element as HTMLElement).style.zIndex || 0);
+/** The window or receipt drawn on top. */
+const topWindow = (doc: Document = document) => [...doc.querySelectorAll<HTMLElement>(WINDOW)].filter(isShown).sort((a, b) => layer(b) - layer(a))[0] ?? null;
 
 /** The elements of a scope that belong to it, not to a dialog opened inside it. */
 const own = <T extends Element>(scope: Element, items: Iterable<T>) => [...items].filter((item) => item.closest(SCOPE) === scope || (!item.closest(SCOPE) && scope === document.body));
@@ -334,14 +347,10 @@ export function focusFirstUseful(scope: HTMLElement) {
   return scope.contains(document.activeElement);
 }
 
-// Where the keyboard was in each window of the desktop, to come back to it.
-const lastFocusOf = new WeakMap<Element, HTMLElement>();
-
-/** A window brought to the front gives the keyboard back to where it was, or to its first useful place. */
+/** A window brought to the front: Tabster gives the keyboard back to where it was in it, else its first useful place. */
 export function restoreWindowFocus(scope: HTMLElement) {
-  const last = lastFocusOf.get(scope);
-  if (last && last.isConnected && scope.contains(last) && isShown(last) && isEnabled(last)) { last.focus(); return true; }
-  return focusFirstUseful(scope);
+  scope.querySelector(".mdi-window-content,.remittance-receipt-body")?.dispatchEvent(new DeloserRestoreFocusEvent());
+  return scope.contains(document.activeElement) || focusFirstUseful(scope);
 }
 
 /** A window closed: the keyboard goes to the window now in front, or to the menu when none is left. */
@@ -352,45 +361,48 @@ export function focusAfterClosing(doc: Document = document) {
   if (!next || !restoreWindowFocus(next)) focusMenu(doc);
 }
 
-/** The keyboard is nowhere (what had it disappeared): the dialog open, otherwise the window in front, otherwise the menu. */
-function rescueFocus(doc: Document = document) {
-  const active = doc.activeElement;
-  if (active && active !== doc.body) return;
-  const modal = [...doc.querySelectorAll<HTMLElement>(MODAL)].filter(isShown).pop();
-  if (modal) { if (!modal.contains(doc.activeElement)) focusFirstUseful(modal); return; }
-  focusAfterClosing(doc);
-}
+// The window or receipt the keyboard was last in (a dialog opened from it does not change it; the menu or the header do).
+let lastWindow: Element | null = null;
 
-let waitingFor: HTMLElement | null = null;
 /**
- * The keyboard goes back to this element as soon as it can take it again (a button disabled while its request runs, a
- * field saving), unless it was taken elsewhere meanwhile. A client search (combobox) takes it back without unfolding its
- * list over the form (its quiet focus). After `limit` ms without it, the keyboard is rescued.
+ * Where Tabster takes the keyboard back to (its Deloser), checked against the order of the windows, that it does not
+ * know: never into a window behind (it would come over the one in front), and never out of the window the keyboard was
+ * in while it is still open (to the menu, while the window redraws itself after saving). Then the keyboard goes to the
+ * window in front, as soon as it has something to take it (up to 1.5 s). A client search takes it back without
+ * unfolding its list over the form (its quiet focus).
  */
-function comeBackTo(element: HTMLElement, limit: number) {
-  waitingFor = element;
-  const started = performance.now();
-  const attempt = () => {
-    if (waitingFor !== element) return;
-    const active = document.activeElement;
-    if (active && active !== document.body) { waitingFor = null; return; }
-    if (element.isConnected && isShown(element) && isEnabled(element)) {
-      if (element.getAttribute("role") === "combobox") element.dataset.quietFocus = "1";
-      element.focus();
-      if (document.activeElement === element) { waitingFor = null; return; }
-      delete element.dataset.quietFocus;
-    }
-    // Gone (the button that opened a dialog, replaced when it closed): the screen may place the keyboard meanwhile.
-    if (performance.now() - started > limit) { waitingFor = null; rescueFocus(); return; }
-    window.setTimeout(attempt, 50);
-  };
-  attempt();
+function checkGivenBack(event: TabsterMoveFocusEvent) {
+  const { next } = event.detail;
+  if (!next) return;
+  const into = next.closest(WINDOW), top = topWindow();
+  const behind = into && top && layer(into) < layer(top);
+  const leaving = !into && lastWindow?.isConnected && isShown(lastWindow);
+  if (top && (behind || leaving) && !next.closest("dialog[open]")) {
+    event.preventDefault();
+    const started = performance.now();
+    const place = () => {
+      const active = document.activeElement;
+      if ((active && active !== document.body) || !top.isConnected || restoreWindowFocus(top) || performance.now() - started > 1500) return;
+      window.setTimeout(place, 100);
+    };
+    window.setTimeout(place);
+    return;
+  }
+  if (next.getAttribute("role") === "combobox") next.dataset.quietFocus = "1";
 }
 
-/** A dialog closed gives the keyboard back to what opened it. Nothing is done when the keyboard is already somewhere. */
-export function giveFocusBack(element: Element | null) {
-  if (element instanceof HTMLElement) comeBackTo(element, 1500);
-  else window.setTimeout(rescueFocus, 200);
+let observed: Types.ObservedElementAPI | null = null;
+const BACK = "cyp-keyboard-back";
+let waiting: { element: Element; cancel: () => void } | null = null;
+/** A button disabled while its request runs (Calcular, Guardar): Tabster gives it the keyboard back as soon as it can
+ *  take it again, up to 5 s, unless the keyboard was taken elsewhere meanwhile. */
+function backWhenEnabled(element: HTMLElement) {
+  if (!observed) return;
+  waiting?.cancel();
+  setTabsterAttribute(element, { observed: { names: [BACK] } }, true);
+  const request = observed.requestFocus(BACK, 5000), current = { element, cancel: () => request.cancel() };
+  waiting = current;
+  void request.result.finally(() => { setTabsterAttribute(element, { observed: undefined }, true); if (waiting === current) waiting = null; });
 }
 
 /** Call before a request that saves; call what it returns when it was saved: what was typed there is no longer a change. */
@@ -426,33 +438,32 @@ export function installKeyboard({ windows = true }: { windows?: boolean } = {}) 
   getMover(tabster);
   // The dialogs already say they are modal (aria-modal, showModal, Radix): Tabster keeps Tab in them and hides nothing.
   getModalizer(tabster, undefined, () => true);
+  // The keyboard lost in a window, a receipt, a dialog, the menu or the header goes back to where it was (each of those
+  // carries WINDOW_KEYS or dialogKeys; the page as a whole does not, so a field focused by a dialog before Tabster has
+  // read its mark does not count as a place of the page).
+  getDeloser(tabster);
+  observed = getObservedElement(tabster);
   markAreas(document);
   new MutationObserver((records) => { if (records.some((record) => record.addedNodes.length)) markAreas(document); })
     .observe(document.body, { childList: true, subtree: true });
-
-  let lastInput: "keyboard" | "pointer" = "keyboard";
-  document.addEventListener("keydown", () => { lastInput = "keyboard"; }, true);
-  document.addEventListener("pointerdown", () => { lastInput = "pointer"; }, true);
+  // Tabster moves the keyboard: a row reached with the arrows is chosen, as a click chooses it; the keyboard given back
+  // is checked against the order of the windows.
+  window.addEventListener("tabster:movefocus", (event) => {
+    const { by, next } = event.detail;
+    if (by === "mover" && next instanceof HTMLTableRowElement && next.hasAttribute("tabindex") && !isChosen(next)) next.click();
+    if (by === "deloser") checkGivenBack(event);
+  });
   document.addEventListener("focusin", (event) => {
     const target = event.target as Element;
     if (target.matches?.(FIELD) && !firstValue.has(target)) firstValue.set(target, valueOf(target));
-    const window_ = target.closest?.(".mdi-window");
-    if (window_ && target instanceof HTMLElement && !target.closest(FRAME)) lastFocusOf.set(window_, target);
-    if (lastInput !== "keyboard" || !(target instanceof HTMLTableRowElement) || !target.hasAttribute("tabindex")) return;
-    const table = target.closest("table");
-    if (table?.getAttribute(TABSTER_ATTRIBUTE_NAME) !== LIST || !(target.parentElement instanceof HTMLTableSectionElement)) return;
-    // Coming into a list, the keyboard goes to its chosen row; a row reached with the keys is chosen, as a click chooses it.
-    const chosen = listRows(target.parentElement).find(isChosen);
-    if (chosen && chosen !== target && !(event.relatedTarget instanceof Node && table.contains(event.relatedTarget))) { focusRow(chosen); return; }
-    if (!isChosen(target)) target.click();
+    const window_ = target.closest?.(WINDOW);
+    if (window_) lastWindow = window_; else if (!target.closest?.(SCOPE)) lastWindow = null;
+    // The keyboard went somewhere else: the button that was waiting for it no longer takes it.
+    if (waiting && waiting.element !== target) waiting.cancel();
   });
-  // Working with the keyboard, it is never left nowhere. What had it was disabled while its request runs: it waits for
-  // it. Otherwise, if the screen does not place it in a moment, it is rescued.
   document.addEventListener("focusout", (event) => {
     const left = event.target;
-    if (lastInput !== "keyboard" || event.relatedTarget || !(left instanceof HTMLElement)) return;
-    if (left.isConnected && isShown(left) && !isEnabled(left)) { comeBackTo(left, 5000); return; }
-    window.setTimeout(() => { if (lastInput === "keyboard" && !waitingFor) rescueFocus(); }, 200);
+    if (!event.relatedTarget && left instanceof HTMLElement && left.isConnected && isShown(left) && !isEnabled(left)) backWhenEnabled(left);
   });
   document.addEventListener("input", (event) => typedIn.add(event.target as Element), true);
   // A money field writes its own digits (no input event): a key typed in a field counts as typing in it.
