@@ -116,7 +116,7 @@ export function ConnectedCatalog({ page, snapshot, actorId, canManagePermissions
   const accountCollectorOptions = collectorOptionsForAccount(snapshot.collectors, String(draft.collectorId ?? ""));
   const linkedAccount = pickedAccount ?? snapshot.accounts.find((account) => account.id === draft.accountId);
   const fields: Field[] = page === "collectors" ? [
-    { key: "name", label: "Nombre", required: true, maxLength: INPUT_LIMITS.name }, { key: "ident", label: "Código / identificación", maxLength: INPUT_LIMITS.name }, { key: "cellular", label: "Celular", type: "tel", maxLength: INPUT_LIMITS.phone }, { key: "accountId", label: "Cuenta", maxLength: INPUT_LIMITS.name },
+    { key: "name", label: "Nombre", required: true, maxLength: INPUT_LIMITS.name }, { key: "ident", label: "Código / identificación", maxLength: INPUT_LIMITS.name }, { key: "cellular", label: "Teléfono", type: "tel", maxLength: INPUT_LIMITS.phone }, { key: "accountId", label: "Cuenta", maxLength: INPUT_LIMITS.name },
     { key: "collectionLimit", label: "Límite de cobro (DOP)", type: "money", required: true, maxLength: 11 }, { key: "payoutLimit", label: "Límite de pago (DOP)", type: "money", required: true, maxLength: 11 },
   ] : page === "routes" ? [
     { key: "number", label: "Número", maxLength: INPUT_LIMITS.name }, { key: "name", label: "Nombre", required: true, maxLength: INPUT_LIMITS.name }, { key: "sector", label: "Sector / zona", required: true, maxLength: INPUT_LIMITS.name }, { key: "collectorId", label: "Cobrador", maxLength: INPUT_LIMITS.id, options: [{value:"",label:"Sin asignar"},...collectorOptions] }, { key: "from", label: "Desde", maxLength: INPUT_LIMITS.name }, { key: "to", label: "Hasta", maxLength: INPUT_LIMITS.name },
@@ -254,7 +254,7 @@ export function ConnectedCatalog({ page, snapshot, actorId, canManagePermissions
     setClientPicker(null);
   };
   const headers: Record<CatalogPage, string[]> = {
-    collectors: ["Cod.", "Cobrador", "Celular", "Cuenta", "Act."],
+    collectors: ["Cod.", "Cobrador", "Teléfono", "Cuenta", "Act."],
     routes: ["Nro.", "Ruta", "Desde", "Hasta", "Activo"],
     zones: ["Nro", "Zona", "Desde", "Hasta", "Act."],
     servicesProducts: ["Nro.", "Servicio", "Abrev", "Caption", "Ob. Cob.", "Importe fijo", "Activo"],
@@ -328,10 +328,10 @@ export function ConnectedCatalog({ page, snapshot, actorId, canManagePermissions
   const formContent = (): ReactNode => {
     if (page === "collectors") return <>
       <label>Cobrador:{control("name")}</label>
-      <div className="legacy-dialog-row two-cols"><label>Ident.:{control("ident")}</label><label>Celular:{control("cellular")}</label></div>
+      <div className="legacy-dialog-row two-cols"><label>Ident.:{control("ident")}</label><label>Teléfono:{control("cellular")}</label></div>
       <label>Cuenta:<span className="collector-account-field"><input aria-label="Cuenta" readOnly value={pickedAccount?.name ?? snapshot.accounts.find((account) => account.id === draft.accountId)?.name ?? String(draft.accountId ?? "")} title={String(draft.accountId ?? "")} /><button type="button" aria-label="Seleccionar cuenta" disabled={busy} onClick={() => setAccountPickerOpen(true)}>...</button><button type="button" aria-label="Quitar cuenta" disabled={busy || !draft.accountId} onClick={() => { setPickedAccount(null); setDraft((current) => ({ ...current, accountId: "" })); }}>Quitar</button></span></label>
       {linkedAccount && <p className="catalog-linked-account">Cuenta de acceso: <strong>{linkedAccount.email}</strong> · {accountRoleLabel(linkedAccount.role)} · {linkedAccount.status === "active" ? "Activa" : "Inactiva"}</p>}
-      <p className="catalog-association-note">Aquí solo se editan los datos del cobrador: nombre, identificación y celular. «Cuenta» es una referencia; el acceso del cobrador se da en Usuarios, con una cuenta de rol Cobrador asociada a él. El usuario o correo, rol y contraseña de esa cuenta se editan desde Usuarios.</p>
+      <p className="catalog-association-note">Aquí solo se editan los datos del cobrador: nombre, identificación y teléfono. «Cuenta» es una referencia; el acceso del cobrador se da en Usuarios, con una cuenta de rol Cobrador asociada a él. El usuario o correo, rol y contraseña de esa cuenta se editan desde Usuarios.</p>
       {editing && editing !== "new"
         ? <fieldset className="legacy-config-fieldset collector-limits-readonly"><legend>Límites en DOP (solo consulta)</legend><div className="legacy-dialog-row two-cols"><label>Cobro:<input readOnly aria-label="Límite de cobro actual (DOP)" value={String(draft.collectionLimit ?? "")} /></label><label>Pago:<input readOnly aria-label="Límite de pago actual (DOP)" value={String(draft.payoutLimit ?? "")} /></label></div><p className="catalog-association-note">Los límites no se cambian desde esta ficha. Ciérrala, selecciona al cobrador, pulsa L, Agregar y selecciona la moneda que quieres modificar.</p></fieldset>
         : <fieldset className="legacy-config-fieldset"><legend>Límites iniciales en DOP</legend><div className="legacy-dialog-row two-cols"><label>Cobro:{control("collectionLimit")}</label><label>Pago:{control("payoutLimit")}</label></div></fieldset>}

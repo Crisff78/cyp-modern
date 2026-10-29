@@ -1567,7 +1567,7 @@ function CollectorFormLegacyDialog({ collector, onClose, onSave }: Readonly<{ co
         <label>Cobrador:<input autoFocus value={draft.name} onChange={(event) => update("name", event.target.value)} /></label>
         <div className="legacy-dialog-row two-cols">
           <label>Ident.:<input value={draft.ident} onChange={(event) => update("ident", event.target.value)} /></label>
-          <label>Celular:<input value={draft.cellular} onChange={(event) => update("cellular", event.target.value)} /></label>
+          <label>Teléfono:<input value={draft.cellular} onChange={(event) => update("cellular", event.target.value)} /></label>
         </div>
         <label>Cuenta:<span className="legacy-lookup-field"><input value={draft.accountId} disabled readOnly /><button type="button" aria-label="Buscar cuenta">...</button></span></label>
         <div className="legacy-dialog-actions centered"><button type="submit">Aceptar</button><button type="button" onClick={onClose}>Cancelar</button></div>
@@ -1851,7 +1851,7 @@ function CollectorsLegacyView({ snapshot, onRefresh }: Readonly<{ snapshot: Snap
       <LegacyToolbar onFirst={() => moveSelectedCollector("first")} onPrevious={() => moveSelectedCollector("up")} onNext={() => moveSelectedCollector("down")} onLast={() => moveSelectedCollector("last")} onNew={() => setFormMode("new")} onEdit={() => selectedCollector ? setFormMode("edit") : toast.info("Seleccione un cobrador.")} onDelete={() => selectedCollector ? setConfirmDelete(true) : toast.info("Seleccione un cobrador.")} onRefresh={refreshCollectors} extra={<><button type="button" disabled={!selectedCollector} onClick={() => setRelationDialog("zones")}>Z</button><button type="button" disabled={!selectedCollector} onClick={() => setRelationDialog("limits")}>L</button><button type="button" disabled={!selectedCollector} onClick={() => setRelationDialog("routes")}>R</button><button type="button" disabled={!selectedCollector} title="Balances de Efectivo" onClick={() => setRelationDialog("balances")}><Wallet size={15} /></button></>} />
       <div className="legacy-mdi-table-wrap">
         <table className="legacy-mdi-table collectors-grid">
-          <thead><tr><th>Cod.</th><th>Cobrador</th><th>Celular</th><th>Cuenta</th><th>Act.</th></tr></thead>
+          <thead><tr><th>Cod.</th><th>Cobrador</th><th>Teléfono</th><th>Cuenta</th><th>Act.</th></tr></thead>
           <tbody>
             {collectors.map((collector, index) => {
               const isSelected = selectedCollectorId === collector.id;
@@ -2439,12 +2439,15 @@ export function ClientDataDialog({ client, readOnly = false, zones, routes, defa
     location: client?.location ?? "",
     zone: client?.zone ?? "No Definida",
     routeId: client?.routeId ?? "",
-    phone: client?.phone ?? "",
+    // Teléfono and Celular are the same number (Rardiel, 29-10-2026): only Teléfono is shown, with the Celular
+    // of older records when the phone is empty.
+    phone: client?.phone || client?.cellular || "",
     cellular: client?.cellular ?? "",
     email: client?.email ?? "",
     note: client?.note ?? "",
     active: client?.active ?? true,
   });
+  const shownPhone = client?.phone || client?.cellular || "";
   const [error, setError] = useState("");
   const zoneOptions = ["No Definida", ...zones.filter((zone) => zone !== "No Definida")];
   const [generating, setGenerating] = useState(false);
@@ -2504,11 +2507,11 @@ export function ClientDataDialog({ client, readOnly = false, zones, routes, defa
         throw new Error("Selecciona una ruta válida antes de guardar el cliente.");
       }
       validatePhone(draft.phone, "Teléfono");
-      validatePhone(draft.cellular, "Celular");
       validateEmail(draft.email);
       validateText(draft.note, "Nota", INPUT_LIMITS.note, { multiline: true });
       setError("");
-      let submitted = client ? draft : copyPhoneIntoEmptyFields(draft);
+      // A changed (or cleared) Teléfono replaces the Celular too, so the old number does not come back.
+      let submitted = !client ? copyPhoneIntoEmptyFields(draft) : draft.phone !== shownPhone ? { ...draft, cellular: draft.phone } : draft;
       if (!client && !submitted.code.trim()) {
         // The code comes from a reservation that can be used only once: a second attempt
         // after an unconfirmed reply is rejected instead of creating the client twice.
@@ -2557,13 +2560,12 @@ export function ClientDataDialog({ client, readOnly = false, zones, routes, defa
         <label className="client-form-row"><span>Moneda preferida:</span><select aria-label="Moneda preferida del cliente" value={draft.preferredCurrency} onChange={(event) => setDraft((current) => ({ ...current, preferredCurrency: event.target.value as ClientLegacyDraft["preferredCurrency"] }))}>{["DOP", "USD", "EUR"].map((currency) => <option key={currency}>{currency}</option>)}</select></label>
         <div className="client-contact-row">
           <label>Teléfono:<input type="tel" maxLength={INPUT_LIMITS.phone} value={draft.phone} onChange={(event) => update("phone", event.target.value)} /></label>
-          <label>Celular:<input type="tel" maxLength={INPUT_LIMITS.phone} value={draft.cellular} onChange={(event) => update("cellular", event.target.value)} /></label>
           <label>EMail:<input type="email" maxLength={INPUT_LIMITS.email} value={draft.email} onChange={(event) => update("email", event.target.value)} /></label>
         </div>
         <label className="client-form-row"><span>Nota:</span><input maxLength={INPUT_LIMITS.note} value={draft.note} onChange={(event) => update("note", event.target.value)} /></label>
         </fieldset>
-        {!client && <p className="client-form-hint">Al guardar un cliente nuevo, el teléfono se copia a Celular y Nota si los dejas vacíos.</p>}
-        {!readOnly && <button type="button" title="Completa celular y nota únicamente si están vacíos." disabled={!draft.phone.trim()} onClick={() => setDraft(copyPhoneIntoEmptyFields)}>Copiar teléfono a campos vacíos</button>}
+        {!client && <p className="client-form-hint">Al guardar un cliente nuevo, el teléfono se copia a Nota si la dejas vacía.</p>}
+        {!readOnly && <button type="button" title="Completa la nota únicamente si está vacía." disabled={!draft.phone.trim()} onClick={() => setDraft(copyPhoneIntoEmptyFields)}>Copiar teléfono a campos vacíos</button>}
         {!client && <button type="button" disabled={!draft.phone.trim()} onClick={usePhoneAsCode}>Usar teléfono como código</button>}
         {readOnly ? <><p className="client-form-hint">Solo consulta: tu cuenta no tiene permiso para modificar clientes.</p><div className="legacy-dialog-actions"><button type="button" autoFocus onClick={onClose}>Cerrar</button></div></>
           : <div className="legacy-dialog-actions"><button type="submit" disabled={generating}>Aceptar</button><button type="button" disabled={generating} onClick={onClose}>Cancelar</button></div>}
@@ -2939,7 +2941,7 @@ function ClientsLegacyView({ snapshot, actorId, onRefresh }: Readonly<{ snapshot
           <label className="client-radio-line"><input type="radio" name="client-filter" checked={filterMode === "route"} onChange={() => setFilterMode("route")} /> <span>por Ruta:</span></label><select aria-label="Ruta" value={routeFilter} disabled={filterMode !== "route"} onChange={(event) => setRouteFilter(event.target.value)}><option value={NOT_DEFINED_ROUTE}>{NOT_DEFINED}</option>{snapshot.routes.map((route) => <option key={route.id} value={route.id}>{route.name}</option>)}</select>
           <label>Estado:<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as ClientPageStatus)}><option>Activo</option><option>Inactivo</option><option>Todos</option></select></label>
         </aside>}
-        <div className="clients-grid-panel"><div className="legacy-mdi-table-wrap"><table className="legacy-mdi-table clients-grid"><thead><tr><th>Código</th><th>Identificación</th><th>Cliente</th><th>Zona</th><th>Ruta</th><th>Teléfono</th><th>Celular</th><th>Activo</th></tr></thead><tbody aria-busy={clientPageLoading}>{visibleClients.map((client) => { const isSelected = selectedClient?.id === client.id; const openClient = () => { chooseClient(client.id); openClientForm("edit"); }; return <tr key={client.id} className={isSelected ? "selected-row" : ""} aria-selected={isSelected} role="button" tabIndex={0} title={access.canEdit ? "Doble clic o Intro para editar" : "Doble clic o Intro para consultar"} onClick={() => chooseClient(client.id)} onDoubleClick={openClient} onKeyDown={(event) => handleRowKeys(event, () => chooseClient(client.id), openClient)}><td><span className={`mdi-row-select ${isSelected ? "selected" : ""}`}>{client.code}</span></td><td>{client.identification || "No registrada"}</td><td>{client.name}</td><td>{client.zone}</td><td>{snapshot.routes.find((route) => route.id === client.routeId)?.name ?? NOT_DEFINED}</td><td>{client.phone}</td><td>{client.cellular}</td><td><LegacyCheck checked={client.active} /></td></tr>; })}{!visibleClients.length && <tr><td colSpan={8} className="clients-empty-cell">{clientPageLoading ? "Cargando clientes…" : clientPageError ? clientPageError : "No hay clientes para estos filtros."}</td></tr>}</tbody></table></div><div className="legacy-footerbar"><span>Cantidad</span><strong>{clientPage.total}</strong><span className="clients-page-status" aria-live="polite">Página {pageNumber} de {pageCount}{clientPage.total ? ` · ${clientPage.offset + 1}–${clientPage.offset + visibleClients.length}` : ""}</span>{clientPageError && visibleClients.length > 0 && <span role="alert">{clientPageError}</span>}</div></div>
+        <div className="clients-grid-panel"><div className="legacy-mdi-table-wrap"><table className="legacy-mdi-table clients-grid"><thead><tr><th>Código</th><th>Identificación</th><th>Cliente</th><th>Zona</th><th>Ruta</th><th>Teléfono</th><th>Activo</th></tr></thead><tbody aria-busy={clientPageLoading}>{visibleClients.map((client) => { const isSelected = selectedClient?.id === client.id; const openClient = () => { chooseClient(client.id); openClientForm("edit"); }; return <tr key={client.id} className={isSelected ? "selected-row" : ""} aria-selected={isSelected} role="button" tabIndex={0} title={access.canEdit ? "Doble clic o Intro para editar" : "Doble clic o Intro para consultar"} onClick={() => chooseClient(client.id)} onDoubleClick={openClient} onKeyDown={(event) => handleRowKeys(event, () => chooseClient(client.id), openClient)}><td><span className={`mdi-row-select ${isSelected ? "selected" : ""}`}>{client.code}</span></td><td>{client.identification || "No registrada"}</td><td>{client.name}</td><td>{client.zone}</td><td>{snapshot.routes.find((route) => route.id === client.routeId)?.name ?? NOT_DEFINED}</td><td>{client.phone || client.cellular}</td><td><LegacyCheck checked={client.active} /></td></tr>; })}{!visibleClients.length && <tr><td colSpan={7} className="clients-empty-cell">{clientPageLoading ? "Cargando clientes…" : clientPageError ? clientPageError : "No hay clientes para estos filtros."}</td></tr>}</tbody></table></div><div className="legacy-footerbar"><span>Cantidad</span><strong>{clientPage.total}</strong><span className="clients-page-status" aria-live="polite">Página {pageNumber} de {pageCount}{clientPage.total ? ` · ${clientPage.offset + 1}–${clientPage.offset + visibleClients.length}` : ""}</span>{clientPageError && visibleClients.length > 0 && <span role="alert">{clientPageError}</span>}</div></div>
       </div>
       {formMode && <ClientDataDialog key={`${clientDialogVersion.current}-${formMode === "edit" ? selectedClient?.id ?? "" : "nuevo"}`} client={formMode === "edit" ? selectedClient : undefined} readOnly={formMode === "edit" && !access.canEdit} zones={zones} routes={snapshot.routes} onClose={closeClientForm} onSave={saveClient} />}
       {confirmDelete && <LegacyConfirmDialog message={selectedClient?.active ? "¿Inactivar cliente? Se conserva su historial." : "¿Activar cliente?"} onYes={() => void inactivateClient()} onNo={() => setConfirmDelete(false)} />}
@@ -3004,7 +3006,7 @@ function AuthorizationRequestDialog({ request, onClose, onSave }: Readonly<{ req
         <div className="legacy-config-row"><label>Fecha:<input type="date" value={draft.date} onChange={(event) => update("date", event.target.value)} /></label><label>Estado:<select value={draft.status} onChange={(event) => update("status", event.target.value)}><option>Pendiente</option><option>Aprobada</option><option>Rechazada</option></select></label></div>
         <label>Cobrador:<input value={draft.collector} onChange={(event) => update("collector", event.target.value)} /></label>
         <div className="legacy-config-row"><label>Código:<input value={draft.code} onChange={(event) => update("code", event.target.value)} /></label><label>Cliente:<input autoFocus value={draft.client} onChange={(event) => update("client", event.target.value)} /></label></div>
-        <div className="legacy-config-row"><label>Telefono:<input value={draft.phone} onChange={(event) => update("phone", event.target.value)} /></label><label>Celular:<input value={draft.cellular} onChange={(event) => update("cellular", event.target.value)} /></label></div>
+        <label>Teléfono:<input value={draft.phone} onChange={(event) => update("phone", event.target.value)} /></label>
         <div className="legacy-dialog-actions"><button type="submit">Aceptar</button><button type="button" onClick={onClose}>Cancelar</button></div>
       </form>
     </LegacyDialog>
@@ -3098,10 +3100,10 @@ function AuthorizationRequestsLegacyView({ snapshot }: Readonly<{ snapshot: Snap
         <div className="authorization-grid-panel">
           <div className="legacy-mdi-table-wrap">
             <table className="legacy-mdi-table authorization-grid">
-              <thead><tr><th>Nro.</th><th>Fecha</th><th>Cobrador</th><th>Código</th><th>Cliente</th><th>Telefono</th><th>Celular</th></tr></thead>
+              <thead><tr><th>Nro.</th><th>Fecha</th><th>Cobrador</th><th>Código</th><th>Cliente</th><th>Teléfono</th></tr></thead>
               <tbody>{visibleRequests.map((request, index) => {
                 const isSelected = selectedRequestId === request.id;
-                return <tr key={request.id} className={isSelected ? "selected-row" : ""} role="button" tabIndex={0} onClick={() => setSelectedRequestId(request.id)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedRequestId(request.id))}><td><span className={`mdi-row-select ${isSelected ? "selected" : ""}`}>{index + 1}</span></td><td>{request.date}</td><td>{request.collector}</td><td>{request.code}</td><td>{request.client}</td><td>{request.phone}</td><td>{request.cellular}</td></tr>;
+                return <tr key={request.id} className={isSelected ? "selected-row" : ""} role="button" tabIndex={0} onClick={() => setSelectedRequestId(request.id)} onKeyDown={(event) => handleKeyboardActivation(event, () => setSelectedRequestId(request.id))}><td><span className={`mdi-row-select ${isSelected ? "selected" : ""}`}>{index + 1}</span></td><td>{request.date}</td><td>{request.collector}</td><td>{request.code}</td><td>{request.client}</td><td>{request.phone}</td></tr>;
               })}</tbody>
             </table>
           </div>
@@ -8393,7 +8395,7 @@ function CashDeliveriesOperationalView({ snapshot, currentUser, onRefresh }: Rea
           <label className="field compact-field">Fecha Inicial:<input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} /></label>
           <label className="field compact-field">Fecha final:<input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} /></label>
           <label className="field compact-field">Estado:<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="Todos">Todos</option><option value="Activo">Activo</option><option value="Inactivo">Inactivo</option></select></label>
-          {([["reference", "Serie / referencia:"], ["phone", "Celular del cobrador:"], ["name", "Nombre del cobrador:"], ["identification", "Identificación del cobrador:"], ["sender", "Registrado por:"], ["note", "Nota:"]] as const).map(([key, label]) => <label key={key} className="field compact-field">{label}<input aria-label={label.replace(/:$/, "")} maxLength={key === "note" ? INPUT_LIMITS.note : 160} value={searchFields[key]} onChange={(event) => setSearchFields((current) => ({ ...current, [key]: event.target.value }))} /></label>)}
+          {([["reference", "Serie / referencia:"], ["phone", "Teléfono del cobrador:"], ["name", "Nombre del cobrador:"], ["identification", "Identificación del cobrador:"], ["sender", "Registrado por:"], ["note", "Nota:"]] as const).map(([key, label]) => <label key={key} className="field compact-field">{label}<input aria-label={label.replace(/:$/, "")} maxLength={key === "note" ? INPUT_LIMITS.note : 160} value={searchFields[key]} onChange={(event) => setSearchFields((current) => ({ ...current, [key]: event.target.value }))} /></label>)}
           <p className="catalog-scope-note">Entregas de oficina al cobrador. Busca referencias guardadas y datos reales del cobrador; los registros antiguos pueden no indicar quién los creó.</p>
         </aside>}
         <section className="legacy-grid-panel cash-deliveries-grid-panel" aria-label="Grilla de entregas de dinero">
@@ -8412,7 +8414,7 @@ function CashDeliveriesOperationalView({ snapshot, currentUser, onRefresh }: Rea
       </div>
     </div>
     {formOpen && <CashDeliveryDataDialog actorId={currentUser.id} snapshot={snapshot} onClose={() => setFormOpen(false)} onSave={saveDelivery} />}
-    {detail && <LegacyDialog title="Detalle de la Entrega de Dinero..." className="cash-delivery-detail-dialog" onClose={() => setDetailId("")}><div className="legacy-dialog-form"><dl className="cash-delivery-detail"><dt>Referencia</dt><dd>{detail.reference || detail.receiptToken || detail.id}</dd><dt>Fecha</dt><dd>{businessTimestamp(detail.createdAt)}</dd><dt>Registrado por</dt><dd>{deliveryActor(detail) || "No registrado"}</dd><dt>Cobrador</dt><dd>{detailCollector?.name ?? "No disponible"}</dd><dt>Identificación del cobrador</dt><dd>{detailCollector?.ident || "No registrada"}</dd><dt>Celular</dt><dd>{detailCollector?.cellular || "No registrado"}</dd><dt>Moneda</dt><dd>{currencyCode(detail.currency)}</dd><dt>Importe</dt><dd>{nativeMoney(detail.amount, detail.currency)}</dd><dt>Estado</dt><dd>{detail.cancelledAt ? "Cancelada" : "Activa"}</dd><dt>Nota</dt><dd>{detail.note || "Sin nota"}</dd>{detail.cancelledAt && <><dt>Cancelación</dt><dd>{detail.cancellationNote || "Sin motivo registrado"}</dd></>}</dl><table className="legacy-mdi-table"><thead><tr><th>Denominación</th><th>Cantidad</th><th>Importe</th></tr></thead><tbody>{[...(detail.denominations ?? [])].sort((a, b) => a.denominacion - b.denominacion).map((line) => <tr key={line.denominacion}><td>{nativeMoney(line.denominacion, detail.currency)}</td><td>{line.cantidad}</td><td>{nativeMoney(line.denominacion * line.cantidad, detail.currency)}</td></tr>)}{!detail.denominations?.length && <tr><td colSpan={3}>Sin desglose registrado.</td></tr>}</tbody></table><div className="legacy-dialog-actions centered"><button type="button" onClick={() => setDetailId("")}>Aceptar</button></div></div></LegacyDialog>}
+    {detail && <LegacyDialog title="Detalle de la Entrega de Dinero..." className="cash-delivery-detail-dialog" onClose={() => setDetailId("")}><div className="legacy-dialog-form"><dl className="cash-delivery-detail"><dt>Referencia</dt><dd>{detail.reference || detail.receiptToken || detail.id}</dd><dt>Fecha</dt><dd>{businessTimestamp(detail.createdAt)}</dd><dt>Registrado por</dt><dd>{deliveryActor(detail) || "No registrado"}</dd><dt>Cobrador</dt><dd>{detailCollector?.name ?? "No disponible"}</dd><dt>Identificación del cobrador</dt><dd>{detailCollector?.ident || "No registrada"}</dd><dt>Teléfono</dt><dd>{detailCollector?.cellular || "No registrado"}</dd><dt>Moneda</dt><dd>{currencyCode(detail.currency)}</dd><dt>Importe</dt><dd>{nativeMoney(detail.amount, detail.currency)}</dd><dt>Estado</dt><dd>{detail.cancelledAt ? "Cancelada" : "Activa"}</dd><dt>Nota</dt><dd>{detail.note || "Sin nota"}</dd>{detail.cancelledAt && <><dt>Cancelación</dt><dd>{detail.cancellationNote || "Sin motivo registrado"}</dd></>}</dl><table className="legacy-mdi-table"><thead><tr><th>Denominación</th><th>Cantidad</th><th>Importe</th></tr></thead><tbody>{[...(detail.denominations ?? [])].sort((a, b) => a.denominacion - b.denominacion).map((line) => <tr key={line.denominacion}><td>{nativeMoney(line.denominacion, detail.currency)}</td><td>{line.cantidad}</td><td>{nativeMoney(line.denominacion * line.cantidad, detail.currency)}</td></tr>)}{!detail.denominations?.length && <tr><td colSpan={3}>Sin desglose registrado.</td></tr>}</tbody></table><div className="legacy-dialog-actions centered"><button type="button" onClick={() => setDetailId("")}>Aceptar</button></div></div></LegacyDialog>}
     {deliveryToCancel && <MovementCancellationDialog actorId={currentUser.id} movement={deliveryToCancel} kind="entregas" onClose={() => setDeliveryToCancel(null)} onSaved={() => { setDeliveryToCancel(null); setSelectedId(""); onRefresh(); }} />}
     {printTicket && <CollectionReceiptPrintDialog receipts={[printTicket]} title="Imprimir Recibo de Entrega..." onClose={() => setPrintTicket(null)} />}
   </>;
@@ -9368,7 +9370,7 @@ function CollectorDataModal({
         <label className="field">Cobrador:<input value={name} onChange={(event) => setName(event.target.value)} required /></label>
         <div className="form-grid three-cols">
           <label className="field">Ident.:<input value={ident} onChange={(event) => setIdent(event.target.value)} placeholder="001-0000000-0" /></label>
-          <label className="field">Celular:<input value={cellular} onChange={(event) => setCellular(event.target.value)} placeholder="8095550000" /></label>
+          <label className="field">Teléfono:<input value={cellular} onChange={(event) => setCellular(event.target.value)} placeholder="8095550000" /></label>
           <label className="field">Cuenta vinculada:<select value={accountId} onChange={(event) => setAccountId(event.target.value)}><option>cob</option><option>admin</option><option>franyi</option></select></label>
         </div>
         <label className="checkbox-option"><input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /><span><strong>Estado Activo</strong><small>Permite operar y aparecer en monitores.</small></span></label>
@@ -9945,10 +9947,10 @@ function QuickRecordModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const isClient = entity === "clients";
-  const [phone, setPhone] = useState(String(raw.phone ?? ""));
+  const shownPhone = String(raw.phone || raw.cellular || "");
+  const [phone, setPhone] = useState(shownPhone);
   const [alias, setAlias] = useState(String(raw.alias ?? ""));
   const [sector, setSector] = useState(String(raw.sector ?? ""));
-  const [cellular, setCellular] = useState(String(raw.cellular ?? ""));
   const [email, setEmail] = useState(String(raw.email ?? ""));
   const [note, setNote] = useState(String(raw.note ?? ""));
   const [address, setAddress] = useState(String(raw.address ?? ""));
@@ -9986,7 +9988,7 @@ function QuickRecordModal({
           routeId: isClient ? routeId : String(raw.routeId ?? snapshot.routes[0]?.id),
           alias: isClient ? alias : undefined,
           sector: isClient ? sector : undefined,
-          cellular: isClient ? cellular : undefined,
+          cellular: isClient ? (phone === shownPhone ? String(raw.cellular ?? "") : phone) : undefined,
           email: isClient ? email : undefined,
           note: isClient ? note : undefined,
           clientId,
@@ -10029,10 +10031,6 @@ function QuickRecordModal({
             <label className="field">
               Teléfono
               <input value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="8095550000" />
-            </label>
-            <label className="field">
-              Celular
-              <input value={cellular} onChange={(event) => setCellular(event.target.value)} placeholder="8095550000" />
             </label>
             <label className="field">
               Alias

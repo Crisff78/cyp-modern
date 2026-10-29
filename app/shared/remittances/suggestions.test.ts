@@ -82,6 +82,10 @@ test("receipts take contact values from the confirmed transfer, and legacy recei
   assert.ok(rows.some((row) => row[1] === "+509111"));
   assert.ok(rows.some((row) => row[1] === "Dirección al enviar"));
   assert.ok(rows.some((row) => row[0] === "Destinatario: teléfono" && row[1] === "No registrado"));
+  // Teléfono and Celular are one number: no row says celular, and a contact with only a Celular shows it as teléfono.
+  assert.ok(!rows.some((row) => /celular/i.test(String(row[0]))));
+  const onlyCellular = contactRows({ senderContact: { id: "c", code: "C", name: "Solo celular", phone: "", cellular: "+509333", address: "" } } as Transfer);
+  assert.deepEqual(onlyCellular.find((row) => row[0] === "Remitente: teléfono"), ["Remitente: teléfono", "+509333"]);
   assert.deepEqual(contactRows({} as Transfer), [["Remitente: contacto", "No guardado en esta operación"], ["Destinatario: contacto", "No guardado en esta operación"]]);
 });
 
