@@ -133,6 +133,7 @@ dialog.remittances-dialog { position: fixed; inset: 0; margin: auto; }
    the window, with its own scroll. The rules reach only the heading, the notices, the form and the list: the
    dialogs keep their sizes and the collector terminal never carries this class. A phone keeps one scroll for
    the window and the touch sizes of the media query below. */
+.remittance-split { display: none; }
 @media (min-width: 701px) {
   .remittances.remittances-fixed { display: flex; flex-direction: column; overflow: hidden; padding: 4px 10px; }
   .remittances-fixed > * { flex: 0 0 auto; }
@@ -140,6 +141,15 @@ dialog.remittances-dialog { position: fixed; inset: 0; margin: auto; }
      placed over the window by the picker (floating), so the form keeps its scroll and never covers the list. */
   .remittances-fixed > .remittance-send-form { flex: 0 1 auto; min-height: 0; overflow: auto; }
   .remittances-fixed > .remittance-list-area { flex: 1 1 0; min-height: 140px; display: flex; flex-direction: column; }
+  /* The bar between the form and the list: dragging it (or ↑ ↓ on it) changes the height of the list, kept per account. */
+  /* It sits over the margins between them (no room taken): a laptop screen keeps the same rows of the list. */
+  .remittances-fixed > .remittance-split { display: block; position: relative; z-index: 2; height: 8px; margin: -4px 0; cursor: row-resize; touch-action: none; }
+  .remittances-fixed > .remittance-split::after { content: ""; position: absolute; left: 50%; top: 2px; width: 48px; height: 4px; margin-left: -24px; border-radius: 2px; background: var(--cyp-border-strong, #9aa8b6); }
+  .remittances-fixed > .remittance-split:hover::after, .remittances-fixed.is-resizing > .remittance-split::after { background: var(--rem-blue, #1d4f91); }
+  .remittances-fixed > .remittance-split:focus-visible { outline: 2px solid var(--rem-blue, #1d4f91); outline-offset: -2px; }
+  .remittances-fixed.is-resizing { user-select: none; }
+  .remittances-fixed.has-list-size > .remittance-send-form { flex: 1 1 0; min-height: 120px; }
+  .remittances-fixed.has-list-size > .remittance-list-area { flex-grow: 0; flex-shrink: 1; }
   .remittances-fixed .remittance-list-area > * { flex: 0 0 auto; }
   .remittances-fixed .remittance-list-area > .remittance-table-wrap { flex: 1 1 0; min-height: 0; overflow: auto; }
   .remittances-fixed .remittance-list-area .remittance-table thead th { position: sticky; top: 0; z-index: 1; }

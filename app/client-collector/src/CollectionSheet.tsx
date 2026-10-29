@@ -19,7 +19,7 @@ import type { Operation } from "./types";
 import { browserPaymentIntents, confirmedPaymentReceipt, intentStorageKey, type IntentScope, type PaymentIntent } from "./services/paymentIntents";
 import { isMockToken, mockLedgerId } from "./mock";
 import { assertCentsLimit, isIntegerDraft } from "../../shared/inputRules";
-import { editMoneyEntry, moneyEntryDisplay, MONEY_ENTRY_ERROR } from "../../shared/moneyEntry";
+import { editMoneyEntry, moneyTypedDisplay, MONEY_ENTRY_ERROR } from "../../shared/moneyEntry";
 import { decimalCents } from "../../shared/remittances/output";
 
 const denominations = [2000, 1000, 500, 200, 100, 50, 25, 10, 5, 1];
@@ -60,6 +60,8 @@ export function CollectionSheet({
       : (operation.outstanding / 100).toFixed(2),
   );
   const [replace, setReplace] = useState(true);
+  // What the keypad typed, from left to right (1500.5, 12.), shown as typed in the amount (Rardiel, 29-10-2026).
+  const [typed, setTyped] = useState<string | undefined>(undefined);
   const [amountEntryError, setAmountEntryError] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(initial.error);
@@ -108,10 +110,11 @@ export function CollectionSheet({
   function keyPress(key: string) {
     if (attempt || busy) return;
     setError("");
-    const display = replace ? "" : moneyEntryDisplay(value);
+    const display = replace ? "" : moneyTypedDisplay(typed ?? value);
     const next = editMoneyEntry(display, display.length, display.length, key === "delete" ? "" : key, key === "delete" ? "backward" : undefined);
     if (!next || (next.value !== "" && decimalCents(next.value, true) > maximumAmount)) { setAmountEntryError(true); setError(MONEY_ENTRY_ERROR); return; }
     setValue(next.value);
+    setTyped(next.typed);
     setAmountEntryError(false);
     setReplace(false);
   }
@@ -236,10 +239,12 @@ export function CollectionSheet({
               <MoneyInput
                 id="collection-amount"
                 value={value}
+                typedText={typed}
                 readOnly={!!attempt || busy}
                 onFocus={(event) => { setReplace(true); event.currentTarget.select(); }}
                 onValueChange={(nextValue) => {
                   setValue(nextValue);
+                  setTyped(undefined);
                   setAmountEntryError(false);
                   setError("");
                   setReplace(false);
@@ -265,7 +270,7 @@ export function CollectionSheet({
                 "7",
                 "8",
                 "9",
-                "00",
+                ".",
                 "0",
                 "delete",
               ].map((key) => (

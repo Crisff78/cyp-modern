@@ -12,7 +12,8 @@ import {
   moneyEntryCents,
   moneyEntryDisplay,
   moneyEntryPaste,
-  moneyEntryValue,
+  moneyTypedCents,
+  moneyTypedDisplay,
 } from "./moneyEntry";
 
 type MoneyInputProps = Omit<
@@ -22,18 +23,27 @@ type MoneyInputProps = Omit<
   value: string | number;
   onValueChange?: (value: string) => void;
   onInvalidEntry?: () => void;
+  /** What an outside keypad has typed for this value (1500.5, 12.), shown as typed while it means the same amount. */
+  typedText?: string;
 };
 
-/** The display is grouped, but consumers always receive an exact ungrouped decimal amount. */
+const sameAmount = (typed: string, value: string) =>
+  typed === "" ? value === "" : value !== "" && moneyTypedCents(typed) !== undefined && moneyTypedCents(typed) === moneyEntryCents(value);
+
+/**
+ * An amount written from left to right, as any number (Rardiel, 29-10-2026): 1500 is 1,500.00 and the point starts the
+ * cents. While the field is being written it shows what was typed (1,500.5); on leaving it, the whole amount (1,500.50).
+ * The display is grouped, but consumers always receive an exact ungrouped decimal amount with two decimals.
+ */
 export function MoneyInput({
   value,
   onValueChange,
   onInvalidEntry,
+  typedText,
   onKeyDown,
   onPaste,
   onFocus,
   onBlur,
-  onSelect,
   min,
   max,
   title,
@@ -42,17 +52,24 @@ export function MoneyInput({
   const input = useRef<HTMLInputElement>(null),
     caret = useRef<number | null>(null);
   const previousValue = useRef(value);
-  const fractionPosition = useRef<number | null>(null);
+  // What is being typed while the field has the keyboard (without commas), or null.
+  const [typed, setTyped] = useState<string | null>(null);
   const [error, setError] = useState("");
-  const errorId = useId(),
-    display = moneyEntryDisplay(String(value));
+  const errorId = useId();
+  const amount = String(value);
+  const display =
+    typed !== null && sameAmount(typed, amount)
+      ? moneyTypedDisplay(typed)
+      : typedText !== undefined && sameAmount(typedText, amount)
+        ? moneyTypedDisplay(typedText)
+        : moneyEntryDisplay(amount);
   const editable = !props.readOnly && !props.disabled;
   const reject = () => {
     setError(MONEY_ENTRY_ERROR);
     input.current?.setCustomValidity(onInvalidEntry ? "" : MONEY_ENTRY_ERROR);
     onInvalidEntry?.();
   };
-  const accept = (next: string, position?: number) => {
+  const accept = (next: string, nextTyped: string | null, position?: number) => {
     const cents = next === "" ? undefined : moneyEntryCents(next);
     const ceiling =
       max === undefined ? undefined : moneyEntryCents(String(max));
@@ -65,11 +82,13 @@ export function MoneyInput({
     }
     setError("");
     input.current?.setCustomValidity("");
-    caret.current = position ?? moneyEntryDisplay(next).length;
+    setTyped(nextTyped);
+    const shown = nextTyped !== null ? moneyTypedDisplay(nextTyped) : moneyEntryDisplay(next);
+    caret.current = position ?? shown.length;
     onValueChange?.(next);
     // A zero or a rejected update may keep the same React value.
     if (input.current) {
-      input.current.value = moneyEntryDisplay(next);
+      input.current.value = shown;
       input.current.setSelectionRange(caret.current, caret.current);
     }
   };
@@ -87,8 +106,7 @@ export function MoneyInput({
       reject();
       return;
     }
-    if (deletion && moneyEntryDisplay(next.value) === display) return;
-    accept(next.value, next.caret);
+    accept(next.value, next.typed, next.caret);
   };
   useLayoutEffect(() => {
     const element = input.current;
@@ -113,23 +131,23 @@ export function MoneyInput({
         label.textContent?.trim() ?? "Importe",
       );
     }
-    const amount = moneyEntryCents(String(value)),
+    const cents = moneyEntryCents(String(value)),
       floor = min === undefined ? undefined : moneyEntryCents(String(min));
     const ceiling =
       max === undefined ? undefined : moneyEntryCents(String(max));
     element.setCustomValidity(
       (onInvalidEntry || externallyCorrected ? "" : error) ||
-        (editable && value !== "" && amount === undefined
+        (editable && value !== "" && cents === undefined
           ? MONEY_ENTRY_ERROR
           : editable &&
-              amount !== undefined &&
+              cents !== undefined &&
               floor !== undefined &&
-              amount < floor
+              cents < floor
             ? `El importe mínimo es ${moneyEntryDisplay(String(min))}.`
             : editable &&
-                amount !== undefined &&
+                cents !== undefined &&
                 ceiling !== undefined &&
-                amount > ceiling
+                cents > ceiling
               ? `El importe máximo es ${moneyEntryDisplay(String(max))}.`
               : ""),
     );
@@ -143,9 +161,11 @@ export function MoneyInput({
         {...props}
         ref={input}
         type="text"
-        inputMode="numeric"
+        // The keyboard of a telephone with the point, for the cents.
+        inputMode="decimal"
         autoComplete={props.autoComplete ?? "off"}
         spellCheck={false}
+        // "cents": the amount reaches the API in whole cents (keyboard.ts and the tests look for this mark).
         data-money-input="cents"
         value={display}
         placeholder={props.placeholder ?? "0.00"}
@@ -157,18 +177,13 @@ export function MoneyInput({
             .join(" ") || undefined
         }
         onFocus={(event) => {
-          fractionPosition.current = null;
+          setTyped(null);
           onFocus?.(event);
         }}
         onBlur={(event) => {
-          fractionPosition.current = null;
+          // Leaving the field shows the whole amount: 1,500.5 becomes 1,500.50.
+          setTyped(null);
           onBlur?.(event);
-        }}
-        onSelect={(event) => {
-          onSelect?.(event);
-        }}
-        onPointerDown={() => {
-          fractionPosition.current = null;
         }}
         onKeyDown={(event) => {
           onKeyDown?.(event);
@@ -181,52 +196,28 @@ export function MoneyInput({
             event.nativeEvent.isComposing
           )
             return;
-          if (/^[0-9]$/.test(event.key)) {
+          if (/^[0-9.]$/.test(event.key)) {
             event.preventDefault();
-            if (
-              fractionPosition.current !== null &&
-              moneyEntryCents(String(value)) !== undefined
-            ) {
-              if (fractionPosition.current >= 2) {
-                reject();
-                return;
-              }
-              const [whole, fraction] = moneyEntryValue(
-                moneyEntryCents(String(value))!,
-              ).split(".");
-              const position = fractionPosition.current;
-              const next = `${whole}.${fraction.slice(0, position)}${event.key}${fraction.slice(position + 1)}`;
-              fractionPosition.current = position + 1;
-              accept(next, moneyEntryDisplay(next).indexOf(".") + position + 2);
-            } else edit(event.key);
+            edit(event.key);
           } else if (event.key === "Backspace" || event.key === "Delete") {
             event.preventDefault();
-            fractionPosition.current = null;
             edit("", event.key === "Backspace" ? "backward" : "forward");
-          } else if (event.key === ".") {
-            event.preventDefault();
-            fractionPosition.current = 0;
-            if (value === "") accept("0.00");
-            const element = event.currentTarget,
-              position = element.value.indexOf(".") + 1;
-            element.setSelectionRange(position, position + 1);
           } else if (event.key.length === 1) {
             event.preventDefault();
             reject();
-          } else fractionPosition.current = null;
+          }
         }}
         onPaste={(event) => {
           if (!editable) return;
           // Validate the entire clipboard before the browser can truncate it.
           event.preventDefault();
-          fractionPosition.current = null;
           const next = moneyEntryPaste(event.clipboardData.getData("text"));
           if (next === undefined) {
             reject();
             return;
           }
           onPaste?.(event);
-          accept(next);
+          accept(next, null);
         }}
         onDrop={(event) => {
           event.preventDefault();
@@ -237,9 +228,8 @@ export function MoneyInput({
           // Mobile keyboards, autofill and speech need the same rules without keydown.
           const nextText = event.target.value,
             native = event.nativeEvent as InputEvent;
-          fractionPosition.current = null;
           if (nextText === "") {
-            accept("");
+            accept("", "");
             return;
           }
           if (
@@ -251,7 +241,7 @@ export function MoneyInput({
             if (next === undefined) {
               event.target.value = display;
               reject();
-            } else accept(next);
+            } else accept(next, null);
             return;
           }
           let start = 0,
@@ -277,14 +267,14 @@ export function MoneyInput({
             if (next === undefined) {
               event.target.value = display;
               reject();
-            } else accept(next);
+            } else accept(next, null);
             return;
           }
           const next = editMoneyEntry(display, start, oldEnd, inserted);
           if (!next) {
             event.target.value = display;
             reject();
-          } else accept(next.value, next.caret);
+          } else accept(next.value, next.typed, next.caret);
         }}
       />
       {error && (
