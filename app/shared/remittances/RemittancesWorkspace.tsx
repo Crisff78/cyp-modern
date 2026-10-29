@@ -21,6 +21,7 @@ import { QuickClientDialog } from "./QuickClientDialog";
 import { restrictPaste } from "./fieldInput";
 import { advanceCaptureField } from "./formKeyboard";
 import { focusNextField } from "../keyboard";
+import { useAdjustablePanel } from "../useAdjustablePanel";
 import { currentOperationalWeek } from "../operationalWeek";
 import { remittanceReportDefinitions, remittanceReportDefinition, remittanceReportPath, remittanceReportSections, remittanceReportTitle, type RemittanceReportFilters, type RemittanceReportType } from "./reporting";
 import { previousOpenCashDate, remittanceCashNotice } from "./cashNotice";
@@ -60,6 +61,7 @@ const definitiveDomainErrors = new Set(["QUOTE_CHANGED", "COMMISSION_POLICY_MISM
 type Draft = { senderClientId: string; recipientClientId: string; sendingUserId: string; sourceCurrency: Currency; destinationCurrency: Currency; amount: string; amountMode: AmountMode; deliveryConceptId: string; note: string };
 const NO_DELIVERY = "sin-comision";
 // Cents as the plain amount a money box holds (1234 → "12.34").
+const LIST_MIN_HEIGHT = 140, FORM_MIN_HEIGHT = 120;
 const centsDraft = (cents: number) => `${Math.trunc(cents / 100)}.${String(Math.abs(cents) % 100).padStart(2, "0")}`;
 for (const code of ["INVALID_PAYMENT", "INSUFFICIENT_TENDERED", "PAYMENT_NOT_VERIFIED", "REFUND_NOT_VERIFIED"]) definitiveDomainErrors.add(code);
 const statusText = { pending: "Pendiente de entrega", paid: "Pagado", cancelled: "Cancelado" };
@@ -277,6 +279,19 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   const refreshRequests = useRef(new LatestRequestGate());
   const working = busy || quoteBusy || reportBusy;
   const root = useRef<HTMLElement>(null);
+  // The list under the form of the sending window: its height is the user's, dragging the bar above it, and is kept per
+  // account (Rardiel, 29-10-2026: «poder ajustarlas como yo prefiera y que se queden guardadas como yo las dejé siempre»).
+  const listArea = useRef<HTMLDivElement>(null);
+  const listMax = useCallback(() => {
+    const box = root.current, list = listArea.current;
+    if (!box || !list) return LIST_MIN_HEIGHT;
+    // What the window holds besides the form and the list (its heading and notices) stays; the form keeps a little room.
+    const others = [...box.children].filter((child) => child !== list && !child.matches(".remittance-send-form, .remittance-split"))
+      .reduce((total, child) => total + (child as HTMLElement).offsetHeight, 0);
+    return box.clientHeight - others - FORM_MIN_HEIGHT;
+  }, []);
+  const listSize = useAdjustablePanel({ storageKey: `remittances.envios.list.${user.id}`, axis: "y", grow: -1, panel: listArea, min: LIST_MIN_HEIGHT, max: listMax,
+    label: "Ajustar el alto del listado de envíos" });
   const [focusVersion, setFocusVersion] = useState(0);
   const lastFocus = useRef("");
   // Set by «Volver a la captura»: the cursor goes back to the sender without unfolding its catalog over the draft.
@@ -711,7 +726,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
 
   // Envíos and Entregas place the keyboard themselves (the sender without unfolding its list, the search of receipts):
   // data-own-focus keeps the desktop window from placing it first.
-  return <section ref={root} className={"remittances" + (fixedForm ? " remittances-fixed" : "")} aria-label={heading} data-own-focus={view === "envios" || view === "recibos" ? "" : undefined}>
+  return <section ref={root} className={"remittances" + (fixedForm ? " remittances-fixed" : "") + (fixedForm && listSize.size !== null ? " has-list-size" : "") + (listSize.dragging ? " is-resizing" : "")} aria-label={heading} data-own-focus={view === "envios" || view === "recibos" ? "" : undefined}>
     <header className="remittance-heading"><div><h1>{heading}</h1><p>{snapshot ? `Fecha de operación: ${snapshot.businessDate}` : "Conexión con la API"} · {user.name}</p>{fixedForm && sendCashNotice}</div><button type="button" onClick={() => void refresh()} disabled={loading || working}>{loading ? "Cargando…" : "Actualizar"}</button></header>
     {permittedTabs.length > 1 && <nav className="remittance-tabs" aria-label="Secciones de remesas">{permittedTabs.map((item) => <button key={item.id} type="button" aria-current={view === item.id ? "page" : undefined} onClick={() => changeTab(item.id)}>{item.label}</button>)}</nav>}
     {error && <div className="remittance-error" role="alert">{error}</div>}
@@ -761,7 +776,8 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
           </div> : <button disabled={working || uncertain} type="submit">{quoteBusy ? "Cotizando…" : "Calcular cotización"}</button>}
           {quote && <div className="remittance-quote"><QuoteDetails quote={quote} /><button ref={reviewButton} type="button" className="remittance-primary" disabled={working || uncertain} onClick={confirmCreate}>Revisar y confirmar envío</button></div>}
         </form>}
-        {fixedForm ? <div className="remittance-list-area">{toolbar}{transferList}</div> : transferList}
+        {fixedForm && formOpen && can("remittances.create") && <div className="remittance-split" {...listSize.separatorProps} />}
+        {fixedForm ? <div ref={listArea} className="remittance-list-area" style={listSize.size !== null ? { flexBasis: listSize.size } : undefined}>{toolbar}{transferList}</div> : transferList}
       </>}
       {view === "caja" && <>
         <p className="remittance-help">Caja solo para remesas. Saldo = lo que había al abrir + lo cobrado por envíos − devoluciones − entregas. Cada moneda se cuenta aparte.</p>
