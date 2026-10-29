@@ -32,11 +32,17 @@ test("PostgreSQL 024 preserves server rounding, policy snapshots and annulments;
     assert.deepEqual(transfer.commissionAllocation, saved.commissionAllocation); assert.deepEqual(transfer.quote, saved.quote);
     assert.equal(transfer.amountDop, 600000); assert.equal(transfer.requestedReceiveAmount, 8000); assert.equal(transfer.receiveRoundingDifference, 0);
     await assert.rejects(sql.query("UPDATE remittance_transfers SET commission_allocation=NULL WHERE id=$1", [saved.id]), /append-only/);
-    for (const tamper of [{ managerAmount: 9999 }, { currency: "USD" }, { managerId: "forged" }, { baseAmount: 8001 }, { policyRevision: null }, { extra: true }]) {
+    // Since 29-10-2026 the manager's share of the commission is saved in commission_split (044); the former column
+    // only accepts the version 1 allocations of sends made before.
+    assert.equal(saved.commissionAllocation?.version, 2);
+    for (const tamper of [{ managerAmount: 9999 }, { currency: "EUR" }, { managerId: "forged" }, { baseAmount: 501 }, { policyRevision: null }, { extra: true }]) {
       await assert.rejects(sql.query(`INSERT INTO remittance_transfers SELECT (jsonb_populate_record(NULL::remittance_transfers,
-        to_jsonb(t) || jsonb_build_object('id',$2::text,'sequence',99999999,'envio_reference','ENV99999999','recibo_reference','REC99999999','operating_code',$2::text,'commission_allocation',$3::jsonb))).*
-        FROM remittance_transfers t WHERE id=$1`, [saved.id, `forged-${Object.keys(tamper)[0]}`, JSON.stringify({ ...saved.commissionAllocation, ...tamper })]), /remittance_commission_allocation_valid/);
+        to_jsonb(t) || jsonb_build_object('id',$2::text,'sequence',99999999,'envio_reference','ENV99999999','recibo_reference','REC99999999','operating_code',$2::text,'commission_split',$3::jsonb))).*
+        FROM remittance_transfers t WHERE id=$1`, [saved.id, `forged-${Object.keys(tamper)[0]}`, JSON.stringify({ ...saved.commissionAllocation, ...tamper })]), /remittance_commission_split_valid/);
     }
+    await assert.rejects(sql.query(`INSERT INTO remittance_transfers SELECT (jsonb_populate_record(NULL::remittance_transfers,
+      to_jsonb(t) || jsonb_build_object('id','forged-old-column','sequence',99999999,'envio_reference','ENV99999999','recibo_reference','REC99999999','operating_code','forged-old-column',
+      'commission_split',NULL,'commission_allocation',$2::jsonb))).* FROM remittance_transfers t WHERE id=$1`, [saved.id, JSON.stringify(saved.commissionAllocation)]), /remittance_commission_allocation_valid/);
     await store.transaction((state) => { setCommissionPolicy(state, admin, { transactionCommissionBps: 600, managerCommissionBps: 300 }, now); cancelRemittance(state, admin, saved.id, "Cancelación QA", now); });
     const cancelled = await parallel.read(), row = cancelled.remittances.transfers.find((transfer) => transfer.id === saved.id)!;
     assert.equal(row.status, "cancelled"); assert.deepEqual(row.commissionAllocation, saved.commissionAllocation);
@@ -47,7 +53,7 @@ test("PostgreSQL 024 preserves server rounding, policy snapshots and annulments;
       await assert.rejects(sql.query("UPDATE remittance_commission_policy SET transaction_commission_bps=$1 WHERE id=1", [invalid]));
     const report = remittanceReports(cancelled, admin, { from: "2026-10-09", to: "2026-10-09", grouping: "day" });
     assert.equal(report.commissionAllocations.totals[0].managerAmount, 0); assert.ok(report.commissionAllocations.totals[0].cancelledManagerAmount >= 160);
-    const legacy = (await sql.query("SELECT id FROM remittance_transfers WHERE commission_allocation IS NULL")).rows;
+    const legacy = (await sql.query("SELECT id FROM remittance_transfers WHERE commission_allocation IS NULL AND commission_split IS NULL")).rows;
     for (const row of legacy) assert.equal(cancelled.remittances.transfers.find((transfer) => transfer.id === row.id)!.commissionAllocation, undefined);
   } finally { await sql.end(); await store.close(); await parallel.close(); }
 });

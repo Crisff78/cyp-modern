@@ -1,6 +1,7 @@
 import type { ReceiptIssuer } from "./payment.mjs";
 import { paymentMethodLabels } from "./payment.mjs";
 import type { Transfer } from "./types";
+import { payoutOf } from "./types";
 import { escapeHtml, formatDate, formatMoney, type OutputSection } from "./output";
 import { formatCrossRate } from "./crossRate";
 
@@ -8,8 +9,13 @@ const status = { pending: "Pendiente de entrega", paid: "Pagado", cancelled: "Ca
 export const defaultReceiptFooter = "Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío.";
 export type Receipt = { reference: string; date: string; status: Transfer["status"]; issuer: ReceiptIssuer; sections: OutputSection[]; footer: string };
 
-/** Explicit customer-facing allowlist. Internal commission amounts and allocations never enter the receipt. */
-export function remittanceReceipt(transfer: Transfer, fallback?: ReceiptIssuer, operator = "—", registeredBy = transfer.registeredBy === transfer.sendingUserId ? operator : "—"): Receipt {
+/**
+ * Explicit customer-facing allowlist. The manager's share and the exchange gain never enter the receipt.
+ * printed: the paper the customer takes (meeting of 29-10-2026) carries only amounts: what is sent, the charge of the send,
+ * the total paid, what the person receives and the money received and given back; no rates nor percentages. The screen
+ * keeps its detail.
+ */
+export function remittanceReceipt(transfer: Transfer, fallback?: ReceiptIssuer, operator = "—", registeredBy = transfer.registeredBy === transfer.sendingUserId ? operator : "—", printed = false): Receipt {
   const issuer = transfer.receiptIssuer ?? fallback ?? { name: "Cobros y Pagos", address: "", phone: "", email: "", footerNote: defaultReceiptFooter };
   const party = (side: "sender" | "recipient", title: string): OutputSection => {
     const contact = transfer[`${side}Contact`];
@@ -29,21 +35,36 @@ export function remittanceReceipt(transfer: Transfer, fallback?: ReceiptIssuer, 
     ["Fecha de tasa de origen", transfer.quote.sourceRateDate ?? "No registrada"], ["Fecha de tasa de destino", transfer.quote.destinationRateDate ?? "No registrada"],
   ];
   const payment = transfer.payment;
+  const calculation = transfer.calculation;
+  const delivery = calculation && calculation.deliveryCommissionAmount > 0 ? calculation : undefined;
+  const amounts: (string | number)[][] = printed ? [
+    ["Monto a enviar", formatMoney(transfer.amount, transfer.sourceCurrency)],
+    ["Cargo del envío", formatMoney(transfer.commissionAmount, transfer.sourceCurrency)],
+    ["Total pagado por el remitente", formatMoney(transfer.totalAmount, transfer.sourceCurrency)],
+    ...(delivery ? [["Cargo de entrega", formatMoney(delivery.deliveryCommissionAmount, transfer.destinationCurrency)]] : []),
+    ["Recibe el destinatario", formatMoney(payoutOf(transfer), transfer.destinationCurrency)],
+  ] : [
+    ["Monto a enviar", formatMoney(transfer.amount, transfer.sourceCurrency)],
+    ...(transfer.amountDop === undefined ? [] : [["Equivalente del principal en pesos", formatMoney(transfer.amountDop, "DOP")]]),
+    ["Cargo del envío", formatMoney(transfer.commissionAmount, transfer.sourceCurrency)],
+    ["Total pagado por el remitente", formatMoney(transfer.totalAmount, transfer.sourceCurrency)],
+    ...(calculation && (delivery || calculation.roundingAdjustment) ? [["Monto convertido", formatMoney(transfer.receiveAmount, transfer.destinationCurrency)]] : []),
+    ...(delivery ? [[`Cargo de entrega · ${delivery.deliveryConceptName}`, formatMoney(delivery.deliveryCommissionAmount, transfer.destinationCurrency)]] : []),
+    ...(calculation?.roundingAdjustment ? [["Ajuste por redondeo", formatMoney(calculation.roundingAdjustment, transfer.destinationCurrency)]] : []),
+    ["Recibe el destinatario", formatMoney(payoutOf(transfer), transfer.destinationCurrency)],
+    ...(transfer.requestedReceiveAmount === undefined ? [] : [["Importe solicitado en destino", formatMoney(transfer.requestedReceiveAmount, transfer.destinationCurrency)]]),
+    ...(transfer.receiveRoundingDifference ? [["Ajuste por redondeo", formatMoney(transfer.receiveRoundingDifference, transfer.destinationCurrency)]] : []),
+  ];
   return { reference: transfer.reciboReference, date: formatDate(transfer.createdAt), status: transfer.status, issuer, footer: issuer.footerNote || defaultReceiptFooter,
     sections: [
       { title: "Registro del recibo", columns: ["Dato", "Valor"], rows: [["Envío", transfer.envioReference], ["Código de operación", transfer.operatingCode], ["Estado", status[transfer.status]], ["Operador del envío", operator], ["Registrado por", registeredBy]] },
       party("sender", "Remitente"), party("recipient", "Destinatario"),
-      { title: "Importes del envío", columns: ["Dato", "Valor"], rows: [["Monto a enviar", formatMoney(transfer.amount, transfer.sourceCurrency)],
-        ...(transfer.amountDop === undefined ? [] : [["Equivalente del principal en pesos", formatMoney(transfer.amountDop, "DOP")]]),
-        ["Total pagado por el remitente", formatMoney(transfer.totalAmount, transfer.sourceCurrency)],
-        ["Recibe el destinatario", formatMoney(transfer.receiveAmount, transfer.destinationCurrency)],
-        ...(transfer.requestedReceiveAmount === undefined ? [] : [["Importe solicitado en destino", formatMoney(transfer.requestedReceiveAmount, transfer.destinationCurrency)]]),
-        ...(transfer.receiveRoundingDifference ? [["Ajuste por redondeo", formatMoney(transfer.receiveRoundingDifference, transfer.destinationCurrency)]] : [])] },
+      { title: "Importes del envío", columns: ["Dato", "Valor"], rows: amounts },
       { title: "Pago del remitente", columns: ["Dato", "Valor"], rows: payment ? [["Forma de pago", paymentMethodLabels[payment.method]],
         ...(payment.method === "cash" ? [["Dinero recibido", formatMoney(payment.tenderedAmount, transfer.sourceCurrency)], ["Devuelta", formatMoney(payment.changeAmount, transfer.sourceCurrency)]]
           : [["Referencia del comprobante", payment.reference ?? "—"], ...(payment.bank ? [["Banco o proveedor", payment.bank]] : [])])]
         : [["Forma de pago", "No registrada en esta operación histórica"]] },
-      { title: "Tasas aplicadas al registrar el envío", columns: ["Dato", "Valor"], rows: rates },
+      ...(printed ? [] : [{ title: "Tasas aplicadas al registrar el envío", columns: ["Dato", "Valor"], rows: rates }]),
       ...(transfer.paidAt ? [{ title: "Entrega al destinatario", columns: ["Dato", "Valor"], rows: [["Fecha de entrega", formatDate(transfer.paidAt)]] }] : []),
       ...(transfer.cancelledAt ? [{ title: "Cancelación", columns: ["Dato", "Valor"], rows: [["Fecha", formatDate(transfer.cancelledAt)], ["Motivo", transfer.cancelReason || "—"], ...(transfer.refund ? [["Referencia de devolución", transfer.refund.reference]] : [])] }] : []),
       ...(transfer.note ? [{ title: "Nota", columns: ["Dato", "Valor"], rows: [["Nota de la operación", transfer.note]] }] : []),

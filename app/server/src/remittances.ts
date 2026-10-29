@@ -6,6 +6,13 @@ import { appliedRate, type RateKind } from "../../shared/remittances/appliedRate
 
 export const currencies = ["DOP", "USD", "EUR"] as const;
 export type Currency = (typeof currencies)[number];
+// How the money the person receives is rounded (meeting of 29-10-2026): "none" keeps the cents (as before),
+// "normal" goes to the nearest whole unit and "up" always to the next whole unit.
+export const receiveRoundings = ["none", "normal", "up"] as const;
+export type ReceiveRounding = (typeof receiveRoundings)[number];
+// Which of the three boxes was typed: what is sent, the total the sender pays, or what the person receives.
+export const amountModes = ["source", "total", "destination"] as const;
+export type AmountMode = (typeof amountModes)[number];
 export type Quote = {
   date: string; sourceRate: string; destinationRate: string; quotedAt?: string;
   sourceRateChangeId?: string; destinationRateChangeId?: string;
@@ -13,13 +20,35 @@ export type Quote = {
   sourceRateDate?: string; destinationRateDate?: string;
   sourceRateKind?: RateKind; destinationRateKind?: RateKind;
   commissionPolicyRevision?: string; managerCommissionBps?: number;
+  managerShareBps?: number; deliveryConceptId?: string; deliveryCommissionBps?: number; receiveRounding?: ReceiveRounding;
 };
-export type CommissionPolicy = { revision: string; transactionCommissionBps: number; managerCommissionBps: number; updatedAt?: string; updatedBy?: string };
+// managerCommissionBps: the former percentage of the received amount, kept for history only.
+// managerShareBps: what the manager takes of the commission of each send (never of the exchange).
+export type CommissionPolicy = { revision: string; transactionCommissionBps: number; managerCommissionBps: number; managerShareBps: number; receiveRounding: ReceiveRounding; updatedAt?: string; updatedBy?: string };
+// Version 1 (before 29-10-2026): manager = % of the received amount, in the destination currency.
+// Version 2: manager = % of the commission, in the currency the commission is paid (the sender's).
 export type CommissionAllocation = {
-  version: 1; currency: Currency; policyRevision: string; managerCommissionBps: number;
+  version: 1 | 2; currency: Currency; policyRevision: string; managerCommissionBps: number;
   baseAmount: number; transactionAmount: number; companyAmount: number; managerAmount: number;
   managerId?: string; managerName?: string;
 };
+// A concept charged at the destination (a home delivery, for example): it is taken from what the person receives.
+export type DeliveryConcept = { id: string; name: string; commissionBps: number; active: boolean; updatedAt?: string; updatedBy?: string };
+export const NO_DELIVERY_CONCEPT: DeliveryConcept = { id: "sin-comision", name: "Sin comisión", commissionBps: 0, active: true };
+// What the company earns with the exchange, in pesos: buying the sender's currency and selling the recipient's.
+export type ExchangeGain = {
+  currency: "DOP"; sourceAmount: number; destinationAmount: number; totalAmount: number;
+  sourcePurchaseRate?: string; sourceSaleRate?: string; destinationPurchaseRate?: string; destinationSaleRate?: string;
+};
+// Everything of the calculation, written down explicitly so the send can be reviewed years later (version 2).
+export type RemittanceCalculation = {
+  version: 2; amountMode: AmountMode; requestedAmount: number; convertedAmount: number;
+  deliveryConceptId: string; deliveryConceptName: string; deliveryCommissionBps: number; deliveryCommissionAmount: number;
+  receiveRounding: ReceiveRounding; roundingAdjustment: number; payoutAmount: number;
+  exchangeGain?: ExchangeGain;
+};
+/** What the person receives: the calculated payout, or the converted amount of a send made before 29-10-2026. */
+export const payoutOf = (transfer: { receiveAmount: number; calculation?: RemittanceCalculation }) => transfer.calculation?.payoutAmount ?? transfer.receiveAmount;
 export type ExchangeRate = { id: string; currency: Currency; rate: string; purchaseRate?: string; saleRate?: string; date: string; changeId?: string; updatedAt?: string; updatedBy?: string };
 export type RateChange = { id: string; currency: Currency; rate: string; purchaseRate?: string; saleRate?: string; date: string; createdAt: string; actorId: string };
 export type RemittanceContact = { id: string; code: string; name: string; phone: string; cellular: string; address: string; identification?: string };
@@ -38,6 +67,7 @@ export type Remittance = {
   managerCommission?: ManagerCommission;
   amountDop?: number; requestedReceiveAmount?: number; receiveRoundingDifference?: number;
   commissionAllocation?: CommissionAllocation;
+  calculation?: RemittanceCalculation;
   payment?: RemittancePayment; receiptIssuer?: ReceiptIssuer; refund?: RemittanceRefund;
 };
 export type CashSession = {
@@ -54,20 +84,23 @@ export type RemittanceEvent = {
 export type RemittanceState = {
   rates: ExchangeRate[]; transfers: Remittance[];
   cashSessions: CashSession[]; events: RemittanceEvent[]; rateHistory?: RateChange[];
-  commissionPolicy?: CommissionPolicy;
+  commissionPolicy?: CommissionPolicy; deliveryConcepts?: DeliveryConcept[];
 };
 export type QuoteInput = {
   sourceCurrency: Currency; destinationCurrency: Currency; amount: number;
   // Compatibility assertion only: the server always uses the central policy.
   commissionBps?: number;
-  amountMode?: "source" | "destination";
+  amountMode?: AmountMode;
+  deliveryConceptId?: string;
 };
-export type CreateRemittanceInput = QuoteInput & {
+export type CreateRemittanceInput = Omit<QuoteInput, "amountMode"> & {
   senderClientId: string; recipientClientId: string; sendingUserId?: string; quote: Quote; note?: string;
   // Phone typed in the form for the recipient: the number used to locate who receives the money.
   recipientPhone?: string;
   managerCommission?: ManagerCommission;
+  // The box that was typed: what the person receives, or the total the sender pays. Neither: what is sent.
   requestedReceiveAmount?: number;
+  requestedTotalAmount?: number;
   payment?: RemittancePaymentInput;
 };
 
@@ -94,6 +127,23 @@ const integerMoney = (value: number, positive = false) => {
 };
 const roundHalfUp = (numerator: bigint, denominator: bigint) =>
   (numerator * 2n + denominator) / (denominator * 2n);
+// Half away from zero for amounts that may be negative (a gain when sale is under purchase, a rounding adjustment).
+const roundSigned = (numerator: bigint, denominator: bigint) =>
+  numerator < 0n ? -roundHalfUp(-numerator, denominator) : roundHalfUp(numerator, denominator);
+function safeSigned(value: bigint) {
+  if (value < -BigInt(Number.MAX_SAFE_INTEGER) || value > BigInt(Number.MAX_SAFE_INTEGER))
+    return fail("MONEY_RANGE", "El importe excede el rango monetario permitido.");
+  return Number(value);
+}
+/** The money the person receives, in cents, rounded as Administración configured (whole units of the currency). */
+function roundPayout(value: bigint, rounding: ReceiveRounding) {
+  if (rounding === "normal") return roundHalfUp(value, 100n) * 100n;
+  if (rounding === "up") return ((value + 99n) / 100n) * 100n;
+  return value;
+}
+/** The manager's share of the commission that matches a former percentage of the amount (5% total, 2% manager → 40%). */
+export const managerShareFromLegacy = (managerCommissionBps: number, transactionCommissionBps: number) =>
+  transactionCommissionBps > 0 ? Math.min(10000, Number(roundHalfUp(BigInt(managerCommissionBps) * 10000n, BigInt(transactionCommissionBps)))) : 0;
 export function normalizeRate(rate: string) {
   if (!/^\d{1,12}(?:\.\d{1,6})?$/.test(rate))
     return fail("INVALID_RATE", "La tasa debe ser positiva y tener hasta seis decimales.");
@@ -108,21 +158,63 @@ const assertCurrency = (currency: Currency) => {
 };
 export function getCommissionPolicy(state: State): CommissionPolicy {
   const policy = state.remittances.commissionPolicy;
-  return policy ? { ...policy, transactionCommissionBps: policy.transactionCommissionBps ?? 0 }
-    : { revision: "default", transactionCommissionBps: 0, managerCommissionBps: 0 };
+  if (!policy) return { revision: "default", transactionCommissionBps: 0, managerCommissionBps: 0, managerShareBps: 0, receiveRounding: "none" };
+  const transactionCommissionBps = policy.transactionCommissionBps ?? 0;
+  return { ...policy, transactionCommissionBps,
+    managerShareBps: policy.managerShareBps ?? managerShareFromLegacy(policy.managerCommissionBps ?? 0, transactionCommissionBps),
+    receiveRounding: policy.receiveRounding ?? "none" };
 }
+/**
+ * The commission of each send, the manager's share of it and how the money received is rounded. A request that
+ * still sends the former percentage of the amount (managerCommissionBps) gets the matching share of the commission.
+ */
 export function setCommissionPolicy(state: State, user: User,
-  input: Pick<CommissionPolicy, "managerCommissionBps"> & Partial<Pick<CommissionPolicy, "transactionCommissionBps">>, now = new Date()) {
+  input: Partial<Pick<CommissionPolicy, "transactionCommissionBps" | "managerCommissionBps" | "managerShareBps" | "receiveRounding">>, now = new Date()) {
   remittanceOperators(state, user); assertAdmin(user);
   const current = getCommissionPolicy(state);
   const transactionCommissionBps = input.transactionCommissionBps ?? current.transactionCommissionBps;
-  const managerCommissionBps = input.managerCommissionBps;
-  if ([transactionCommissionBps, managerCommissionBps].some((value) => !Number.isInteger(value) || value < 0 || value > 10000))
+  const managerCommissionBps = input.managerCommissionBps ?? current.managerCommissionBps;
+  if ([transactionCommissionBps, managerCommissionBps, input.managerShareBps ?? 0].some((value) => !Number.isInteger(value) || value < 0 || value > 10000))
     fail("INVALID_COMMISSION", "Los porcentajes de comisión deben estar entre 0 y 10000 BPS.");
-  if (managerCommissionBps > transactionCommissionBps)
+  if (input.managerCommissionBps !== undefined && input.managerShareBps === undefined && managerCommissionBps > transactionCommissionBps)
     fail("COMMISSION_EXCEEDS_TOTAL", "La comisión del gestor no puede superar la comisión total de la transacción.");
-  if (current.managerCommissionBps === managerCommissionBps && current.transactionCommissionBps === transactionCommissionBps) return current;
-  return state.remittances.commissionPolicy = { revision: randomUUID(), transactionCommissionBps, managerCommissionBps, updatedAt: now.toISOString(), updatedBy: user.id };
+  const managerShareBps = input.managerShareBps ?? (input.managerCommissionBps !== undefined ? managerShareFromLegacy(managerCommissionBps, transactionCommissionBps) : current.managerShareBps);
+  const receiveRounding = input.receiveRounding ?? current.receiveRounding;
+  if (!receiveRoundings.includes(receiveRounding)) fail("INVALID_ROUNDING", "Elige cómo se redondea lo que recibe la persona.");
+  if (current.managerCommissionBps === managerCommissionBps && current.transactionCommissionBps === transactionCommissionBps &&
+      current.managerShareBps === managerShareBps && current.receiveRounding === receiveRounding) return current;
+  return state.remittances.commissionPolicy = { revision: randomUUID(), transactionCommissionBps, managerCommissionBps, managerShareBps, receiveRounding, updatedAt: now.toISOString(), updatedBy: user.id };
+}
+/** Concepts charged at the destination, in their order; «Sin comisión» always first and never stored. */
+export function deliveryConcepts(state: State) {
+  return [NO_DELIVERY_CONCEPT, ...[...(state.remittances.deliveryConcepts ?? [])].sort((a, b) => a.name.localeCompare(b.name, "es") || a.id.localeCompare(b.id))];
+}
+function deliveryConcept(state: State, id?: string) {
+  if (!id || id === NO_DELIVERY_CONCEPT.id) return NO_DELIVERY_CONCEPT;
+  const concept = state.remittances.deliveryConcepts?.find((row) => row.id === id);
+  if (!concept || !concept.active) return fail("DELIVERY_CONCEPT_UNAVAILABLE", "La comisión de entrega elegida ya no está disponible. Elige otra y vuelve a calcular.", 409);
+  return concept;
+}
+/** Administración adds or changes a concept of commission at the destination. «Sin comisión» cannot be changed. */
+export function saveDeliveryConcept(state: State, user: User, input: { id?: string; name: string; commissionBps: number; active: boolean }, now = new Date()) {
+  remittanceOperators(state, user); assertAdmin(user);
+  const name = input.name.trim().replace(/\s+/g, " ");
+  if (!name || name.length > 80) fail("INVALID_CONCEPT", "Escribe el nombre del concepto (hasta 80 caracteres).");
+  if (!Number.isInteger(input.commissionBps) || input.commissionBps < 0 || input.commissionBps >= 10000)
+    fail("INVALID_CONCEPT", "El porcentaje de la comisión de entrega debe ser de 0% a menos de 100%.");
+  const fold = (value: string) => value.normalize("NFD").replace(/[̀-ͯ]/g, "").toLocaleLowerCase("es");
+  if (input.id === NO_DELIVERY_CONCEPT.id || fold(name) === fold(NO_DELIVERY_CONCEPT.name))
+    fail("CONCEPT_RESERVED", "«Sin comisión» ya existe y no se puede cambiar.");
+  const concepts = state.remittances.deliveryConcepts ??= [];
+  if (concepts.some((row) => row.id !== input.id && fold(row.name) === fold(name))) fail("CONCEPT_EXISTS", "Ya hay un concepto con ese nombre.", 409);
+  const existing = input.id ? concepts.find((row) => row.id === input.id) : undefined;
+  if (input.id && !existing) return fail("CONCEPT_NOT_FOUND", "Concepto no encontrado.", 404);
+  if (existing && existing.name === name && existing.commissionBps === input.commissionBps && existing.active === input.active) return existing;
+  const stamp = { updatedAt: now.toISOString(), updatedBy: user.id };
+  if (existing) return Object.assign(existing, { name, commissionBps: input.commissionBps, active: input.active, ...stamp });
+  const concept: DeliveryConcept = { id: randomUUID(), name, commissionBps: input.commissionBps, active: input.active, ...stamp };
+  concepts.push(concept);
+  return concept;
 }
 function manualManagerCommission(value: ManagerCommission | undefined): ManagerCommission | undefined {
   if (value === undefined) return undefined;
@@ -144,47 +236,97 @@ function effectiveRate(state: State, currency: Currency, date: string, side: "so
   if (currency === "DOP") return { ...appliedRate(rate, currency, side), date: rate?.date ?? date, changeId: rate?.changeId, changedAt: rate?.updatedAt };
   if (!rate) return fail("RATE_MISSING", `No hay una tasa registrada de ${currency} vigente al ${date}. Registra una tasa antes de cotizar.`, 409);
   const applied = appliedRate(rate, currency, side, sameCurrency);
-  return { rate: normalizeRate(applied.rate), kind: applied.kind, date: rate.date, changeId: rate.changeId, changedAt: rate.updatedAt };
+  return { rate: normalizeRate(applied.rate), kind: applied.kind, date: rate.date, changeId: rate.changeId, changedAt: rate.updatedAt,
+    purchaseRate: rate.purchaseRate === undefined ? undefined : normalizeRate(rate.purchaseRate), saleRate: rate.saleRate === undefined ? undefined : normalizeRate(rate.saleRate) };
 }
+/**
+ * The company's gain with the exchange, in pesos (meeting of 29-10-2026): it buys the sender's currency at the purchase
+ * rate and sells the recipient's at the sale rate. Each leg earns the difference between sale and purchase registered for
+ * that rate. Pesos, a same-currency send and a former single rate earn nothing on that leg.
+ */
+function exchangeGainOf(amount: bigint, converted: bigint, sameCurrency: boolean,
+  source: { kind?: RateKind; purchaseRate?: string; saleRate?: string }, destination: { kind?: RateKind; purchaseRate?: string; saleRate?: string }): ExchangeGain {
+  const leg = (units: bigint, rate: typeof source, kind: RateKind) => !sameCurrency && rate.kind === kind && rate.purchaseRate !== undefined && rate.saleRate !== undefined
+    ? { gain: roundSigned(units * (scaledRate(rate.saleRate) - scaledRate(rate.purchaseRate)), 1_000_000n), purchaseRate: rate.purchaseRate, saleRate: rate.saleRate } : undefined;
+  const bought = leg(amount, source, "purchase"), sold = leg(converted, destination, "sale");
+  const sourceAmount = bought?.gain ?? 0n, destinationAmount = sold?.gain ?? 0n;
+  return { currency: "DOP", sourceAmount: safeSigned(sourceAmount), destinationAmount: safeSigned(destinationAmount), totalAmount: safeSigned(sourceAmount + destinationAmount),
+    ...(bought ? { sourcePurchaseRate: bought.purchaseRate, sourceSaleRate: bought.saleRate } : {}),
+    ...(sold ? { destinationPurchaseRate: sold.purchaseRate, destinationSaleRate: sold.saleRate } : {}) };
+}
+/**
+ * The three boxes of the send (meeting of 29-10-2026). Whatever is typed, everything goes through pesos:
+ * - what is sent: the commission is added to it and paid by the sender (1,000 + 200 = 1,200);
+ * - the total the sender pays: the commission is taken out of it and the rest is sent;
+ * - what the person receives: back through the rates, then the commission is added.
+ * The commission at the destination is taken from what the person receives and the result is rounded as configured.
+ * The manager takes his share of the commission only; the company keeps the rest of it and the exchange gain.
+ */
 export function quoteRemittance(state: State, input: QuoteInput, now = new Date()) {
   const requested = integerMoney(input.amount, true);
-  if (input.amountMode !== undefined && input.amountMode !== "source" && input.amountMode !== "destination")
-    fail("INVALID_AMOUNT_MODE", "Selecciona importe de origen o destino.");
+  const mode: AmountMode = input.amountMode ?? "source";
+  if (!amountModes.includes(mode)) fail("INVALID_AMOUNT_MODE", "Escribe lo que se envía, el total que paga o lo que recibe la persona.");
   if (input.commissionBps !== undefined && (!Number.isInteger(input.commissionBps) || input.commissionBps < 0 || input.commissionBps > 10000))
     fail("INVALID_COMMISSION", "La comisión debe estar entre 0 y 10000 BPS.");
   const date = businessDate(now);
-  const source = effectiveRate(state, input.sourceCurrency, date, "source", input.sourceCurrency === input.destinationCurrency);
-  const destination = effectiveRate(state, input.destinationCurrency, date, "destination", input.sourceCurrency === input.destinationCurrency);
+  const sameCurrency = input.sourceCurrency === input.destinationCurrency;
+  const source = effectiveRate(state, input.sourceCurrency, date, "source", sameCurrency);
+  const destination = effectiveRate(state, input.destinationCurrency, date, "destination", sameCurrency);
   const sourceRate = source.rate, destinationRate = destination.rate;
-  const amount = input.amountMode === "destination" ? roundHalfUp(requested * scaledRate(destinationRate), scaledRate(sourceRate)) : requested;
-  integerMoney(safeMoney(amount), true);
+  const sourceUnits = scaledRate(sourceRate), destinationUnits = scaledRate(destinationRate);
   const policy = getCommissionPolicy(state);
-  if (policy.managerCommissionBps > policy.transactionCommissionBps)
-    fail("COMMISSION_EXCEEDS_TOTAL", "Un administrador debe revisar la configuración: la comisión del gestor supera la comisión total de la transacción.");
+  if (!Number.isInteger(policy.managerShareBps) || policy.managerShareBps < 0 || policy.managerShareBps > 10000)
+    fail("COMMISSION_EXCEEDS_TOTAL", "Un administrador debe revisar la configuración: la parte del gestor debe estar entre 0% y 100% de la comisión.");
   if (input.commissionBps !== undefined && input.commissionBps !== policy.transactionCommissionBps)
     fail("COMMISSION_POLICY_MISMATCH", "La comisión se toma de la configuración guardada. Actualiza y vuelve a cotizar.", 409);
   const commissionBps = policy.transactionCommissionBps;
-  const commissionAmount = safeMoney(roundHalfUp(amount * BigInt(commissionBps), 10000n));
-  const receiveAmount = safeMoney(roundHalfUp(amount * scaledRate(sourceRate), scaledRate(destinationRate)));
+  const concept = deliveryConcept(state, input.deliveryConceptId);
+  const deliveryBps = BigInt(concept.commissionBps);
+  const commissionOf = (value: bigint) => roundHalfUp(value * BigInt(commissionBps), 10000n);
+  let amount: bigint;
+  if (mode === "destination") {
+    // Back from what the person receives: the commission at the destination first, then the rates.
+    const gross = roundHalfUp(requested * 10000n, 10000n - deliveryBps);
+    amount = roundHalfUp(gross * destinationUnits, sourceUnits);
+  } else if (mode === "total") {
+    // The largest amount whose commission still fits in the total the sender pays.
+    amount = requested * 10000n / (10000n + BigInt(commissionBps));
+    while (amount + 1n + commissionOf(amount + 1n) <= requested) amount += 1n;
+    while (amount > 0n && amount + commissionOf(amount) > requested) amount -= 1n;
+    if (amount === 0n) fail("AMOUNT_TOO_SMALL", "El total no alcanza para enviar dinero y pagar la comisión.");
+  } else amount = requested;
+  integerMoney(safeMoney(amount), true);
+  const commissionAmount = safeMoney(commissionOf(amount));
+  const converted = roundHalfUp(amount * sourceUnits, destinationUnits);
+  const receiveAmount = safeMoney(converted);
   if (receiveAmount === 0) fail("AMOUNT_TOO_SMALL", "El importe recibido se redondea a cero.");
-  const transactionAmount = safeMoney(roundHalfUp(BigInt(commissionAmount) * scaledRate(sourceRate), scaledRate(destinationRate)));
-  const managerAmount = safeMoney(roundHalfUp(BigInt(receiveAmount) * BigInt(policy.managerCommissionBps), 10000n));
-  if (managerAmount > transactionAmount)
-    fail("COMMISSION_EXCEEDS_TOTAL", "La comisión del gestor supera la comisión de la transacción. Revisa los porcentajes antes de cotizar.");
-  const commissionAllocation: CommissionAllocation = { version: 1, currency: input.destinationCurrency, policyRevision: policy.revision,
-    managerCommissionBps: policy.managerCommissionBps, baseAmount: receiveAmount, transactionAmount, managerAmount, companyAmount: transactionAmount - managerAmount };
+  const deliveryCommissionAmount = roundHalfUp(converted * deliveryBps, 10000n);
+  const net = converted - deliveryCommissionAmount;
+  const payout = roundPayout(net, policy.receiveRounding);
+  if (payout <= 0n) fail("AMOUNT_TOO_SMALL", "Lo que recibe la persona se queda en cero después de la comisión de entrega.");
+  const managerAmount = roundHalfUp(BigInt(commissionAmount) * BigInt(policy.managerShareBps), 10000n);
+  const commissionAllocation: CommissionAllocation = { version: 2, currency: input.sourceCurrency, policyRevision: policy.revision,
+    managerCommissionBps: policy.managerShareBps, baseAmount: commissionAmount, transactionAmount: commissionAmount,
+    managerAmount: safeMoney(managerAmount), companyAmount: safeMoney(BigInt(commissionAmount) - managerAmount) };
+  const calculation: RemittanceCalculation = { version: 2, amountMode: mode, requestedAmount: input.amount, convertedAmount: receiveAmount,
+    deliveryConceptId: concept.id, deliveryConceptName: concept.name, deliveryCommissionBps: concept.commissionBps, deliveryCommissionAmount: safeMoney(deliveryCommissionAmount),
+    receiveRounding: policy.receiveRounding, roundingAdjustment: safeSigned(payout - net), payoutAmount: safeMoney(payout),
+    exchangeGain: exchangeGainOf(amount, converted, sameCurrency, source, destination) };
   // Very large legacy quotes may be representable in the currency pair but not DOP.
   // Leave that indicative equivalent unavailable rather than corrupting a valid quote.
-  const dop = roundHalfUp(amount * scaledRate(sourceRate), 1_000_000n);
+  const dop = roundHalfUp(amount * sourceUnits, 1_000_000n);
+  // The former fields of a received amount typed in, for a send without commission at the destination nor rounding.
+  const formerDestination = mode === "destination" && deliveryBps === 0n && policy.receiveRounding === "none";
   return {
     sourceCurrency: input.sourceCurrency, destinationCurrency: input.destinationCurrency, amount: safeMoney(amount), commissionBps,
-    ...(dop <= BigInt(Number.MAX_SAFE_INTEGER) ? { amountDop: safeMoney(dop) } : {}), commissionAllocation,
-    ...(input.amountMode === "destination" ? { requestedReceiveAmount: input.amount, receiveRoundingDifference: receiveAmount - input.amount } : {}),
+    ...(dop <= BigInt(Number.MAX_SAFE_INTEGER) ? { amountDop: safeMoney(dop) } : {}), commissionAllocation, calculation,
+    ...(formerDestination ? { requestedReceiveAmount: input.amount, receiveRoundingDifference: receiveAmount - input.amount } : {}),
     commissionAmount, totalAmount: safeMoney(amount + BigInt(commissionAmount)),
     receiveAmount, quote: { date, sourceRate, destinationRate, quotedAt: now.toISOString(),
       sourceRateDate: source.date, destinationRateDate: destination.date,
       sourceRateKind: source.kind, destinationRateKind: destination.kind,
-      commissionPolicyRevision: policy.revision, managerCommissionBps: policy.managerCommissionBps,
+      commissionPolicyRevision: policy.revision, managerShareBps: policy.managerShareBps,
+      deliveryConceptId: concept.id, deliveryCommissionBps: concept.commissionBps, receiveRounding: policy.receiveRounding,
       ...(source.changeId ? { sourceRateChangeId: source.changeId } : {}),
       ...(destination.changeId ? { destinationRateChangeId: destination.changeId } : {}),
       ...(source.changedAt ? { sourceRateChangedAt: source.changedAt } : {}),
@@ -268,7 +410,9 @@ export function visibleRemittanceResult<T>(user: User, value: T): T {
   if (hasRemittancePermission(user, "remittances.commissions.view") || !value || typeof value !== "object" || Array.isArray(value)) return value;
   const result = structuredClone(value) as Record<string, unknown>;
   delete result.commissionAllocation; delete result.managerCommission;
-  if (result.quote && typeof result.quote === "object") delete (result.quote as Record<string, unknown>).managerCommissionBps;
+  if (result.quote && typeof result.quote === "object") { delete (result.quote as Record<string, unknown>).managerCommissionBps; delete (result.quote as Record<string, unknown>).managerShareBps; }
+  // What the company earns with the exchange is seen with the commissions, like the manager's share.
+  if (result.calculation && typeof result.calculation === "object") delete (result.calculation as Record<string, unknown>).exchangeGain;
   return result as T;
 }
 export function transferView(state: State, user: User, transfer: Remittance) {
@@ -354,12 +498,21 @@ export function createRemittance(state: State, user: User, input: CreateRemittan
   const policy = getCommissionPolicy(state);
   if ((input.quote.commissionPolicyRevision !== undefined && input.quote.commissionPolicyRevision !== policy.revision) ||
       (input.quote.managerCommissionBps !== undefined && input.quote.managerCommissionBps !== policy.managerCommissionBps) ||
+      (input.quote.managerShareBps !== undefined && input.quote.managerShareBps !== policy.managerShareBps) ||
+      (input.quote.receiveRounding !== undefined && input.quote.receiveRounding !== policy.receiveRounding) ||
       (input.quote.commissionPolicyRevision === undefined && policy.revision !== "default"))
     fail("QUOTE_CHANGED", "La política de comisiones cambió. Vuelve a cotizar antes de guardar.", 409);
+  if (input.requestedReceiveAmount !== undefined && input.requestedTotalAmount !== undefined)
+    fail("INVALID_AMOUNT_MODE", "Escribe lo que recibe la persona o el total que paga, no los dos.");
   const calculated = quoteRemittance(state, {
-    amount: input.requestedReceiveAmount ?? input.amount, amountMode: input.requestedReceiveAmount === undefined ? "source" : "destination", commissionBps: input.commissionBps,
-    sourceCurrency: input.sourceCurrency, destinationCurrency: input.destinationCurrency,
+    amount: input.requestedReceiveAmount ?? input.requestedTotalAmount ?? input.amount,
+    amountMode: input.requestedReceiveAmount !== undefined ? "destination" : input.requestedTotalAmount !== undefined ? "total" : "source", commissionBps: input.commissionBps,
+    sourceCurrency: input.sourceCurrency, destinationCurrency: input.destinationCurrency, deliveryConceptId: input.deliveryConceptId,
   }, now);
+  // The commission at the destination reviewed in the quote must still be the one of its concept.
+  if ((input.quote.deliveryConceptId !== undefined && input.quote.deliveryConceptId !== calculated.quote.deliveryConceptId) ||
+      (input.quote.deliveryCommissionBps !== undefined && input.quote.deliveryCommissionBps !== calculated.quote.deliveryCommissionBps))
+    fail("QUOTE_CHANGED", "La comisión de entrega cambió. Vuelve a calcular antes de guardar.", 409);
   if (input.quote.date !== calculated.quote.date || input.quote.sourceRate !== calculated.quote.sourceRate || input.quote.destinationRate !== calculated.quote.destinationRate ||
       input.quote.sourceRateChangeId !== calculated.quote.sourceRateChangeId || input.quote.destinationRateChangeId !== calculated.quote.destinationRateChangeId ||
       (input.quote.sourceRateDate !== undefined && input.quote.sourceRateDate !== calculated.quote.sourceRateDate) ||
@@ -425,10 +578,12 @@ export function payRemittance(state: State, user: User, id: string, now = new Da
   const transfer = pendingTransfer(state, user, id);
   if (!canSeeReceipt(state, user, transfer)) fail("FORBIDDEN", "El destinatario no pertenece a tu ruta.", 403);
   const cash = currentCash(state, user.id, transfer.destinationCurrency, now);
-  if (cashBalance(state, cash).expected < transfer.receiveAmount) fail("INSUFFICIENT_CASH", "La caja no tiene fondos suficientes para pagar el recibo.", 409);
-  assertCashMovement(state, cash, "paid", transfer.receiveAmount);
+  // What leaves the box is what the person receives: after the commission at the destination and the rounding.
+  const payout = payoutOf(transfer);
+  if (cashBalance(state, cash).expected < payout) fail("INSUFFICIENT_CASH", "La caja no tiene fondos suficientes para pagar el recibo.", 409);
+  assertCashMovement(state, cash, "paid", payout);
   transfer.status = "paid"; transfer.paidAt = now.toISOString(); transfer.paidBy = user.id;
-  addEvent(state, user, cash, "paid", transfer.receiveAmount, now, transfer.id);
+  addEvent(state, user, cash, "paid", payout, now, transfer.id);
   return transferView(state, user, transfer);
 }
 export function cancelRemittance(state: State, user: User, id: string, reason: string, now = new Date(), refundInput?: RemittanceRefundInput) {
@@ -480,7 +635,9 @@ export function remittanceSnapshot(state: State, user: User, systemOperators: Us
   return {
     businessDate: date, currencies, access: user.access ?? effectiveAccess(user.role),
     commissionPolicy: hasRemittancePermission(user, "remittances.commissions.view") ? getCommissionPolicy(state)
-      : { revision: getCommissionPolicy(state).revision, transactionCommissionBps: getCommissionPolicy(state).transactionCommissionBps },
+      : { revision: getCommissionPolicy(state).revision, transactionCommissionBps: getCommissionPolicy(state).transactionCommissionBps, receiveRounding: getCommissionPolicy(state).receiveRounding },
+    // «Sin comisión» first; the form offers the active ones, Administración edits them all.
+    deliveryConcepts: deliveryConcepts(state).map(({ updatedBy: _by, ...row }) => row),
     receiptFooterNote: typeof state.systemConfig?.receiptFooterNote === "string" ? state.systemConfig.receiptFooterNote : "",
     receiptIssuer: remittanceReceiptIssuer(state),
     clients: catalog.map((c) => ({ id: c.id, code: c.code, name: c.name, routeId: c.routeId, active: c.active !== false, preferredCurrency: c.preferredCurrency ?? "DOP",
@@ -519,14 +676,36 @@ export function remittanceReports(state: State, user: User, input: { from: strin
   const allocationDetails: Array<CommissionAllocation & Pick<Remittance, "id" | "envioReference" | "createdAt" | "status">> = [];
   const delivered = new Map<string, { date: string; currency: Currency; count: number; amount: number }>();
   const deliveryTimes: { id: string; envioReference: string; createdAt: string; paidAt: string; elapsedSeconds: number }[] = [];
+  // What the company earns with the exchange (meeting of 29-10-2026), in pesos. Sends from before have no calculation.
+  type GainDetail = Pick<Remittance, "id" | "envioReference" | "createdAt" | "sourceCurrency" | "destinationCurrency" | "amount" | "receiveAmount" | "status"> & Omit<ExchangeGain, "currency">;
+  const gainDetails: GainDetail[] = [];
+  const gainTotals = new Map<string, { date: string; sourceCurrency: Currency; destinationCurrency: Currency; count: number; sourceAmount: number; destinationAmount: number; totalAmount: number; cancelledCount: number; cancelledTotalAmount: number }>();
+  let gainLegacyCount = 0;
   for (const transfer of visible) {
     if (within(transfer.createdAt)) {
       const date = groupDate(transfer.createdAt), key = `${date}:${transfer.sourceCurrency}:${transfer.destinationCurrency}`;
       const row = amounts.get(key) ?? { date, sourceCurrency: transfer.sourceCurrency, destinationCurrency: transfer.destinationCurrency, count: 0, pendingCount: 0, paidCount: 0, cancelledCount: 0, amount: 0, commissionAmount: 0, totalAmount: 0, receiveAmount: 0 };
       row.count++; row[`${transfer.status}Count`]++;
-      if (transfer.status !== "cancelled") for (const field of ["amount", "commissionAmount", "totalAmount", "receiveAmount"] as const)
-        row[field] = safeMoney(BigInt(row[field]) + BigInt(transfer[field]));
+      if (transfer.status !== "cancelled") {
+        for (const field of ["amount", "commissionAmount", "totalAmount"] as const) row[field] = safeMoney(BigInt(row[field]) + BigInt(transfer[field]));
+        // «A entregar» is what the person receives.
+        row.receiveAmount = safeMoney(BigInt(row.receiveAmount) + BigInt(payoutOf(transfer)));
+      }
       amounts.set(key, row);
+      const gain = transfer.calculation?.exchangeGain;
+      if (!gain) gainLegacyCount++;
+      else {
+        const { currency: _dop, ...legs } = gain;
+        gainDetails.push({ id: transfer.id, envioReference: transfer.envioReference, createdAt: transfer.createdAt, sourceCurrency: transfer.sourceCurrency,
+          destinationCurrency: transfer.destinationCurrency, amount: transfer.amount, receiveAmount: transfer.receiveAmount, status: transfer.status, ...legs });
+        const total = gainTotals.get(key) ?? { date, sourceCurrency: transfer.sourceCurrency, destinationCurrency: transfer.destinationCurrency, count: 0, sourceAmount: 0, destinationAmount: 0, totalAmount: 0, cancelledCount: 0, cancelledTotalAmount: 0 };
+        if (transfer.status === "cancelled") { total.cancelledCount++; total.cancelledTotalAmount = safeSigned(BigInt(total.cancelledTotalAmount) + BigInt(gain.totalAmount)); }
+        else {
+          total.count++;
+          for (const field of ["sourceAmount", "destinationAmount", "totalAmount"] as const) total[field] = safeSigned(BigInt(total[field]) + BigInt(gain[field]));
+        }
+        gainTotals.set(key, total);
+      }
       commissionDetails.push({ id: transfer.id, envioReference: transfer.envioReference, createdAt: transfer.createdAt,
         sendingUserId: transfer.sendingUserId, senderClientId: transfer.senderClientId, recipientClientId: transfer.recipientClientId,
         sourceCurrency: transfer.sourceCurrency, destinationCurrency: transfer.destinationCurrency, amount: transfer.amount,
@@ -580,7 +759,7 @@ export function remittanceReports(state: State, user: User, input: { from: strin
       deliveryTimes.push({ id: transfer.id, envioReference: transfer.envioReference, createdAt: transfer.createdAt, paidAt: transfer.paidAt, elapsedSeconds: Math.max(0, Math.floor((Date.parse(transfer.paidAt) - Date.parse(transfer.createdAt)) / 1000)) });
       const date = groupDate(transfer.paidAt), key = `${date}:${transfer.destinationCurrency}`;
       const row = delivered.get(key) ?? { date, currency: transfer.destinationCurrency, count: 0, amount: 0 };
-      row.count++; row.amount = safeMoney(BigInt(row.amount) + BigInt(transfer.receiveAmount)); delivered.set(key, row);
+      row.count++; row.amount = safeMoney(BigInt(row.amount) + BigInt(payoutOf(transfer))); delivered.set(key, row);
     }
   }
   const timeGroups = new Map<string, { date: string; count: number; minSeconds: number; maxSeconds: number; totalSeconds: bigint }>();
@@ -607,5 +786,6 @@ export function remittanceReports(state: State, user: User, input: { from: strin
   return { ...input, amounts: [...amounts.values()], commissions: { details: commissionDetails, totals: [...commissionTotals.values()] },
     commissionAllocations: { details: viewCommissions ? allocationDetails : [], totals: viewCommissions ? [...allocationTotals.values()] : [] },
     managerCommissions: { details: viewCommissions ? managerCommissionDetails : [], totals: viewCommissions ? [...managerCommissionTotals.values()] : [] },
+    exchangeGains: { details: viewCommissions ? gainDetails : [], totals: viewCommissions ? [...gainTotals.values()] : [], legacyCount: viewCommissions ? gainLegacyCount : 0 },
     deliveryTimes, deliveryTimeSummary, delivered: [...delivered.values()], cash, cashSummary: [...cashGroups.values()] };
 }

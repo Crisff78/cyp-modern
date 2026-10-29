@@ -75,7 +75,7 @@ function checkRequest(actor: User, method: string, route: string): boolean {
       return true;
     }
     if (path === "envios/cotizacion") permission = "remittances.create";
-    else if (path === "envios/politica-comisiones") permission = "remittances.commissions.manage";
+    else if (path === "envios/politica-comisiones" || path === "envios/conceptos-entrega") permission = "remittances.commissions.manage";
     else if (path === "envios/tasas") permission = "remittances.rates.manage";
     else if (path.startsWith("envios/reportes")) {
       permission = "remittances.reports";

@@ -230,13 +230,19 @@ Visibilidad de las operaciones, igual en `snapshot`, listados y reportes:
   `{transactionCommissionBps?,managerCommissionBps}` → configuración central.
   Cada porcentaje es un entero 0..10000; gestor no puede superar transacción
   (`COMMISSION_EXCEEDS_TOTAL`). Cambios afectan solo envíos futuros y requieren
-  recotizar antes de registrar.
-- `GET /envios/cotizacion?sourceCurrency=USD&destinationCurrency=DOP&amount=10000&amountMode=source|destination`
+  recotizar antes de registrar. Desde el 29-10-2026 también acepta `managerShareBps`
+  (parte del gestor dentro de la comisión, 0..10000) y `receiveRounding` (`none|normal|up`); un
+  `managerCommissionBps` antiguo se convierte a esa parte. Ver [CALCULO-ENVIOS.md](CALCULO-ENVIOS.md).
+- `POST /envios/conceptos-entrega` (solo Administración): `{id?,name,commissionBps,active}` → concepto
+  de comisión de entrega en destino. «Sin comisión» está reservado (`CONCEPT_RESERVED`); nombres únicos
+  (`CONCEPT_EXISTS`); porcentaje 0..9999 (`INVALID_CONCEPT`).
+- `GET /envios/cotizacion?sourceCurrency=USD&destinationCurrency=DOP&amount=10000&amountMode=source|total|destination&deliveryConceptId=…`
   → `{sourceCurrency,destinationCurrency,amount,commissionBps,commissionAmount,totalAmount,receiveAmount,quote,...}`.
-  `amountMode=destination` cotiza desde el importe a recibir; ver
+  `amountMode=total` cotiza desde el total que paga quien envía y `destination` desde lo que recibe la
+  persona; `calculation` trae la comisión de entrega, el redondeo, lo que recibe y la ganancia por cambio; ver
   [REMESAS-COTIZACION-REPARTO.md](REMESAS-COTIZACION-REPARTO.md).
 - `POST /envios`:
-  `{senderClientId | newSenderClient, recipientClientId | newRecipientClient, sendingUserId?, recipientPhone?, sourceCurrency, destinationCurrency, amount, requestedReceiveAmount?, commissionBps?, managerCommission?, quote, note?, payment?}`
+  `{senderClientId | newSenderClient, recipientClientId | newRecipientClient, sendingUserId?, recipientPhone?, sourceCurrency, destinationCurrency, amount, requestedReceiveAmount? | requestedTotalAmount?, deliveryConceptId?, commissionBps?, managerCommission?, quote, note?, payment?}`
   → `TransferView`, con `senderContact`, `recipientContact`, `payment` y
   `receiptIssuer` congelados. Ver [REMESAS-PAGOS-RECIBOS.md](REMESAS-PAGOS-RECIBOS.md).
   - Por cada participante va **exactamente una** alternativa: el ID de un cliente

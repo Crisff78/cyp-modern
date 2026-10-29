@@ -60,6 +60,9 @@ export function confirmedCreatedTransfer(value: unknown, expected: Record<string
     contactValid(row.senderContact, row.senderClientId) && contactValid(row.recipientContact, row.recipientClientId) &&
     (!quotation || (
       ["amountDop", "requestedReceiveAmount", "receiveRoundingDifference", "receiveAmount", "commissionAmount", "totalAmount"].every((key) => row[key as keyof Transfer] === quotation[key as keyof Quotation]) &&
+      // The whole calculation reviewed (the box typed, the commission at the destination, the rounding, what the person
+      // receives and, for who sees it, the exchange gain) is the one saved.
+      JSON.stringify(row.calculation ?? null) === JSON.stringify(quotation.calculation ?? null) &&
       (!quotation.commissionAllocation || (row.commissionAllocation?.managerId === row.sendingUserId && typeof row.commissionAllocation?.managerName === "string" &&
         Object.entries(quotation.commissionAllocation).every(([key, value]) => row.commissionAllocation?.[key as keyof NonNullable<Transfer["commissionAllocation"]>] === value)))
     )) &&

@@ -17,7 +17,7 @@ test("PostgreSQL: assignments, audit deltas, calendar uniqueness, narrow auth re
   const app=await buildApp({store,demo:true,secret:"synthetic-audit-postgres-more-than-32-characters",origins:[],collectorUrl:"/collector/"});
   t.after(async()=>{await app.close();await reopened.close();await sql.end();});
   await store.transaction((state)=>{if(!state.clients.length) Object.assign(state,seed());});
-  const migrationCount=(await sql.query("SELECT count(*)::int AS total FROM cyp_schema_migrations")).rows[0].total;assert.equal(migrationCount,43);
+  const migrationCount=(await sql.query("SELECT count(*)::int AS total FROM cyp_schema_migrations")).rows[0].total;assert.equal(migrationCount,44);
   const login=await app.inject({method:"POST",url:"/api/auth/login",payload:{email:"admin",password:"Demo-CyP-2026!"}});assert.equal(login.statusCode,200,login.body);
   const token=login.json().token;
   const post=(path:string,payload:object)=>app.inject({method:"POST",url:path,payload,headers:{authorization:`Bearer ${token}`,"idempotency-key":randomUUID()}});

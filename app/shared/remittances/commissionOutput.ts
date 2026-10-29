@@ -4,6 +4,14 @@ import { formatDate, formatMoney, type OutputSection } from "./output";
 export function allocationRows(allocation?: CommissionAllocation, status?: Transfer["status"]): (string | number)[][] {
   if (!allocation) return [["Reparto de comisión", "Sin reparto calculado (operación histórica)"]];
   const money = (value: number) => formatMoney(value, allocation.currency);
+  // Since 29-10-2026 the manager takes a share of the commission of the send, never of the exchange.
+  if (allocation.version === 2) return [
+    ["Gestor del envío", allocation.managerName ?? "Operador del envío seleccionado"],
+    ["Comisión del envío", money(allocation.transactionAmount)],
+    [`Parte del gestor (${allocation.managerCommissionBps / 100}% de la comisión)`, money(allocation.managerAmount)],
+    ["Parte de la empresa", money(allocation.companyAmount)],
+    ["Devengo", status === "cancelled" ? "Anulado por cancelación; excluido del acumulado vigente" : "Al crear el envío; no representa un pago al gestor"],
+  ];
   return [
     ["Gestor del envío", allocation.managerName ?? "Operador del envío seleccionado"],
     ["Comisión de transacción convertida", money(allocation.transactionAmount)],
@@ -16,11 +24,11 @@ export function allocationRows(allocation?: CommissionAllocation, status?: Trans
 
 export function allocationSections(report: NonNullable<Report["commissionAllocations"]>): OutputSection[] {
   return [
-    { title: "Reparto de comisiones por gestor y moneda de destino", columns: ["Fecha de emisión", "Gestor", "Moneda", "Vigentes", "Comisión transacción", "Empresa", "Gestor", "Canceladas", "Transacción anulada", "Empresa anulada", "Gestor anulado"],
+    { title: "Reparto de comisiones por gestor y moneda", columns: ["Fecha de emisión", "Gestor", "Moneda", "Vigentes", "Comisión transacción", "Empresa", "Gestor", "Canceladas", "Transacción anulada", "Empresa anulada", "Gestor anulado"],
       rows: report.totals.map((row) => [row.date, row.managerName, row.currency, row.count,
         formatMoney(row.transactionAmount, row.currency), formatMoney(row.companyAmount, row.currency), formatMoney(row.managerAmount, row.currency), row.cancelledCount,
         formatMoney(row.cancelledTransactionAmount, row.currency), formatMoney(row.cancelledCompanyAmount, row.currency), formatMoney(row.cancelledManagerAmount, row.currency)]) },
-    { title: "Detalle de devengos y anulaciones", columns: ["Envío", "Emitido", "Gestor", "Moneda", "Base destino", "% gestor", "Transacción", "Empresa", "Gestor", "Estado"],
+    { title: "Detalle de devengos y anulaciones", columns: ["Envío", "Emitido", "Gestor", "Moneda", "Base del gestor", "% gestor", "Transacción", "Empresa", "Gestor", "Estado"],
       rows: report.details.map((row) => [row.envioReference, formatDate(row.createdAt), row.managerName ?? row.managerId ?? "—", row.currency,
         formatMoney(row.baseAmount, row.currency), row.managerCommissionBps / 100, formatMoney(row.transactionAmount, row.currency), formatMoney(row.companyAmount, row.currency), formatMoney(row.managerAmount, row.currency),
         row.status === "cancelled" ? "Anulado (excluido del acumulado)" : "Devengado"]) },
@@ -38,7 +46,7 @@ export function consolidatedCommissionSections(report: ConsolidatedCommissionRep
   return [
     { title: "Filtros del reporte consolidado", columns: ["Filtro", "Valor"], rows: [
       ["Periodo de emisión", `${report.from} a ${report.to}`], ["Estado", commissionReportStatusLabels[report.status]],
-      ["Gestor (ID)", report.managerId ?? "Todos"], ["Moneda de destino", report.currency ?? "Todas (totales separados)"],
+      ["Gestor (ID)", report.managerId ?? "Todos"], ["Moneda", report.currency ?? "Todas (totales separados)"],
       ["Agrupar por", report.groupBy === "currency" ? "Moneda" : "Gestor y Moneda"], ["Presentación", report.grouping === "day" ? "Diario" : "Resumido del periodo"],
       ["Operaciones históricas sin reparto (excluidas)", report.excludedLegacyCount],
     ] },

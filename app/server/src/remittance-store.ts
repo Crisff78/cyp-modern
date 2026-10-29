@@ -1,5 +1,5 @@
 import type pg from "pg";
-import { type Remittance, type CashSession, type ExchangeRate, type RateChange, type RemittanceEvent, type RemittanceState } from "./remittances.js";
+import { type Remittance, type CashSession, type DeliveryConcept, type ExchangeRate, type RateChange, type RemittanceEvent, type RemittanceState } from "./remittances.js";
 import { DomainError } from "./domain.js";
 
 const clean = <T>(row: Record<string, unknown>): T => Object.fromEntries(
@@ -27,16 +27,21 @@ export async function readRemittances(client: pg.PoolClient): Promise<Remittance
     sh.created_at AS "sourceRateChangedAt",dh.created_at AS "destinationRateChangedAt",
     COALESCE(t.source_rate_date,sh.effective_date)::text AS "sourceRateDate",COALESCE(t.destination_rate_date,dh.effective_date)::text AS "destinationRateDate",
     t.sender_contact AS "senderContact",t.recipient_contact AS "recipientContact",t.manager_commission AS "managerCommission",
-    t.commission_allocation AS "commissionAllocation",t.amount_dop AS "amountDop",t.requested_receive_amount AS "requestedReceiveAmount",t.payment,t.receipt_issuer AS "receiptIssuer"
+    t.commission_allocation AS "commissionAllocation",t.commission_split AS "commissionSplit",t.calculation,t.payout_amount AS "payoutAmount",
+    t.amount_dop AS "amountDop",t.requested_receive_amount AS "requestedReceiveAmount",t.payment,t.receipt_issuer AS "receiptIssuer"
     FROM remittance_transfers t LEFT JOIN remittance_rate_history sh ON sh.id=t.source_rate_change_id
     LEFT JOIN remittance_rate_history dh ON dh.id=t.destination_rate_change_id ORDER BY t.sequence`)).rows.map((row) => {
-      const { quoteDate, sourceRate, destinationRate, sourceRateKind, destinationRateKind, quotedAt, sourceRateChangeId, destinationRateChangeId, sourceRateChangedAt, destinationRateChangedAt, sourceRateDate, destinationRateDate, ...rest } = row;
-      const allocation = rest.commissionAllocation as Remittance["commissionAllocation"];
-      return { ...clean<Remittance>(rest), ...(rest.requestedReceiveAmount === null ? {} : { receiveRoundingDifference: Number(rest.receiveAmount) - Number(rest.requestedReceiveAmount) }),
+      const { quoteDate, sourceRate, destinationRate, sourceRateKind, destinationRateKind, quotedAt, sourceRateChangeId, destinationRateChangeId, sourceRateChangedAt, destinationRateChangedAt, sourceRateDate, destinationRateDate, commissionSplit, payoutAmount: _payout, ...rest } = row;
+      // The manager's share of the commission (since 29-10-2026) lives in its own column; before, in commission_allocation.
+      const allocation = (rest.commissionAllocation ?? commissionSplit) as Remittance["commissionAllocation"];
+      const calculation = rest.calculation as Remittance["calculation"];
+      return { ...clean<Remittance>({ ...rest, commissionAllocation: allocation ?? null }), ...(rest.requestedReceiveAmount === null ? {} : { receiveRoundingDifference: Number(rest.receiveAmount) - Number(rest.requestedReceiveAmount) }),
         status: "pending" as const, quote: clean<Remittance["quote"]>({ date: quoteDate, sourceRate, destinationRate,
         quotedAt, sourceRateChangeId, destinationRateChangeId, sourceRateChangedAt, destinationRateChangedAt,
         sourceRateDate, destinationRateDate, sourceRateKind, destinationRateKind,
-        ...(allocation ? { commissionPolicyRevision: allocation.policyRevision, managerCommissionBps: allocation.managerCommissionBps } : {}) }) };
+        ...(allocation?.version === 2 ? { commissionPolicyRevision: allocation.policyRevision, managerShareBps: allocation.managerCommissionBps }
+          : allocation ? { commissionPolicyRevision: allocation.policyRevision, managerCommissionBps: allocation.managerCommissionBps } : {}),
+        ...(calculation ? { deliveryConceptId: calculation.deliveryConceptId, deliveryCommissionBps: calculation.deliveryCommissionBps, receiveRounding: calculation.receiveRounding } : {}) }) };
     });
   const events = (await client.query(`SELECT id,type,transfer_id AS "transferId",cash_session_id AS "cashSessionId",
     operator_id AS "operatorId",currency,amount,actor_id AS "actorId",created_at AS "createdAt",reason,refund_confirmation AS refund
@@ -53,16 +58,27 @@ export async function readRemittances(client: pg.PoolClient): Promise<Remittance
         : { status: "cancelled", cancelledAt: event.createdAt, cancelledBy: event.actorId, cancelReason: event.reason, ...(event.refund ? { refund: event.refund } : {}) });
     }
   }
-  const policy = (await client.query(`SELECT revision,transaction_commission_bps AS "transactionCommissionBps",manager_commission_bps AS "managerCommissionBps",updated_at AS "updatedAt",updated_by AS "updatedBy" FROM remittance_commission_policy WHERE id=1`)).rows[0];
-  return { rates, rateHistory, cashSessions, transfers, events, ...(policy ? { commissionPolicy: clean<NonNullable<RemittanceState["commissionPolicy"]>>(policy) } : {}) };
+  const policy = (await client.query(`SELECT revision,transaction_commission_bps AS "transactionCommissionBps",manager_commission_bps AS "managerCommissionBps",
+    manager_share_bps AS "managerShareBps",receive_rounding AS "receiveRounding",updated_at AS "updatedAt",updated_by AS "updatedBy" FROM remittance_commission_policy WHERE id=1`)).rows[0];
+  const deliveryConcepts = (await client.query(`SELECT id,name,commission_bps AS "commissionBps",active,updated_at AS "updatedAt",updated_by AS "updatedBy"
+    FROM remittance_delivery_concepts ORDER BY name,id`)).rows.map((row) => clean<DeliveryConcept>(row));
+  return { rates, rateHistory, cashSessions, transfers, events, deliveryConcepts, ...(policy ? { commissionPolicy: clean<NonNullable<RemittanceState["commissionPolicy"]>>(policy) } : {}) };
 }
 
 export async function saveRemittances(client: pg.PoolClient, state: RemittanceState, before: RemittanceState) {
   if (state.commissionPolicy && JSON.stringify(state.commissionPolicy) !== JSON.stringify(before.commissionPolicy)) {
     const policy = state.commissionPolicy;
-    await client.query(`INSERT INTO remittance_commission_policy(id,revision,manager_commission_bps,transaction_commission_bps,updated_at,updated_by) VALUES(1,$1,$2,$3,$4,$5)
-      ON CONFLICT(id) DO UPDATE SET revision=EXCLUDED.revision,manager_commission_bps=EXCLUDED.manager_commission_bps,transaction_commission_bps=EXCLUDED.transaction_commission_bps,updated_at=EXCLUDED.updated_at,updated_by=EXCLUDED.updated_by`,
-      [policy.revision,policy.managerCommissionBps,policy.transactionCommissionBps ?? 0,policy.updatedAt ?? null,policy.updatedBy ?? null]);
+    await client.query(`INSERT INTO remittance_commission_policy(id,revision,manager_commission_bps,transaction_commission_bps,manager_share_bps,receive_rounding,updated_at,updated_by) VALUES(1,$1,$2,$3,$4,$5,$6,$7)
+      ON CONFLICT(id) DO UPDATE SET revision=EXCLUDED.revision,manager_commission_bps=EXCLUDED.manager_commission_bps,transaction_commission_bps=EXCLUDED.transaction_commission_bps,
+        manager_share_bps=EXCLUDED.manager_share_bps,receive_rounding=EXCLUDED.receive_rounding,updated_at=EXCLUDED.updated_at,updated_by=EXCLUDED.updated_by`,
+      [policy.revision,policy.managerCommissionBps,policy.transactionCommissionBps ?? 0,policy.managerShareBps ?? 0,policy.receiveRounding ?? "none",policy.updatedAt ?? null,policy.updatedBy ?? null]);
+  }
+  for (const concept of state.deliveryConcepts ?? []) {
+    const old = before.deliveryConcepts?.find((row) => row.id === concept.id);
+    if (old && JSON.stringify(old) === JSON.stringify(concept)) continue;
+    await client.query(`INSERT INTO remittance_delivery_concepts(id,name,commission_bps,active,updated_at,updated_by) VALUES($1,$2,$3,$4,$5,$6)
+      ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,commission_bps=EXCLUDED.commission_bps,active=EXCLUDED.active,updated_at=EXCLUDED.updated_at,updated_by=EXCLUDED.updated_by`,
+      [concept.id,concept.name,concept.commissionBps,concept.active,concept.updatedAt ?? new Date().toISOString(),concept.updatedBy ?? null]);
   }
   const oldHistory = new Map((before.rateHistory ?? []).map((row) => [row.id, row]));
   for (const old of oldHistory.values()) {
@@ -90,16 +106,18 @@ export async function saveRemittances(client: pg.PoolClient, state: RemittanceSt
     await client.query(`INSERT INTO remittance_transfers(id,sequence,envio_reference,recibo_reference,operating_code,
       sender_client_id,recipient_client_id,sending_user_id,registered_by,source_currency,destination_currency,
       amount,commission_bps,commission_amount,total_amount,receive_amount,quote_date,source_rate,destination_rate,note,created_at,
-      quote_recorded_at,source_rate_change_id,destination_rate_change_id,sender_contact,recipient_contact,manager_commission,commission_allocation,amount_dop,requested_receive_amount,source_rate_date,destination_rate_date,payment,receipt_issuer,source_rate_kind,destination_rate_kind)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36)`,
+      quote_recorded_at,source_rate_change_id,destination_rate_change_id,sender_contact,recipient_contact,manager_commission,commission_allocation,amount_dop,requested_receive_amount,source_rate_date,destination_rate_date,payment,receipt_issuer,source_rate_kind,destination_rate_kind,
+      commission_split,calculation,payout_amount)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39)`,
       [t.id,t.sequence,t.envioReference,t.reciboReference,t.operatingCode,t.senderClientId,t.recipientClientId,
         t.sendingUserId,t.registeredBy,t.sourceCurrency,t.destinationCurrency,t.amount,t.commissionBps,
         t.commissionAmount,t.totalAmount,t.receiveAmount,t.quote.date,t.quote.sourceRate,t.quote.destinationRate,t.note,t.createdAt,
         t.quote.quotedAt ?? null,t.quote.sourceRateChangeId ?? null,t.quote.destinationRateChangeId ?? null,
         t.senderContact ? JSON.stringify(t.senderContact) : null,t.recipientContact ? JSON.stringify(t.recipientContact) : null,
         t.managerCommission ? JSON.stringify(t.managerCommission) : null,
-        t.commissionAllocation ? JSON.stringify(t.commissionAllocation) : null,t.amountDop ?? null,t.requestedReceiveAmount ?? null,
-        t.quote.sourceRateDate ?? null,t.quote.destinationRateDate ?? null,t.payment ? JSON.stringify(t.payment) : null,t.receiptIssuer ? JSON.stringify(t.receiptIssuer) : null,t.quote.sourceRateKind ?? null,t.quote.destinationRateKind ?? null]);
+        t.commissionAllocation?.version === 1 ? JSON.stringify(t.commissionAllocation) : null,t.amountDop ?? null,t.requestedReceiveAmount ?? null,
+        t.quote.sourceRateDate ?? null,t.quote.destinationRateDate ?? null,t.payment ? JSON.stringify(t.payment) : null,t.receiptIssuer ? JSON.stringify(t.receiptIssuer) : null,t.quote.sourceRateKind ?? null,t.quote.destinationRateKind ?? null,
+        t.commissionAllocation?.version === 2 ? JSON.stringify(t.commissionAllocation) : null,t.calculation ? JSON.stringify(t.calculation) : null,t.calculation?.payoutAmount ?? null]);
   }
   for (const event of state.events) {
     if (before.events.some((old) => old.id === event.id)) continue;

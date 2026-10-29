@@ -105,16 +105,17 @@ test("Cajero with the keyboard only: sign in, open the box, send, deliver, count
     await waitFor(() => document.activeElement?.closest("label")?.textContent?.startsWith("Teléfono del destinatario") === true);
     const box = () => page.evaluate(`document.activeElement?.closest("fieldset.remittance-money")?.querySelector("legend")?.textContent ?? ""`) as Promise<string>;
     await keys("Enter");
-    assert.equal((await focused()).label, "Ingresar importe de");
-    await keys("Enter");
     assert.equal((await focused()).label, "Nota (opcional)");
     await keys("Enter");
     assert.deepEqual([(await focused()).label, await box()], ["Moneda del remitente", "Dinero a enviar"]);
     await keys("Enter");
     assert.match((await focused()).label, /^Monto a enviar/);
     await page.keyboard.type("500");
+    // The total to pay and what the person receives are calculated (29-10-2026): Enter goes past them; Tab still reaches them.
     await keys("Enter");
     assert.deepEqual([(await focused()).label, await box()], ["Moneda del destinatario", "Dinero que se recibe"]);
+    await keys("Enter");
+    assert.equal((await focused()).label, "Comisión de entrega");
     // The last field of money: Enter goes on to «Calcular cotización» without pressing it (Rardiel, 28-10-2026: there it
     // used to stay still). Back to the sender with ← and forth again with →, without changing anything.
     await keys("Enter");

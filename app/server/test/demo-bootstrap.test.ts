@@ -89,7 +89,8 @@ test("public demo examples use the configured commission pair without overwritin
     assertRateRevisionsSaved(saved);
     for (const transfer of saved.remittances.transfers) {
       assert.equal(transfer.commissionBps, 250);
-      assert.equal(transfer.commissionAllocation?.managerCommissionBps, 100);
+      // The manager takes 40% of the commission: the former 1% of a 2.5% commission (29-10-2026).
+      assert.equal(transfer.commissionAllocation?.version, 2); assert.equal(transfer.commissionAllocation?.managerCommissionBps, 4000);
       assert.equal(transfer.quote.commissionPolicyRevision, "qa-existing-policy");
     }
   } finally { await store.close(); }
