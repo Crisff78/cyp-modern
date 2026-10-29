@@ -64,8 +64,8 @@ test("Cajero with the keyboard only: sign in, open the box, send, deliver, count
     assert.equal((await focused()).label, "Moneda");
     await keys("Enter");
     assert.equal((await focused()).label, "Efectivo inicial");
-    // Money fields are typed from the cents (IMPORTES-DESDE-CENTAVOS): 200000 is 2,000.00.
-    await page.keyboard.type("200000");
+    // Amounts are typed from left to right, as any number (29-10-2026): 2000 is 2,000.00.
+    await page.keyboard.type("2000");
     // Enter never stays still (28-10-2026): after the last field it goes to the button without pressing it, and nothing
     // is sent; the next Enter presses it, and the box still asks its confirmation.
     await keys("Enter");
@@ -110,7 +110,7 @@ test("Cajero with the keyboard only: sign in, open the box, send, deliver, count
     assert.deepEqual([(await focused()).label, await box()], ["Moneda del remitente", "Dinero a enviar"]);
     await keys("Enter");
     assert.match((await focused()).label, /^Monto a enviar/);
-    await page.keyboard.type("500");
+    await page.keyboard.type("5");
     // The total to pay and what the person receives are calculated (29-10-2026): Enter goes past them; Tab still reaches them.
     await keys("Enter");
     assert.deepEqual([(await focused()).label, await box()], ["Moneda del destinatario", "Dinero que se recibe"]);
@@ -180,8 +180,8 @@ test("Cajero with the keyboard only: sign in, open the box, send, deliver, count
     await tabTo((element) => element.textContent === "Contar y cerrar");
     await keys("Enter");
     await waitFor(() => document.activeElement?.closest("dialog")?.getAttribute("aria-label")?.startsWith("Contar caja") === true);
-    // Typed from the cents: the digits of the expected amount.
-    const expected = (await page.locator("dialog[open] p strong").first().textContent())!.replace(/\D/g, "");
+    // The expected amount as written, from left to right, with its point for the cents (DOP 1,990.25 → 1990.25).
+    const expected = (await page.locator("dialog[open] p strong").first().textContent())!.replace(/[^0-9.]/g, "");
     await page.keyboard.type(expected);
     // Enter goes on to «Revisar cierre» without pressing it; the next Enter asks the confirmation.
     for (let step = 0; step < 6 && (await focused()).label !== "Revisar cierre"; step += 1) await keys("Enter");

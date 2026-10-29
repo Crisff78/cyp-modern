@@ -262,7 +262,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
         assert.equal(await commission.inputValue(), "5", "both surfaces use the saved central policy");
         await commission.evaluate((input: HTMLInputElement) => { input.value = "0"; });
         const sourceAmount = workspace.getByLabel("Monto a enviar (USD)", { exact: true });
-        await sourceAmount.press("ControlOrMeta+A"); await sourceAmount.pressSequentially("100000"); await sourceAmount.press("Tab");
+        await sourceAmount.press("ControlOrMeta+A"); await sourceAmount.pressSequentially("1000"); await sourceAmount.press("Tab");
         assert.equal(await sourceAmount.inputValue(), "1,000.00");
         assert.equal(await sourceAmount.evaluate((input: HTMLInputElement) => input.checkValidity()), true);
         await workspace.getByRole("button", { name: "Calcular cotización", exact: true }).click();
@@ -289,7 +289,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
         assert.equal(await quoteSummary.count(), 1);
         // Typing in another box makes it the one written: the quote goes and the other boxes wait for the new calculation.
         const receiveBox = workspace.getByLabel("Monto a recibir (EUR)", { exact: true });
-        await receiveBox.press("ControlOrMeta+A"); await receiveBox.pressSequentially("8000");
+        await receiveBox.press("ControlOrMeta+A"); await receiveBox.pressSequentially("80");
         assert.equal(await dop.inputValue(), "Calcula la cotización", "typing in another box invalidates the quote");
         assert.equal(await sourceAmount.inputValue(), "", "what is sent waits for the calculation");
         await workspace.getByRole("button", { name: "Calcular cotización", exact: true }).click();
@@ -742,7 +742,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
         // Typing in what the person receives starts from the box selected: USD 100 can never become DOP 100.
         const desired = receive;
         const send = workspace.getByLabel("Monto a enviar (USD)", { exact: true });
-        await desired.press("ControlOrMeta+A"); await desired.pressSequentially("295000");
+        await desired.press("ControlOrMeta+A"); await desired.pressSequentially("2950");
         assert.equal(await send.inputValue(), "", "what is sent waits for the new calculation");
         const destination = await calculate("destination", "2950");
         assert.equal(destination.amount, 5000); assert.equal(destination.receiveAmount, 295000);
@@ -766,6 +766,47 @@ createRoot(document.getElementById("root")).render(<App />);`);
         await page.waitForFunction(() => document.querySelector<HTMLInputElement>('[data-amount-box="source"]')?.value === "6,100.00");
         assert.equal(await workspace.getByLabel("Monto a enviar (DOP)", { exact: true }).inputValue(), "6,100.00");
         assert.deepEqual(await store.read(), before, "all three quotations and a cancelled review leave the ledger unchanged");
+      } finally { await context.close(); }
+    });
+    // Rardiel, 29-10-2026: «Estas ventanas aquí deberían poder cambiarse de tamaño … y que se queden guardadas como yo las dejé».
+    await t.test("admin: the list of Envíos de dinero takes the height the user leaves it, kept for the account", async () => {
+      const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, locale: "es-DO", serviceWorkers: "block" });
+      try {
+        await context.addInitScript((token: string) => sessionStorage.setItem("cyp-admin-token", token), tokens.admin);
+        await context.route("**/*", routeLocalOnly);
+        const page = await context.newPage(); page.setDefaultTimeout(15000); page.on("pageerror", (error: Error) => errors.push(error.message));
+        const workspace = page.getByRole("region", { name: "Envíos de dinero", exact: true });
+        const open = async () => {
+          await page.goto(`${origin}/admin/`);
+          await (await menuOption(page, "Envíos de dinero")).click();
+          const maximize = page.getByRole("button", { name: "Maximizar Envíos de dinero", exact: true });
+          if (await maximize.isVisible()) await maximize.click();
+          await workspace.locator(".remittance-list-area").waitFor();
+          await page.waitForTimeout(300);
+        };
+        await open();
+        const bar = workspace.getByRole("separator", { name: "Ajustar el alto del listado de envíos", exact: true });
+        const list = workspace.locator(".remittance-list-area");
+        const height = async () => Math.round((await list.boundingBox())!.height);
+        const initial = await height();
+        const box = (await bar.boundingBox())!;
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+        await page.mouse.down(); await page.mouse.move(box.x + box.width / 2, box.y - 150, { steps: 6 }); await page.mouse.up();
+        const dragged = await height();
+        assert.ok(dragged >= initial + 140, `dragging the bar up makes the list taller (${initial} → ${dragged})`);
+        await page.screenshot({ path: path.join(output, "admin-envios-listado-ajustado.png") });
+        // With the keyboard: ↓ on the bar shortens the list.
+        await bar.focus(); await page.keyboard.press("ArrowDown");
+        const keyed = await height();
+        assert.ok(keyed < dragged, `↓ on the bar shortens the list (${dragged} → ${keyed})`);
+        assert.match(await page.evaluate(() => localStorage.getItem("cyp-admin-panel-prefs-v1") ?? ""), /"remittances\.envios\.list\.[^"]+":\{"size":\d+\}/, "kept for this account");
+        // It stays as the user left it: opening the window again keeps the height.
+        await open();
+        assert.ok(Math.abs(await height() - keyed) <= 2, "the height is kept when the window opens again");
+        // Double click on the bar: back to the size of before.
+        await bar.dblclick();
+        await page.waitForTimeout(200);
+        assert.ok(Math.abs(await height() - initial) <= 2, "double click gives the list its first size back");
       } finally { await context.close(); }
     });
     fs.writeFileSync(path.join(output, "exact-origin-destination.json"), JSON.stringify(exactResults, null, 2));

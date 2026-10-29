@@ -109,6 +109,11 @@ Clientes, la página del servidor). Nada de esto choca con el navegador.
   las calculadas; Tab y las flechas sí llegan a ellas, y al escribir en una esa pasa a ser la escrita. Después del
   monto viene «Comisión de entrega» (por defecto «Sin comisión») y luego «Calcular cotización». Ver
   [CALCULO-ENVIOS.md](CALCULO-ENVIOS.md).
+- **Importes de izquierda a derecha y listado de Envíos ajustable (29-10-2026):** los importes se escriben como cualquier
+  número (1500 = 1,500.00; el punto separa los centavos), ver [IMPORTES-DESDE-CENTAVOS.md](IMPORTES-DESDE-CENTAVOS.md).
+  En Envíos de dinero, la barra entre el formulario y el listado se arrastra con el ratón; con el teclado, Tab llega a ella
+  y ↑ ↓ cambian el alto del listado (Inicio y Fin: lo más bajo y lo más alto). Doble clic: el alto de antes. Se recuerda
+  para cada cuenta en ese navegador.
 - **Diálogos:** el teclado entra en su primer campo; en una pregunta, en «Sí» (Intro = Sí, Esc = No); nunca en la X del
   título. No se escapa mientras están abiertos y, al cerrarse, vuelve a lo que los abrió.
 - **Esc** cierra el diálogo, el recibo o la ventana de delante. Si hay algo escrito que se perdería, pregunta «Hay
