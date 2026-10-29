@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Download, Printer, RefreshCw } from "lucide-react";
-import { FiltersPanelIcon } from "./PanelIcons";
+import { FiltersToggle } from "../../shared/FiltersToggle";
 import { currentOperationalWeek } from "../../shared/operationalWeek";
 import { exportSections, printSections } from "../../shared/remittances/output";
 import { commissionReportStatusLabels } from "../../shared/remittances/commissionOutput";
@@ -75,7 +75,7 @@ export function RemittanceReportView({ page, api, actorId }: { page: RemittanceR
   }
   return <div className="connected-report-mdi remittance-report-view" aria-label={definition.label}>
     <div className="legacy-mdi-toolbar" aria-label="Herramientas del reporte de remesas" onClick={(event) => event.stopPropagation()}>
-      <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" aria-label="Mostrar/Ocultar filtros" aria-pressed={filtersVisible} onClick={() => setFiltersVisible((value) => !value)}><FiltersPanelIcon /></button>
+      <FiltersToggle visible={filtersVisible} onClick={() => setFiltersVisible((value) => !value)} />
       {([["first", "Primer registro", "|<"], ["previous", "Registro anterior", "<"], ["next", "Registro siguiente", ">"], ["last", "Último registro", ">|"]] as const).map(([direction, label, text]) => <button type="button" key={direction} className="nav-tool" title={label} aria-label={label} disabled={!selectionKeys.length} onClick={() => moveSelection(direction)}>{text}</button>)}
       <span className="mdi-toolbar-separator" />
       <button type="button" aria-label="Refrescar" title="Refrescar" disabled={busy || !metadata} onClick={() => void consult()}><RefreshCw size={15} /></button>

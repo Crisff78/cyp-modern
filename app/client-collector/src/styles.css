@@ -848,6 +848,23 @@ strong {
   font-size: 10px;
   color: #77857b;
 }
+/* «Orden de ruta» and the funnel that shows and hides the search and the filters of the stops. */
+.section-heading-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.filters-toggle.icon-button {
+  width: 40px;
+  height: 40px;
+  border: 1px solid #dbe2dc;
+  border-radius: 10px;
+  color: #2f3d34;
+}
+.filters-toggle.icon-button.active {
+  background: #e9efeb;
+  border-color: #9fb3a5;
+}
 .search-box {
   display: flex;
   align-items: center;

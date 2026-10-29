@@ -64,6 +64,7 @@ import { openAdminPortal } from "../../shared/sessionHandoff";
 import { BAR_MENU_KEYS, dialogKeys, focusMenu, installKeyboard } from "../../shared/keyboard";
 import { updatedLabel } from "../../shared/buildInfo";
 import { useDialogFocus } from "../../shared/dialogFocus";
+import { FiltersToggle } from "../../shared/FiltersToggle";
 import "../../shared/keyboard.css";
 import { transformRouteToMap } from "./services/mapAdapter";
 import { businessDay as localDay, timeLabel } from "./services/dates";
@@ -843,6 +844,8 @@ function RouteView({
 }) {
   const canCollect = hasPermission(user, 321);
   const [filter, setFilter] = useState<Filter>("Todos");
+  // The funnel shows and hides the search and the filters of the stops, as in the portal (Rardiel, 28-10-2026).
+  const [filtersShown, setFiltersShown] = useState(true);
   const [query, setQuery] = useState("");
   const [nextClientId, setNextClientId] = useState<string | null>(null);
   const [display, setDisplay] = useState<"map" | "list">("map");
@@ -1186,9 +1189,9 @@ function RouteView({
         <h2>
           Mis paradas <span>{list.length}</span>
         </h2>
-        <span>Orden de ruta</span>
+        <span className="section-heading-tools">Orden de ruta<FiltersToggle visible={filtersShown} className="icon-button filters-toggle" onClick={() => setFiltersShown((shown) => !shown)} /></span>
       </div>
-      <label className="search-box">
+      {filtersShown && <><label className="search-box">
         <Search size={20} />
         <input
           placeholder="Buscar cliente o servicio"
@@ -1220,7 +1223,7 @@ function RouteView({
             </button>
           ),
         )}
-      </div>
+      </div></>}
       <div className="stop-list">
         {list.length ? (
           list.map(({ client, charges: rows }, index) => (
