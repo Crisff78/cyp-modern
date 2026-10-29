@@ -78,8 +78,7 @@ function DataTable({ section, wide = false }: { section: OutputSection; wide?: b
 
 function ContactDetails({ contact, label }: { contact: RemittanceContact; label: string }) {
   return <dl className="remittance-summary remittance-contact" aria-label={`Datos de contacto del ${label.toLocaleLowerCase()}`}>
-    <div><dt>Teléfono</dt><dd>{contact.phone || "No registrado"}</dd></div>
-    <div><dt>Celular</dt><dd>{contact.cellular || "No registrado"}</dd></div>
+    <div><dt>Teléfono</dt><dd>{contact.phone || contact.cellular || "No registrado"}</dd></div>
     <div><dt>Dirección</dt><dd>{contact.address || "No registrada"}</dd></div>
   </dl>;
 }
