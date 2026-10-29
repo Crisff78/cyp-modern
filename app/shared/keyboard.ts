@@ -248,7 +248,9 @@ function stepField(target: HTMLElement, backwards: boolean, fromEnter: boolean) 
   const container = form ?? target.closest<HTMLElement>(SCOPE);
   if (!container) return false;
   // A field outside any form (a filter, a search) goes through the other fields outside forms only.
-  const fields = fieldsOf(container, target).filter((field) => form || field === target || !(field as HTMLInputElement).form);
+  // Enter jumps over a field the form calculates itself (data-capture-skip); Tab and the arrows still reach it.
+  const fields = fieldsOf(container, target).filter((field) => (form || field === target || !(field as HTMLInputElement).form) &&
+    (field === target || !fromEnter || !field.hasAttribute("data-capture-skip")));
   const next = fields[fields.indexOf(target) + (backwards ? -1 : 1)];
   if (next) {
     next.focus();

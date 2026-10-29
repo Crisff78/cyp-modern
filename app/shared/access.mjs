@@ -112,7 +112,7 @@ export function canOpenPage(actor, page) {
   if (page === "remittanceCommissions") return (accessRole(actor.role) === "admin" || hasRoleExceptions(actor)) && hasRemittancePermission(actor, "remittances.commissions.view");
   if (page === "exchangeRates") return hasPermission(actor, 200) && hasRemittancePermission(actor, "remittances.rates.view");
   if (page === "reports") return hasPermission(actor, 400) || hasRemittancePermission(actor, "remittances.reports");
-  if (["reportRemittanceAllocations", "reportRemittanceManagerCommissions"].includes(page)) return hasRemittancePermission(actor, "remittances.reports") && hasRemittancePermission(actor, "remittances.commissions.view");
+  if (["reportRemittanceAllocations", "reportRemittanceManagerCommissions", "reportRemittanceExchangeGain"].includes(page)) return hasRemittancePermission(actor, "remittances.reports") && hasRemittancePermission(actor, "remittances.commissions.view");
   if (page.startsWith("reportRemittance")) return hasRemittancePermission(actor, "remittances.reports");
   if (page.startsWith("report")) return hasPermission(actor, 400);
   if (["client", "undefined", "cashier"].includes(accessRole(actor.role)) && !hasRoleExceptions(actor)) return false;

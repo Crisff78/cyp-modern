@@ -30,7 +30,9 @@ test("latest effective rates carry over multiple days independently by currency 
   assert.equal(quote.quote.sourceRate, "60.000000"); assert.equal(quote.quote.destinationRate, "75.000000");
   assert.equal(quote.amountDop, 6000000); assert.equal(quote.receiveAmount, 80000);
   assert.equal(quote.commissionAmount, 10000); assert.equal(quote.totalAmount, 110000);
-  assert.equal(quote.commissionAllocation.transactionAmount, 8000); assert.equal(quote.commissionAllocation.managerAmount, 4000); assert.equal(quote.commissionAllocation.companyAmount, 4000);
+  // The manager takes 50% of the commission (the former 5% of a 10% commission), in the sender's currency.
+  assert.equal(quote.commissionAllocation.currency, "USD");
+  assert.equal(quote.commissionAllocation.transactionAmount, 10000); assert.equal(quote.commissionAllocation.managerAmount, 5000); assert.equal(quote.commissionAllocation.companyAmount, 5000);
   assert.deepEqual(state, before, "quoting does not manufacture today's rates or mutate historical rows");
   const inverse = quoteRemittance(state, { ...input, amount: 80000, amountMode: "destination" }, today);
   assert.equal(inverse.amount, 100000); assert.equal(inverse.receiveAmount, 80000); assert.equal(inverse.receiveRoundingDifference, 0);

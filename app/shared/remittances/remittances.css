@@ -210,12 +210,14 @@ dialog.remittances-dialog { position: fixed; inset: 0; margin: auto; }
     .remittances-fixed > .remittance-send-form .remittance-form-grid > .remittance-party-fields { grid-column: span 2; }
     .remittances-fixed > .remittance-send-form .remittance-form-grid > .remittance-party-fields + .remittance-party-fields { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); }
     .remittances-fixed > .remittance-send-form .remittance-form-grid > .remittance-party-fields + .remittance-party-fields > .remittance-client-picker { grid-column: auto; }
-    .remittances-fixed > .remittance-send-form .remittance-form-grid:has(.remittance-operator-field) .remittance-note-field { grid-column: span 2; }
-    .remittances-fixed > .remittance-send-form .remittance-form-grid:not(:has(.remittance-operator-field)) .remittance-note-field { grid-column: span 3; }
+    /* The operator and the note share their row (the three money boxes took the place of «Ingresar importe de»). */
+    .remittances-fixed > .remittance-send-form .remittance-form-grid:has(.remittance-operator-field) .remittance-note-field { grid-column: span 3; }
+    .remittances-fixed > .remittance-send-form .remittance-form-grid:not(:has(.remittance-operator-field)) .remittance-note-field { grid-column: span 4; }
     .remittances-fixed > .remittance-send-form :is(.remittance-money-send, .remittance-money-receive) { grid-column: span 2; }
-    /* Each box in one row: its names may take two lines, its fields stay in line. */
-    .remittances-fixed > .remittance-send-form .remittance-money-send { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-    .remittances-fixed > .remittance-send-form .remittance-money-receive { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    /* Each box in one row: its names may take two lines, its fields stay in line. The amounts get the wider columns. */
+    .remittances-fixed > .remittance-send-form .remittance-money-send { grid-template-columns: minmax(0, 0.8fr) repeat(2, minmax(0, 1.2fr)) repeat(2, minmax(0, 0.8fr)); }
+    .remittances-fixed > .remittance-send-form .remittance-money-receive { grid-template-columns: minmax(0, 0.8fr) repeat(2, minmax(0, 1.2fr)) minmax(0, 0.8fr); }
+    .remittances-fixed > .remittance-send-form .remittance-money-rate { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
     /* The data of the recipient chosen, beside its phone, in two columns. */
     .remittances-fixed > .remittance-send-form .remittance-party-fields + .remittance-party-fields .remittance-contact { grid-template-columns: repeat(auto-fit, minmax(88px, 1fr)); }
     .remittances-fixed > .remittance-send-form .remittance-money-rate { grid-column: 2 / span 2; width: auto; justify-self: stretch; }

@@ -1,5 +1,11 @@
 # Configuración central de comisiones de envíos
 
+> **Desde el 29-10-2026** el gestor cobra un porcentaje **de la comisión** (no del monto), la ventana
+> tiene además el redondeo de lo que recibe la persona y los conceptos de comisión de entrega, y el
+> reparto va en la moneda de quien envía. Las reglas y ejemplos vigentes están en
+> [CALCULO-ENVIOS.md](CALCULO-ENVIOS.md); lo de abajo describe la versión anterior y sigue valiendo
+> para los envíos hechos antes de esa fecha.
+
 Los porcentajes se registran una vez en Archivos → Admin. → Comisiones de envíos
 (ventana «Comisiones de Envíos»; antes «Comisiones de remesas»).
 Solo Admin con permiso de administrar comisiones puede modificarlos. Admin y la PWA del cobrador toman

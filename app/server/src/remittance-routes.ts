@@ -6,14 +6,13 @@ import { remittanceClientContact, searchRemittanceClients } from "./remittance-c
 import { consolidatedCommissionReport } from "./remittance-commission-report.js";
 import {
   canSeeOutgoing, canSeeReceipt, cancelRemittance, closeRemittanceCash, createRemittance,
-  currencies, openRemittanceCash, payRemittance, quoteRemittance, remittanceReports,
-  remittanceSnapshot, setDailyRate, setCommissionPolicy, transferView,
+  amountModes, currencies, openRemittanceCash, payRemittance, quoteRemittance, receiveRoundings, remittanceReports,
+  remittanceSnapshot, saveDeliveryConcept, setDailyRate, setCommissionPolicy, transferView, visibleRemittanceResult,
 } from "./remittances.js";
 import { boundedId, freeText, phone, singleLine } from "./input-validation.js";
 import { remittanceClientDraft } from "./client-schema.js";
 import { registerRemittanceClient } from "./remittance-client-registration.js";
 import { isPaymentTextDraft, paymentMethods } from "../../shared/remittances/payment.mjs";
-import { hasRemittancePermission } from "../../shared/access.mjs";
 
 type Mutate = <T, P = Record<string, string>>(
   path: string, summary: string, schema: z.ZodType<T>,
@@ -57,17 +56,19 @@ export function registerRemittanceRoutes(
     const input = z.object({ ...quoteFields,
       amount: z.string().max(16).regex(/^[0-9]+$/, "El importe en centavos debe contener solo dígitos.").transform(Number).pipe(amount.positive()),
       commissionBps: z.string().regex(/^\d{1,5}$/).transform(Number).pipe(bps).optional(),
-      amountMode: z.enum(["source", "destination"]).default("source"),
+      amountMode: z.enum(amountModes).default("source"),
+      deliveryConceptId: id.optional(),
     }).strict().parse(req.query);
-    const quotation = quoteRemittance(await store.read(), input);
-    if (hasRemittancePermission(user(req), "remittances.commissions.view")) return quotation;
-    const { commissionAllocation: _split, ...publicQuotation } = quotation;
-    const { managerCommissionBps: _percentage, ...quote } = quotation.quote;
-    return { ...publicQuotation, quote };
+    // The manager's share and the exchange gain are seen only with the commissions.
+    return visibleRemittanceResult(user(req), quoteRemittance(await store.read(), input));
   });
-  mutate("/api/envios/politica-comisiones", "Configurar reparto de comisiones para envíos futuros", z.object({
-    transactionCommissionBps: bps.optional(), managerCommissionBps: bps,
-  }).strict(), (state, actor, input) => setCommissionPolicy(state, actor, input));
+  mutate("/api/envios/politica-comisiones", "Configurar la comisión, la parte del gestor y el redondeo para envíos futuros", z.object({
+    transactionCommissionBps: bps.optional(), managerCommissionBps: bps.optional(), managerShareBps: bps.optional(), receiveRounding: z.enum(receiveRoundings).optional(),
+  }).strict().refine((input) => input.managerCommissionBps !== undefined || input.managerShareBps !== undefined || input.receiveRounding !== undefined || input.transactionCommissionBps !== undefined, "Indica algo que cambiar."),
+  (state, actor, input) => setCommissionPolicy(state, actor, input));
+  mutate("/api/envios/conceptos-entrega", "Agregar o cambiar un concepto de comisión de entrega en destino", z.object({
+    id: id.optional(), name: singleLine(80, 1), commissionBps: bps.max(9999), active: z.boolean(),
+  }).strict(), (state, actor, input) => saveDeliveryConcept(state, actor, input));
   mutate("/api/envios/tasas", "Registrar tasa diaria DOP por unidad", z.object({
     currency, rate: z.string().max(19), date: z.iso.date(),
     purchaseRate: z.string().max(19).optional(), saleRate: z.string().max(19).optional(),
@@ -76,7 +77,8 @@ export function registerRemittanceRoutes(
     ...quoteFields, senderClientId: id.optional(), recipientClientId: id.optional(),
     newSenderClient: remittanceClientDraft.optional(), newRecipientClient: remittanceClientDraft.optional(),
     sendingUserId: id.optional(), recipientPhone: phone.optional(),
-    requestedReceiveAmount: amount.positive().optional(),
+    requestedReceiveAmount: amount.positive().optional(), requestedTotalAmount: amount.positive().optional(),
+    deliveryConceptId: id.optional(),
     payment: z.object({ method: z.enum(paymentMethods), tenderedAmount: amount.optional(), reference: paymentText.min(1).optional(), bank: paymentText.optional(), verified: z.literal(true).optional() }).strict().optional(),
     quote: z.object({ date: z.iso.date(), sourceRate: z.string().max(19), destinationRate: z.string().max(19),
       quotedAt: z.iso.datetime().optional(), sourceRateChangeId: id.optional(), destinationRateChangeId: id.optional(),
@@ -84,6 +86,7 @@ export function registerRemittanceRoutes(
       sourceRateDate: z.iso.date().optional(), destinationRateDate: z.iso.date().optional(),
       sourceRateKind: z.enum(["base", "purchase", "sale", "operative"]).optional(), destinationRateKind: z.enum(["base", "purchase", "sale", "operative"]).optional(),
       commissionPolicyRevision: id.optional(), managerCommissionBps: bps.optional(),
+      managerShareBps: bps.optional(), deliveryConceptId: id.optional(), deliveryCommissionBps: bps.optional(), receiveRounding: z.enum(receiveRoundings).optional(),
     }).strict(),
     managerCommission: z.object({
       managerName: singleLine(160, 1)
