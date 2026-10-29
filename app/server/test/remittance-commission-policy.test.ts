@@ -28,12 +28,13 @@ function fixture() {
 
 test("central commissions default to zero and quotes take the saved rate without a manual input", () => {
   const state = fixture();
-  assert.deepEqual(getCommissionPolicy(state), { revision: "default", transactionCommissionBps: 0, managerCommissionBps: 0 });
+  assert.deepEqual(getCommissionPolicy(state), { revision: "default", transactionCommissionBps: 0, managerCommissionBps: 0, managerShareBps: 0, receiveRounding: "none" });
   assert.equal(quoteRemittance(state, pair, at).commissionAmount, 0);
   const policy = setCommissionPolicy(state, admin, rate, at);
   const quoted = quoteRemittance(state, pair, at);
   assert.equal(quoted.commissionBps, 500); assert.equal(quoted.commissionAmount, 500);
-  assert.equal(quoted.commissionAllocation.managerAmount, 160); assert.equal(quoted.commissionAllocation.companyAmount, 240);
+  // 29-10-2026: the manager takes 40% of the commission (the former 2% of a 5% commission), in the sender's currency.
+  assert.equal(quoted.commissionAllocation.managerAmount, 200); assert.equal(quoted.commissionAllocation.companyAmount, 300);
   assert.equal(quoted.quote.commissionPolicyRevision, policy.revision);
   assert.equal(setCommissionPolicy(state, admin, rate, at).revision, policy.revision, "no-op preserves revision");
   assert.equal(setCommissionPolicy(state, admin, { managerCommissionBps: 100 }, at).transactionCommissionBps, 500, "legacy policy update preserves the total rate");
@@ -54,12 +55,14 @@ test("manual overrides and invalid policy rates reject without writing money or 
   assert.deepEqual(state, before);
 });
 
-test("legacy manager-only configuration is readable but cannot invent a total rate", () => {
+test("legacy manager-only configuration is readable and never invents a commission", () => {
   const state = fixture();
   state.remittances.commissionPolicy = JSON.parse('{"revision":"synthetic-legacy-policy","managerCommissionBps":2800}');
   const before = structuredClone(state);
   assert.equal(getCommissionPolicy(state).transactionCommissionBps, 0);
-  assert.throws(() => quoteRemittance(state, pair, at), code("COMMISSION_EXCEEDS_TOTAL"));
+  // Without a commission there is nothing to share: the manager's former percentage does not become money.
+  const quoted = quoteRemittance(state, pair, at);
+  assert.equal(quoted.commissionAmount, 0); assert.equal(quoted.commissionAllocation.managerAmount, 0); assert.equal(quoted.commissionAllocation.companyAmount, 0);
   assert.deepEqual(state, before);
 });
 
@@ -77,7 +80,7 @@ test("changing the total rate invalidates a quote and preserves saved accrual th
   cancelRemittance(state, collector, saved.id, "Synthetic cancellation", at);
   const report = remittanceReports(state, admin, { from: businessDate(at), to: businessDate(at), grouping: "range" });
   assert.equal(report.commissionAllocations.totals[0].managerAmount, 0);
-  assert.equal(report.commissionAllocations.totals[0].cancelledManagerAmount, 160);
+  assert.equal(report.commissionAllocations.totals[0].cancelledManagerAmount, 200);
 });
 
 test("FileStore reopens the central rate without recalculating historical transfers", async () => {
@@ -134,7 +137,7 @@ test("API central policy is strict, admin-only, automatic on quote/create and id
     const key = randomUUID(); const saved = await post("/envios", body, token, key);
     assert.equal(saved.statusCode, 200, saved.body); assert.equal(saved.json().commissionAmount, 500);
     assert.equal(saved.json().commissionAllocation, undefined, "A collector without commission permission never receives the internal split");
-    assert.equal((await store.read()).remittances.transfers[0].commissionAllocation?.companyAmount, 240); assert.equal((await store.read()).remittances.transfers[0].commissionAllocation?.managerAmount, 160);
+    assert.equal((await store.read()).remittances.transfers[0].commissionAllocation?.companyAmount, 300); assert.equal((await store.read()).remittances.transfers[0].commissionAllocation?.managerAmount, 200);
     await post("/envios/politica-comisiones", { ...rate, transactionCommissionBps: 600 });
     assert.deepEqual((await post("/envios", body, token, key)).json(), saved.json(), "lost response retry retains original commission");
     assert.equal((await post("/envios", body, token)).statusCode, 409);

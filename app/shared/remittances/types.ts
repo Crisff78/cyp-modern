@@ -3,6 +3,10 @@ import type { EffectiveAccess } from "../access.mjs";
 import type { ReceiptIssuer, RemittancePayment, RemittanceRefund } from "./payment.mjs";
 import type { RateKind } from "./appliedRate.mjs";
 export type NewRemittanceClient = { name: string; identification: string; phone: string; address: string; routeId: string; preferredCurrency: Currency };
+// How what the person receives is rounded: the cents as before, the nearest whole unit, or always up to it.
+export type ReceiveRounding = "none" | "normal" | "up";
+// The box that was typed: what is sent, the total the sender pays, or what the person receives.
+export type AmountMode = "source" | "total" | "destination";
 export type Quote = {
   date: string; sourceRate: string; destinationRate: string; quotedAt?: string;
   sourceRateChangeId?: string; destinationRateChangeId?: string;
@@ -10,19 +14,35 @@ export type Quote = {
   sourceRateDate?: string; destinationRateDate?: string;
   sourceRateKind?: RateKind; destinationRateKind?: RateKind;
   commissionPolicyRevision?: string; managerCommissionBps?: number;
+  managerShareBps?: number; deliveryConceptId?: string; deliveryCommissionBps?: number; receiveRounding?: ReceiveRounding;
 };
-export type CommissionPolicy = { revision: string; transactionCommissionBps: number; managerCommissionBps?: number; updatedAt?: string; updatedBy?: string };
+export type CommissionPolicy = { revision: string; transactionCommissionBps: number; managerCommissionBps?: number; managerShareBps?: number; receiveRounding?: ReceiveRounding; updatedAt?: string; updatedBy?: string };
+// Version 1: the manager's % of the received amount (sends before 29-10-2026). Version 2: his share of the commission.
 export type CommissionAllocation = {
-  version: 1; currency: Currency; policyRevision: string; managerCommissionBps: number;
+  version: 1 | 2; currency: Currency; policyRevision: string; managerCommissionBps: number;
   baseAmount: number; transactionAmount: number; companyAmount: number; managerAmount: number;
   managerId?: string; managerName?: string;
+};
+export type DeliveryConcept = { id: string; name: string; commissionBps: number; active: boolean; updatedAt?: string };
+export type ExchangeGain = {
+  currency: "DOP"; sourceAmount: number; destinationAmount: number; totalAmount: number;
+  sourcePurchaseRate?: string; sourceSaleRate?: string; destinationPurchaseRate?: string; destinationSaleRate?: string;
+};
+// The whole calculation of a send (since 29-10-2026); exchangeGain only for those who see the commissions.
+export type RemittanceCalculation = {
+  version: 2; amountMode: AmountMode; requestedAmount: number; convertedAmount: number;
+  deliveryConceptId: string; deliveryConceptName: string; deliveryCommissionBps: number; deliveryCommissionAmount: number;
+  receiveRounding: ReceiveRounding; roundingAdjustment: number; payoutAmount: number;
+  exchangeGain?: ExchangeGain;
 };
 export type Rate = { id: string; currency: Currency; rate: string; purchaseRate?: string; saleRate?: string; date: string; changeId?: string; updatedAt?: string; updatedBy?: string };
 export type RateChange = { id: string; currency: Currency; rate: string; purchaseRate?: string; saleRate?: string; date: string; createdAt: string; actorId: string };
 export type RemittanceContact = { id: string; code: string; name: string; phone: string; cellular: string; address: string; identification?: string };
 export type ManagerCommission = { managerName: string; amount: number; currency: Currency };
 export type Quotation = { sourceCurrency: Currency; destinationCurrency: Currency; amount: number; commissionBps: number; commissionAmount: number; totalAmount: number; receiveAmount: number; quote: Quote;
-  amountDop?: number; requestedReceiveAmount?: number; receiveRoundingDifference?: number; commissionAllocation?: CommissionAllocation };
+  amountDop?: number; requestedReceiveAmount?: number; receiveRoundingDifference?: number; commissionAllocation?: CommissionAllocation; calculation?: RemittanceCalculation };
+/** What the person receives: after the commission at the destination and the rounding; a former send, its converted amount. */
+export const payoutOf = (quotation: Pick<Quotation, "receiveAmount" | "calculation">) => quotation.calculation?.payoutAmount ?? quotation.receiveAmount;
 export type Transfer = Quotation & {
   id: string; sequence: number; envioReference: string; reciboReference: string; operatingCode: string;
   senderClientId: string; recipientClientId: string; sendingUserId: string; registeredBy: string;
@@ -45,6 +65,8 @@ export type RemittanceSnapshot = {
   receiptFooterNote?: string;
   receiptIssuer?: ReceiptIssuer;
   commissionPolicy?: CommissionPolicy;
+  /** «Sin comisión» first; the form offers only the active ones. */
+  deliveryConcepts?: DeliveryConcept[];
   clients: { id: string; code: string; name: string; routeId: string; active: boolean; preferredCurrency?: Currency; canSendFrom: boolean; canReceive: boolean }[];
   operators: { id: string; name: string; role: "admin" | "collector" | "cashier"; collectorId?: string }[];
   /** The operators that can register a transfer (remittances.create); the boxes use all the operators. */
@@ -73,6 +95,11 @@ export type Report = {
   managerCommissions?: {
     details: Array<ManagerCommission & Pick<Transfer, "id" | "envioReference" | "createdAt" | "status">>;
     totals: Array<ManagerCommission & { date: string; count: number; cancelledCount: number; cancelledAmount: number }>;
+  };
+  exchangeGains?: {
+    details: Array<Pick<Transfer, "id" | "envioReference" | "createdAt" | "sourceCurrency" | "destinationCurrency" | "amount" | "receiveAmount" | "status"> & Omit<ExchangeGain, "currency">>;
+    totals: Array<{ date: string; sourceCurrency: Currency; destinationCurrency: Currency; count: number; sourceAmount: number; destinationAmount: number; totalAmount: number; cancelledCount: number; cancelledTotalAmount: number }>;
+    legacyCount: number;
   };
 };
 export type CommissionReportStatus = "all" | "active" | "pending" | "paid" | "cancelled";

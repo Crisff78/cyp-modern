@@ -8,7 +8,8 @@ export function advanceCaptureField(event: KeyboardEvent<HTMLFormElement>) {
   event.preventDefault();
   // Field by field; the current field keeps its place even when it is readonly, so Enter goes on from there.
   const fields = [...event.currentTarget.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>("input,select,textarea")]
-    .filter((field) => field === target || (!field.disabled && !(field instanceof HTMLInputElement && (field.readOnly || field.type === "hidden")) && field.getClientRects().length > 0 && field.getAttribute("role") !== "option"));
+    // A box that the calculation fills (data-capture-skip) is not a stop for Enter; Tab and the arrows still reach it to type there.
+    .filter((field) => field === target || (!field.disabled && !field.hasAttribute("data-capture-skip") && !(field instanceof HTMLInputElement && (field.readOnly || field.type === "hidden")) && field.getClientRects().length > 0 && field.getAttribute("role") !== "option"));
   const index = fields.indexOf(target);
   const next = fields[index + (event.shiftKey ? -1 : 1)];
   if (next) { next.focus(); return; }

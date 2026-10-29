@@ -38,7 +38,8 @@ export function consolidatedCommissionReport(state: State, user: User, input: Co
     if (input.status !== "all" && input.status !== "active" && input.status !== transfer.status) continue;
     const allocation = transfer.commissionAllocation;
     if (input.managerId && (allocation?.managerId ?? transfer.sendingUserId) !== input.managerId) continue;
-    if (input.currency && transfer.destinationCurrency !== input.currency) continue;
+    // The currency of the commission: the destination one before 29-10-2026, the sender's since then.
+    if (input.currency && (allocation?.currency ?? transfer.destinationCurrency) !== input.currency) continue;
     if (!allocation?.managerId || !allocation.managerName) { excludedLegacyCount++; continue; }
     details.push({ ...allocation, id: transfer.id, envioReference: transfer.envioReference, createdAt: transfer.createdAt, status: transfer.status });
     const period = input.grouping === "day" ? date : `${input.from}/${input.to}`;

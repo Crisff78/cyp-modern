@@ -50,24 +50,27 @@ test("bidirectional quotes use server half-up and expose unrepresentable destina
   }
 });
 
-test("calculated split uses final destination base, preserves identity, freezes configuration and cancels accrual", () => {
+// Since 29-10-2026 the manager takes a share of the commission of the send, in the currency the sender pays it. The former
+// «2% of the received amount» with a 5% commission becomes 40% of the commission: 200 USD cents, the 160 EUR cents of before.
+test("calculated split takes the manager's share of the commission, preserves identity, freezes configuration and cancels accrual", () => {
   const state = fixture(), ledger = structuredClone(state.movements);
   setCommissionPolicy(state, admin, { managerCommissionBps: 200 }, now);
   const transfer = createRemittance(state, collector, input(state, 8000), [], now);
   const allocation = transfer.commissionAllocation!;
   assert.equal(transfer.commissionAmount, 500); assert.equal(transfer.totalAmount, 10500);
-  assert.equal(allocation.currency, "EUR"); assert.equal(allocation.baseAmount, 8000);
-  assert.equal(allocation.transactionAmount, 400); assert.equal(allocation.managerAmount, 160); assert.equal(allocation.companyAmount, 240);
+  assert.equal(allocation.version, 2); assert.equal(allocation.managerCommissionBps, 4000, "40% of the commission");
+  assert.equal(allocation.currency, "USD"); assert.equal(allocation.baseAmount, 500);
+  assert.equal(allocation.transactionAmount, 500); assert.equal(allocation.managerAmount, 200); assert.equal(allocation.companyAmount, 300);
   assert.equal(allocation.companyAmount + allocation.managerAmount, allocation.transactionAmount);
   assert.equal(allocation.managerId, collector.id); assert.equal(allocation.managerName, collector.name);
   const report = () => remittanceReports(state, admin, { from: "2026-10-09", to: "2026-10-09", grouping: "day" });
-  assert.equal(report().commissionAllocations.totals[0].managerAmount, 160);
+  assert.equal(report().commissionAllocations.totals[0].managerAmount, 200);
   setCommissionPolicy(state, admin, { managerCommissionBps: 300 }, now);
   assert.deepEqual(state.remittances.transfers[0].commissionAllocation, allocation);
   cancelRemittance(state, collector, transfer.id, "Cancelación sintética", now);
   const totals = report().commissionAllocations.totals[0];
   assert.equal(totals.count, 0); assert.equal(totals.managerAmount, 0); assert.equal(totals.companyAmount, 0);
-  assert.equal(totals.cancelledCount, 1); assert.equal(totals.cancelledManagerAmount, 160); assert.equal(totals.cancelledCompanyAmount, 240);
+  assert.equal(totals.cancelledCount, 1); assert.equal(totals.cancelledManagerAmount, 200); assert.equal(totals.cancelledCompanyAmount, 300);
   assert.deepEqual(state.remittances.transfers[0].commissionAllocation, allocation, "cancellation retains evidence");
   assert.throws(() => cancelRemittance(state, collector, transfer.id, "Otra", now), code("TRANSFER_NOT_PENDING"));
   assert.deepEqual(state.movements, ledger, "collection ledger remains separate");
@@ -79,7 +82,7 @@ test("payment does not accrue twice; report groups by stable gestor ID, currency
   openRemittanceCash(state, admin, { operatorId: receiver.id, currency: "EUR", openingAmount: 8000 }, [receiver], now);
   payRemittance(state, receiver, transfer.id, new Date("2026-10-09T17:00:00Z"));
   const report = remittanceReports(state, admin, { from: "2026-10-09", to: "2026-10-09", grouping: "range" });
-  assert.equal(report.commissionAllocations.totals[0].count, 1); assert.equal(report.commissionAllocations.totals[0].managerAmount, 160);
+  assert.equal(report.commissionAllocations.totals[0].count, 1); assert.equal(report.commissionAllocations.totals[0].managerAmount, 200);
   const cloned = structuredClone(state.remittances.transfers[0]); cloned.id = "another-gestor"; cloned.commissionAllocation!.managerId = "another-id";
   state.remittances.transfers.push(cloned);
   const boundary = structuredClone(cloned); boundary.id = "next-business-day"; boundary.createdAt = "2026-10-10T04:00:00Z"; state.remittances.transfers.push(boundary);
@@ -97,8 +100,8 @@ test("policy changes, over-allocation and manipulated inverse principal reject w
   const current = input(state, 8000), before = structuredClone(state.remittances);
   assert.throws(() => createRemittance(state, collector, { ...current, amount: current.amount + 1 }, [], now), code("QUOTE_CHANGED"));
   assert.throws(() => setCommissionPolicy(state, admin, { managerCommissionBps: 600 }, now), code("COMMISSION_EXCEEDS_TOTAL"));
-  // An old file with an inconsistent policy also fails closed at quotation.
-  state.remittances.commissionPolicy!.managerCommissionBps = 600;
+  // An old file with an inconsistent share (over 100% of the commission) also fails closed at quotation.
+  state.remittances.commissionPolicy!.managerShareBps = 12000;
   assert.throws(() => quoteRemittance(state, pair, now), code("COMMISSION_EXCEEDS_TOTAL"));
   assert.deepEqual(state.remittances.transfers, before.transfers); assert.deepEqual(state.remittances.events, before.events);
   assert.throws(() => setCommissionPolicy(state, collector, { managerCommissionBps: 100 }, now), code("FORBIDDEN"));
@@ -146,11 +149,11 @@ test("API keeps strict schemas, guards policy, confirms destination quote and re
     assert.equal((await post("/envios", stripped)).statusCode, 409);
     assert.deepEqual(await store.read(), before);
     const key = randomUUID(); const saved = await post("/envios", body, key); assert.equal(saved.statusCode, 200, saved.body);
-    assert.equal(saved.json().commissionAllocation.managerAmount, 160); assert.equal(saved.json().amountDop, 600000);
+    assert.equal(saved.json().commissionAllocation.managerAmount, 200); assert.equal(saved.json().amountDop, 600000);
     assert.deepEqual((await post("/envios", body, key)).json(), saved.json()); assert.equal((await store.read()).remittances.transfers.length, 1);
     const cancelled = await post(`/envios/${saved.json().id}/cancelar`, { reason: "Cancelación QA" }); assert.equal(cancelled.statusCode, 200);
     const report = (await get(`/envios/reportes?from=${date}&to=${date}`)).json();
-    assert.equal(report.commissionAllocations.totals[0].managerAmount, 0); assert.equal(report.commissionAllocations.totals[0].cancelledManagerAmount, 160);
+    assert.equal(report.commissionAllocations.totals[0].managerAmount, 0); assert.equal(report.commissionAllocations.totals[0].cancelledManagerAmount, 200);
     const stationBefore = await store.read();
     for (const path of ["/estaciones", "/estaciones/legacy-qa"]) {
       const result = await post(path, { name: "Manual", number: "QA", active: true }); assert.equal(result.statusCode, 409); assert.equal(result.json().error.code, "STATION_RRAA_REQUIRED");

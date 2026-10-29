@@ -104,6 +104,11 @@ Clientes, la página del servidor). Nada de esto choca con el navegador.
   recibe** (DR: moneda, monto, tasa) → **Tasa** (DT, debajo y entre los dos: el equivalente en pesos y la tasa de origen
   a destino). Las tasas y los montos calculados los pone la cotización del servidor. Tras «Calcular cotización», el
   teclado pasa solo a «Revisar y confirmar envío», el paso siguiente.
+- **Envíos de dinero con tres casillas (29-10-2026):** lo que se envía, el total que paga y lo que recibe la persona.
+  Se escribe en una y las otras dos las calcula la cotización. Intro va de la casilla escrita a lo siguiente y salta
+  las calculadas; Tab y las flechas sí llegan a ellas, y al escribir en una esa pasa a ser la escrita. Después del
+  monto viene «Comisión de entrega» (por defecto «Sin comisión») y luego «Calcular cotización». Ver
+  [CALCULO-ENVIOS.md](CALCULO-ENVIOS.md).
 - **Diálogos:** el teclado entra en su primer campo; en una pregunta, en «Sí» (Intro = Sí, Esc = No); nunca en la X del
   título. No se escapa mientras están abiertos y, al cerrarse, vuelve a lo que los abrió.
 - **Esc** cierra el diálogo, el recibo o la ventana de delante. Si hay algo escrito que se perdería, pregunta «Hay
