@@ -62,7 +62,7 @@ export function quoteHistoryRows(quote: Quote, sourceCurrency: Currency, destina
 export function contactRows(transfer: Transfer): (string | number)[][] {
   return ([ ["Remitente", transfer.senderContact], ["Destinatario", transfer.recipientContact] ] as const).flatMap(([label, contact]) => contact ? [
     [`${label}: código`, contact.code], [`${label}: nombre al registrar`, contact.name],
-    [`${label}: teléfono`, contact.phone || "No registrado"], [`${label}: celular`, contact.cellular || "No registrado"],
+    [`${label}: teléfono`, contact.phone || contact.cellular || "No registrado"],
     [`${label}: dirección`, contact.address || "No registrada"],
   ] : [[`${label}: contacto`, "No guardado en esta operación"]]);
 }

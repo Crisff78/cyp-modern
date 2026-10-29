@@ -224,7 +224,7 @@ test("October nine shell changes work in actual App with isolated synthetic APIs
     await run("deliveries search actual collector and actor data, retain current week and open ledger detail on double click", async () => {
       const view = await openNav("Entregas de Dinero a Cobradores", ".cash-deliveries-legacy-view");
       assert.deepEqual(await view.locator('input[type="date"]').evaluateAll((nodes: HTMLInputElement[]) => nodes.map((node) => node.value)), [currentOperationalWeek().from, currentOperationalWeek().to]);
-      const searches = [["Serie / referencia", delivery.id], ["Celular del cobrador", "5550101"], ["Nombre del cobrador", "sintético octubre"], ["Identificación del cobrador", "QA-COL-OCT"], ["Registrado por", delivery.createdByName], ["Nota", "Nota entrega octubre"]];
+      const searches = [["Serie / referencia", delivery.id], ["Teléfono del cobrador", "5550101"], ["Nombre del cobrador", "sintético octubre"], ["Identificación del cobrador", "QA-COL-OCT"], ["Registrado por", delivery.createdByName], ["Nota", "Nota entrega octubre"]];
       for (const [label, value] of searches) { await view.getByLabel(label, { exact: true }).fill(value); assert.equal(await view.locator("tbody tr").filter({ hasText: "Cobrador sintético octubre" }).count(), 1); await view.getByLabel(label, { exact: true }).fill(""); }
       await view.getByLabel("Nota", { exact: true }).fill("sin coincidencia ficticia"); assert.equal(await view.locator("tbody tr[role=button]").count(), 0); await view.getByLabel("Nota", { exact: true }).fill("Nota entrega octubre");
       await view.locator("tbody tr[role=button]").dblclick(); const detail = page.getByRole("dialog", { name: "Detalle de la Entrega de Dinero...", exact: true }); await detail.waitFor();

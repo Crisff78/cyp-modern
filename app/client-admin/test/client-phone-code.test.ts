@@ -34,7 +34,9 @@ test("client phone code works in the actual isolated React dialog", { skip: canR
     fs.writeFileSync(fixture, `import { createRoot } from "react-dom/client";
 import { ClientDataDialog } from ${appModule};
 const existing = Object.freeze({id:"synthetic-real-id",code:"EXISTING-01",identification:"SYN-DOC-EDIT",name:"Cliente QA existente",alias:"Alias QA",address:"Dirección QA",location:"Ubicación QA",zone:"Zona QA",routeId:"qa-route",phone:"+509 (41)23-4567",cellular:"000-000-0000",email:"qa@example.invalid",note:"Nota QA conservada",active:true,preferredCurrency:"EUR"});
-const client = new URLSearchParams(location.search).get("mode") === "edit" ? existing : undefined;
+const mode = new URLSearchParams(location.search).get("mode");
+// "cellular": an older record whose number was kept only as Celular.
+const client = mode === "edit" ? existing : mode === "cellular" ? {...existing, phone: "", cellular: "809-555-0177"} : undefined;
 window.__qaClient = client; window.__qaSaves = []; window.__qaRecords = []; window.__qaClosed = false;
 createRoot(document.getElementById("root")).render(<ClientDataDialog client={client} zones={["Zona QA"]} routes={[{id:"qa-route",name:"Ruta QA"}]} defaultCode="00042" onClose={() => {window.__qaClosed = true;}} onSave={draft => {
   const saved = structuredClone(draft); window.__qaSaves.push(saved);
@@ -90,7 +92,7 @@ createRoot(document.getElementById("root")).render(<ClientDataDialog client={cli
       await usePhone().click(); assert.equal(await field("Código:").inputValue(), "+50941234567");
       assert.equal(await field("Cédula / pasaporte:").inputValue(), "SYN-DOC-CREATE");
       await dialog().getByRole("button", { name: "Copiar teléfono a campos vacíos", exact: true }).click();
-      assert.equal(await field("Celular:").inputValue(), "+509 (41)23-4567");
+      assert.equal(await field("Celular:").count(), 0, "Teléfono and Celular are one number: only Teléfono is shown.");
       assert.equal(await field("Nota:").inputValue(), "+509 (41)23-4567");
       await dialog().getByRole("button", { name: "Aceptar", exact: true }).click();
       const draft = await saved();
@@ -126,13 +128,19 @@ createRoot(document.getElementById("root")).render(<ClientDataDialog client={cli
       await open("edit"); assert.equal(await usePhone().count(), 0);
       await field("Teléfono:").fill("+1 (809) 555-1234");
       await dialog().getByRole("button", { name: "Copiar teléfono a campos vacíos", exact: true }).click();
-      assert.equal(await field("Celular:").inputValue(), "000-000-0000"); assert.equal(await field("Nota:").inputValue(), "Nota QA conservada");
+      assert.equal(await field("Celular:").count(), 0); assert.equal(await field("Nota:").inputValue(), "Nota QA conservada");
       assert.equal(await field("Código:").inputValue(), "EXISTING-01"); assert.equal(await field("Cédula / pasaporte:").inputValue(), "SYN-DOC-EDIT");
       await dialog().getByRole("button", { name: "Aceptar", exact: true }).click();
       const draft = await saved(); assert.equal(draft.code, "EXISTING-01"); assert.equal(draft.identification, "SYN-DOC-EDIT");
+      assert.equal(draft.phone, "+1 (809) 555-1234"); assert.equal(draft.cellular, "+1 (809) 555-1234", "A changed Teléfono replaces the old Celular, so it does not come back.");
       assert.equal(draft.name, "Cliente QA existente"); assert.equal(draft.preferredCurrency, "EUR"); assert.equal(Object.hasOwn(draft, "id"), false);
       assert.equal(await page.evaluate(() => (window as any).__qaClient.id), "synthetic-real-id");
       assert.equal(await page.evaluate(() => (window as any).__qaRecords[0].id), "synthetic-real-id");
+    });
+    await t.test("a record with only Celular shows that number as Teléfono and keeps it", async () => {
+      await open("cellular"); assert.equal(await field("Teléfono:").inputValue(), "809-555-0177");
+      await dialog().getByRole("button", { name: "Aceptar", exact: true }).click();
+      const draft = await saved(); assert.equal(draft.phone, "809-555-0177"); assert.equal(draft.cellular, "809-555-0177");
     });
     assert.deepEqual(await page.evaluate(() => (window as any).__qaFetches), [], "Importing and mounting only the dialog must not call the API.");
     assert.deepEqual(pageErrors, []); assert.deepEqual(unexpectedRequests, []);
