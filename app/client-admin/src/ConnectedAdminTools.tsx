@@ -1,7 +1,7 @@
 import { PermissionAuditDetails } from "./PermissionAuditDetails";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Building2, FileCheck2, RefreshCw } from "lucide-react";
-import { FiltersPanelIcon } from "./PanelIcons";
+import { FiltersToggle } from "../../shared/FiltersToggle";
 import { LegacyCheck, LegacyDenseTable, LegacyDialog, LegacyToolbar, handleKeyboardActivation, handleRowKeys } from "./LegacyConnectedUi";
 import { clearToken } from "./api";
 import { remittancesApi } from "./remittancesApi";
@@ -274,7 +274,7 @@ export function ConnectedAdminTools({ page, snapshot, user, onRefresh }: { page:
   };
   const toolbar = page === "sessions" || page === "traces"
     ? <div className={"legacy-mdi-toolbar " + (page === "sessions" ? "session-toolbar" : "traces-toolbar")} aria-label="Barra de herramientas" onMouseDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
-      <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" aria-label="Mostrar/Ocultar filtros" aria-pressed={filtersVisible} onClick={() => setFiltersVisible((current) => !current)}><FiltersPanelIcon /></button>
+      <FiltersToggle visible={filtersVisible} onClick={() => setFiltersVisible((current) => !current)} />
       <button type="button" className="nav-tool" title="Primer registro" disabled={loading || !selected} onClick={() => moveSelection("first")}>|&lt;</button><button type="button" className="nav-tool" title="Registro anterior" disabled={loading || !selected} onClick={() => moveSelection("previous")}>&lt;</button><button type="button" className="nav-tool" title="Registro siguiente" disabled={loading || !selected} onClick={() => moveSelection("next")}>&gt;</button><button type="button" className="nav-tool" title="Último registro" disabled={loading || !selected} onClick={() => moveSelection("last")}>&gt;|</button>
       <span className="mdi-toolbar-separator" />
       {page === "sessions" && <button type="button" title={selected?.current ? "Cerrar mi sesión" : "Cerrar sesión"} disabled={loading || selected?.status !== "active" || !access.canDelete} onClick={() => selected && open({ type: "confirm", row: selected, action: "close" })}><FileCheck2 size={15} /><span>×</span></button>}

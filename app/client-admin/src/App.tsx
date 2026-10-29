@@ -3,7 +3,7 @@ import { lazy, Suspense } from "react";
 const FinancialMonitorView = lazy(() => import("./FinancialMonitorView"));
 import { monitorLedger } from "./monitorLedger";
 import { MIN_NEW_PASSWORD_LENGTH } from "../../shared/passwordPolicy.mjs";
-import { DetailsPanelIcon, FiltersPanelIcon } from "./PanelIcons";
+import { FiltersToggle } from "../../shared/FiltersToggle";
 import { LegacyDialog } from "./LegacyConnectedUi";
 import { focusAfterClosing, focusFirstUseful, focusMenu, installKeyboard, keyboardIsFree, MENU_KEYS, RAISE_WINDOW, restoreWindowFocus, TILE_KEYS, WINDOW_KEYS } from "../../shared/keyboard";
 import "../../shared/keyboard.css";
@@ -72,6 +72,7 @@ import {
   Users,
   Wallet,
   X,
+  PanelRight,
 } from "lucide-react";
 import { createPortal } from "react-dom";
 import { Toaster, toast } from "sonner";
@@ -694,37 +695,25 @@ function CompactReportLayout({ page, title, snapshot, onRefresh }: Readonly<{ pa
   };
 
   return (
-    <div className="pending-charges-report">
-      <aside className="pending-charges-filter-panel">
-        <div className="pending-charges-filter-heading">Panel de Filtro</div>
-        <div className="pending-charges-filter-fields">
-          <label>Fecha inicial:<input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label>
-          <label>Fecha final:<input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} /></label>
-          <label>Moneda:<select value={currency} onChange={(event) => setCurrency(event.target.value)}><option>No definido</option><option>Peso Dominicano</option><option>Dólar Americano</option><option>Euro</option></select></label>
-          {(page === "reportClientPendingChargesByRoutes") && (
-            <label>Ruta:<select value={routeId} onChange={(event) => setRouteId(event.target.value)}><option value="">Todas</option><option value={NOT_DEFINED_ROUTE}>{NOT_DEFINED}</option>{snapshot.routes.map((route) => <option key={route.id} value={route.id}>{route.name}</option>)}</select></label>
-          )}
-          {(page === "reportClientPendingChargesByZones" || page === "reportClientChargesByZoneService" || page === "reportCollectionsByService") && (
-            <label>Zona:<select value={zone} onChange={(event) => setZone(event.target.value)}><option value="">Todas</option><option value={NOT_DEFINED_ROUTE}>{NOT_DEFINED}</option>{zones.map((zoneName) => <option key={zoneName} value={zoneName}>{zoneName}</option>)}</select></label>
-          )}
-          {(page === "reportClientChargesByZoneService" || page === "reportCollectionsByService") && (
-            <label>Servicio:<select value={service} onChange={(event) => setService(event.target.value)}><option value="">Todos</option>{services.map((serviceName) => <option key={serviceName} value={serviceName}>{serviceName}</option>)}</select></label>
-          )}
-          {(page === "reportCollectionsSummary" || page === "reportCollectionsGeneralSummary") && (
-            <label className="report-inline-check"><span><input type="checkbox" checked={filterCollector} onChange={(event) => setFilterCollector(event.target.checked)} /> Cobrador</span><select value={collectorId} disabled={!filterCollector} onChange={(event) => setCollectorId(event.target.value)}><option value="">Todos</option>{snapshot.collectors.map((collector) => <option key={collector.id} value={collector.id}>{collector.name}</option>)}</select></label>
-          )}
-        </div>
-        <div className="pending-charges-filter-actions">
-          <div className="pending-charges-separator"><span>---</span></div>
-          <button type="button" className="pending-charges-refresh" onClick={handleRefresh}><RefreshCw size={14} /> Refrescar</button>
-          <ReportOutputActions title={title} table={table} />
-          <span className="pending-charges-refresh-status" aria-live="polite">{refreshStatus}</span>
-        </div>
-      </aside>
-      <section className="pending-charges-grid-panel" aria-label={`Resultados de ${title}`}>
-        {snapshot.charges.some((item) => item.currencyConflict) && <p role="alert">Hay cargos históricos con moneda pendiente de revisión; sus saldos no se incluyen en este reporte. Los movimientos conservan su moneda original.</p>}<div className="pending-charges-grid-scroll"><ReportGrid table={table} /></div>
-      </section>
-    </div>
+    <PendingReportFrame title={title} table={table} refreshStatus={refreshStatus} onRefresh={handleRefresh} gridLabel={`Resultados de ${title}`} fields={<>
+      <label>Fecha inicial:<input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label>
+      <label>Fecha final:<input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} /></label>
+      <label>Moneda:<select value={currency} onChange={(event) => setCurrency(event.target.value)}><option>No definido</option><option>Peso Dominicano</option><option>Dólar Americano</option><option>Euro</option></select></label>
+      {(page === "reportClientPendingChargesByRoutes") && (
+        <label>Ruta:<select value={routeId} onChange={(event) => setRouteId(event.target.value)}><option value="">Todas</option><option value={NOT_DEFINED_ROUTE}>{NOT_DEFINED}</option>{snapshot.routes.map((route) => <option key={route.id} value={route.id}>{route.name}</option>)}</select></label>
+      )}
+      {(page === "reportClientPendingChargesByZones" || page === "reportClientChargesByZoneService" || page === "reportCollectionsByService") && (
+        <label>Zona:<select value={zone} onChange={(event) => setZone(event.target.value)}><option value="">Todas</option><option value={NOT_DEFINED_ROUTE}>{NOT_DEFINED}</option>{zones.map((zoneName) => <option key={zoneName} value={zoneName}>{zoneName}</option>)}</select></label>
+      )}
+      {(page === "reportClientChargesByZoneService" || page === "reportCollectionsByService") && (
+        <label>Servicio:<select value={service} onChange={(event) => setService(event.target.value)}><option value="">Todos</option>{services.map((serviceName) => <option key={serviceName} value={serviceName}>{serviceName}</option>)}</select></label>
+      )}
+      {(page === "reportCollectionsSummary" || page === "reportCollectionsGeneralSummary") && (
+        <label className="report-inline-check"><span><input type="checkbox" checked={filterCollector} onChange={(event) => setFilterCollector(event.target.checked)} /> Cobrador</span><select value={collectorId} disabled={!filterCollector} onChange={(event) => setCollectorId(event.target.value)}><option value="">Todos</option>{snapshot.collectors.map((collector) => <option key={collector.id} value={collector.id}>{collector.name}</option>)}</select></label>
+      )}
+    </>}>
+      {snapshot.charges.some((item) => item.currencyConflict) && <p role="alert">Hay cargos históricos con moneda pendiente de revisión; sus saldos no se incluyen en este reporte. Los movimientos conservan su moneda original.</p>}<div className="pending-charges-grid-scroll"><ReportGrid table={table} /></div>
+    </PendingReportFrame>
   );
 }
 
@@ -951,9 +940,9 @@ function LegacyToolbar({ onToggleFilters, filtersVisible = true, onToggleDetails
   disableAccept ||= !access.canAccept;
   return (
     <div className="legacy-mdi-toolbar" aria-label="Barra de herramientas legacy" onMouseDown={stopToolbarEvent} onClick={stopToolbarEvent}>
-      {onToggleFilters && <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" aria-label="Mostrar/Ocultar filtros" aria-pressed={filtersVisible} onClick={runToolbarAction(onToggleFilters)}><FiltersPanelIcon /></button>}
+      {onToggleFilters && <FiltersToggle visible={filtersVisible} onClick={runToolbarAction(onToggleFilters)} />}
       {/* Windows with a details panel on the right hide it with its own button (Dionel, 26-10). */}
-      {onToggleDetails && <button type="button" className={detailsVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar detalles" aria-label="Mostrar/Ocultar detalles" aria-pressed={detailsVisible} onClick={runToolbarAction(onToggleDetails)}><DetailsPanelIcon /></button>}
+      {onToggleDetails && <button type="button" className={detailsVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar detalles" aria-label="Mostrar/Ocultar detalles" aria-pressed={detailsVisible} onClick={runToolbarAction(onToggleDetails)}><PanelRight size={15} aria-hidden="true" /></button>}
       <button type="button" className="nav-tool" title="Mover al inicio" onClick={runToolbarAction(onFirst)}>|&lt;</button>
       <button type="button" className="nav-tool" title="Subir" onClick={runToolbarAction(onPrevious)}>&lt;</button>
       <button type="button" className="nav-tool" title="Bajar" onClick={runToolbarAction(onNext)}>&gt;</button>
@@ -1402,10 +1391,10 @@ function ReportGrid({ table }: Readonly<{ table: ReportTableModel }>) {
   );
 }
 
-function ReportOutputActions({ title, table }: Readonly<{ title: string; table: ReportTableModel }>) {
+function useReportOutput(title: string, table: ReportTableModel) {
   const [exportOpen, setExportOpen] = useState(false);
   const [format, setFormat] = useState("1");
-  const handlePrint = () => {
+  const print = () => {
     try {
       printReportTable(title, table);
     } catch {
@@ -1421,21 +1410,50 @@ function ReportOutputActions({ title, table }: Readonly<{ title: string; table: 
       toast.error("No se pudo exportar el reporte.");
     }
   };
+  const dialog = exportOpen && (
+    <LegacyDialog title="Seleccione un valor..." onClose={() => setExportOpen(false)} className="pending-charges-export-dialog">
+      <form className="pending-charges-export-form" onSubmit={handleExport}>
+        <label htmlFor={`report-export-${title}`}><span>Valor:</span><select id={`report-export-${title}`} value={format} onChange={(event) => setFormat(event.target.value)}>{pendingChargeExportFormats.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+        <div className="pending-charges-export-actions"><button type="submit">Aceptar</button><button type="button" onClick={() => setExportOpen(false)}>Cancelar</button></div>
+      </form>
+    </LegacyDialog>
+  );
+  return { print, openExport: () => setExportOpen(true), dialog };
+}
+
+// The reports with a «Panel de Filtro» (Cargos pendientes, Cobros…): the funnel of their bar shows and hides the panel,
+// like in every window with filters (Rardiel, 28-10-2026). Refrescar, Imprimir and Exportar are in the bar too, so they
+// stay at hand while the panel is hidden.
+function PendingReportFrame({ title, table, fields, refreshStatus, onRefresh, gridLabel, children }: Readonly<{ title: string; table: ReportTableModel; fields: ReactNode; refreshStatus: string; onRefresh: () => void; gridLabel: string; children: ReactNode }>) {
+  const [filtersVisible, setFiltersVisible] = useState(true);
+  const output = useReportOutput(title, table);
   return (
-    <>
-      <div className="pending-charges-action-row">
-        <button type="button" onClick={handlePrint}><Printer size={14} /> Imprimir</button>
-        <button type="button" onClick={() => setExportOpen(true)}><Download size={14} /> Exportar</button>
+    <div className="connected-report-mdi pending-charges-mdi">
+      <div className="legacy-mdi-toolbar" aria-label="Herramientas del reporte">
+        <FiltersToggle visible={filtersVisible} onClick={() => setFiltersVisible((visible) => !visible)} />
+        <span className="mdi-toolbar-separator" />
+        <button type="button" title="Refrescar" aria-label="Refrescar" onClick={onRefresh}><RefreshCw size={15} /></button>
+        <button type="button" title="Imprimir" aria-label="Imprimir" onClick={output.print}><Printer size={15} /></button>
+        <button type="button" title="Exportar" aria-label="Exportar" onClick={output.openExport}><Download size={15} /></button>
+        <span className="pending-charges-refresh-status" aria-live="polite">{refreshStatus}</span>
       </div>
-      {exportOpen && (
-        <LegacyDialog title="Seleccione un valor..." onClose={() => setExportOpen(false)} className="pending-charges-export-dialog">
-          <form className="pending-charges-export-form" onSubmit={handleExport}>
-            <label htmlFor={`report-export-${title}`}><span>Valor:</span><select id={`report-export-${title}`} value={format} onChange={(event) => setFormat(event.target.value)}>{pendingChargeExportFormats.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
-            <div className="pending-charges-export-actions"><button type="submit">Aceptar</button><button type="button" onClick={() => setExportOpen(false)}>Cancelar</button></div>
-          </form>
-        </LegacyDialog>
-      )}
-    </>
+      <div className="pending-charges-report">
+        {filtersVisible && <aside className="pending-charges-filter-panel">
+          <div className="pending-charges-filter-heading">Panel de Filtro</div>
+          <div className="pending-charges-filter-fields">{fields}</div>
+          <div className="pending-charges-filter-actions">
+            <div className="pending-charges-separator"><span>---</span></div>
+            <button type="button" className="pending-charges-refresh" onClick={onRefresh}><RefreshCw size={14} /> Refrescar</button>
+            <div className="pending-charges-action-row">
+              <button type="button" onClick={output.print}><Printer size={14} /> Imprimir</button>
+              <button type="button" onClick={output.openExport}><Download size={14} /> Exportar</button>
+            </div>
+          </div>
+        </aside>}
+        <section className="pending-charges-grid-panel" aria-label={gridLabel}>{children}</section>
+      </div>
+      {output.dialog}
+    </div>
   );
 }
 
@@ -1487,25 +1505,13 @@ function PendingClientChargesReport({ snapshot, onRefresh }: Readonly<{ snapshot
   };
 
   return (
-    <div className="pending-charges-report">
-      <aside className="pending-charges-filter-panel">
-        <div className="pending-charges-filter-heading">Panel de Filtro</div>
-        <div className="pending-charges-filter-fields">
-          <label>Fecha inicial:<input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label>
-          <label>Fecha final:<input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} /></label>
-          <label>Moneda:<select value={currency} onChange={(event) => setCurrency(event.target.value)}><option>No definido</option><option>Peso Dominicano</option><option>Dólar Americano</option><option>Euro</option></select></label>
-        </div>
-        <div className="pending-charges-filter-actions">
-          <div className="pending-charges-separator"><span>---</span></div>
-          <button type="button" className="pending-charges-refresh" onClick={handleRefresh}><RefreshCw size={14} /> Refrescar</button>
-          <ReportOutputActions title={title} table={table} />
-          <span className="pending-charges-refresh-status" aria-live="polite">{refreshStatus}</span>
-        </div>
-      </aside>
-      <section className="pending-charges-grid-panel" aria-label={title}>
-        {snapshot.charges.some((item) => item.currencyConflict) && <p role="alert">Hay cargos históricos con moneda pendiente de revisión; sus saldos no se incluyen en este reporte. Los movimientos conservan su moneda original.</p>}<div className="pending-charges-grid-scroll"><ReportGrid table={table} /></div>
-      </section>
-    </div>
+    <PendingReportFrame title={title} table={table} refreshStatus={refreshStatus} onRefresh={handleRefresh} gridLabel={title} fields={<>
+      <label>Fecha inicial:<input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label>
+      <label>Fecha final:<input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} /></label>
+      <label>Moneda:<select value={currency} onChange={(event) => setCurrency(event.target.value)}><option>No definido</option><option>Peso Dominicano</option><option>Dólar Americano</option><option>Euro</option></select></label>
+    </>}>
+      {snapshot.charges.some((item) => item.currencyConflict) && <p role="alert">Hay cargos históricos con moneda pendiente de revisión; sus saldos no se incluyen en este reporte. Los movimientos conservan su moneda original.</p>}<div className="pending-charges-grid-scroll"><ReportGrid table={table} /></div>
+    </PendingReportFrame>
   );
 }
 
@@ -2281,7 +2287,7 @@ function SessionToolbar({ filtersVisible, selectedSession, onToggleFilters, onFi
   const action = (handler: () => void) => (event: ReactMouseEvent<HTMLButtonElement>) => { event.stopPropagation(); handler(); };
   return (
     <div className="legacy-mdi-toolbar session-toolbar" aria-label="Barra de herramientas de sesiones" onMouseDown={stopToolbarEvent} onClick={stopToolbarEvent}>
-      <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" aria-label="Mostrar/Ocultar filtros" aria-pressed={filtersVisible} onClick={action(onToggleFilters)}><FiltersPanelIcon /></button>
+      <FiltersToggle visible={filtersVisible} onClick={action(onToggleFilters)} />
       <button type="button" className="nav-tool" title="Mover al inicio" onClick={action(onFirst)}>|&lt;</button>
       <button type="button" className="nav-tool" title="Subir" onClick={action(onPrevious)}>&lt;</button>
       <button type="button" className="nav-tool" title="Bajar" onClick={action(onNext)}>&gt;</button>
@@ -2747,7 +2753,7 @@ function ClientToolbar({ filtersVisible, onToggleFilters, canGoBack, canGoForwar
   const action = (handler: () => void) => (event: ReactMouseEvent<HTMLButtonElement>) => { event.stopPropagation(); handler(); };
   return (
     <div className="legacy-mdi-toolbar clients-toolbar" aria-label="Barra de herramientas de clientes" onMouseDown={stopToolbarEvent} onClick={stopToolbarEvent}>
-      <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" aria-label="Mostrar/Ocultar filtros" aria-pressed={filtersVisible} onClick={action(onToggleFilters)}><FiltersPanelIcon /></button>
+      <FiltersToggle visible={filtersVisible} onClick={action(onToggleFilters)} />
       {/* The list arrives in pages: these buttons move between them. */}
       <button type="button" className="nav-tool" title="Primera página" aria-label="Primera página" disabled={!canGoBack} onClick={action(onFirst)}>|&lt;</button>
       <button type="button" className="nav-tool" title="Página anterior" aria-label="Página anterior" disabled={!canGoBack} onClick={action(onPrevious)}>&lt;</button>
@@ -3009,7 +3015,7 @@ function AuthorizationToolbar({ filtersVisible, onToggleFilters, onFirst, onPrev
   const action = (handler: () => void) => (event: ReactMouseEvent<HTMLButtonElement>) => { event.stopPropagation(); handler(); };
   return (
     <div className="legacy-mdi-toolbar authorization-toolbar" aria-label="Barra de herramientas de solicitudes" onMouseDown={stopToolbarEvent} onClick={stopToolbarEvent}>
-      <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" aria-label="Mostrar/Ocultar filtros" aria-pressed={filtersVisible} onClick={action(onToggleFilters)}><FiltersPanelIcon /></button>
+      <FiltersToggle visible={filtersVisible} onClick={action(onToggleFilters)} />
       <button type="button" className="nav-tool" title="Mover al inicio" onClick={action(onFirst)}>|&lt;</button>
       <button type="button" className="nav-tool" title="Subir" onClick={action(onPrevious)}>&lt;</button>
       <button type="button" className="nav-tool" title="Bajar" onClick={action(onNext)}>&gt;</button>
@@ -3534,7 +3540,7 @@ function TraceToolbar({ filtersVisible, onToggleFilters, onFirst, onPrevious, on
   const action = (handler: () => void) => (event: ReactMouseEvent<HTMLButtonElement>) => { event.stopPropagation(); handler(); };
   return (
     <div className="legacy-mdi-toolbar traces-toolbar" aria-label="Barra de herramientas de trazas" onMouseDown={stopToolbarEvent} onClick={stopToolbarEvent}>
-      <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" aria-label="Mostrar/Ocultar filtros" aria-pressed={filtersVisible} onClick={action(onToggleFilters)}><FiltersPanelIcon /></button>
+      <FiltersToggle visible={filtersVisible} onClick={action(onToggleFilters)} />
       <button type="button" className="nav-tool" title="Mover al inicio" onClick={action(onFirst)}>|&lt;</button>
       <button type="button" className="nav-tool" title="Subir" onClick={action(onPrevious)}>&lt;</button>
       <button type="button" className="nav-tool" title="Bajar" onClick={action(onNext)}>&gt;</button>
@@ -3970,7 +3976,7 @@ function PcpToolbar({ filtersVisible, selectedPcp, onToggleFilters, onFirst, onP
   const action = (handler: () => void) => (event: ReactMouseEvent<HTMLButtonElement>) => { event.stopPropagation(); handler(); };
   return (
     <div className="legacy-mdi-toolbar pcp-toolbar" aria-label="Barra de herramientas de PCP" onMouseDown={stopToolbarEvent} onClick={stopToolbarEvent}>
-      <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" aria-label="Mostrar/Ocultar filtros" aria-pressed={filtersVisible} onClick={action(onToggleFilters)}><FiltersPanelIcon /></button>
+      <FiltersToggle visible={filtersVisible} onClick={action(onToggleFilters)} />
       <button type="button" className="nav-tool" title="Mover al inicio" onClick={action(onFirst)}>|&lt;</button>
       <button type="button" className="nav-tool" title="Subir" onClick={action(onPrevious)}>&lt;</button>
       <button type="button" className="nav-tool" title="Bajar" onClick={action(onNext)}>&gt;</button>

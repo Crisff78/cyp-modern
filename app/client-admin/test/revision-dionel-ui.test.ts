@@ -184,17 +184,17 @@ test("Dionel's review (26-10): header, double click, funnel, paged Clientes, «N
       }
     });
 
-    await t.test("2.2: Dionel's panel icons show and hide the filters; Depósitos hides its details panel too", async () => {
+    await t.test("2.2: the funnel shows and hides the filters (Rardiel, 28-10: the funnel again); Depósitos hides its details panel too", async () => {
       for (const [option, window] of [["Clientes", "Clientes"], ["Cargos", "Cargos"], ["Cobros", "Cobros"], ["Depósitos por Cobradores", "Depósitos por Cobradores"]]) {
         const frame = await openNav(option, window);
-        assert.equal(await filterIcon(frame), "panel-filtros", option);
-        assert.equal(await frame.locator(".lucide-filter").count(), 0, option);
+        assert.equal(await filterIcon(frame), "embudo", option);
+        assert.equal(await frame.locator("[data-icon^='panel-']").count(), 0, option);
         assert.equal(await frame.locator(".lucide-key-round").count(), 0, option);
       }
       const deposits = await openNav("Depósitos por Cobradores", "Depósitos por Cobradores");
       const details = deposits.getByRole("complementary", { name: "Panel de detalles", exact: true });
       await details.waitFor();
-      assert.equal(await deposits.getByRole("button", { name: "Mostrar/Ocultar detalles", exact: true }).locator("svg").getAttribute("data-icon"), "panel-detalles");
+      assert.equal(await deposits.getByRole("button", { name: "Mostrar/Ocultar detalles", exact: true }).locator("svg.lucide-panel-right").count(), 1);
       await deposits.getByRole("button", { name: "Mostrar/Ocultar detalles", exact: true }).click();
       await details.waitFor({ state: "detached" });
       await deposits.getByRole("button", { name: "Mostrar/Ocultar filtros", exact: true }).click();
