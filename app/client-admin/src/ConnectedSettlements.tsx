@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Database, Download, FileSearch, Plus, Printer, RefreshCw } from "lucide-react";
-import { FiltersPanelIcon } from "./PanelIcons";
+import { FiltersToggle } from "../../shared/FiltersToggle";
 import { LegacyDialog, handleKeyboardActivation, handleRowKeys } from "./LegacyConnectedUi";
 import { remittancesApi } from "./remittancesApi";
 import { SettlementCashDialog } from "./SettlementCashDialog";
@@ -160,7 +160,7 @@ export function ConnectedSettlements({ snapshot, actorId = "", canManage = false
 
   return <div className="daily-settlements-mdi connected-settlements-mdi">
     <div className="legacy-mdi-toolbar" aria-label="Herramientas de cuadres diarios">
-      <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" aria-label="Mostrar/Ocultar filtros" aria-pressed={filtersVisible} onClick={() => setFiltersVisible((visible) => !visible)}><FiltersPanelIcon /></button>
+      <FiltersToggle visible={filtersVisible} onClick={() => setFiltersVisible((visible) => !visible)} />
       <button type="button" className="nav-tool" title="Primer cuadre" disabled={!rows.length} onClick={() => moveSelection("first")}>|&lt;</button>
       <button type="button" className="nav-tool" title="Cuadre anterior" disabled={!rows.length} onClick={() => moveSelection("previous")}>&lt;</button>
       <button type="button" className="nav-tool" title="Cuadre siguiente" disabled={!rows.length} onClick={() => moveSelection("next")}>&gt;</button>

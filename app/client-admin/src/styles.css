@@ -11011,6 +11011,11 @@ table {
 .pending-charges-action-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .pending-charges-action-row button { min-width: 0; }
 .pending-charges-refresh-status { min-height: 13px; color: var(--cyp-text-muted, #64748b); font-size: 10px; text-align: center; }
+/* The bar with the funnel above the report; the report takes the rest of the window. */
+.pending-charges-mdi { display: flex; flex-direction: column; gap: 6px; width: 100%; height: 100%; min-width: 0; min-height: 0; }
+.pending-charges-mdi > .legacy-mdi-toolbar { flex: 0 0 auto; }
+.pending-charges-mdi > .legacy-mdi-toolbar .pending-charges-refresh-status { margin-left: 6px; min-height: 0; }
+.pending-charges-mdi > .pending-charges-report { flex: 1 1 auto; height: auto; }
 
 .pending-charges-grid-panel {
   flex: 1 1 auto;

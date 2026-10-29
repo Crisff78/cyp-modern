@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Download, Printer, RefreshCw } from "lucide-react";
-import { FiltersPanelIcon } from "./PanelIcons";
+import { FiltersToggle } from "../../shared/FiltersToggle";
 import { exportSections, formatMoney, printSections, type OutputSection } from "../../shared/remittances/output";
 import { LegacyDialog } from "./LegacyConnectedUi";
 import type { Snapshot } from "./types";
@@ -97,7 +97,7 @@ export function ConnectedLegacyReports({ page, title, snapshot, onRefresh }: { p
   };
   return <div className="connected-report-mdi">
     <div className="legacy-mdi-toolbar" aria-label="Herramientas del reporte">
-      <button type="button" className={filtersVisible ? "nav-tool active" : "nav-tool"} title="Mostrar/Ocultar filtros" aria-label="Mostrar/Ocultar filtros" aria-pressed={filtersVisible} onClick={() => setFiltersVisible((visible) => !visible)}><FiltersPanelIcon /></button>
+      <FiltersToggle visible={filtersVisible} onClick={() => setFiltersVisible((visible) => !visible)} />
       <button type="button" className="nav-tool" title="Primer registro" disabled={!selectionKeys.length} onClick={() => moveSelection("first")}>|&lt;</button>
       <button type="button" className="nav-tool" title="Registro anterior" disabled={!selectionKeys.length} onClick={() => moveSelection("previous")}>&lt;</button>
       <button type="button" className="nav-tool" title="Registro siguiente" disabled={!selectionKeys.length} onClick={() => moveSelection("next")}>&gt;</button>

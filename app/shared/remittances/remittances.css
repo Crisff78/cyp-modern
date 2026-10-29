@@ -35,6 +35,9 @@
 .remittance-toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; margin: 12px 0; }
 .remittance-toolbar label { flex: 1 1 170px; }
 .remittance-toolbar strong { flex: 1 1 100%; }
+/* The funnel of Buscar and Estado: pressed while they are shown. */
+.remittances .remittance-toolbar .remittance-filters-toggle { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; min-width: 40px; padding: 0 10px; }
+.remittances .remittance-toolbar .remittance-filters-toggle.active { background: var(--cyp-info-surface, #dde7f3); border-color: var(--rem-blue); color: var(--rem-blue); }
 .remittance-panel { border: 1px solid var(--rem-edge); background: var(--rem-paper); border-radius: 5px; padding: 16px; margin: 0 0 16px; }
 .remittance-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .remittance-party-fields { display: grid; align-content: start; gap: 14px; min-width: 0; }
