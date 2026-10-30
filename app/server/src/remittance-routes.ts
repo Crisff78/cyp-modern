@@ -5,7 +5,7 @@ import type { Store } from "./store.js";
 import { remittanceClientContact, searchRemittanceClients } from "./remittance-client-search.js";
 import { consolidatedCommissionReport } from "./remittance-commission-report.js";
 import {
-  canSeeOutgoing, canSeeReceipt, cancelRemittance, closeRemittanceCash, createRemittance,
+  addRemittanceCash, canSeeOutgoing, canSeeReceipt, cancelRemittance, closeRemittanceCash, createRemittance,
   amountModes, currencies, openRemittanceCash, payRemittance, quoteRemittance, receiveRoundings, remittanceReports,
   remittanceSnapshot, saveDeliveryConcept, setDailyRate, setCommissionPolicy, transferView, visibleRemittanceResult,
 } from "./remittances.js";
@@ -114,9 +114,12 @@ export function registerRemittanceRoutes(
   mutate("/api/envios/cajas/abrir", "Abrir caja de remesas por operador y moneda", z.object({
     operatorId: id, currency, openingAmount: amount,
   }).strict(), (state, actor, input) => openRemittanceCash(state, actor, input, systemOperators));
-  mutate("/api/envios/cajas/:id/cerrar", "Cerrar caja con contado exacto",
-    z.object({ countedAmount: amount }).strict(),
-    (state, actor, input, params) => closeRemittanceCash(state, actor, params.id, input.countedAmount));
+  mutate("/api/envios/cajas/:id/cerrar", "Cerrar caja con contado exacto; lo descargado al operador no pasa a su próxima apertura",
+    z.object({ countedAmount: amount, dischargedAmount: amount.optional() }).strict(),
+    (state, actor, input, params) => closeRemittanceCash(state, actor, params.id, input.countedAmount, new Date(), input.dischargedAmount ?? 0));
+  mutate("/api/envios/cajas/:id/entregas", "Entrega adicional de efectivo a la caja abierta de hoy",
+    z.object({ amount, note: freeText(500).optional() }).strict(),
+    (state, actor, input, params) => addRemittanceCash(state, actor, params.id, input));
   get("/api/envios/reportes", "Reportes de envíos por rango o día, sin mezclar monedas", async (req) => {
     const input = z.object({ from: z.iso.date(), to: z.iso.date(), grouping: z.enum(["range", "day"]).default("range") }).strict().parse(req.query);
     return remittanceReports(await store.read(), user(req), input);

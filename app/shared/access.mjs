@@ -11,6 +11,8 @@ export const REMITTANCE_PERMISSIONS = [
   { key: "remittances.cash.view", name: "Ver caja de remesas" },
   { key: "remittances.cash.open", name: "Abrir cajas de remesas" },
   { key: "remittances.cash.close", name: "Cerrar su propia caja de remesas" },
+  // The opening of a box comes fixed from the close of the day before (Mayo, 26-10-2026): changing it is a permission apart.
+  { key: "remittances.cash.opening.edit", name: "Cambiar el efectivo inicial de la caja de remesas" },
   { key: "remittances.reports", name: "Ver e imprimir reportes de remesas" },
   { key: "remittances.rates.view", name: "Ver tasas de remesas" },
   { key: "remittances.rates.manage", name: "Cambiar tasas de remesas" },
@@ -22,6 +24,7 @@ export const REMITTANCE_PERMISSION_DEPENDENCIES = {
   "remittances.create": ["remittances.view"], "remittances.clients.create": ["remittances.view", "remittances.create"],
   "remittances.pay": ["remittances.receipts"], "remittances.cancel": ["remittances.view"],
   "remittances.cash.open": ["remittances.cash.view"], "remittances.cash.close": ["remittances.cash.view"],
+  "remittances.cash.opening.edit": ["remittances.cash.view", "remittances.cash.open"],
   "remittances.rates.manage": ["remittances.rates.view"], "remittances.commissions.manage": ["remittances.commissions.view"],
 };
 
@@ -40,7 +43,7 @@ export function legacyPermissionDependencies(id) {
 const readIds = [1, 2, 3, 5, 10, 101, 111, 115, 120, 130, 140, 144, 150, 160, 170, 174, 180, 190, 200,
   300, 310, 320, 330, 340, 350, 360, 370, 380, 390, 400, 401, 410, 411, 412, 413, 414, 415, 500, 501];
 const collectorIds = [1, 2, 130, 140, 144, 300, 320, 321, 323, 370, 371, 373, 400, 500, 501];
-const maintenance = new Set(["remittances.rates.manage", "remittances.commissions.manage", "remittances.cash.open"]);
+const maintenance = new Set(["remittances.rates.manage", "remittances.commissions.manage", "remittances.cash.open", "remittances.cash.opening.edit"]);
 const readKeys = new Set(["remittances.view", "remittances.receipts", "remittances.cash.view", "remittances.reports", "remittances.rates.view", "remittances.commissions.view"]);
 // The cashier opens only his own cash box (enforced by the server); rates and commissions stay administrative.
 const cashierKeys = ["remittances.view", "remittances.create", "remittances.receipts", "remittances.pay", "remittances.cancel",

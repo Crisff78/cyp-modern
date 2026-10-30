@@ -1,1 +1,7 @@
 .exchange-rate-form.legacy-dialog-form label.exchange-rate-row { display: flex; }
+
+/* Mayo, 26-10-2026: the rate in use stands out; a replaced or an earlier one is kept, muted, and cannot be edited. */
+.exchange-rates-grid tr[data-rate-status="replaced"] td, .exchange-rates-grid tr[data-rate-status="previous"] td { color: var(--cyp-text-muted, #64748b); }
+.exchange-rates-grid tr[data-rate-status="replaced"] td:nth-child(n+5):nth-child(-n+7) { text-decoration: line-through; }
+.exchange-rates-grid tr[data-rate-status="current"] td:nth-child(4) { font-weight: 700; color: var(--cyp-success-text, #047857); }
+.exchange-rates-in-use { margin: 6px 4px 8px; }

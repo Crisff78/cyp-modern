@@ -1,4 +1,4 @@
-export type RemittancePermission = "remittances.view" | "remittances.create" | "remittances.receipts" | "remittances.pay" | "remittances.cancel" | "remittances.clients.create" | "remittances.cash.view" | "remittances.cash.open" | "remittances.cash.close" | "remittances.reports" | "remittances.rates.view" | "remittances.rates.manage" | "remittances.commissions.view" | "remittances.commissions.manage";
+export type RemittancePermission = "remittances.view" | "remittances.create" | "remittances.receipts" | "remittances.pay" | "remittances.cancel" | "remittances.clients.create" | "remittances.cash.view" | "remittances.cash.open" | "remittances.cash.close" | "remittances.cash.opening.edit" | "remittances.reports" | "remittances.rates.view" | "remittances.rates.manage" | "remittances.commissions.view" | "remittances.commissions.manage";
 export type PermissionMode = "role" | "custom";
 export type EffectiveAccess = Readonly<{ mode: PermissionMode; revision: number; roleExceptions?: boolean; legacy: readonly number[]; remittances: readonly RemittancePermission[] }>;
 export type AccessActor = { role: string; access?: EffectiveAccess };

@@ -81,8 +81,9 @@ Clientes, la página del servidor). Nada de esto choca con el navegador.
   mueven el cursor y salen del campo desde su principio (←) o su final (→); a un campo al que se llega con ellas se le
   elige todo el texto, así que otra pulsación sigue (y escribir lo reemplaza). Un campo que no se puede escribir (de
   solo lectura) sigue a la primera. En una lista para elegir, una opción o una casilla nunca cambian lo elegido. En una
-  fecha, ← → pasan al campo de al lado: la fecha se escribe de corrido (día, mes y año se llenan solos) y ↑ ↓ cambian la
-  parte donde está el cursor. Las barras de botones y los mosaicos ya no dan la vuelta: desde su primer botón ← sale
+  fecha (desde el 29-10-2026, revisión de Mayo), ← → pasan por su día, su mes y su año, y cada parte se escribe sin
+  abrir el calendario; desde el día ← y desde el año → siguen al campo de al lado. Escribir de corrido sigue llenando
+  día, mes y año solos, un clic elige la parte que está debajo y ↑ ↓ cambian la parte donde está el cursor. Las barras de botones y los mosaicos ya no dan la vuelta: desde su primer botón ← sale
   al anterior y desde el último → sale al siguiente. En el menú, → y ← siguen abriendo y cerrando las secciones.
 - **Listas de entradas con su botón** (los permisos de una cuenta, los avisos): son una sola parada de Tab y ↑ ↓ pasan
   de una a otra. Antes, con muchas entradas, Tab pedía una pulsación por cada una antes de llegar a «Guardar».

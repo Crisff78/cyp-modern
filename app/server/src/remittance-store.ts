@@ -1,5 +1,5 @@
 import type pg from "pg";
-import { type Remittance, type CashSession, type DeliveryConcept, type ExchangeRate, type RateChange, type RemittanceEvent, type RemittanceState } from "./remittances.js";
+import { type Remittance, type CashMovement, type CashSession, type DeliveryConcept, type ExchangeRate, type RateChange, type RemittanceEvent, type RemittanceState } from "./remittances.js";
 import { DomainError } from "./domain.js";
 
 const clean = <T>(row: Record<string, unknown>): T => Object.fromEntries(
@@ -15,8 +15,10 @@ export async function readRemittances(client: pg.PoolClient): Promise<Remittance
     created_at AS "createdAt",actor_id AS "actorId" FROM remittance_rate_history
     ORDER BY effective_date,created_at,id`)).rows.map((row) => clean<RateChange>(row));
   const cashSessions = (await client.query(`SELECT id,operator_id AS "operatorId",currency,date::text,
-    opening_amount AS "openingAmount",opened_by AS "openedBy",opened_at AS "openedAt"
+    opening_amount AS "openingAmount",opened_by AS "openedBy",opened_at AS "openedAt",carried_from AS "carriedFrom"
     FROM remittance_cash_sessions ORDER BY date,opened_at,id`)).rows.map((row) => ({ ...clean<CashSession>(row), status: "open" as const }));
+  const cashMovements = (await client.query(`SELECT id,type,cash_session_id AS "cashSessionId",operator_id AS "operatorId",currency,amount,note,
+    actor_id AS "actorId",created_at AS "createdAt" FROM remittance_cash_movements ORDER BY created_at,id`)).rows.map((row) => clean<CashMovement>(row));
   const transfers = (await client.query(`SELECT t.id,t.sequence,t.envio_reference AS "envioReference",t.recibo_reference AS "reciboReference",
     t.operating_code AS "operatingCode",t.sender_client_id AS "senderClientId",t.recipient_client_id AS "recipientClientId",
     t.sending_user_id AS "sendingUserId",t.registered_by AS "registeredBy",t.source_currency AS "sourceCurrency",
@@ -62,7 +64,7 @@ export async function readRemittances(client: pg.PoolClient): Promise<Remittance
     manager_share_bps AS "managerShareBps",receive_rounding AS "receiveRounding",updated_at AS "updatedAt",updated_by AS "updatedBy" FROM remittance_commission_policy WHERE id=1`)).rows[0];
   const deliveryConcepts = (await client.query(`SELECT id,name,commission_bps AS "commissionBps",active,updated_at AS "updatedAt",updated_by AS "updatedBy"
     FROM remittance_delivery_concepts ORDER BY name,id`)).rows.map((row) => clean<DeliveryConcept>(row));
-  return { rates, rateHistory, cashSessions, transfers, events, deliveryConcepts, ...(policy ? { commissionPolicy: clean<NonNullable<RemittanceState["commissionPolicy"]>>(policy) } : {}) };
+  return { rates, rateHistory, cashSessions, cashMovements, transfers, events, deliveryConcepts, ...(policy ? { commissionPolicy: clean<NonNullable<RemittanceState["commissionPolicy"]>>(policy) } : {}) };
 }
 
 export async function saveRemittances(client: pg.PoolClient, state: RemittanceState, before: RemittanceState) {
@@ -98,8 +100,14 @@ export async function saveRemittances(client: pg.PoolClient, state: RemittanceSt
   }
   for (const cash of state.cashSessions) {
     if (before.cashSessions.some((c) => c.id === cash.id)) continue;
-    await client.query(`INSERT INTO remittance_cash_sessions(id,operator_id,currency,date,opening_amount,opened_by,opened_at)
-      VALUES($1,$2,$3,$4,$5,$6,$7)`, [cash.id,cash.operatorId,cash.currency,cash.date,cash.openingAmount,cash.openedBy,cash.openedAt]);
+    await client.query(`INSERT INTO remittance_cash_sessions(id,operator_id,currency,date,opening_amount,opened_by,opened_at,carried_from)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, [cash.id,cash.operatorId,cash.currency,cash.date,cash.openingAmount,cash.openedBy,cash.openedAt,cash.carriedFrom ?? null]);
+  }
+  // Entregas adicionales and descargos are append-only, like the events.
+  for (const movement of state.cashMovements ?? []) {
+    if ((before.cashMovements ?? []).some((old) => old.id === movement.id)) continue;
+    await client.query(`INSERT INTO remittance_cash_movements(id,type,cash_session_id,operator_id,currency,amount,note,actor_id,created_at)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [movement.id,movement.type,movement.cashSessionId,movement.operatorId,movement.currency,movement.amount,movement.note ?? null,movement.actorId,movement.createdAt]);
   }
   for (const t of state.transfers) {
     if (before.transfers.some((old) => old.id === t.id)) continue;

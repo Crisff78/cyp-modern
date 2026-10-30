@@ -62,7 +62,7 @@ export function remittanceReportSections(type: RemittanceReportType, report: Rep
         ...(gains.legacyCount ? [{ title: "Envíos sin este cálculo", columns: ["Dato", "Valor"], rows: [["Envíos anteriores al 29-10-2026 (sin ganancia calculada)", gains.legacyCount]] }] : []),
       ];
     }
-    case "cash": return [{ title: "Caja de remesas por operador y moneda", columns: ["Fecha", "Operador", "Moneda", "Cajas", "Primera apertura", "Ingresos envíos", "Devoluciones", "Pagos", "Último esperado"], rows: (report.cashSummary ?? []).map((row) => [row.date, operatorName(row.operatorId), row.currency, row.sessionCount, money(row.firstOpening, row.currency), money(row.sentTotal, row.currency), money(row.cancelRefund, row.currency), money(row.paid, row.currency), money(row.lastExpected, row.currency)]) }];
+    case "cash": return [{ title: "Caja de remesas por operador y moneda", columns: ["Fecha", "Operador", "Moneda", "Cajas", "Primera apertura", "Entregas adicionales", "Ingresos envíos", "Devoluciones", "Pagos", "Último esperado"], rows: (report.cashSummary ?? []).map((row) => [row.date, operatorName(row.operatorId), row.currency, row.sessionCount, money(row.firstOpening, row.currency), money(row.added ?? 0, row.currency), money(row.sentTotal, row.currency), money(row.cancelRefund, row.currency), money(row.paid, row.currency), money(row.lastExpected, row.currency)]) }];
     case "allocations": return [];
   }
 }
