@@ -180,7 +180,8 @@ createRoot(document.getElementById("root")).render(<Fixture />);`, "utf8");
     await t.test("complete catalog, draggable title, blocked background and one permission per explicit add", async () => {
       await open();
       assert.equal(await dialog().getByRole("radio", { name: /^Permiso / }).count(), 119);
-      assert.equal(await dialog().getByRole("radio", { name: /^Remesas: / }).count(), 14);
+      // 15 since 29-10-2026: «Cambiar el efectivo inicial de la caja de remesas» (review of Mayo).
+      assert.equal(await dialog().getByRole("radio", { name: /^Remesas: / }).count(), 15);
       const names = await dialog().locator("tbody tr").filter({ has: page.locator('input[aria-label^="Permiso "]') }).evaluateAll((rows: HTMLTableRowElement[]) => rows.map((row) => ({ id: Number(row.cells[1].textContent), name: row.cells[2].textContent, category: row.cells[3].textContent })));
       assert.deepEqual(names, catalog.permissions);
       assert.deepEqual(await category().locator("option").allTextContents(), [...catalog.categories, "Remesas"]);

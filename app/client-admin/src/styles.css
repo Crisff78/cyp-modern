@@ -11130,7 +11130,11 @@ table {
 .client-generated-field > input { width: 100%; min-width: 0; }
 .client-generated-field > button { padding: 4px 8px; white-space: nowrap; font-size: 11px; border: 1px solid var(--cyp-border-strong, #9ca3af); border-radius: 4px; color: var(--cyp-text, #334155); background: var(--cyp-surface, #fff); cursor: pointer; }
 .client-generated-field > button:disabled { opacity: .6; cursor: default; }
-.brand-company-logo { display: grid; place-items: center; width: 42px; height: 42px; flex: 0 0 42px; border-radius: 8px; background: var(--cyp-surface, #fff); }
+.brand-company-logo { display: grid; place-items: center; width: 52px; height: 52px; flex: 0 0 52px; border-radius: 8px; background: var(--cyp-surface, #fff); }
+/* Mayo, 26-10-2026: the logo of the client, large in the middle of the escritorio and behind the windows. */
+.desktop-company-brand { position: absolute; inset: 0; z-index: 0; display: grid; place-content: center; justify-items: center; gap: 14px; margin: 0; padding: 24px; pointer-events: none; }
+.desktop-company-brand img { width: min(340px, 42vw); max-height: min(240px, 34vh); object-fit: contain; filter: drop-shadow(0 6px 18px rgb(15 23 42 / 12%)); }
+.desktop-company-brand figcaption { max-width: min(560px, 80vw); font-size: clamp(20px, 2.4vw, 30px); font-weight: 700; line-height: 1.2; text-align: center; color: var(--cyp-text, #1f2937); opacity: 0.85; }
 .brand-company-logo img { width: 100%; height: 100%; object-fit: contain; }
 .company-logo-setting { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-bottom: 16px; }
 .company-logo-setting img { width: 100px; height: 72px; object-fit: contain; background: var(--cyp-surface, #fff); border: 1px solid var(--cyp-border, #d7e0ea); }

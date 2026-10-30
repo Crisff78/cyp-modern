@@ -40,7 +40,8 @@ test("report presentation preserves currency pairs, cancelled counts and server 
   assert.deepEqual(amounts.rows[1].slice(1, 3), ["EUR", "USD"]);
   assert.deepEqual(remittanceReportSections("delivered", report, null, (id) => id)[0].rows[0].slice(1), ["USD", 1, "USD 27.50"]);
   const cash = remittanceReportSections("cash", report, null, () => "Operador sintético")[0];
-  assert.deepEqual(cash.rows[0].slice(1), ["Operador sintético", "USD", 2, "USD 10.00", "USD 100.00", "USD 5.00", "USD 55.00", "USD 50.00"]);
+  // «Entregas adicionales» after the first opening since 29-10-2026 (review of Mayo); none in this report.
+  assert.deepEqual(cash.rows[0].slice(1), ["Operador sintético", "USD", 2, "USD 10.00", "USD 0.00", "USD 100.00", "USD 5.00", "USD 55.00", "USD 50.00"]);
   assert.deepEqual(report, before);
 });
 

@@ -284,7 +284,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
       const pending = await adminTransfer(10_000);
       const { context, page } = await open(cashierToken);
       try {
-        assert.deepEqual(await menu(page), [["REMESAS", ["Envíos de dinero", "Entregas de dinero"]], ["CUADRES Y REPORTES", ["Cuadres Diarios"]]]);
+        assert.deepEqual(await menu(page), [["REMESAS", ["Envíos de dinero", "Entregas de dinero"]], ["CUADRES Y REPORTES", ["Cuadres Diarios"]], ["Soporte Técnico", []]]);
         // The first time every section is closed; the account finds them as it left them.
         const section = (name: string) => page.locator(".sidebar").getByRole("button", { name, exact: true });
         for (const name of ["REMESAS", "CUADRES Y REPORTES"]) assert.equal(await section(name).getAttribute("aria-expanded"), "false", name);

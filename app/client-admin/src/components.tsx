@@ -23,24 +23,41 @@ import { divIcon, latLngBounds } from "leaflet";
 import { api, getToken, money, statusLabel, timeLabel } from "./api";
 import type { Collector, Snapshot } from "./types";
 
-export function Logo({ compact = false }: { compact?: boolean }) {
-  const [companyLogo, setCompanyLogo] = useState("");
-  const [companyName, setCompanyName] = useState("Logo de la empresa");
+/** The logo and the name of the company (Configuración General), loaded again when they are saved. */
+export function useCompanyBrand() {
+  const [brand, setBrand] = useState({ logo: "", name: "" });
   const token = getToken();
   useEffect(() => {
     let active = true;
     const load = () => {
-      if (!token) { setCompanyLogo(""); return; }
+      if (!token) { setBrand({ logo: "", name: "" }); return; }
       api<{ config: Record<string, string | number | boolean> }>("/configuracion").then(({ config }) => {
         if (!active) return;
         const image = String(config?.companyLogoDataUrl ?? "");
-        setCompanyLogo(/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(image) ? image : "");
-        setCompanyName(String(config?.["general.empresa"] ?? "Logo de la empresa"));
-      }).catch(() => { if (active) setCompanyLogo(""); });
+        setBrand({ logo: /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(image) ? image : "", name: String(config?.["general.empresa"] ?? "").trim() });
+      }).catch(() => { if (active) setBrand({ logo: "", name: "" }); });
     };
     load(); window.addEventListener("cyp-company-logo-updated", load);
     return () => { active = false; window.removeEventListener("cyp-company-logo-updated", load); };
   }, [token]);
+  return brand;
+}
+
+/** Mayo, 26-10-2026: the logo of the client, large in the middle of the escritorio, behind the windows. */
+export function CompanyDesktopBrand() {
+  const { logo, name } = useCompanyBrand();
+  if (!logo && !name) return null;
+  return (
+    <figure className="desktop-company-brand">
+      {logo && <img src={logo} alt={name || "Logo de la empresa"} />}
+      {name && <figcaption>{name}</figcaption>}
+    </figure>
+  );
+}
+
+export function Logo({ compact = false }: { compact?: boolean }) {
+  const { logo: companyLogo, name } = useCompanyBrand();
+  const companyName = name || "Logo de la empresa";
   return (
     <div className="brand" aria-label="CyP · Cobros y Pagos">
       {companyLogo ? <span className="brand-company-logo"><img src={companyLogo} alt={companyName} /></span> : <span className="brand-mark">

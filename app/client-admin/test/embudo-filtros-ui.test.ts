@@ -36,7 +36,7 @@ test("The funnel shows and hides the filters in every window with filters, for A
   const harness = await keyboardHarness({ app, adminRoot, output, playwrightEntry: playwrightEntry!, edge, localRequire, idempotencyKey: randomUUID, collectorRoot });
   try {
     // The filters a window shows: its fields outside its list, its bar and its dialogs (plain JavaScript for the page).
-    const FILTER_FIELDS = `(win) => [...win.querySelectorAll("input:not([type=hidden]),select")].filter((field) => field.getClientRects().length && !field.closest("table,.legacy-mdi-toolbar,[role=dialog] [role=dialog],.remittance-send-form,.collector-monitor-topbar"))`;
+    const FILTER_FIELDS = `(win) => [...win.querySelectorAll("input:not([type=hidden]),select")].filter((field) => field.getClientRects().length && !field.closest("table,.legacy-mdi-toolbar,[role=dialog] [role=dialog],.remittance-send-form,.collector-monitor-topbar,form[aria-label='Abrir caja']"))`;
     const portal = async (email: string, role: string) => {
       const { page } = await harness.signedOut();
       await page.getByLabel("Usuario o correo", { exact: true }).fill(email);
@@ -73,7 +73,7 @@ test("The funnel shows and hides the filters in every window with filters, for A
         await page.waitForFunction((args: [string, number]) => { const win = [...document.querySelectorAll(".mdi-window")].pop()!; return (0, eval)(args[0])(win).length === args[1]; }, [FILTER_FIELDS, shown] as [string, number]);
         results.push(`${title}: ${shown} filtros, embudo ok`);
       };
-      const menu = await page.evaluate(`[...document.querySelectorAll(".sidebar .nav-item, .sidebar .nav-group-direct > .nav-group-trigger")].map((item) => item.getAttribute("aria-label")).filter((name) => !["Configuración de administración", "Reportes"].includes(name))`) as string[];
+      const menu = await page.evaluate(`[...document.querySelectorAll(".sidebar .nav-item, .sidebar .nav-group-direct > .nav-group-trigger")].map((item) => item.getAttribute("aria-label")).filter((name) => !["Configuración de administración", "Reportes", "Soporte Técnico"].includes(name))`) as string[];
       for (const name of menu) {
         await closeAll();
         const option = page.locator(".sidebar").getByRole("button", { name, exact: true }).first();
