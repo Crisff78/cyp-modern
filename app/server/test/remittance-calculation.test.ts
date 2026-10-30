@@ -44,9 +44,10 @@ test("1. without currency change: the commission is always charged and added (1,
   assert.equal(quoted.commissionAmount, 20000); assert.equal(quoted.totalAmount, 120000);
   assert.equal(quoted.receiveAmount, 100000); assert.equal(quoted.calculation.payoutAmount, 100000);
   assert.deepEqual(quoted.calculation.exchangeGain, { currency: "DOP", sourceAmount: 0, destinationAmount: 0, totalAmount: 0 }, "pesos to pesos earn nothing on the exchange");
-  // Dollars to dollars do not change currency either: commission yes, exchange gain no.
+  // Only pesos are one to one (Rardiel, 30-10-2026): dollars to dollars also go through pesos, bought at 58 and sold at 61.
   const dollars = quote(state, "USD", "USD", 10000);
-  assert.equal(dollars.commissionAmount, 2000); assert.equal(dollars.receiveAmount, 10000); assert.equal(dollars.calculation.exchangeGain?.totalAmount, 0);
+  assert.equal(dollars.commissionAmount, 2000); assert.equal(dollars.receiveAmount, 9508, "100 USD at 58 = 5,800.00 DOP; at 61 = 95.08 USD");
+  assert.equal(dollars.calculation.exchangeGain?.totalAmount, 58524, "the company earns on both legs: 300.00 + 285.24 DOP");
 });
 
 test("2. USD → DOP → EUR: bought at the purchase rate, sold at the sale rate; the company earns on both legs", () => {
@@ -108,20 +109,20 @@ test("5. the manager takes his share of the commission only, never of the exchan
 test("6. commission at the destination: concepts with «Sin comisión» first; it is taken from what the person receives", () => {
   const state = fixture();
   const delivery = saveDeliveryConcept(state, admin, { name: "Entrega a domicilio", commissionBps: 1000, active: true }, now);
-  // 100 USD to dollars with a 10% delivery: the person receives 90 USD (the meeting's example).
-  const quoted = quote(state, "USD", "USD", 10000, "source", delivery.id);
+  // 100 with a 10% delivery: the person receives 90 (the meeting's example, in pesos: the only currency one to one).
+  const quoted = quote(state, "DOP", "DOP", 10000, "source", delivery.id);
   assert.equal(quoted.receiveAmount, 10000); assert.equal(quoted.calculation.deliveryCommissionAmount, 1000); assert.equal(quoted.calculation.payoutAmount, 9000);
   assert.equal(quoted.totalAmount, 12000, "the sender still pays the send and its commission");
   assert.equal(quoted.requestedReceiveAmount, undefined);
   // Typing what the person receives: the delivery is added back before the rates.
-  const back = quote(state, "USD", "USD", 9000, "destination", delivery.id);
+  const back = quote(state, "DOP", "DOP", 9000, "destination", delivery.id);
   assert.equal(back.amount, 10000); assert.equal(back.calculation.payoutAmount, 9000);
   // Without a concept, or with «Sin comisión», nothing is taken.
-  assert.equal(quote(state, "USD", "USD", 10000).calculation.deliveryConceptId, "sin-comision");
-  assert.equal(quote(state, "USD", "USD", 10000, "source", "sin-comision").calculation.payoutAmount, 10000);
-  // Paying gives the person exactly what remains: the box loses 90 USD, not 100.
-  const saved = send(state, "USD", "USD", 10000, "source", delivery.id);
-  const box = state.remittances.cashSessions.find((cash) => cash.operatorId === receiver.id && cash.currency === "USD")!;
+  assert.equal(quote(state, "DOP", "DOP", 10000).calculation.deliveryConceptId, "sin-comision");
+  assert.equal(quote(state, "DOP", "DOP", 10000, "source", "sin-comision").calculation.payoutAmount, 10000);
+  // Paying gives the person exactly what remains: the box loses 90, not 100.
+  const saved = send(state, "DOP", "DOP", 10000, "source", delivery.id);
+  const box = state.remittances.cashSessions.find((cash) => cash.operatorId === receiver.id && cash.currency === "DOP")!;
   const before = cashBalance(state, box).expected;
   payRemittance(state, receiver, saved.id, now);
   assert.equal(before - cashBalance(state, box).expected, 9000);
@@ -224,4 +225,49 @@ test("11. API: three boxes, concepts and the new policy fields, strict and admin
     assert.equal(saved.json().totalAmount, 120000); assert.equal(saved.json().calculation.payoutAmount, 90000);
     assert.equal(saved.json().commissionAllocation.managerAmount, 10000);
   } finally { await app.close(); }
+});
+
+// Rardiel, 30-10-2026: «En el único caso que no se cobra la tasa es cuando es de peso dominicano a peso dominicano porque ahí
+// es siempre de 1 a 1». Whatever box is typed (what is sent, the total or what the person receives), the sender's currency
+// is bought at the purchase rate and the recipient's sold at the sale rate, also dollars to dollars and euros to euros.
+test("12. only pesos are one to one: every other pair buys at the purchase rate and sells at the sale rate, in the three boxes", () => {
+  const state = fixture({ transactionCommissionBps: 1000, managerShareBps: 0 });
+  const kinds = { DOP: ["1.000000", "base", "1.000000", "base"], USD: ["58.000000", "purchase", "61.000000", "sale"], EUR: ["66.000000", "purchase", "70.000000", "sale"] } as const;
+  for (const sourceCurrency of ["DOP", "USD", "EUR"] as const) for (const destinationCurrency of ["DOP", "USD", "EUR"] as const) for (const mode of ["source", "total", "destination"] as const) {
+    const quoted = quote(state, sourceCurrency, destinationCurrency, 10000, mode);
+    const label = `${sourceCurrency} → ${destinationCurrency}, ${mode}`;
+    assert.deepEqual([quoted.quote.sourceRate, quoted.quote.sourceRateKind], [kinds[sourceCurrency][0], kinds[sourceCurrency][1]], label);
+    assert.deepEqual([quoted.quote.destinationRate, quoted.quote.destinationRateKind], [kinds[destinationCurrency][2], kinds[destinationCurrency][3]], label);
+  }
+  // The capture of Rardiel: USD to USD typing the total 100.00 with a 10% commission sends 90.91, sold back at 61.
+  const total = quote(state, "USD", "USD", 10000, "total");
+  assert.equal(total.amount, 9091); assert.equal(total.commissionAmount, 909); assert.equal(total.totalAmount, 10000);
+  assert.equal(total.amountDop, 527278, "90.91 USD at 58 = 5,272.78 DOP");
+  assert.equal(total.receiveAmount, 8644, "5,272.78 DOP at 61 = 86.44 USD");
+  assert.equal(total.calculation.exchangeGain?.totalAmount, 27273 + 25932);
+  // Pesos to pesos: one to one, no exchange gain.
+  const pesos = quote(state, "DOP", "DOP", 10000, "total");
+  assert.equal(pesos.amount, 9091); assert.equal(pesos.receiveAmount, 9091); assert.equal(pesos.calculation.exchangeGain?.totalAmount, 0);
+  // Euros to euros too: 100 EUR at 66 = 6,600.00 DOP; at 70 = 94.29 EUR.
+  assert.equal(quote(state, "EUR", "EUR", 10000).receiveAmount, 9429);
+});
+
+// The rates of the demo in the cloud on 30-10-2026, as Rardiel gave them: DOP 1/1, USD 60.50/62.90, EUR 69.00/75.00.
+// Before, euros to euros showed 69 on both sides; the sale is 75.
+test("13. the rates of the cloud: USD 60.50/62.90 and EUR 69.00/75.00, sold at the sale rate in every pair and box", () => {
+  const state = fixture({ transactionCommissionBps: 1000, managerShareBps: 0 });
+  setDailyRate(state, admin, { currency: "USD", rate: "61.7", purchaseRate: "60.50", saleRate: "62.90", date: day }, new Date(now.getTime() + 1000));
+  setDailyRate(state, admin, { currency: "EUR", rate: "72", purchaseRate: "69.00", saleRate: "75.00", date: day }, new Date(now.getTime() + 1000));
+  const sale = { DOP: "1.000000", USD: "62.900000", EUR: "75.000000" } as const, purchase = { DOP: "1.000000", USD: "60.500000", EUR: "69.000000" } as const;
+  for (const sourceCurrency of ["DOP", "USD", "EUR"] as const) for (const destinationCurrency of ["DOP", "USD", "EUR"] as const) for (const mode of ["source", "total", "destination"] as const) {
+    const quoted = quoteRemittance(state, { sourceCurrency, destinationCurrency, amount: 10000, amountMode: mode }, new Date(now.getTime() + 2000));
+    assert.equal(quoted.quote.sourceRate, purchase[sourceCurrency], `${sourceCurrency} → ${destinationCurrency}, ${mode}`);
+    assert.equal(quoted.quote.destinationRate, sale[destinationCurrency], `${sourceCurrency} → ${destinationCurrency}, ${mode}`);
+  }
+  // The capture: USD → USD typing the total 100.00 with 10%: sends 90.91 (DOP 5,500.06) and the person receives 87.44 USD.
+  const dollars = quoteRemittance(state, { sourceCurrency: "USD", destinationCurrency: "USD", amount: 10000, amountMode: "total" }, new Date(now.getTime() + 2000));
+  assert.equal(dollars.amount, 9091); assert.equal(dollars.amountDop, 550006); assert.equal(dollars.receiveAmount, 8744);
+  // Euros to euros: 100 EUR at 69 = DOP 6,900.00; at 75 = 92.00 EUR.
+  const euros = quoteRemittance(state, { sourceCurrency: "EUR", destinationCurrency: "EUR", amount: 10000, amountMode: "source" }, new Date(now.getTime() + 2000));
+  assert.equal(euros.quote.destinationRate, "75.000000"); assert.equal(euros.amountDop, 690000); assert.equal(euros.receiveAmount, 9200);
 });

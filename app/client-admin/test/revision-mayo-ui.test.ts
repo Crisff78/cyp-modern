@@ -316,6 +316,36 @@ test("Mayo's review (26-10): Envíos, Caja de remesas, Tasas, escritorio, Soport
       await shot("5.1-fecha-por-partes");
     });
 
+    // Rardiel, 30-10-2026: the year is written from left to right (the browser showed 0002, 0020…), with its two last digits
+    // (26 is 2026) or the four; in every date of the system, the empty ones too.
+    await t.test("5.1: the year is written from left to right: 26 is 2026 and 2026 too, never 0002 or 0020", async () => {
+      const caja = await openCaja(page);
+      const search = caja.getByRole("form", { name: "Buscar cajas" });
+      const date = search.getByLabel("Fecha", { exact: true });
+      const toggle = search.getByRole("button", { name: "Mostrar/Ocultar filtros", exact: true });
+      const seen: string[] = [];
+      const write = async (keys: string) => { for (const key of keys) { await page.keyboard.press(key); seen.push(await date.inputValue()); } };
+      await date.fill("2026-10-20");
+      await toggle.focus(); await page.keyboard.press("ArrowRight"); await page.keyboard.press("ArrowRight"); await page.keyboard.press("ArrowRight");
+      await write("25");
+      assert.deepEqual(seen, ["2026-10-20", "2025-10-20"], "one digit waits; two are 20xx");
+      await write("2024");
+      assert.equal(await date.inputValue(), "2024-10-20", `the four digits: ${seen.join(", ")}`);
+      // 2, 5 then 2, 0 make 2520 (the same year typed on); 2, 4 start again: 2024. Never 0002, 0020 or 0202.
+      assert.deepEqual(seen, ["2026-10-20", "2025-10-20", "2025-10-20", "2520-10-20", "2520-10-20", "2024-10-20"]);
+      // An empty date: day and month as always, then the year with its two digits.
+      await date.fill("");
+      await toggle.focus(); await page.keyboard.press("ArrowRight");
+      await page.keyboard.type("0911");
+      assert.equal(await date.inputValue(), "", "no year yet");
+      await write("26");
+      assert.equal(await date.inputValue(), "2026-11-09", "26 is 2026");
+      // The year stays chosen: ← goes back to the month.
+      await page.keyboard.press("ArrowLeft"); await page.keyboard.type("12");
+      assert.equal(await date.inputValue(), "2026-12-09");
+      await shot("5.1-anio-de-izquierda-a-derecha");
+    });
+
     assert.deepEqual(pageErrors, []);
   } finally {
     await browser?.close();

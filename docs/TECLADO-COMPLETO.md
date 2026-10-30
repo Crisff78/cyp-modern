@@ -83,7 +83,7 @@ Clientes, la página del servidor). Nada de esto choca con el navegador.
   solo lectura) sigue a la primera. En una lista para elegir, una opción o una casilla nunca cambian lo elegido. En una
   fecha (desde el 29-10-2026, revisión de Mayo), ← → pasan por su día, su mes y su año, y cada parte se escribe sin
   abrir el calendario; desde el día ← y desde el año → siguen al campo de al lado. Escribir de corrido sigue llenando
-  día, mes y año solos, un clic elige la parte que está debajo y ↑ ↓ cambian la parte donde está el cursor. Las barras de botones y los mosaicos ya no dan la vuelta: desde su primer botón ← sale
+  día, mes y año solos, un clic elige la parte que está debajo y ↑ ↓ cambian la parte donde está el cursor. El año se escribe de izquierda a derecha (desde el 30-10-2026): con sus dos últimas cifras («26» es 2026) o con las cuatro («2026»); nunca sale «0002» ni «0020». Las barras de botones y los mosaicos ya no dan la vuelta: desde su primer botón ← sale
   al anterior y desde el último → sale al siguiente. En el menú, → y ← siguen abriendo y cerrando las secciones.
 - **Listas de entradas con su botón** (los permisos de una cuenta, los avisos): son una sola parada de Tab y ↑ ↓ pasan
   de una a otra. Antes, con muchas entradas, Tab pedía una pulsación por cada una antes de llegar a «Guardar».

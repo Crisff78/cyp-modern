@@ -9,7 +9,8 @@ cotización y se pide registrarla; no se supone que vale uno.
 En Configuración de administración → Tasas de Cambio, el encargado registra
 **Compra** y **Venta** en DOP por unidad. Recibir moneda extranjera del remitente
 usa Compra; entregar otra moneda extranjera al destinatario usa Venta. DOP vale
-uno. Si origen y destino son la misma moneda, no se realiza una segunda conversión.
+uno. Solo de pesos a pesos no hay cambio (1 a 1): de dólares a dólares o de euros a euros también se
+compra con Compra y se entrega con Venta (orden de Rardiel, 30-10-2026).
 Los registros antiguos sin compra/venta conservan explícitamente su tasa única;
 no se les inventa un margen. Registrar una tasa nueva no recalcula envíos
 anteriores. La fecha, el tipo y los valores aplicados quedan congelados.
