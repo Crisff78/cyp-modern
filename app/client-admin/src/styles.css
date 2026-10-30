@@ -11130,18 +11130,13 @@ table {
 .client-generated-field > input { width: 100%; min-width: 0; }
 .client-generated-field > button { padding: 4px 8px; white-space: nowrap; font-size: 11px; border: 1px solid var(--cyp-border-strong, #9ca3af); border-radius: 4px; color: var(--cyp-text, #334155); background: var(--cyp-surface, #fff); cursor: pointer; }
 .client-generated-field > button:disabled { opacity: .6; cursor: default; }
-/* Escritorio (Rardiel, 30-10-2026): the portada of CyP on the left and the logo of the client in the top right corner,
-   both behind the windows, as in Préstamos SAN. */
-.desktop-cover { position: absolute; z-index: 0; left: clamp(16px, 4%, 48px); top: 50%; width: min(520px, 46%); margin: 0; transform: translateY(-50%); border-radius: 6px; overflow: hidden; background: #e5f6f0; box-shadow: 0 8px 24px rgb(15 23 42 / 16%); pointer-events: none; }
+/* Escritorio (Rardiel, 30-10-2026): the portada of CyP in the bottom right corner, behind the windows, as in Préstamos SAN.
+   The logo of the company no longer shows on the escritorio (it stays on the receipts). */
+.desktop-cover { position: absolute; z-index: 0; right: clamp(16px, 3%, 40px); bottom: clamp(16px, 3%, 40px); width: min(520px, 46%); margin: 0; border-radius: 6px; overflow: hidden; background: #e5f6f0; box-shadow: 0 8px 24px rgb(15 23 42 / 16%); pointer-events: none; }
 .desktop-cover img { display: block; width: 100%; height: auto; }
 .desktop-cover figcaption { position: absolute; right: 4%; bottom: 5%; font-size: clamp(11px, 1.1vw, 14px); font-weight: 700; color: #064e3b; }
-.desktop-company-brand { position: absolute; z-index: 0; top: 20px; right: 24px; display: grid; justify-items: end; gap: 6px; margin: 0; pointer-events: none; }
-.desktop-company-brand img { width: 180px; height: 96px; object-fit: contain; object-position: right center; filter: drop-shadow(0 4px 12px rgb(15 23 42 / 12%)); }
-.desktop-company-brand figcaption { max-width: 260px; font-size: 14px; font-weight: 700; line-height: 1.2; text-align: right; color: var(--cyp-text, #1f2937); opacity: 0.85; }
 @media (max-width: 760px) {
-  .desktop-cover { left: 16px; right: 16px; top: auto; bottom: 16px; width: auto; transform: none; }
-  .desktop-company-brand { top: 12px; right: 12px; }
-  .desktop-company-brand img { width: 120px; height: 64px; }
+  .desktop-cover { left: 16px; right: 16px; bottom: 16px; width: auto; }
 }
 .company-logo-setting { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-bottom: 16px; }
 .company-logo-setting img { width: 100px; height: 72px; object-fit: contain; background: var(--cyp-surface, #fff); border: 1px solid var(--cyp-border, #d7e0ea); }

@@ -61,3 +61,10 @@ Migración aditiva `045_remittance_cash_carry.sql`:
 Nada se borra ni cambia de lo guardado antes. Las cajas anteriores no tienen `carried_from`.
 
 Las capturas están en `docs/revision-mayo-2026-10-26/`. Vienen de la compilación como en Render, con PostgreSQL desechable y datos ficticios. Para la 10 se puso en esa base local una caja de ayer del cajero de práctica, cerrada con 1,000.00 y 200.00 descargados.
+
+## Cambio posterior del punto 4.1 (30-10-2026)
+
+Por orden de Rardiel, el escritorio ya no muestra el logo de la empresa: en la nube salía el de Gamera. El logo de la
+empresa sigue en Configuración General y en los recibos. En su lugar, la portada de Cobros y Pagos va en la esquina de
+abajo a la derecha, como en Préstamos SAN, con la versión del programa. En la esquina del menú queda siempre el logo de
+CyP. Capturas en `escritorio-portada-2026-10-30/`.
