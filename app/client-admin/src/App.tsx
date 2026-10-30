@@ -94,6 +94,8 @@ import {
   Empty,
   Loading,
   CompanyDesktopBrand,
+  CYP_VERSION,
+  DesktopCover,
   Logo,
   Modal,
   SectionHeading,
@@ -4481,7 +4483,7 @@ function LegacyCodifierView({ page, snapshot, onRefresh, onAccount }: Readonly<{
             <fieldset className="legacy-config-fieldset">
               <legend>General</legend>
               <label>Empresa:<input {...fld("general.empresa")} /></label>
-              <div className="company-logo-setting"><label>Logo de la empresa:<input type="file" accept="image/png,image/jpeg,image/webp" disabled={cfgLocked} onChange={(event) => { loadCompanyLogo(event.target.files?.[0]); event.target.value = ""; }} /></label><small>PNG, JPEG o WebP: máximo 24 KiB codificados, aproximadamente 18 KiB de archivo. Se guarda al confirmar la configuración.</small>{systemCfg.companyLogoDataUrl && <img src={String(systemCfg.companyLogoDataUrl)} alt="Vista previa del logo de la empresa" />}<button type="button" disabled={cfgLocked || !systemCfg.companyLogoDataUrl} onClick={() => setSystemCfg((current) => ({ ...current, companyLogoDataUrl: "" }))}>Usar logo CyP</button></div>
+              <div className="company-logo-setting"><label>Logo de la empresa:<input type="file" accept="image/png,image/jpeg,image/webp" disabled={cfgLocked} onChange={(event) => { loadCompanyLogo(event.target.files?.[0]); event.target.value = ""; }} /></label><small>PNG, JPEG o WebP: máximo 24 KiB codificados, aproximadamente 18 KiB de archivo. Se guarda al confirmar la configuración.</small>{systemCfg.companyLogoDataUrl && <img src={String(systemCfg.companyLogoDataUrl)} alt="Vista previa del logo de la empresa" />}<button type="button" disabled={cfgLocked || !systemCfg.companyLogoDataUrl} onClick={() => setSystemCfg((current) => ({ ...current, companyLogoDataUrl: "" }))}>Quitar logo</button></div>
               <label>Dirección:<input {...fld("general.direccion")} /></label>
               <div className="legacy-config-row">
                 <label>Teléfono:<input {...fld("general.telefono")} /></label>
@@ -5250,7 +5252,7 @@ export default function App() {
           <div className="main-shell">
             <header className="topbar" {...WINDOW_KEYS}>
               <div className="topbar-system" aria-label="Telemetría del sistema legacy">
-                <span title={BUILD?.commit ? `Versión publicada: ${BUILD.commit}` : undefined}>Versión: CyP Web v0.1.0{updatedLabel() ? ` · Actualizada: ${updatedLabel()}` : ""}</span>
+                <span title={BUILD?.commit ? `Versión publicada: ${BUILD.commit}` : undefined}>Versión: {CYP_VERSION}{updatedLabel() ? ` · Actualizada: ${updatedLabel()}` : ""}</span>
                 <span>
                   Fecha/Hora del Servidor: {clock.toLocaleDateString("es-DO", {
                     day: "2-digit",
@@ -5436,6 +5438,7 @@ export default function App() {
               </div>
             </header>
             <main id="main-content" className="main-content desktop-canvas" tabIndex={-1}>
+          <DesktopCover />
           <CompanyDesktopBrand />
           {snapshot && mdiWindows.filter((windowState) => isUiPageVisible(windowState.page) && canOpenPage(effectiveUser, windowState.page)).map((windowState) => (
             <MdiWindow

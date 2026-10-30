@@ -157,7 +157,7 @@ test("October nine shell changes work in actual App with isolated synthetic APIs
       await view.getByLabel(/^Nota al pie del recibo:/).fill(footer); await view.getByRole("button", { name: "Aceptar", exact: true }).click();
       await page.getByText("Configuración guardada", { exact: true }).waitFor();
       assert.equal((await store.read()).systemConfig!.companyLogoDataUrl, logo); assert.equal((await store.read()).systemConfig!.receiptFooterNote, footer);
-      await page.locator(".brand-company-logo img").waitFor();
+      await page.locator(".desktop-canvas .desktop-company-brand img").waitFor();
       await view.getByRole("button", { name: "General", exact: true }).click();
       const beforeWrites = writes.filter((write) => write.pathname === "/api/configuracion").length;
       await upload.setInputFiles({ name: "oversized.png", mimeType: "image/png", buffer: Buffer.alloc(18 * 1024 + 1) });

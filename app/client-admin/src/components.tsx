@@ -22,6 +22,7 @@ import {
 import { divIcon, latLngBounds } from "leaflet";
 import { api, getToken, money, statusLabel, timeLabel } from "./api";
 import type { Collector, Snapshot } from "./types";
+import cover from "./assets/portada-cyp.webp";
 
 /** The logo and the name of the company (Configuración General), loaded again when they are saved. */
 export function useCompanyBrand() {
@@ -43,7 +44,7 @@ export function useCompanyBrand() {
   return brand;
 }
 
-/** Mayo, 26-10-2026: the logo of the client, large in the middle of the escritorio, behind the windows. */
+/** The logo of the client in the top right corner of the escritorio, behind the windows (as in Préstamos SAN; Rardiel, 30-10-2026). */
 export function CompanyDesktopBrand() {
   const { logo, name } = useCompanyBrand();
   if (!logo && !name) return null;
@@ -55,18 +56,30 @@ export function CompanyDesktopBrand() {
   );
 }
 
+/** The version of CyP, at the top of the window and in the portada. */
+export const CYP_VERSION = "CyP Web v0.1.0";
+
+/** The portada of CyP on the left of the escritorio, as the one of CiberFinanciera; the program writes the version on it. */
+export function DesktopCover() {
+  return (
+    <figure className="desktop-cover">
+      <img src={cover} alt="CyP · Cobros y Pagos" />
+      <figcaption>Versión: {CYP_VERSION}</figcaption>
+    </figure>
+  );
+}
+
+/** The logo of CyP in the corner, always: the one of the company goes on the escritorio. */
 export function Logo({ compact = false }: { compact?: boolean }) {
-  const { logo: companyLogo, name } = useCompanyBrand();
-  const companyName = name || "Logo de la empresa";
   return (
     <div className="brand" aria-label="CyP · Cobros y Pagos">
-      {companyLogo ? <span className="brand-company-logo"><img src={companyLogo} alt={companyName} /></span> : <span className="brand-mark">
+      <span className="brand-mark">
         <ArrowUpRight size={21} />
         <ArrowDownLeft size={21} />
-      </span>}
+      </span>
       {!compact && (
         <span className="brand-word">
-          cyp<span>COBROS Y PAGOS</span>
+          CyP<span>COBROS Y PAGOS</span>
         </span>
       )}
     </div>
