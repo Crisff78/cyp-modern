@@ -237,24 +237,24 @@ function latestRate(state: State, currency: Currency, date: string) {
   return state.remittances.rates.filter((rate) => rate.currency === currency && rate.date <= date)
     .sort((a, b) => b.date.localeCompare(a.date) || (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "") || b.id.localeCompare(a.id))[0];
 }
-function effectiveRate(state: State, currency: Currency, date: string, side: "source" | "destination", sameCurrency: boolean) {
+function effectiveRate(state: State, currency: Currency, date: string, side: "source" | "destination") {
   assertCurrency(currency);
   // DOP is the accounting bridge, not a foreign currency with a fallback price.
   const rate = latestRate(state, currency, date);
   if (currency === "DOP") return { ...appliedRate(rate, currency, side), date: rate?.date ?? date, changeId: rate?.changeId, changedAt: rate?.updatedAt };
   if (!rate) return fail("RATE_MISSING", `No hay una tasa registrada de ${currency} vigente al ${date}. Registra una tasa antes de cotizar.`, 409);
-  const applied = appliedRate(rate, currency, side, sameCurrency);
+  const applied = appliedRate(rate, currency, side);
   return { rate: normalizeRate(applied.rate), kind: applied.kind, date: rate.date, changeId: rate.changeId, changedAt: rate.updatedAt,
     purchaseRate: rate.purchaseRate === undefined ? undefined : normalizeRate(rate.purchaseRate), saleRate: rate.saleRate === undefined ? undefined : normalizeRate(rate.saleRate) };
 }
 /**
  * The company's gain with the exchange, in pesos (meeting of 29-10-2026): it buys the sender's currency at the purchase
  * rate and sells the recipient's at the sale rate. Each leg earns the difference between sale and purchase registered for
- * that rate. Pesos, a same-currency send and a former single rate earn nothing on that leg.
+ * that rate. Pesos and a former single rate earn nothing on that leg; dollars to dollars earn on both (Rardiel, 30-10-2026).
  */
-function exchangeGainOf(amount: bigint, converted: bigint, sameCurrency: boolean,
+function exchangeGainOf(amount: bigint, converted: bigint,
   source: { kind?: RateKind; purchaseRate?: string; saleRate?: string }, destination: { kind?: RateKind; purchaseRate?: string; saleRate?: string }): ExchangeGain {
-  const leg = (units: bigint, rate: typeof source, kind: RateKind) => !sameCurrency && rate.kind === kind && rate.purchaseRate !== undefined && rate.saleRate !== undefined
+  const leg = (units: bigint, rate: typeof source, kind: RateKind) => rate.kind === kind && rate.purchaseRate !== undefined && rate.saleRate !== undefined
     ? { gain: roundSigned(units * (scaledRate(rate.saleRate) - scaledRate(rate.purchaseRate)), 1_000_000n), purchaseRate: rate.purchaseRate, saleRate: rate.saleRate } : undefined;
   const bought = leg(amount, source, "purchase"), sold = leg(converted, destination, "sale");
   const sourceAmount = bought?.gain ?? 0n, destinationAmount = sold?.gain ?? 0n;
@@ -277,9 +277,8 @@ export function quoteRemittance(state: State, input: QuoteInput, now = new Date(
   if (input.commissionBps !== undefined && (!Number.isInteger(input.commissionBps) || input.commissionBps < 0 || input.commissionBps > 10000))
     fail("INVALID_COMMISSION", "La comisión debe estar entre 0 y 10000 BPS.");
   const date = businessDate(now);
-  const sameCurrency = input.sourceCurrency === input.destinationCurrency;
-  const source = effectiveRate(state, input.sourceCurrency, date, "source", sameCurrency);
-  const destination = effectiveRate(state, input.destinationCurrency, date, "destination", sameCurrency);
+  const source = effectiveRate(state, input.sourceCurrency, date, "source");
+  const destination = effectiveRate(state, input.destinationCurrency, date, "destination");
   const sourceRate = source.rate, destinationRate = destination.rate;
   const sourceUnits = scaledRate(sourceRate), destinationUnits = scaledRate(destinationRate);
   const policy = getCommissionPolicy(state);
@@ -319,7 +318,7 @@ export function quoteRemittance(state: State, input: QuoteInput, now = new Date(
   const calculation: RemittanceCalculation = { version: 2, amountMode: mode, requestedAmount: input.amount, convertedAmount: receiveAmount,
     deliveryConceptId: concept.id, deliveryConceptName: concept.name, deliveryCommissionBps: concept.commissionBps, deliveryCommissionAmount: safeMoney(deliveryCommissionAmount),
     receiveRounding: policy.receiveRounding, roundingAdjustment: safeSigned(payout - net), payoutAmount: safeMoney(payout),
-    exchangeGain: exchangeGainOf(amount, converted, sameCurrency, source, destination) };
+    exchangeGain: exchangeGainOf(amount, converted, source, destination) };
   // Very large legacy quotes may be representable in the currency pair but not DOP.
   // Leave that indicative equivalent unavailable rather than corrupting a valid quote.
   const dop = roundHalfUp(amount * sourceUnits, 1_000_000n);

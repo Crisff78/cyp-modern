@@ -21,7 +21,7 @@ export function quoteStillCurrent(quotation: Quotation, snapshot: RemittanceSnap
     const currency = quotation[`${side}Currency`];
     const rate = effectiveRate(snapshot.rates, currency, snapshot.businessDate);
     if (currency !== "DOP" && !rate) return false;
-    const applied = appliedRate(rate, currency, side, quotation.sourceCurrency === quotation.destinationCurrency);
+    const applied = appliedRate(rate, currency, side);
     const value = applied.rate;
     return normalized(value) === normalized(quote[`${side}Rate`]) && rate?.changeId === quote[`${side}RateChangeId`] &&
       (!quote[`${side}RateKind`] || quote[`${side}RateKind`] === applied.kind) &&
