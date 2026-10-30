@@ -157,7 +157,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
       const settlements = page.getByRole("dialog", { name: "Cuadres Diarios", exact: true });
       await settlements.getByRole("group", { name: "Secciones de Cuadres Diarios", exact: true }).getByRole("button", { name: "Caja de remesas", exact: true }).click();
       const cash = settlements.getByRole("region", { name: "Caja de remesas", exact: true });
-      await cash.getByLabel("Operador").selectOption(operatorId); await cash.getByLabel("Moneda").selectOption(currency);
+      await cash.getByRole("form", { name: "Abrir caja", exact: true }).getByLabel("Operador").selectOption(operatorId); await cash.getByRole("form", { name: "Abrir caja", exact: true }).getByLabel("Moneda").selectOption(currency);
       await cash.getByRole("button", { name: "Revisar apertura", exact: true }).click();
       await confirmIn(page, "Abrir caja de remesas");
     };
@@ -172,7 +172,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         await warning.getByRole("button", { name: "Ir a Caja de remesas", exact: true }).click();
         const cash = page.getByRole("dialog", { name: "Cuadres Diarios", exact: true }).getByRole("region", { name: "Caja de remesas", exact: true });
         await cash.getByRole("button", { name: "Revisar apertura", exact: true }).waitFor();
-        assert.deepEqual([await cash.getByLabel("Operador").inputValue(), await cash.getByLabel("Moneda").inputValue()], ["demo-cashier", "USD"]);
+        assert.deepEqual([await cash.getByRole("form", { name: "Abrir caja", exact: true }).getByLabel("Operador").inputValue(), await cash.getByRole("form", { name: "Abrir caja", exact: true }).getByLabel("Moneda").inputValue()], ["demo-cashier", "USD"]);
         await waitForFocus(page, "[data-cash-opening-amount]");
       } finally { await context.close(); }
     });
@@ -241,11 +241,11 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         await (await menuOption(page, "Cuadres Diarios")).click();
         const cash = page.getByRole("dialog", { name: "Cuadres Diarios", exact: true }).getByRole("region", { name: "Caja de remesas", exact: true });
         await cash.locator("article").filter({ hasText: "DOP · Cajero de práctica" }).getByText(`${today} · Cerrada`, { exact: true }).waitFor();
-        assert.equal(await cash.getByLabel("Moneda").inputValue(), "DOP");
+        assert.equal(await cash.getByRole("form", { name: "Abrir caja", exact: true }).getByLabel("Moneda").inputValue(), "DOP");
         await cash.getByText("La caja de remesas de hoy en DOP de Cajero de práctica ya se cerró. Hay una sola caja por operador, moneda y día: no se puede abrir otra hasta la jornada siguiente.", { exact: true }).waitFor({ timeout: 5000 });
         assert.equal(await cash.getByRole("button", { name: "Revisar apertura", exact: true }).isDisabled(), true);
         // Another currency of the same day can still be opened.
-        await cash.getByLabel("Moneda").selectOption("EUR");
+        await cash.getByRole("form", { name: "Abrir caja", exact: true }).getByLabel("Moneda").selectOption("EUR");
         assert.equal(await cash.getByRole("button", { name: "Revisar apertura", exact: true }).isDisabled(), false);
       } finally { await context.close(); }
     });
@@ -290,7 +290,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         await page.waitForTimeout(300);
         assert.equal(await reference.evaluate((element: Element) => element === document.activeElement), false, "the receipt behind does not take the keyboard back");
         await waitForFocus(page, "[data-cash-opening-amount]");
-        assert.equal(await cash.getByLabel("Moneda").inputValue(), "EUR");
+        assert.equal(await cash.getByRole("form", { name: "Abrir caja", exact: true }).getByLabel("Moneda").inputValue(), "EUR");
         // A form of money goes on with its button (Enter never confirms money): Tab reaches it in Caja, Enter presses it.
         await page.keyboard.press("Tab");
         await waitForFocus(page, "button");
@@ -328,18 +328,18 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
           await page.getByRole("button", { name: "Iniciar sesión", exact: true }).click();
           await page.getByRole("button", { name: "Abrir cuenta", exact: true }).waitFor();
         };
-        assert.deepEqual(await groups(), [["REMESAS", "false"], ["CUADRES Y REPORTES", "false"]]);
+        assert.deepEqual(await groups(), [["REMESAS", "false"], ["CUADRES Y REPORTES", "false"], ["Soporte Técnico", null]]);
         await page.locator(".sidebar").getByRole("button", { name: "REMESAS", exact: true }).click();
         await signIn("admin@cyp.local");
-        await page.waitForFunction(() => document.querySelectorAll('nav[aria-label="Navegación principal"] .nav-group-trigger').length === 7, undefined, { timeout: 5000 });
+        await page.waitForFunction(() => document.querySelectorAll('nav[aria-label="Navegación principal"] .nav-group-trigger').length === 8, undefined, { timeout: 5000 });
         // The two sections with a single screen are buttons that open it: they never unfold.
-        assert.deepEqual(await groups(), [["Configuración de administración", null], ["Clientes", null], ["COBROS", "false"], ["PAGOS", "false"], ["REMESAS", "false"], ["CUADRES Y REPORTES", "false"], ["MONITOREO", "false"]]);
+        assert.deepEqual(await groups(), [["Configuración de administración", null], ["Clientes", null], ["COBROS", "false"], ["PAGOS", "false"], ["REMESAS", "false"], ["CUADRES Y REPORTES", "false"], ["MONITOREO", "false"], ["Soporte Técnico", null]]);
         await page.locator(".sidebar").getByRole("button", { name: "COBROS", exact: true }).click();
         await signIn(DEMO_CASHIER_EMAIL);
-        await page.waitForFunction(() => document.querySelectorAll('nav[aria-label="Navegación principal"] .nav-group-trigger').length === 2, undefined, { timeout: 5000 });
-        assert.deepEqual(await groups(), [["REMESAS", "true"], ["CUADRES Y REPORTES", "false"]]);
+        await page.waitForFunction(() => document.querySelectorAll('nav[aria-label="Navegación principal"] .nav-group-trigger').length === 3, undefined, { timeout: 5000 });
+        assert.deepEqual(await groups(), [["REMESAS", "true"], ["CUADRES Y REPORTES", "false"], ["Soporte Técnico", null]]);
         await signIn("admin@cyp.local");
-        await page.waitForFunction(() => document.querySelectorAll('nav[aria-label="Navegación principal"] .nav-group-trigger').length === 7, undefined, { timeout: 5000 });
+        await page.waitForFunction(() => document.querySelectorAll('nav[aria-label="Navegación principal"] .nav-group-trigger').length === 8, undefined, { timeout: 5000 });
         assert.equal((await groups()).find(([name]: [string]) => name === "COBROS")?.[1], "true");
       } finally { await context.close(); }
     });

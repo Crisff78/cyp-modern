@@ -24,7 +24,7 @@ import { focusNextField } from "../keyboard";
 import { useAdjustablePanel } from "../useAdjustablePanel";
 import { currentOperationalWeek } from "../operationalWeek";
 import { remittanceReportDefinitions, remittanceReportDefinition, remittanceReportPath, remittanceReportSections, remittanceReportTitle, type RemittanceReportFilters, type RemittanceReportType } from "./reporting";
-import { previousOpenCashDate, remittanceCashNotice } from "./cashNotice";
+import { filterCashSessions, previousOpenCashDate, remittanceCashNotice, remittanceOpeningCarry, type CashFilters } from "./cashNotice";
 import { remittanceOperatorName } from "./operatorNames";
 import { PaymentFields, paymentDraftFor, paymentInput, type PaymentDraft } from "./PaymentFields";
 import { isPaymentTextDraft, paymentMethodLabels, type RemittancePaymentInput } from "./payment.mjs";
@@ -50,7 +50,7 @@ const shortRate = (rate: string) => rate.includes(".") ? rate.replace(/\.?0+$/, 
 /** The rate from the currency sent to the currency received, as the quote shows it (display only). */
 const crossRateText = (quote: Quotation) => { try { const cross = formatCrossRate(quote.quote.sourceRate, quote.quote.destinationRate); return `1 ${quote.sourceCurrency} ${cross.approximate ? "≈" : "="} ${cross.text} ${quote.destinationCurrency}`; } catch { return "No disponible"; } };
 type Actor = { id: string; name: string; role?: string; access?: EffectiveAccess };
-type Confirmation = { title: string; path: string; body: Record<string, unknown>; description: ReactNode; kind: "create" | "pay" | "cancel" | "open" | "close"; idempotencyKey?: string; expectedQuotation?: Quotation };
+type Confirmation = { title: string; path: string; body: Record<string, unknown>; description: ReactNode; kind: "create" | "pay" | "cancel" | "open" | "close" | "add"; idempotencyKey?: string; expectedQuotation?: Quotation };
 // Only in-memory: retain an uncertain action across route changes and same-actor login.
 // Keyed by actor and sections, so one window does not show the uncertain action of another.
 const pendingByActor = new Map<string, Confirmation>();
@@ -239,7 +239,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   const reviewButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     const button = reviewButton.current, active = document.activeElement;
-    if (quote && button && (!active || active === document.body || active.closest("form") === button.closest("form"))) button.focus();
+    if (quote && button && (!active || active === document.body || active.closest("form") === button.closest("form"))) button.focus({ preventScroll: fixedForm });
   }, [quote]);
   const [reportBusy, setReportBusy] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -266,7 +266,23 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   const cashFocus = useRef(false);
   const [closing, setClosing] = useState<Cash | null>(null);
   const [counted, setCounted] = useState("");
-  const [moneyEntryErrors, setMoneyEntryErrors] = useState<Partial<Record<"amount" | "opening" | "counted", string>>>({});
+  // Lo que se le retira al operador al cerrar: no pasa a su próxima apertura (Mayo, 26-10-2026).
+  const [discharged, setDischarged] = useState("");
+  // Entrega adicional to an open box of today.
+  const [adding, setAdding] = useState<Cash | null>(null);
+  const [addition, setAddition] = useState({ amount: "", note: "" });
+  // The boxes shown: the consulted date, operator and currency, applied with Buscar (Mayo, 26-10-2026).
+  const [cashFilters, setCashFilters] = useState<CashFilters>({ date: "", operatorId: "", currency: "" });
+  const [cashSearch, setCashSearch] = useState<CashFilters>({ date: "", operatorId: "", currency: "" });
+  const [cashFiltersShown, setCashFiltersShown] = useState(true);
+  // The date starts as the date of operation; then it is exactly what is written (a part being written is not replaced).
+  const businessDay = snapshot?.businessDate ?? "";
+  useEffect(() => {
+    if (!businessDay) return;
+    setCashFilters((current) => current.date ? current : { ...current, date: businessDay });
+    setCashSearch((current) => current.date ? current : { ...current, date: businessDay });
+  }, [businessDay]);
+  const [moneyEntryErrors, setMoneyEntryErrors] = useState<Partial<Record<"amount" | "opening" | "counted" | "discharged" | "addition", string>>>({});
   const [reportFilters, setReportFilters] = useState<RemittanceReportFilters>({ ...currentOperationalWeek(), grouping: "range", type: "amounts",
     groupBy: "managerCurrency" as CommissionReportGroupBy, operationStatus: "all" as CommissionReportStatus, managerId: "", currency: "" as Currency | "" });
   const [report, setReport] = useState<Report | null>(null);
@@ -325,9 +341,15 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
       field.focus();
     }
   }, [tab, focusVersion, snapshot, loading, busy, confirmation, printTransfer, clientEditor, detailId, fixedForm]);
-  // The fixed form scrolls inside its window: a new quote brings its confirm button into view.
+  // Mayo, 26-10-2026: in the sending window, calculating the quote or changing a datum after it brings the form back to
+  // its top (sender, recipient and the amounts already calculated), not down to the list of sends under it.
+  const hadQuote = useRef(false);
   useEffect(() => {
-    if (fixedForm && quote) root.current?.querySelector<HTMLElement>(".remittance-quote .remittance-primary")?.scrollIntoView({ block: "nearest" });
+    const changed = Boolean(quote) || hadQuote.current;
+    hadQuote.current = Boolean(quote);
+    if (!fixedForm || !changed) return;
+    const form = root.current?.querySelector<HTMLElement>(".remittance-send-form");
+    for (let box: HTMLElement | null | undefined = form; box && box !== root.current?.parentElement; box = box.parentElement) if (box.scrollTop) box.scrollTop = 0;
   }, [fixedForm, quote]);
 
   const retireQuote = useCallback(() => { quoteRequests.current.invalidate(); quoteLock.current = false; setQuoteBusy(false); setQuote(null); }, []);
@@ -410,9 +432,16 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   const detail = snapshot?.transfers.find((transfer) => transfer.id === detailId);
   // Only an administrator chooses the operator of a box; anyone else opens their own.
   const openingOperator = isAdmin ? opening.operatorId : user.id;
+  // The opening is the close of the box before (Mayo, 26-10-2026): fixed, unless the account has the permission apart
+  // «Cambiar el efectivo inicial de la caja de remesas»; then it starts with that close and can be written.
+  const openingCarry = snapshot ? remittanceOpeningCarry(snapshot, openingOperator, opening.currency) : undefined;
+  const canEditOpening = can("remittances.cash.opening.edit");
+  useEffect(() => {
+    if (openingCarry) setOpening((current) => ({ ...current, amount: centsDraft(openingCarry.amount) }));
+  }, [openingOperator, opening.currency, openingCarry?.amount, openingCarry?.date]);
   const clearErrors = () => { setError(""); setOutputError(""); };
   const rejectEntry = (message: string) => { retireQuote(); setError(message); };
-  const rejectMoney = (field: "amount" | "opening" | "counted") => { setMoneyEntryErrors((current) => ({ ...current, [field]: moneyInputMessage })); rejectEntry(moneyInputMessage); };
+  const rejectMoney = (field: "amount" | "opening" | "counted" | "discharged" | "addition") => { setMoneyEntryErrors((current) => ({ ...current, [field]: moneyInputMessage })); rejectEntry(moneyInputMessage); };
   const updateDraft = <K extends keyof Draft>(key: K, value: Draft[K]) => {
     if (typeof value === "string") {
       if (key === "amount" && !isMoneyDraft(value)) { rejectMoney("amount"); return; }
@@ -497,7 +526,8 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
       // The phone typed for this transfer is not carried to the next one. The collector terminal also clears the
       // filters, so the new send is on its list; the fixed window keeps the filters of the list below its form.
       if (confirmation.kind === "create") { resetForm(); if (!fixedForm) clearListFilters(); }
-      if (confirmation.kind === "close") { setClosing(null); setCounted(""); }
+      if (confirmation.kind === "close") { setClosing(null); setCounted(""); setDischarged(""); }
+      if (confirmation.kind === "add") { setAdding(null); setAddition({ amount: "", note: "" }); }
       if (confirmation.kind === "cancel") { setCancelReason(""); setRefundReference(""); setRefundVerified(false); }
       setConfirmation(null); setUncertain(false); setReport(null); setAllocationReport(null);
       if (savedTransfer) { setPrintTransfer(savedTransfer); setReceiptPrintError(""); }
@@ -555,7 +585,8 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   };
 
   function confirmCreate() {
-    if (!quote) return;
+    // Mayo, 26-10-2026: not even started without the box of today of the operator (the server would refuse it at the end).
+    if (!quote || sendCash !== "ok") return;
     setPaymentDraft(paymentDraftFor(quote.totalAmount));
     if (!senderContact.contact || !recipientContact.contact) { setError("Espera a que se carguen el teléfono y la dirección de ambos clientes. Si hubo un error, pulsa Actualizar y vuelve a cotizar."); return; }
     // A phone edited here is checked as typed, and sent only when its digits differ from the record's:
@@ -587,10 +618,12 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
     // The box of today was already closed: the server keeps one per operator, currency and day (CASH_EXISTS).
     if (snapshot && remittanceCashNotice(snapshot, openingOperator, opening.currency) === "closedToday") return;
     try {
-      if (moneyEntryErrors.opening) throw new Error("Corrige el efectivo inicial señalado antes de revisar la apertura.");
-      if (!isMoneyDraft(opening.amount)) throw new Error(moneyInputMessage);
-      const openingAmount = decimalCents(opening.amount, true);
-      confirm({ title: "Abrir caja de remesas", path: "/envios/cajas/abrir", kind: "open", body: { operatorId: openingOperator, currency: opening.currency, openingAmount }, description: <p>Operador: <strong>{operatorName(openingOperator)}</strong><br />Fecha: {snapshot?.businessDate}<br />Efectivo inicial: <strong>{money(openingAmount, opening.currency)}</strong></p> });
+      // The opening of the box before is fixed; only the permission apart lets it be written (Mayo, 26-10-2026).
+      const fixed = openingCarry && !canEditOpening;
+      if (!fixed && moneyEntryErrors.opening) throw new Error("Corrige el efectivo inicial señalado antes de revisar la apertura.");
+      if (!fixed && !isMoneyDraft(opening.amount)) throw new Error(moneyInputMessage);
+      const openingAmount = fixed ? openingCarry.amount : decimalCents(opening.amount, true);
+      confirm({ title: "Abrir caja de remesas", path: "/envios/cajas/abrir", kind: "open", body: { operatorId: openingOperator, currency: opening.currency, openingAmount }, description: <p>Operador: <strong>{operatorName(openingOperator)}</strong><br />Fecha: {snapshot?.businessDate}<br />Efectivo inicial: <strong>{money(openingAmount, opening.currency)}</strong>{openingCarry && <><br />{openingAmount === openingCarry.amount ? `Es el cierre del ${openingCarry.date}.` : `El cierre del ${openingCarry.date} fue ${money(openingCarry.amount, opening.currency)}.`}</>}</p> });
     } catch (failure) { setError(failureMessage(failure)); }
   }
 
@@ -601,7 +634,25 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
       if (!isMoneyDraft(counted)) throw new Error(moneyInputMessage);
       const countedAmount = decimalCents(counted, true);
       if (countedAmount !== closing.expected) throw new Error(`El efectivo contado debe coincidir con ${money(closing.expected, closing.currency)}. Revisa el conteo y actualiza la caja.`);
-      confirm({ title: "Confirmar cierre de caja", path: `/envios/cajas/${encodeURIComponent(closing.id)}/cerrar`, kind: "close", body: { countedAmount }, description: <p>Cerrar caja de {operatorName(closing.operatorId)} · {closing.date}, con <strong>{money(countedAmount, closing.currency)}</strong>. Después del cierre esta caja no admite movimientos.</p> });
+      if (moneyEntryErrors.discharged) throw new Error("Corrige lo descargado señalado antes de revisar el cierre.");
+      if (discharged && !isMoneyDraft(discharged)) throw new Error(moneyInputMessage);
+      const dischargedAmount = discharged ? decimalCents(discharged) : 0;
+      if (dischargedAmount > countedAmount) throw new Error(`No se puede descargar más de lo contado (${money(countedAmount, closing.currency)}).`);
+      const carry = countedAmount - dischargedAmount;
+      confirm({ title: "Confirmar cierre de caja", path: `/envios/cajas/${encodeURIComponent(closing.id)}/cerrar`, kind: "close", body: { countedAmount, ...(dischargedAmount ? { dischargedAmount } : {}) }, description: <p>Cerrar caja de {operatorName(closing.operatorId)} · {closing.date}, con <strong>{money(countedAmount, closing.currency)}</strong>.{dischargedAmount ? <> Se le descargan <strong>{money(dischargedAmount, closing.currency)}</strong>.</> : null}<br />La próxima apertura empieza con <strong>{money(carry, closing.currency)}</strong>. Después del cierre esta caja no admite movimientos.</p> });
+    } catch (failure) { setError(failureMessage(failure)); }
+  }
+
+  function prepareAddition(event: FormEvent) {
+    event.preventDefault(); if (!adding) return;
+    try {
+      if (moneyEntryErrors.addition) throw new Error("Corrige el importe señalado antes de revisar la entrega.");
+      if (!isMoneyDraft(addition.amount)) throw new Error(moneyInputMessage);
+      const amount = decimalCents(addition.amount, true);
+      if (amount <= 0) throw new Error("La entrega debe ser mayor que cero.");
+      const note = addition.note.trim();
+      if (note) validateText(note, "La nota", 500);
+      confirm({ title: "Confirmar entrega adicional", path: `/envios/cajas/${encodeURIComponent(adding.id)}/entregas`, kind: "add", body: { amount, ...(note ? { note } : {}) }, description: <p>Entregar <strong>{money(amount, adding.currency)}</strong> a la caja de {operatorName(adding.operatorId)} · {adding.date}. Se suma al efectivo esperado de esa caja.</p> });
     } catch (failure) { setError(failureMessage(failure)); }
   }
 
@@ -696,6 +747,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
     {onOpenCash && payCash !== "closedToday" && <button type="button" onClick={() => { detailFocusReturn.current = false; setDetailId(null); onOpenCash({ operatorId: user.id, currency: detail.destinationCurrency }); }}>Ir a Caja de remesas</button>}
   </div>;
   const openingCash = snapshot && canOpenCash ? remittanceCashNotice(snapshot, openingOperator, opening.currency) : "ok";
+  const shownCash = snapshot ? filterCashSessions(snapshot.cashSessions, cashSearch, snapshot.businessDate) : [];
   // A transfer is registered only for an operator who can send; the boxes still list every operator.
   const sendingOperators = snapshot?.sendingOperatorIds ? snapshot.operators.filter(({ id }) => snapshot.sendingOperatorIds!.includes(id)) : snapshot?.operators ?? [];
   // Classes that only the compact layout of the sending window uses to place a field.
@@ -773,15 +825,40 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
             <button disabled={working || uncertain} type="submit">{quoteBusy ? "Cotizando…" : "Calcular cotización"}</button>
             <button type="button" disabled={working || uncertain} onClick={resetForm}>Limpiar formulario</button>
           </div> : <button disabled={working || uncertain} type="submit">{quoteBusy ? "Cotizando…" : "Calcular cotización"}</button>}
-          {quote && <div className="remittance-quote"><QuoteDetails quote={quote} /><button ref={reviewButton} type="button" className="remittance-primary" disabled={working || uncertain} onClick={confirmCreate}>Revisar y confirmar envío</button></div>}
+          {quote && <div className="remittance-quote"><QuoteDetails quote={quote} /><button ref={reviewButton} type="button" className="remittance-primary" disabled={working || uncertain || sendCash !== "ok"} title={sendCash !== "ok" ? sendCashText : undefined} onClick={confirmCreate}>Revisar y confirmar envío</button></div>}
         </form>}
         {fixedForm && formOpen && can("remittances.create") && <div className="remittance-split" {...listSize.separatorProps} />}
         {fixedForm ? <div ref={listArea} className="remittance-list-area" style={listSize.size !== null ? { flexBasis: listSize.size } : undefined}>{toolbar}{transferList}</div> : transferList}
       </>}
       {view === "caja" && <>
-        <p className="remittance-help">Caja solo para remesas. Saldo = lo que había al abrir + lo cobrado por envíos − devoluciones − entregas. Cada moneda se cuenta aparte.</p>
-        {canOpenCash && <form className="remittance-panel" onSubmit={prepareOpening}><h2>Abrir caja del {snapshot.businessDate}</h2><fieldset disabled={busy} className="remittance-form-grid">{isAdmin ? <label>Operador<select required value={opening.operatorId} onChange={(event) => setOpening((current) => ({ ...current, operatorId: event.target.value }))}>{snapshot.operators.map((operator) => <option key={operator.id} value={operator.id}>{operator.name}</option>)}</select></label> : <label>Operador<input readOnly value={operatorName(user.id)} /></label>}<label>Moneda<select value={opening.currency} onChange={(event) => setOpening((current) => ({ ...current, currency: event.target.value as Currency }))}>{snapshot.currencies.map((currency) => <option key={currency}>{currency}</option>)}</select></label><label>Efectivo inicial<MoneyInput data-cash-opening-amount required title={moneyInputMessage} value={opening.amount} aria-invalid={Boolean(moneyEntryErrors.opening) || undefined} onValueChange={(nextValue) => { if (!isMoneyDraft(nextValue)) { rejectMoney("opening"); return; } setMoneyEntryErrors((current) => ({ ...current, opening: undefined })); setOpening((current) => ({ ...current, amount: nextValue })); setError(""); }} onInvalidEntry={() => rejectMoney("opening")} /></label></fieldset>{openingCash === "previousOpen" && <p className="remittance-cash-warning" role="status">La caja de remesas en {opening.currency} del {previousOpenCashDate(snapshot, openingOperator, opening.currency)} de {operatorName(openingOperator)} sigue abierta. Ciérrala con «Contar y cerrar» antes de abrir la de hoy.</p>}{openingCash === "closedToday" && <p className="remittance-cash-warning" role="status">La caja de remesas de hoy en {opening.currency} de {operatorName(openingOperator)} ya se cerró. Hay una sola caja por operador, moneda y día: no se puede abrir otra hasta la jornada siguiente.</p>}<button className="remittance-primary" disabled={busy || openingCash === "closedToday"}>Revisar apertura</button></form>}
-        <div className="remittance-cash-grid">{snapshot.cashSessions.map((cash) => <article className="remittance-panel" key={cash.id}><h2>{cash.currency} · {operatorName(cash.operatorId)}</h2><p>{cash.date} · {cash.status === "open" ? "Abierta" : "Cerrada"}</p><dl className="remittance-summary"><div><dt>Apertura</dt><dd>{money(cash.openingAmount, cash.currency)}</dd></div><div><dt>Ingresos por envíos</dt><dd>{money(cash.sentTotal, cash.currency)}</dd></div><div><dt>Devoluciones</dt><dd>{money(cash.cancelRefund, cash.currency)}</dd></div><div><dt>Pagos</dt><dd>{money(cash.paid, cash.currency)}</dd></div><div className="remittance-total"><dt>Efectivo esperado</dt><dd>{money(cash.expected, cash.currency)}</dd></div>{cash.countedAmount !== undefined && <div><dt>Contado al cierre</dt><dd>{money(cash.countedAmount, cash.currency)}</dd></div>}</dl>{cash.canClose && can("remittances.cash.close") && <button type="button" onClick={() => { setClosing(cash); setCounted(""); clearErrors(); }}>Contar y cerrar</button>}</article>)}{!snapshot.cashSessions.length && <div className="remittance-empty">{!canOpenCash ? "No hay cajas de envíos. Un administrador debe abrir la caja antes de operar." : isAdmin ? "No hay cajas de envíos. Abre la caja del operador antes de operar." : "No hay cajas de envíos. Abre tu caja antes de operar."}</div>}</div>
+        <p className="remittance-help">Caja solo para remesas. Saldo = apertura + entregas adicionales + lo cobrado por envíos − devoluciones − pagos. Cada moneda se cuenta aparte. La apertura de cada día es el cierre del día anterior, menos lo que se le descargó al operador.</p>
+        {canOpenCash && <form className="remittance-panel" aria-label="Abrir caja" onSubmit={prepareOpening}><h2>Abrir caja del {snapshot.businessDate}</h2><fieldset disabled={busy} className="remittance-form-grid">{isAdmin ? <label>Operador<select required value={opening.operatorId} onChange={(event) => setOpening((current) => ({ ...current, operatorId: event.target.value }))}>{snapshot.operators.map((operator) => <option key={operator.id} value={operator.id}>{operator.name}</option>)}</select></label> : <label>Operador<input readOnly value={operatorName(user.id)} /></label>}<label>Moneda<select value={opening.currency} onChange={(event) => setOpening((current) => ({ ...current, currency: event.target.value as Currency }))}>{snapshot.currencies.map((currency) => <option key={currency}>{currency}</option>)}</select></label><label>Efectivo inicial<MoneyInput data-cash-opening-amount required readOnly={Boolean(openingCarry && !canEditOpening)} title={openingCarry && !canEditOpening ? `Cierre del ${openingCarry.date}. Solo una cuenta con el permiso «Cambiar el efectivo inicial de la caja de remesas» puede cambiarlo.` : moneyInputMessage} value={openingCarry && !canEditOpening ? centsDraft(openingCarry.amount) : opening.amount} aria-invalid={Boolean(moneyEntryErrors.opening) || undefined} onValueChange={(nextValue) => { if (!isMoneyDraft(nextValue)) { rejectMoney("opening"); return; } setMoneyEntryErrors((current) => ({ ...current, opening: undefined })); setOpening((current) => ({ ...current, amount: nextValue })); setError(""); }} onInvalidEntry={() => rejectMoney("opening")} /></label><p className="remittance-help remittance-opening-source">{openingCarry ? `Viene del cierre del ${openingCarry.date}${canEditOpening ? ". Tu cuenta puede cambiarlo." : "."}` : "Primera caja de este operador en esta moneda: escribe el efectivo con que empieza."}</p></fieldset>{openingCash === "previousOpen" && <p className="remittance-cash-warning" role="status">La caja de remesas en {opening.currency} del {previousOpenCashDate(snapshot, openingOperator, opening.currency)} de {operatorName(openingOperator)} sigue abierta. Ciérrala con «Contar y cerrar» antes de abrir la de hoy.</p>}{openingCash === "closedToday" && <p className="remittance-cash-warning" role="status">La caja de remesas de hoy en {opening.currency} de {operatorName(openingOperator)} ya se cerró. Hay una sola caja por operador, moneda y día: no se puede abrir otra hasta la jornada siguiente.</p>}<button className="remittance-primary" disabled={busy || openingCash === "closedToday"}>Revisar apertura</button></form>}
+        {/* Mayo, 26-10-2026: the boxes of a date, an operator and a currency, found with Buscar. */}
+        <form className="remittance-panel remittance-cash-filters" aria-label="Buscar cajas" onSubmit={(event) => { event.preventDefault(); setCashSearch(cashFilters); }}>
+          <FiltersToggle visible={cashFiltersShown} className="remittance-filters-toggle" onClick={() => setCashFiltersShown((shown) => !shown)} />
+          {cashFiltersShown && <>
+            <label>Fecha<input type="date" required value={cashFilters.date} max={snapshot.businessDate} onChange={(event) => setCashFilters((current) => ({ ...current, date: event.target.value }))} /></label>
+            {isAdmin && <label>Operador<select value={cashFilters.operatorId} onChange={(event) => setCashFilters((current) => ({ ...current, operatorId: event.target.value }))}><option value="">Todos</option>{snapshot.operators.map((operator) => <option key={operator.id} value={operator.id}>{operator.name}</option>)}</select></label>}
+            <label>Moneda<select value={cashFilters.currency} onChange={(event) => setCashFilters((current) => ({ ...current, currency: event.target.value as Currency | "" }))}><option value="">Todas</option>{snapshot.currencies.map((currency) => <option key={currency}>{currency}</option>)}</select></label>
+            <button className="remittance-primary" type="submit">Buscar</button>
+          </>}
+        </form>
+        <div className="remittance-cash-grid" aria-label={`Cajas del ${cashSearch.date || snapshot.businessDate}`}>{shownCash.map((cash) => {
+          const carriedFrom = cash.carriedFrom ? snapshot.cashSessions.find((row) => row.id === cash.carriedFrom) : undefined;
+          return <article className="remittance-panel" key={cash.id}><h2>{cash.currency} · {operatorName(cash.operatorId)}</h2><p>{cash.date} · {cash.status === "open" ? "Abierta" : "Cerrada"}</p><dl className="remittance-summary">
+            <div><dt>Apertura</dt><dd>{money(cash.openingAmount, cash.currency)}</dd></div>
+            {carriedFrom && <div className="remittance-cash-source"><dt>Viene del cierre del</dt><dd>{carriedFrom.date}</dd></div>}
+            <div><dt>Entregas adicionales</dt><dd>{money(cash.added ?? 0, cash.currency)}</dd></div>
+            <div><dt>Ingresos por envíos</dt><dd>{money(cash.sentTotal, cash.currency)}</dd></div><div><dt>Devoluciones</dt><dd>{money(cash.cancelRefund, cash.currency)}</dd></div><div><dt>Pagos</dt><dd>{money(cash.paid, cash.currency)}</dd></div>
+            <div className="remittance-total"><dt>Efectivo esperado</dt><dd>{money(cash.expected, cash.currency)}</dd></div>
+            {cash.countedAmount !== undefined && <div><dt>Contado al cierre</dt><dd>{money(cash.countedAmount, cash.currency)}</dd></div>}
+            {Boolean(cash.discharged) && <div><dt>Descargado al cobrador</dt><dd>{money(cash.discharged ?? 0, cash.currency)}</dd></div>}
+            {cash.carry !== undefined && <div><dt>Pasa a la próxima apertura</dt><dd>{money(cash.carry, cash.currency)}</dd></div>}
+          </dl><div className="remittance-actions">
+            {cash.canAdd && cash.status === "open" && cash.date === snapshot.businessDate && <button type="button" onClick={() => { setAdding(cash); setAddition({ amount: "", note: "" }); clearErrors(); }}>Entrega adicional</button>}
+            {cash.canClose && can("remittances.cash.close") && <button type="button" onClick={() => { setClosing(cash); setCounted(""); setDischarged(""); clearErrors(); }}>Contar y cerrar</button>}
+          </div></article>;
+        })}{!shownCash.length && <div className="remittance-empty">{snapshot.cashSessions.length ? `No hay cajas del ${cashSearch.date || snapshot.businessDate} con estos filtros.` : !canOpenCash ? "No hay cajas de envíos. Un administrador debe abrir la caja antes de operar." : isAdmin ? "No hay cajas de envíos. Abre la caja del operador antes de operar." : "No hay cajas de envíos. Abre tu caja antes de operar."}</div>}</div>
       </>}
       {view === "reportes" && <>
         <form className="remittance-panel" onSubmit={(event) => void loadReport(event)}><h2>Reportes de remesas</h2><fieldset disabled={working} className="remittance-form-grid"><label>Desde<input type="date" required value={reportFilters.from} onChange={(event) => updateReportFilter({ from: event.target.value })} /></label><label>Hasta<input type="date" required value={reportFilters.to} onChange={(event) => updateReportFilter({ to: event.target.value })} /></label><label>Presentación<select value={reportFilters.grouping} onChange={(event) => updateReportFilter({ grouping: event.target.value as "range" | "day" })}><option value="range">Resumido del rango</option><option value="day">Diario</option></select></label><label>Reporte<select value={reportFilters.type} onChange={(event) => updateReportFilter({ type: event.target.value as RemittanceReportType })}>{remittanceReportDefinitions.filter((definition) => !["allocations", "managerCommissions"].includes(definition.type) || can("remittances.commissions.view")).map((definition) => <option key={definition.type} value={definition.type}>{definition.label}</option>)}</select></label>
@@ -814,7 +891,8 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
         <label className="remittance-payment-check"><input type="checkbox" checked={refundVerified} onChange={(event) => setRefundVerified(event.target.checked)} />Comprobé la devolución al remitente</label>
       </div>}{cancelError && <p className="remittance-error" role="alert">{cancelError}</p>}<button className="remittance-danger" type="submit" disabled={!cancelReason.trim()}>Revisar cancelación</button></form>}
     </RemittanceWindow>}
-    {closing && <Dialog title={`Contar caja ${closing.currency}`} onClose={() => setClosing(null)}><form onSubmit={prepareClosing}><p>{operatorName(closing.operatorId)} · {closing.date}</p><p>Esperado: <strong>{money(closing.expected, closing.currency)}</strong></p><label>Efectivo contado<MoneyInput data-autofocus required title={moneyInputMessage} value={counted} aria-invalid={Boolean(moneyEntryErrors.counted) || undefined} onValueChange={(nextValue) => { if (!isMoneyDraft(nextValue)) { rejectMoney("counted"); return; } setMoneyEntryErrors((current) => ({ ...current, counted: undefined })); setCounted(nextValue); setError(""); }} onInvalidEntry={() => rejectMoney("counted")} /></label>{error && <p role="alert" className="remittance-error">{error}</p>}<button className="remittance-primary" type="submit">Revisar cierre</button></form></Dialog>}
+    {closing && <Dialog title={`Contar caja ${closing.currency}`} onClose={() => setClosing(null)}><form onSubmit={prepareClosing}><p>{operatorName(closing.operatorId)} · {closing.date}</p><p>Esperado: <strong>{money(closing.expected, closing.currency)}</strong></p><label>Efectivo contado<MoneyInput data-autofocus required title={moneyInputMessage} value={counted} aria-invalid={Boolean(moneyEntryErrors.counted) || undefined} onValueChange={(nextValue) => { if (!isMoneyDraft(nextValue)) { rejectMoney("counted"); return; } setMoneyEntryErrors((current) => ({ ...current, counted: undefined })); setCounted(nextValue); setError(""); }} onInvalidEntry={() => rejectMoney("counted")} /></label><label>Descargado al cobrador (opcional)<MoneyInput title={moneyInputMessage} value={discharged} aria-invalid={Boolean(moneyEntryErrors.discharged) || undefined} onValueChange={(nextValue) => { if (!isMoneyDraft(nextValue)) { rejectMoney("discharged"); return; } setMoneyEntryErrors((current) => ({ ...current, discharged: undefined })); setDischarged(nextValue); setError(""); }} onInvalidEntry={() => rejectMoney("discharged")} /></label><p className="remittance-help">Lo que se le retira al operador al cerrar. No pasa a su próxima apertura: la próxima caja empieza con lo contado menos lo descargado.</p>{error && <p role="alert" className="remittance-error">{error}</p>}<button className="remittance-primary" type="submit">Revisar cierre</button></form></Dialog>}
+    {adding && <Dialog title={`Entrega adicional · caja ${adding.currency}`} onClose={() => setAdding(null)}><form onSubmit={prepareAddition}><p>{operatorName(adding.operatorId)} · {adding.date}</p><p>Esperado ahora: <strong>{money(adding.expected, adding.currency)}</strong></p><label>Importe que se entrega<MoneyInput data-autofocus required title={moneyInputMessage} value={addition.amount} aria-invalid={Boolean(moneyEntryErrors.addition) || undefined} onValueChange={(nextValue) => { if (!isMoneyDraft(nextValue)) { rejectMoney("addition"); return; } setMoneyEntryErrors((current) => ({ ...current, addition: undefined })); setAddition((current) => ({ ...current, amount: nextValue })); setError(""); }} onInvalidEntry={() => rejectMoney("addition")} /></label><label>Nota (opcional)<input maxLength={500} value={addition.note} onChange={(event) => { if (!isTextDraft(event.target.value, 500)) return; setAddition((current) => ({ ...current, note: event.target.value })); }} /></label><p className="remittance-help">Efectivo que se le da a esta caja después de abrirla. Se suma a lo esperado y al acumulado de entregas adicionales de la fecha.</p>{error && <p role="alert" className="remittance-error">{error}</p>}<button className="remittance-primary" type="submit">Revisar entrega</button></form></Dialog>}
     {confirmation && <Dialog title={confirmation.title} onClose={() => { setConfirmation(null); setPaymentDraft(paymentDraftFor(0)); }} locked={busy || uncertain}>
       {confirmation.description}
       {confirmation.kind === "create" && confirmation.expectedQuotation && <PaymentFields total={confirmation.expectedQuotation.totalAmount} currency={confirmation.expectedQuotation.sourceCurrency} value={paymentDraft} locked={busy || uncertain} onChange={(next) => { setPaymentDraft(next); setConfirmationError(""); }} />}

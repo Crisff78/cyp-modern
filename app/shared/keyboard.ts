@@ -347,6 +347,70 @@ function sideStep(event: KeyboardEvent, target: HTMLElement) {
   return moved || choice;
 }
 
+// ── A date: its day, month and year ─────────────────────────────────────────────────────────────────────────
+// Mayo, 26-10-2026: in every date (the filters too) ← → go to its day, month and year, as the browser does, so each
+// part is chosen and written without the calendar; from its first part ← and from its last part → go on to the
+// previous and the next stop, as everywhere else. The browser does not say which part is chosen, so it is followed here:
+// a date reached starts on its first part, a click chooses the part under the pointer, and a part written moves on to
+// the next as the browser does (two digits, or one that cannot begin a longer day or month; the year stays).
+type DatePart = "day" | "month" | "year";
+const datePlace = new WeakMap<HTMLInputElement, { part: number; typed: string }>();
+let pointedPart: { field: HTMLInputElement; part: number } | null = null;
+const isDatePartsField = (target: EventTarget | null): target is HTMLInputElement =>
+  target instanceof HTMLInputElement && target.type === "date" && !target.readOnly && !target.disabled;
+function dateFormat() {
+  return new Intl.DateTimeFormat(navigator.language || "es-DO", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+function datePartOrder(): DatePart[] {
+  try {
+    const order = dateFormat().formatToParts(new Date(2026, 9, 26)).map(({ type }) => type).filter((type): type is DatePart => type === "day" || type === "month" || type === "year");
+    return order.length === 3 ? order : ["day", "month", "year"];
+  } catch { return ["day", "month", "year"]; }
+}
+let measure: CanvasRenderingContext2D | null = null;
+/** The part of a date under the pointer, measured with the font of the field (the browser does not tell it). */
+function datePartAt(field: HTMLInputElement, clientX: number) {
+  try {
+    const style = getComputedStyle(field);
+    measure ??= document.createElement("canvas").getContext("2d");
+    if (!measure) return 0;
+    measure.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+    const shown = field.value ? new Date(`${field.value}T12:00:00`) : new Date(2026, 9, 26);
+    let x = field.getBoundingClientRect().left + parseFloat(style.borderLeftWidth || "0") + parseFloat(style.paddingLeft || "0") + 1;
+    const ends: number[] = [];
+    for (const { type, value } of dateFormat().formatToParts(shown)) {
+      const width = measure.measureText(value).width;
+      if (type === "day" || type === "month" || type === "year") ends.push(x + width);
+      else if (ends.length) ends[ends.length - 1] += width / 2;
+      x += width;
+    }
+    const part = ends.findIndex((end) => clientX <= end);
+    return part < 0 ? 2 : part;
+  } catch { return 0; }
+}
+function followDateTyping(event: KeyboardEvent) {
+  const field = event.target;
+  if (!isDatePartsField(field) || event.ctrlKey || event.metaKey || event.altKey) return;
+  const place = datePlace.get(field) ?? { part: 0, typed: "" };
+  datePlace.set(field, place);
+  if (/^[0-9]$/.test(event.key)) {
+    place.typed += event.key;
+    const kind = datePartOrder()[place.part];
+    const complete = kind === "year" ? false : place.typed.length >= 2 || Number(place.typed) > (kind === "day" ? 3 : 1);
+    if (complete) { place.part = Math.min(2, place.part + 1); place.typed = ""; }
+  } else if (["Backspace", "Delete", "ArrowUp", "ArrowDown"].includes(event.key)) place.typed = "";
+}
+/** ← → inside a date: true when the browser moves to another of its parts (nothing else to do). */
+function moveInDate(event: KeyboardEvent, target: HTMLElement) {
+  if (!isDatePartsField(target)) return false;
+  const place = datePlace.get(target) ?? { part: 0, typed: "" };
+  datePlace.set(target, place);
+  const next = place.part + (event.key === "ArrowRight" ? 1 : -1);
+  if (next < 0 || next > 2) return false;
+  place.part = next; place.typed = "";
+  return true;
+}
+
 // ── The keyboard lost ────────────────────────────────────────────────────────────────────────────────────────
 // The simple keys of CyP: any of them, with the keyboard nowhere, puts it back.
 const AGREED_KEY = /^(ArrowUp|ArrowDown|ArrowLeft|ArrowRight|Enter|Tab| |Home|End|PageUp|PageDown)$/;
@@ -630,6 +694,9 @@ export function installKeyboard({ windows = true }: { windows?: boolean } = {}) 
   document.addEventListener("focusin", (event) => {
     const target = event.target as Element;
     if (target.matches?.(FIELD) && !firstValue.has(target)) firstValue.set(target, valueOf(target));
+    // A date reached starts on its first part, or on the one clicked.
+    if (isDatePartsField(target)) datePlace.set(target, { part: pointedPart?.field === target ? pointedPart.part : 0, typed: "" });
+    pointedPart = null;
     const window_ = target.closest?.(WINDOW);
     if (window_) lastWindow = window_; else if (!target.closest?.(SCOPE)) lastWindow = null;
     // The keyboard went somewhere else: the button that was waiting for it no longer takes it.
@@ -640,10 +707,18 @@ export function installKeyboard({ windows = true }: { windows?: boolean } = {}) 
     if (!event.relatedTarget && left instanceof HTMLElement && left.isConnected && isShown(left) && !isEnabled(left)) backWhenEnabled(left);
   });
   document.addEventListener("input", (event) => typedIn.add(event.target as Element), true);
+  // The part of a date that a click chooses: kept for the focus that follows, or taken at once when it already has it.
+  document.addEventListener("pointerdown", (event) => {
+    if (!isDatePartsField(event.target)) return;
+    const part = datePartAt(event.target, event.clientX);
+    if (document.activeElement === event.target) datePlace.set(event.target, { part, typed: "" });
+    else pointedPart = { field: event.target, part };
+  }, true);
   // A money field writes its own digits (no input event): a key typed in a field counts as typing in it.
   document.addEventListener("keydown", (event) => {
     const target = event.target as Element;
     if (target.matches?.(FIELD) && !event.ctrlKey && !event.metaKey && !event.altKey && (event.key.length === 1 || event.key === "Backspace" || event.key === "Delete")) typedIn.add(target);
+    followDateTyping(event);
     // A held Enter repeats: it must not press, one after another, the button that a dialog just put under it.
     if (event.key === "Enter" && event.repeat && target.matches?.("button,[role=button]")) event.preventDefault();
   }, true);
@@ -657,6 +732,8 @@ export function installKeyboard({ windows = true }: { windows?: boolean } = {}) 
     if (!event.shiftKey) {
       if ((event.key === "ArrowDown" || event.key === "ArrowUp") && openChoices(target)) { event.preventDefault(); return; }
       if ((event.key === "ArrowRight" || event.key === "ArrowLeft") && openOrCloseSection(event, target)) { event.preventDefault(); return; }
+      // ← → inside a date go through its day, month and year (the browser moves); from its ends they go on.
+      if ((event.key === "ArrowRight" || event.key === "ArrowLeft") && moveInDate(event, target)) return;
       // ← → elsewhere: the previous and the next stop, as Shift+Tab and Tab.
       if ((event.key === "ArrowRight" || event.key === "ArrowLeft") && sideStep(event, target)) { event.preventDefault(); return; }
       if (event.key === "ArrowUp" && upToSearch(target)) { event.preventDefault(); return; }

@@ -5,12 +5,29 @@ import { remittancesApi } from "./remittancesApi";
 import { confirmedRateInput, isRateDraft, rateInputDraft, RATE_INPUT_MAX_LENGTH, RATE_INPUT_MESSAGE } from "../../shared/remittances/rateInput";
 import { restrictPaste } from "../../shared/remittances/fieldInput";
 import { confirmedRateResponse } from "../../shared/remittances/rateResponse";
-import type { Currency, Rate, RemittanceSnapshot } from "../../shared/remittances/types";
+import type { Currency, Rate, RateChange, RemittanceSnapshot } from "../../shared/remittances/types";
 import { RateRegistrationTime } from "../../shared/remittances/RateRegistrationTime";
 import { rateMoment } from "../../shared/remittances/suggestions";
 import "./connected-exchange-rates.css";
 
 type RateDraft = { currency: Currency; rate: string; purchaseRate: string; saleRate: string; date: string };
+// Mayo, 26-10-2026: each registration is a row of its own. Editing never replaces a row: it saves a new one and the edited
+// one stays, with Editar disabled. Only the row in use for each currency (the latest) can be edited.
+type RateRow = Rate & { rowId: string; status: "current" | "replaced" | "previous" };
+const rateStatus = { current: "Vigente", replaced: "Sustituida", previous: "Anterior" } as const;
+export function rateRows(rates: readonly Rate[], history: readonly RateChange[]): RateRow[] {
+  const recorded = new Set(history.map((change) => change.id));
+  // Rates saved before the history existed (or for an account that does not see it) keep their own row.
+  const rows = [...rates.filter((rate) => !rate.changeId || !recorded.has(rate.changeId)).map((rate) => ({ ...rate, rowId: rate.id })),
+    ...history.map(({ id, createdAt, actorId, ...change }) => ({ ...change, id, changeId: id, updatedAt: createdAt, updatedBy: actorId, rowId: id }))]
+    .sort((a, b) => b.date.localeCompare(a.date) || (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "") || a.currency.localeCompare(b.currency) || b.rowId.localeCompare(a.rowId));
+  const seen = new Set<string>();
+  return rows.map((row, index) => {
+    const status = !seen.has(row.currency) ? "current" : rows.slice(0, index).some((other) => other.currency === row.currency && other.date === row.date) ? "replaced" : "previous";
+    seen.add(row.currency);
+    return { ...row, status };
+  });
+}
 const names: Record<Currency, string> = { DOP: "Peso Dominicano", USD: "Dólar Americano", EUR: "Euro" };
 const scope = "daily-exchange-rate";
 
@@ -32,17 +49,24 @@ export function ConnectedExchangeRates({ actorId, isAdmin }: { actorId: string; 
     finally { setLoading(false); }
   }, []);
   useEffect(() => { void refresh(); }, [refresh]);
-  const rates = [...(snapshot?.rates ?? [])].sort((a, b) => b.date.localeCompare(a.date) || (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "") || a.currency.localeCompare(b.currency));
-  const selected = rates.find((rate) => rate.id === selectedId) ?? rates[0];
+  const rates = rateRows(snapshot?.rates ?? [], snapshot?.rateHistory ?? []);
+  const selected = rates.find((rate) => rate.rowId === selectedId) ?? rates[0];
+  // The rate in use of each currency: a new day or a new registration starts from it (Mayo, 26-10-2026).
+  const inUse = (currency: Currency) => rates.find((rate) => rate.currency === currency && rate.status === "current");
   const navigate = (direction: "first" | "previous" | "next" | "last") => {
-    const current = Math.max(0, rates.findIndex((rate) => rate.id === selected?.id));
+    const current = Math.max(0, rates.findIndex((rate) => rate.rowId === selected?.rowId));
     const index = direction === "first" ? 0 : direction === "last" ? rates.length - 1 : direction === "previous" ? Math.max(0, current - 1) : Math.min(rates.length - 1, current + 1);
-    setSelectedId(rates[index]?.id ?? "");
+    setSelectedId(rates[index]?.rowId ?? "");
+  };
+  const valuesOf = (currency: Currency) => {
+    const rate = inUse(currency);
+    return currency === "DOP" ? { rate: "1.000000", purchaseRate: "1.000000", saleRate: "1.000000" } : { rate: rate?.rate ?? "", purchaseRate: rate?.purchaseRate ?? rate?.rate ?? "", saleRate: rate?.saleRate ?? rate?.rate ?? "" };
   };
   const open = (rate?: Rate) => {
     if (!snapshot || request.locked || !isAdmin) return;
     request.clear(); setFormError(""); setEntryErrors({}); setNotice(""); setReviewing(false);
-    setDraft({ currency: rate?.currency ?? "USD", rate: rate?.currency === "DOP" ? "1.000000" : rate?.rate ?? "", purchaseRate: rate?.currency === "DOP" ? "1.000000" : rate?.purchaseRate ?? "", saleRate: rate?.currency === "DOP" ? "1.000000" : rate?.saleRate ?? "", date: snapshot.businessDate });
+    const currency = rate?.currency ?? "USD";
+    setDraft({ currency, ...valuesOf(currency), date: snapshot.businessDate });
   };
   const close = () => { if (request.closable) { request.clear(); setDraft(null); setReviewing(false); } };
   const review = (event: FormEvent) => {
@@ -60,25 +84,27 @@ export function ConnectedExchangeRates({ actorId, isAdmin }: { actorId: string; 
     setFormError("");
     try {
       await request.run<Rate>("/envios/tasas", draft, draft, (result) => { confirmedRateResponse(result, draft); return true; });
-      setDraft(null); setReviewing(false); setNotice("Tasa del día guardada. Los envíos anteriores conservan su tasa.");
+      setDraft(null); setReviewing(false); setSelectedId(""); setNotice("Tasa del día guardada. Los envíos anteriores conservan su tasa.");
       window.dispatchEvent(new Event("cyp-exchange-rates-updated"));
       await refresh();
     } catch { /* The request retains its submitted draft and a reusable key when the outcome is uncertain. */ }
   };
   return <section className="legacy-mdi-view" aria-label="Tasas de Cambio">
     <LegacyToolbar onFirst={() => navigate("first")} onPrevious={() => navigate("previous")} onNext={() => navigate("next")} onLast={() => navigate("last")}
-      onNew={() => open()} onEdit={() => selected && open(selected)} onRefresh={() => void refresh()}
-      disableNew={!snapshot || !isAdmin || request.locked} disableEdit={!selected || selected.date !== snapshot?.businessDate || !isAdmin || request.locked}
+      onNew={() => open()} onEdit={() => selected?.status === "current" && open(selected)} onRefresh={() => void refresh()}
+      disableNew={!snapshot || !isAdmin || request.locked} disableEdit={!selected || selected.status !== "current" || !isAdmin || request.locked}
       disableDelete deleteTitle="Las tasas utilizadas se conservan en el historial" />
     {error && <p className="location-feedback" role="alert">{error}</p>}
     {notice && <p className="location-feedback" role="status">{notice}</p>}
+    {/* Mayo, 26-10-2026: no rate has to be written to open the day; the latest of each currency is used. */}
+    {snapshot && <p className="catalog-scope-note exchange-rates-in-use">Hoy se usan: {(["USD", "EUR"] as const).map((currency) => { const rate = inUse(currency); return rate ? `${currency} compra ${rate.purchaseRate ?? rate.rate} · venta ${rate.saleRate ?? rate.rate} (del ${rate.date})` : `${currency} sin tasa registrada`; }).join(" · ")}. No hace falta registrar una tasa al abrir el día.</p>}
     <div className="legacy-mdi-table-wrap">
       <table className="legacy-mdi-table exchange-rates-grid">
-        <thead><tr><th>Fecha</th><th>Moneda</th><th>Abrev</th><th>Tasa de remesas</th><th>Compra</th><th>Venta</th><th>Último cambio (hora de Santo Domingo)</th></tr></thead>
-        <tbody>{rates.map((rate) => <tr key={rate.id} role="button" tabIndex={0} className={selected?.id === rate.id ? "selected-row" : ""}
-          onClick={() => setSelectedId(rate.id)} onDoubleClick={() => rate.date === snapshot?.businessDate && open(rate)} onKeyDown={(event) => handleRowKeys(event, () => setSelectedId(rate.id), () => { setSelectedId(rate.id); if (rate.date === snapshot?.businessDate) open(rate); })}>
-          <td><span className={`mdi-row-select ${selected?.id === rate.id ? "selected" : ""}`}>{rate.date}</span></td><td>{names[rate.currency]}</td><td>{rate.currency}</td><td>{rate.rate}</td><td>{rate.purchaseRate ?? "Sin configurar"}</td><td>{rate.saleRate ?? "Sin configurar"}</td><td>{rateMoment(rate.updatedAt)}</td>
-        </tr>)}{!rates.length && <tr><td colSpan={7}>{loading ? "Cargando tasas…" : "No hay tasas guardadas."}</td></tr>}</tbody>
+        <thead><tr><th>Fecha</th><th>Moneda</th><th>Abrev</th><th>Estado</th><th>Tasa de remesas</th><th>Compra</th><th>Venta</th><th>Registrada (hora de Santo Domingo)</th></tr></thead>
+        <tbody>{rates.map((rate) => <tr key={rate.rowId} role="button" tabIndex={0} data-rate-status={rate.status} className={selected?.rowId === rate.rowId ? "selected-row" : ""}
+          onClick={() => setSelectedId(rate.rowId)} onDoubleClick={() => rate.status === "current" && open(rate)} onKeyDown={(event) => handleRowKeys(event, () => setSelectedId(rate.rowId), () => { setSelectedId(rate.rowId); if (rate.status === "current") open(rate); })}>
+          <td><span className={`mdi-row-select ${selected?.rowId === rate.rowId ? "selected" : ""}`}>{rate.date}</span></td><td>{names[rate.currency]}</td><td>{rate.currency}</td><td>{rateStatus[rate.status]}</td><td>{rate.rate}</td><td>{rate.purchaseRate ?? "Sin configurar"}</td><td>{rate.saleRate ?? "Sin configurar"}</td><td>{rateMoment(rate.updatedAt)}</td>
+        </tr>)}{!rates.length && <tr><td colSpan={8}>{loading ? "Cargando tasas…" : "No hay tasas guardadas."}</td></tr>}</tbody>
       </table>
     </div>
     <details className="catalog-scope-note">
@@ -98,7 +124,7 @@ export function ConnectedExchangeRates({ actorId, isAdmin }: { actorId: string; 
         {request.uncertain && <p>No se confirmó el resultado. Reintenta la misma operación sin cambiar los datos.</p>}
         <div className="legacy-dialog-actions centered"><button type="button" disabled={request.busy} onClick={() => void save()}>{request.busy ? "Guardando…" : request.uncertain ? "Reintentar misma operación" : "Confirmar"}</button><button type="button" disabled={request.locked} onClick={() => setReviewing(false)}>Volver</button></div>
       </div> : <form className="legacy-dialog-form exchange-rate-form" onSubmit={review}>
-        <label className="exchange-rate-row"><span className="exchange-rate-label">Moneda:</span><select value={draft.currency} onChange={(event) => { const value = event.target.value === "DOP" ? "1.000000" : ""; setDraft({ ...draft, currency: event.target.value as Currency, rate: value, purchaseRate: value, saleRate: value }); setEntryErrors({}); setFormError(""); }}>{(snapshot?.currencies ?? []).map((code) => <option key={code} value={code}>{names[code]}</option>)}</select></label>
+        <label className="exchange-rate-row"><span className="exchange-rate-label">Moneda:</span><select value={draft.currency} onChange={(event) => { setDraft({ ...draft, currency: event.target.value as Currency, ...valuesOf(event.target.value as Currency) }); setEntryErrors({}); setFormError(""); }}>{(snapshot?.currencies ?? []).map((code) => <option key={code} value={code}>{names[code]}</option>)}</select></label>
         <label className="exchange-rate-row exchange-date-row"><span className="exchange-rate-label">Fecha:</span><input type="date" value={draft.date} readOnly /></label>
         <RateRegistrationTime rate={rates.find((row) => row.currency === draft.currency && row.date === draft.date)} className="exchange-rate-row" labelClassName="exchange-rate-label" />
         {([['purchaseRate', 'Compra'], ['saleRate', 'Venta']] as const).map(([key, label]) => <label className="exchange-rate-row" key={key}><span className="exchange-rate-label">{label}:</span><input aria-label={label} required inputMode="decimal" autoComplete="off" spellCheck={false} pattern="[0-9]{0,12}([.,][0-9]{0,6})?" title={RATE_INPUT_MESSAGE} maxLength={RATE_INPUT_MAX_LENGTH} value={draft[key] ?? ""} readOnly={draft.currency === "DOP"} aria-invalid={Boolean(entryErrors[key]) || undefined}

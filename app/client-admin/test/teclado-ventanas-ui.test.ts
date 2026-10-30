@@ -75,7 +75,8 @@ test("Every window of the portal with the keyboard only: opens, takes the keyboa
       for (let index = 0; index < Math.min(count, 30); index += 1) for (const key of ["ArrowLeft", "ArrowRight", "Enter"]) {
         const name = await page.evaluate(`(() => { const field = window.__fields[${index}]; if (!field?.isConnected || !field.getClientRects().length) return null; window.__holdSubmit = true; window.__submitted = 0; window.__opened = document.querySelectorAll(${JSON.stringify(OPEN)}).length; field.focus(); if (${JSON.stringify(key)} !== "Enter") { try { field.select(); } catch {} } return (field.getAttribute("aria-label") || [...(field.closest("label")?.childNodes ?? [])].filter((node) => node.nodeType === 3).map((node) => node.textContent).join("").trim() || field.name || field.type).slice(0, 40); })()`) as string | null;
         if (name === null) continue;
-        await page.keyboard.press(key); await page.waitForTimeout(140);
+        const presses = key === "ArrowRight" && await page.evaluate(`(() => { const field = window.__fields[${index}]; return field.type === "date" && !field.readOnly && !field.disabled; })()`) ? 3 : 1;
+        for (let press = 0; press < presses; press += 1) { await page.keyboard.press(key); await page.waitForTimeout(140); }
         const moved = await page.evaluate(`(() => { const field = window.__fields[${index}]; const moved = document.activeElement !== field || window.__submitted > 0 || document.querySelectorAll(${JSON.stringify(OPEN)}).length !== window.__opened || (${JSON.stringify(key)} === "Enter" && Boolean(field.form) && !field.form.checkValidity()); window.__holdSubmit = false; return moved; })()`);
         if (!moved) stuck.push(`${label}: «${name}» con ${key}`);
         // Whatever the key opened closes again.
@@ -142,7 +143,12 @@ test("Every window of the portal with the keyboard only: opens, takes the keyboa
         checked.push(title);
       });
     };
-    for (const option of menu) if (option !== "Configuración de administración" && option !== "Reportes") await visit(`menu → ${option}`, async () => { await menuTo(option); await keys("Enter"); });
+    for (const option of menu) if (!["Configuración de administración", "Reportes", "Soporte Técnico"].includes(option)) await visit(`menu → ${option}`, async () => { await menuTo(option); await keys("Enter"); });
+    // Soporte Técnico, module of the panel since 29-10-2026 (Mayo): Enter opens its help, Esc closes it and the keyboard is back.
+    await menuTo("Soporte Técnico"); await keys("Enter");
+    await waitFor(() => Boolean([...document.querySelectorAll('[role="dialog"]')].some((dialog) => dialog.textContent?.includes("Contacta a soporte técnico"))));
+    await keys("Escape");
+    await waitFor(() => ![...document.querySelectorAll('[role="dialog"]')].some((dialog) => dialog.textContent?.includes("Contacta a soporte técnico")) && Boolean(document.activeElement?.closest("[data-keyboard-menu]")));
     for (const [launcher, names] of [["Configuración de administración", tiles], ["Reportes", reports]] as const) for (const name of names) await visit(`${launcher} → ${name}`, async () => {
       await menuTo(launcher); await keys("Enter");
       await waitFor((title: string) => document.activeElement?.closest(".mdi-window")?.getAttribute("aria-label") === title, launcher);

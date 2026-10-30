@@ -19,3 +19,24 @@ export function previousOpenCashDate(snapshot: CashView, operatorId: string, cur
   return snapshot.cashSessions.filter((cash) => cash.operatorId === operatorId && cash.currency === currency && cash.status === "open" && cash.date < snapshot.businessDate)
     .map((cash) => cash.date).sort()[0];
 }
+
+type CarryView = Pick<RemittanceSnapshot, "businessDate"> & { cashSessions: readonly Pick<Cash, "id" | "operatorId" | "currency" | "date" | "status" | "openedAt" | "countedAmount" | "carry">[] };
+/** What the next opening of the operator in that currency brings (Mayo, 26-10-2026): the close of his last box before
+ *  today less what was discharged. Undefined for a first box, or while the box before is still open (the server
+ *  decides: OPENING_FIXED, PREVIOUS_CASH_OPEN). */
+export function remittanceOpeningCarry(snapshot: CarryView, operatorId: string, currency: Currency): { date: string; amount: number } | undefined {
+  const previous = snapshot.cashSessions.filter((cash) => cash.operatorId === operatorId && cash.currency === currency && cash.date < snapshot.businessDate)
+    .sort((a, b) => b.date.localeCompare(a.date) || b.openedAt.localeCompare(a.openedAt) || b.id.localeCompare(a.id))[0];
+  if (!previous || previous.status !== "closed") return undefined;
+  const amount = previous.carry ?? previous.countedAmount;
+  return amount === undefined ? undefined : { date: previous.date, amount };
+}
+
+export type CashFilters = { date: string; operatorId: string; currency: Currency | "" };
+/** The boxes of Caja de remesas for the consulted date, operator and currency. On today's date a box still open from
+ *  an earlier day is shown too: it has to be counted and closed before today's opens. */
+export function filterCashSessions<T extends Pick<Cash, "operatorId" | "currency" | "date" | "status">>(sessions: readonly T[], filters: CashFilters, businessDate: string) {
+  const date = filters.date || businessDate;
+  return sessions.filter((cash) => (cash.date === date || (date === businessDate && cash.status === "open" && cash.date < date))
+    && (!filters.operatorId || cash.operatorId === filters.operatorId) && (!filters.currency || cash.currency === filters.currency));
+}

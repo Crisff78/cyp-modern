@@ -93,6 +93,7 @@ import {
   CollectorMap,
   Empty,
   Loading,
+  CompanyDesktopBrand,
   Logo,
   Modal,
   SectionHeading,
@@ -5199,6 +5200,21 @@ export default function App() {
                   </div>
                 );
               })}
+              {/* Mayo, 26-10-2026: Soporte técnico is one more module of the panel, after the others (the support of
+                  the provider; its contact is written in Configuración General → Soporte técnico, never in the code). */}
+              <div className="nav-group nav-group-direct nav-group-support">
+                <button
+                  type="button"
+                  className={`nav-group-trigger ${helpOpen ? "active" : ""}`}
+                  aria-label="Soporte Técnico"
+                  title="Dónde está cada cosa y a quién llamar"
+                  data-short-label="ST"
+                  onClick={() => { setHelpOpen(true); setMobileMenu(false); }}
+                >
+                  <span>SOPORTE TÉCNICO</span>
+                  <CircleHelp size={15} aria-hidden="true" />
+                </button>
+              </div>
             </nav>
             <div className="sidebar-bottom">
               {canOpenPage(effectiveUser, "dailySettlements") && <div className="daily-note">
@@ -5220,16 +5236,6 @@ export default function App() {
                   <ArrowRight size={14} />
                 </button>
               </div>}
-              <button
-                className="nav-item help-button"
-                aria-label="Soporte Técnico"
-                title="Dónde está cada cosa y a quién llamar"
-                onClick={() => setHelpOpen(true)}
-              >
-                <CircleHelp size={19} />
-                <span>Soporte Técnico</span>
-                <ArrowUpRight size={15} />
-              </button>
               <div className="system-status">
                 <span
                   className={`live-dot ${initialError ? "warning-dot" : ""}`}
@@ -5430,6 +5436,7 @@ export default function App() {
               </div>
             </header>
             <main id="main-content" className="main-content desktop-canvas" tabIndex={-1}>
+          <CompanyDesktopBrand />
           {snapshot && mdiWindows.filter((windowState) => isUiPageVisible(windowState.page) && canOpenPage(effectiveUser, windowState.page)).map((windowState) => (
             <MdiWindow
               key={windowState.id}

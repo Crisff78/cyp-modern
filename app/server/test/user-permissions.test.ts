@@ -207,7 +207,8 @@ test("PostgreSQL migration and Store persist user permissions without touching c
       await assert.rejects(client.query("UPDATE users SET legacy_permission_ids=$1 WHERE id=$2", [invalid, targetAccount.id]), (error: unknown) => (error as { code: string }).code === "23514");
       await client.query("ROLLBACK TO SAVEPOINT invalid_permissions");
     }
-    for (const invalid of [["remittances.unknown"], [null], Array(15).fill("remittances.view")]) {
+    // 15 keys are allowed since 045 (review of Mayo, 29-10-2026): one more is refused.
+    for (const invalid of [["remittances.unknown"], [null], Array(16).fill("remittances.view")]) {
       await client.query("SAVEPOINT invalid_remittance_permissions");
       await assert.rejects(client.query("UPDATE users SET remittance_permissions=$1 WHERE id=$2", [invalid, targetAccount.id]), (error: unknown) => (error as { code: string }).code === "23514");
       await client.query("ROLLBACK TO SAVEPOINT invalid_remittance_permissions");

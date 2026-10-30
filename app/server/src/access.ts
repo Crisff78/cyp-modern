@@ -86,6 +86,7 @@ function checkRequest(actor: User, method: string, route: string): boolean {
     else if (path.endsWith("/cancelar")) permission = "remittances.cancel";
     else if (path.endsWith("/cajas/abrir")) permission = "remittances.cash.open";
     else if (/^envios\/cajas\/[^/]+\/cerrar$/.test(path)) permission = "remittances.cash.close";
+    else if (/^envios\/cajas\/[^/]+\/entregas$/.test(path)) permission = "remittances.cash.open";
     else if (path === "envios") permission = method === "GET" ? "remittances.view" : "remittances.create";
     if (permission) {
       requireRemittancePermission(actor, permission);
