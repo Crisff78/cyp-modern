@@ -353,8 +353,14 @@ function sideStep(event: KeyboardEvent, target: HTMLElement) {
 // previous and the next stop, as everywhere else. The browser does not say which part is chosen, so it is followed here:
 // a date reached starts on its first part, a click chooses the part under the pointer, and a part written moves on to
 // the next as the browser does (two digits, or one that cannot begin a longer day or month; the year stays).
+// Rardiel, 30-10-2026: the year is written from left to right (the browser fills it from the right: 2, 20 showed 0002,
+// 0020), with its two last digits (26 is 2026) or the four (2026). Its digits are kept here and the date is set whole.
 type DatePart = "day" | "month" | "year";
-const datePlace = new WeakMap<HTMLInputElement, { part: number; typed: string }>();
+type DatePlace = { part: number; typed: string; day?: string; month?: string };
+const datePlace = new WeakMap<HTMLInputElement, DatePlace>();
+// A date that has the keyboard and has not lost it: the browser may say again that it got it (after its value is set),
+// and that must not send it back to its first part.
+const holdingDate = new WeakSet<HTMLInputElement>();
 let pointedPart: { field: HTMLInputElement; part: number } | null = null;
 const isDatePartsField = (target: EventTarget | null): target is HTMLInputElement =>
   target instanceof HTMLInputElement && target.type === "date" && !target.readOnly && !target.disabled;
@@ -388,15 +394,34 @@ function datePartAt(field: HTMLInputElement, clientX: number) {
     return part < 0 ? 2 : part;
   } catch { return 0; }
 }
+/** A whole date that exists (29 February only in its years). */
+const realDate = (value: string) => { const date = new Date(`${value}T12:00:00Z`); return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value; };
+/** A digit of the year: two digits are 20xx, four are the year; one or three wait for the next. */
+function writeYear(event: KeyboardEvent, field: HTMLInputElement, place: DatePlace) {
+  const [, , month = place.month?.padStart(2, "0"), day = place.day?.padStart(2, "0")] = /^(\d{4,})-(\d{2})-(\d{2})$/.exec(field.value) ?? [];
+  // Without its day and month (an empty date whose year is chosen first) the browser writes it, as before.
+  const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+  if (!month || !day || !setValue) return;
+  event.preventDefault();
+  place.typed = place.typed.length >= 4 ? event.key : place.typed + event.key;
+  const year = place.typed.length === 2 ? 2000 + Number(place.typed) : place.typed.length === 4 ? Number(place.typed) : undefined;
+  const value = year === undefined ? "" : `${String(year).padStart(4, "0")}-${month}-${day}`;
+  if (!value || !realDate(value) || value === field.value) return;
+  setValue.call(field, value);
+  field.dispatchEvent(new Event("input", { bubbles: true }));
+  field.dispatchEvent(new Event("change", { bubbles: true }));
+}
 function followDateTyping(event: KeyboardEvent) {
   const field = event.target;
   if (!isDatePartsField(field) || event.ctrlKey || event.metaKey || event.altKey) return;
   const place = datePlace.get(field) ?? { part: 0, typed: "" };
   datePlace.set(field, place);
   if (/^[0-9]$/.test(event.key)) {
-    place.typed += event.key;
     const kind = datePartOrder()[place.part];
-    const complete = kind === "year" ? false : place.typed.length >= 2 || Number(place.typed) > (kind === "day" ? 3 : 1);
+    if (kind === "year") { writeYear(event, field, place); return; }
+    place.typed += event.key;
+    place[kind] = place.typed;
+    const complete = place.typed.length >= 2 || Number(place.typed) > (kind === "day" ? 3 : 1);
     if (complete) { place.part = Math.min(2, place.part + 1); place.typed = ""; }
   } else if (["Backspace", "Delete", "ArrowUp", "ArrowDown"].includes(event.key)) place.typed = "";
 }
@@ -695,7 +720,8 @@ export function installKeyboard({ windows = true }: { windows?: boolean } = {}) 
     const target = event.target as Element;
     if (target.matches?.(FIELD) && !firstValue.has(target)) firstValue.set(target, valueOf(target));
     // A date reached starts on its first part, or on the one clicked.
-    if (isDatePartsField(target)) datePlace.set(target, { part: pointedPart?.field === target ? pointedPart.part : 0, typed: "" });
+    if (isDatePartsField(target) && !holdingDate.has(target)) datePlace.set(target, { part: pointedPart?.field === target ? pointedPart.part : 0, typed: "" });
+    if (isDatePartsField(target)) holdingDate.add(target);
     pointedPart = null;
     const window_ = target.closest?.(WINDOW);
     if (window_) lastWindow = window_; else if (!target.closest?.(SCOPE)) lastWindow = null;
@@ -704,6 +730,7 @@ export function installKeyboard({ windows = true }: { windows?: boolean } = {}) 
   });
   document.addEventListener("focusout", (event) => {
     const left = event.target;
+    if (left instanceof HTMLInputElement) holdingDate.delete(left);
     if (!event.relatedTarget && left instanceof HTMLElement && left.isConnected && isShown(left) && !isEnabled(left)) backWhenEnabled(left);
   });
   document.addEventListener("input", (event) => typedIn.add(event.target as Element), true);

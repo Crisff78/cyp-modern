@@ -71,7 +71,7 @@ test("company identity/footer are frozen without leaking system configuration se
   assert.equal(JSON.stringify(t.receiptIssuer).includes("PRIVATE-NOT-ON-RECEIPT"), false);
 });
 
-test("buy source/sell destination through DOP, carry forward rates, reverse quote and preserve same currency", () => {
+test("buy source/sell destination through DOP, carry forward rates, reverse quote; only pesos are one to one", () => {
   const state = fixture();
   setDailyRate(state, admin, { currency: "USD", rate: "60", purchaseRate: "59", saleRate: "61", date: businessDate(older) }, older);
   setDailyRate(state, admin, { currency: "EUR", rate: "70", purchaseRate: "69", saleRate: "75", date: businessDate(older) }, older);
@@ -84,7 +84,9 @@ test("buy source/sell destination through DOP, carry forward rates, reverse quot
   assert.equal(cross.quote.sourceRateDate, businessDate(older));
   const reverse = quote("USD", "EUR", 78667, "destination");
   assert.equal(reverse.amount, 100000); assert.equal(reverse.receiveAmount, 78667);
-  assert.equal(quote("USD", "USD", 100000).receiveAmount, 100000);
+  // Rardiel, 30-10-2026: dollars to dollars also go through pesos (1,000 USD at 59 = 59,000 DOP; at 61 = 967.21 USD).
+  assert.equal(quote("USD", "USD", 100000).receiveAmount, 96721);
+  assert.equal(quote("DOP", "DOP", 100000).receiveAmount, 100000);
 });
 
 test("API validates payment and derived change, retains idempotency and refuses invented bank confirmation", async (t) => {

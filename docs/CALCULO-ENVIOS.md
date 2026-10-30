@@ -17,7 +17,9 @@ Tasas de ejemplo del día:
 1. **Todo envío cobra comisión**, haya o no cambio de moneda. La paga quien envía y **se suma**:
    envía 1,000 + comisión 200 = paga 1,200.
 2. **Todo pasa por pesos.** La moneda de quien envía se **compra** (tasa de compra) y la de quien recibe
-   se **vende** (tasa de venta). La empresa gana por dos lados: la comisión y el cambio.
+   se **vende** (tasa de venta). La empresa gana por dos lados: la comisión y el cambio. **Solo de pesos a
+   pesos es 1 a 1**; de dólares a dólares o de euros a euros también se compra y se vende (orden de Rardiel,
+   30-10-2026). Da igual la casilla que se escriba: las tasas son siempre las mismas.
 3. **Ganancia por cambio:** se calcula en cada envío con cambio de moneda, en pesos, con las tasas de
    compra y venta registradas ese día. Se guarda con el envío y sale en su reporte.
 4. **El gestor** cobra su porcentaje **solo de la comisión**, nunca del cambio. Lo que queda de la
@@ -40,7 +42,9 @@ Tasas de ejemplo del día:
 | Lo que recibe la persona | DOP 1,000.00 |
 | Ganancia por cambio | DOP 0.00 (no hay cambio) |
 
-De dólares a dólares pasa lo mismo: 100 USD cobran 20 USD de comisión y no hay ganancia por cambio.
+De dólares a dólares **sí hay cambio**: 100 USD se compran a 58 (DOP 5,800.00) y se venden a 61, así que la
+persona recibe **USD 95.08**; la comisión sigue siendo de USD 20.00 y la ganancia por cambio es de
+DOP 300.00 + DOP 285.24 = **DOP 585.24**. Solo de pesos a pesos no hay cambio.
 
 ### 2. USD → DOP → EUR, comisión 5%, gestor 40% de la comisión
 
@@ -80,18 +84,19 @@ cambiar: al escribir en otra, esa pasa a ser la escrita y las demás esperan el 
 
 ### 5. Comisión de entrega en el destino (ejemplo de la reunión)
 
-100 USD a dólares con una entrega del 10%:
+100 pesos a pesos con una entrega del 10% (en la reunión se dijo con dólares; en pesos sale igual porque
+es la única moneda 1 a 1):
 
 | Concepto | Monto |
 |---|---|
-| Lo que se envía | USD 100.00 |
-| Comisión del envío (20%) | USD 20.00 |
-| Total que paga quien envía | USD 120.00 |
-| Comisión de entrega (10%) | − USD 10.00 |
-| **Lo que recibe la persona** | **USD 90.00** |
+| Lo que se envía | DOP 100.00 |
+| Comisión del envío (20%) | DOP 20.00 |
+| Total que paga quien envía | DOP 120.00 |
+| Comisión de entrega (10%) | − DOP 10.00 |
+| **Lo que recibe la persona** | **DOP 90.00** |
 
-Al pagar, la caja de quien entrega pierde USD 90.00, no 100. Si se escribe lo que recibe
-(USD 90.00), la entrega se suma hacia atrás y sale lo que hay que enviar (USD 100.00).
+Al pagar, la caja de quien entrega pierde DOP 90.00, no 100. Si se escribe lo que recibe
+(DOP 90.00), la entrega se suma hacia atrás y sale lo que hay que enviar (DOP 100.00).
 
 ### 6. Los tres redondeos de lo que recibe la persona
 
