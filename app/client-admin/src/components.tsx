@@ -24,42 +24,10 @@ import { api, getToken, money, statusLabel, timeLabel } from "./api";
 import type { Collector, Snapshot } from "./types";
 import cover from "./assets/portada-cyp.webp";
 
-/** The logo and the name of the company (Configuración General), loaded again when they are saved. */
-export function useCompanyBrand() {
-  const [brand, setBrand] = useState({ logo: "", name: "" });
-  const token = getToken();
-  useEffect(() => {
-    let active = true;
-    const load = () => {
-      if (!token) { setBrand({ logo: "", name: "" }); return; }
-      api<{ config: Record<string, string | number | boolean> }>("/configuracion").then(({ config }) => {
-        if (!active) return;
-        const image = String(config?.companyLogoDataUrl ?? "");
-        setBrand({ logo: /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(image) ? image : "", name: String(config?.["general.empresa"] ?? "").trim() });
-      }).catch(() => { if (active) setBrand({ logo: "", name: "" }); });
-    };
-    load(); window.addEventListener("cyp-company-logo-updated", load);
-    return () => { active = false; window.removeEventListener("cyp-company-logo-updated", load); };
-  }, [token]);
-  return brand;
-}
-
-/** The logo of the client in the top right corner of the escritorio, behind the windows (as in Préstamos SAN; Rardiel, 30-10-2026). */
-export function CompanyDesktopBrand() {
-  const { logo, name } = useCompanyBrand();
-  if (!logo && !name) return null;
-  return (
-    <figure className="desktop-company-brand">
-      {logo && <img src={logo} alt={name || "Logo de la empresa"} />}
-      {name && <figcaption>{name}</figcaption>}
-    </figure>
-  );
-}
-
 /** The version of CyP, at the top of the window and in the portada. */
 export const CYP_VERSION = "CyP Web v0.1.0";
 
-/** The portada of CyP on the left of the escritorio, as the one of CiberFinanciera; the program writes the version on it. */
+/** The portada of CyP in the bottom right corner of the escritorio, as in Préstamos SAN; the program writes the version on it. */
 export function DesktopCover() {
   return (
     <figure className="desktop-cover">
@@ -69,7 +37,7 @@ export function DesktopCover() {
   );
 }
 
-/** The logo of CyP in the corner, always: the one of the company goes on the escritorio. */
+/** The logo of CyP in the corner, always: the one of the company is for the receipts. */
 export function Logo({ compact = false }: { compact?: boolean }) {
   return (
     <div className="brand" aria-label="CyP · Cobros y Pagos">

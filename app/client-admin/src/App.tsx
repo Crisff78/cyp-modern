@@ -93,7 +93,6 @@ import {
   CollectorMap,
   Empty,
   Loading,
-  CompanyDesktopBrand,
   CYP_VERSION,
   DesktopCover,
   Logo,
@@ -5439,7 +5438,6 @@ export default function App() {
             </header>
             <main id="main-content" className="main-content desktop-canvas" tabIndex={-1}>
           <DesktopCover />
-          <CompanyDesktopBrand />
           {snapshot && mdiWindows.filter((windowState) => isUiPageVisible(windowState.page) && canOpenPage(effectiveUser, windowState.page)).map((windowState) => (
             <MdiWindow
               key={windowState.id}
