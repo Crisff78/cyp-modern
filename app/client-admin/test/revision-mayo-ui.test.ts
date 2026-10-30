@@ -146,28 +146,25 @@ test("Mayo's review (26-10): Envíos, Caja de remesas, Tasas, escritorio, Soport
       await page.keyboard.press("Escape");
     });
 
-    // Rardiel, 30-10-2026: the logo of the client goes to the corner, as in Préstamos SAN; the portada of CyP on the left
-    // and the logo of CyP back in the corner of the menu, written «CyP».
-    await t.test("4.1: the logo of the client in the top right corner of the escritorio, the portada of CyP on the left and «CyP» in the menu", async () => {
+    // Rardiel, 30-10-2026: the logo of the company leaves the escritorio (Gamera's showed there); the portada of CyP goes to the
+    // bottom right corner, as in Préstamos SAN, and the logo of CyP stays in the corner of the menu, written «CyP».
+    await t.test("4.1: the portada of CyP in the bottom right corner, no logo of the company on the escritorio and «CyP» in the menu", async () => {
       await post("/api/configuracion", { config: { companyLogoDataUrl: LOGO, "general.empresa": "Casa de Cambio Ficticia" } });
       await reset();
       const canvas = (await page.locator(".desktop-canvas").boundingBox())!;
-      const brand = page.locator(".desktop-canvas .desktop-company-brand");
-      await brand.locator("img").waitFor();
-      const logo = (await brand.locator("img").boundingBox())!;
-      assert.ok(logo.width >= 120 && canvas.x + canvas.width - (logo.x + logo.width) <= 40 && logo.y - canvas.y <= 40, `logo at ${JSON.stringify(logo)}`);
-      assert.equal(await brand.locator("figcaption").innerText(), "Casa de Cambio Ficticia");
       const cover = page.locator(".desktop-canvas .desktop-cover");
       await page.waitForFunction(() => (document.querySelector(".desktop-cover img") as HTMLImageElement | null)?.complete && (document.querySelector(".desktop-cover img") as HTMLImageElement).naturalWidth > 0);
       const box = (await cover.boundingBox())!;
-      assert.ok(box.x - canvas.x <= 60 && box.width >= 300 && box.x + box.width <= canvas.x + canvas.width / 2 + 40, `portada at ${JSON.stringify(box)}`);
+      assert.ok(box.width >= 300 && canvas.x + canvas.width - (box.x + box.width) <= 48 && canvas.y + canvas.height - (box.y + box.height) <= 48, `portada at ${JSON.stringify(box)}`);
+      assert.equal(await page.locator(`img[src="${LOGO}"]`).count(), 0, "no logo of the company on the escritorio");
+      assert.equal(await page.getByText("Casa de Cambio Ficticia", { exact: true }).count(), 0);
       assert.equal(await cover.locator("img").getAttribute("alt"), "CyP · Cobros y Pagos");
       assert.equal(await cover.locator("figcaption").innerText(), "Versión: CyP Web v0.1.0");
       const corner = page.locator(".sidebar .brand");
       await corner.locator(".brand-mark").waitFor();
       assert.equal(await corner.locator("img").count(), 0, "the corner keeps the logo of CyP");
       assert.match(await corner.locator(".brand-word").innerText(), /^CyP\s+COBROS Y PAGOS$/);
-      await shot("4.1-logo-en-la-esquina-y-portada");
+      await shot("4.1-portada-abajo-a-la-derecha");
     });
 
     await t.test("1.1.2: without the box of today, «Revisar y confirmar envío» stays off and says why", async () => {
@@ -283,6 +280,8 @@ test("Mayo's review (26-10): Envíos, Caja de remesas, Tasas, escritorio, Soport
       const grid = page.locator(".exchange-rates-grid");
       await grid.locator("tbody tr").first().waitFor();
       const usd = grid.locator("tbody tr").filter({ hasText: "Dólar Americano" });
+      // The history comes after the first rows: wait for both rows of the dollar before counting them.
+      await usd.nth(1).waitFor();
       assert.equal(await usd.count(), 2, "the edited rate stays as its own row");
       assert.match(await usd.nth(0).innerText(), /Vigente[\s\S]*60\.000000[\s\S]*62\.000000/);
       assert.match(await usd.nth(1).innerText(), /Sustituida[\s\S]*59\.000000[\s\S]*61\.000000/);
