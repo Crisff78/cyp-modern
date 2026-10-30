@@ -146,17 +146,28 @@ test("Mayo's review (26-10): Envíos, Caja de remesas, Tasas, escritorio, Soport
       await page.keyboard.press("Escape");
     });
 
-    await t.test("4.1: the logo of the client, large in the middle of the escritorio", async () => {
+    // Rardiel, 30-10-2026: the logo of the client goes to the corner, as in Préstamos SAN; the portada of CyP on the left
+    // and the logo of CyP back in the corner of the menu, written «CyP».
+    await t.test("4.1: the logo of the client in the top right corner of the escritorio, the portada of CyP on the left and «CyP» in the menu", async () => {
       await post("/api/configuracion", { config: { companyLogoDataUrl: LOGO, "general.empresa": "Casa de Cambio Ficticia" } });
       await reset();
+      const canvas = (await page.locator(".desktop-canvas").boundingBox())!;
       const brand = page.locator(".desktop-canvas .desktop-company-brand");
       await brand.locator("img").waitFor();
-      const [logo, canvas] = await Promise.all([brand.locator("img").boundingBox(), page.locator(".desktop-canvas").boundingBox()]);
-      assert.ok(logo!.width >= 200, `logo de ${logo!.width} px`);
-      assert.ok(Math.abs(logo!.x + logo!.width / 2 - (canvas!.x + canvas!.width / 2)) < 4, "centered");
+      const logo = (await brand.locator("img").boundingBox())!;
+      assert.ok(logo.width >= 120 && canvas.x + canvas.width - (logo.x + logo.width) <= 40 && logo.y - canvas.y <= 40, `logo at ${JSON.stringify(logo)}`);
       assert.equal(await brand.locator("figcaption").innerText(), "Casa de Cambio Ficticia");
-      assert.ok((await page.locator(".sidebar .brand-company-logo").boundingBox())!.width >= 52);
-      await shot("4.1-logo-en-el-escritorio");
+      const cover = page.locator(".desktop-canvas .desktop-cover");
+      await page.waitForFunction(() => (document.querySelector(".desktop-cover img") as HTMLImageElement | null)?.complete && (document.querySelector(".desktop-cover img") as HTMLImageElement).naturalWidth > 0);
+      const box = (await cover.boundingBox())!;
+      assert.ok(box.x - canvas.x <= 60 && box.width >= 300 && box.x + box.width <= canvas.x + canvas.width / 2 + 40, `portada at ${JSON.stringify(box)}`);
+      assert.equal(await cover.locator("img").getAttribute("alt"), "CyP · Cobros y Pagos");
+      assert.equal(await cover.locator("figcaption").innerText(), "Versión: CyP Web v0.1.0");
+      const corner = page.locator(".sidebar .brand");
+      await corner.locator(".brand-mark").waitFor();
+      assert.equal(await corner.locator("img").count(), 0, "the corner keeps the logo of CyP");
+      assert.match(await corner.locator(".brand-word").innerText(), /^CyP\s+COBROS Y PAGOS$/);
+      await shot("4.1-logo-en-la-esquina-y-portada");
     });
 
     await t.test("1.1.2: without the box of today, «Revisar y confirmar envío» stays off and says why", async () => {
