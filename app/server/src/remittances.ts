@@ -24,7 +24,7 @@ export type Quote = {
 };
 // managerCommissionBps: the former percentage of the received amount, kept for history only.
 // managerShareBps: what the manager takes of the commission of each send (never of the exchange).
-export type CommissionPolicy = { revision: string; transactionCommissionBps: number; managerCommissionBps: number; managerShareBps: number; receiveRounding: ReceiveRounding; updatedAt?: string; updatedBy?: string };
+export type CommissionPolicy = { revision: string; transactionCommissionBps: number; managerCommissionBps: number; managerShareBps: number; deliveryCommissionBps?: number; receiveRounding: ReceiveRounding; updatedAt?: string; updatedBy?: string };
 // Version 1 (before 29-10-2026): manager = % of the received amount, in the destination currency.
 // Version 2: manager = % of the commission, in the currency the commission is paid (the sender's).
 export type CommissionAllocation = {
@@ -168,22 +168,25 @@ const assertCurrency = (currency: Currency) => {
 };
 export function getCommissionPolicy(state: State): CommissionPolicy {
   const policy = state.remittances.commissionPolicy;
-  if (!policy) return { revision: "default", transactionCommissionBps: 0, managerCommissionBps: 0, managerShareBps: 0, receiveRounding: "none" };
+  if (!policy) return { revision: "default", transactionCommissionBps: 0, managerCommissionBps: 0, managerShareBps: 0, deliveryCommissionBps: 0, receiveRounding: "none" };
   const transactionCommissionBps = policy.transactionCommissionBps ?? 0;
   return { ...policy, transactionCommissionBps,
     managerShareBps: policy.managerShareBps ?? managerShareFromLegacy(policy.managerCommissionBps ?? 0, transactionCommissionBps),
-    receiveRounding: policy.receiveRounding ?? "none" };
+    deliveryCommissionBps: policy.deliveryCommissionBps ?? 0, receiveRounding: policy.receiveRounding ?? "none" };
 }
 /**
  * The commission of each send, the manager's share of it and how the money received is rounded. A request that
  * still sends the former percentage of the amount (managerCommissionBps) gets the matching share of the commission.
  */
 export function setCommissionPolicy(state: State, user: User,
-  input: Partial<Pick<CommissionPolicy, "transactionCommissionBps" | "managerCommissionBps" | "managerShareBps" | "receiveRounding">>, now = new Date()) {
+  input: Partial<Pick<CommissionPolicy, "transactionCommissionBps" | "managerCommissionBps" | "managerShareBps" | "deliveryCommissionBps" | "receiveRounding">>, now = new Date()) {
   remittanceOperators(state, user); assertAdmin(user);
   const current = getCommissionPolicy(state);
   const transactionCommissionBps = input.transactionCommissionBps ?? current.transactionCommissionBps;
   const managerCommissionBps = input.managerCommissionBps ?? current.managerCommissionBps;
+  const deliveryCommissionBps = input.deliveryCommissionBps ?? current.deliveryCommissionBps ?? 0;
+  if (!Number.isSafeInteger(deliveryCommissionBps) || deliveryCommissionBps < 0 || deliveryCommissionBps >= 10000)
+    fail("INVALID_DELIVERY_COMMISSION", "La comisión de entrega debe estar entre 0% y 99.99%.");
   if ([transactionCommissionBps, managerCommissionBps, input.managerShareBps ?? 0].some((value) => !Number.isInteger(value) || value < 0 || value > 10000))
     fail("INVALID_COMMISSION", "Los porcentajes de comisión deben estar entre 0 y 10000 BPS.");
   if (input.managerCommissionBps !== undefined && input.managerShareBps === undefined && managerCommissionBps > transactionCommissionBps)
@@ -192,8 +195,8 @@ export function setCommissionPolicy(state: State, user: User,
   const receiveRounding = input.receiveRounding ?? current.receiveRounding;
   if (!receiveRoundings.includes(receiveRounding)) fail("INVALID_ROUNDING", "Elige cómo se redondea lo que recibe la persona.");
   if (current.managerCommissionBps === managerCommissionBps && current.transactionCommissionBps === transactionCommissionBps &&
-      current.managerShareBps === managerShareBps && current.receiveRounding === receiveRounding) return current;
-  return state.remittances.commissionPolicy = { revision: randomUUID(), transactionCommissionBps, managerCommissionBps, managerShareBps, receiveRounding, updatedAt: now.toISOString(), updatedBy: user.id };
+      current.managerShareBps === managerShareBps && current.deliveryCommissionBps === deliveryCommissionBps && current.receiveRounding === receiveRounding) return current;
+  return state.remittances.commissionPolicy = { revision: randomUUID(), transactionCommissionBps, managerCommissionBps, managerShareBps, deliveryCommissionBps, receiveRounding, updatedAt: now.toISOString(), updatedBy: user.id };
 }
 /** Concepts charged at the destination, in their order; «Sin comisión» always first and never stored. */
 export function deliveryConcepts(state: State) {
@@ -206,13 +209,15 @@ function deliveryConcept(state: State, id?: string) {
   return concept;
 }
 function deliveryCommission(state: State, input: QuoteInput) {
-  if (input.deliveryCommissionBps === undefined) return deliveryConcept(state, input.deliveryConceptId);
-  if (!Number.isSafeInteger(input.deliveryCommissionBps) || input.deliveryCommissionBps < 0 || input.deliveryCommissionBps >= 10000)
-    fail("INVALID_DELIVERY_COMMISSION", "La comisión de entrega debe estar entre 0% y 99.99%.");
-  if (input.deliveryConceptId !== undefined)
-    fail("INVALID_DELIVERY_COMMISSION", "Indica el porcentaje de entrega o un concepto, no ambos.");
-  return input.deliveryCommissionBps === 0 ? NO_DELIVERY_CONCEPT : {
-    id: "comision-entrega-manual", name: "Comisión de entrega", commissionBps: input.deliveryCommissionBps, active: true,
+  const configured = getCommissionPolicy(state).deliveryCommissionBps ?? 0;
+  if (!Number.isSafeInteger(configured) || configured < 0 || configured >= 10000)
+    fail("INVALID_DELIVERY_COMMISSION", "Un administrador debe revisar la comisión de entrega configurada.");
+  // Former clients can assert the percentage; they cannot override the saved configuration.
+  if ((input.deliveryCommissionBps !== undefined && input.deliveryCommissionBps !== configured) ||
+      (input.deliveryConceptId !== undefined && deliveryConcept(state, input.deliveryConceptId).commissionBps !== configured))
+    fail("COMMISSION_POLICY_MISMATCH", "La comisión de entrega se toma de Comisiones de remesas. Actualiza y vuelve a cotizar.", 409);
+  return configured === 0 ? NO_DELIVERY_CONCEPT : {
+    id: "comision-entrega-configurada", name: "Comisión de entrega", commissionBps: configured, active: true,
   };
 }
 /** Administración adds or changes a concept of commission at the destination. «Sin comisión» cannot be changed. */
@@ -701,8 +706,8 @@ export function remittanceSnapshot(state: State, user: User, systemOperators: Us
   return {
     businessDate: date, currencies, access: user.access ?? effectiveAccess(user.role),
     commissionPolicy: hasRemittancePermission(user, "remittances.commissions.view") ? getCommissionPolicy(state)
-      : { revision: getCommissionPolicy(state).revision, transactionCommissionBps: getCommissionPolicy(state).transactionCommissionBps, receiveRounding: getCommissionPolicy(state).receiveRounding },
-    // «Sin comisión» first; the form offers the active ones, Administración edits them all.
+      : { revision: getCommissionPolicy(state).revision, transactionCommissionBps: getCommissionPolicy(state).transactionCommissionBps, deliveryCommissionBps: getCommissionPolicy(state).deliveryCommissionBps ?? 0, receiveRounding: getCommissionPolicy(state).receiveRounding },
+    // Legacy catalog remains available for compatibility; new sends use the central delivery percentage.
     deliveryConcepts: deliveryConcepts(state).map(({ updatedBy: _by, ...row }) => row),
     receiptFooterNote: typeof state.systemConfig?.receiptFooterNote === "string" ? state.systemConfig.receiptFooterNote : "",
     receiptIssuer: remittanceReceiptIssuer(state),

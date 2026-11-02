@@ -1,6 +1,7 @@
 import type { Currency, Quotation, ReceiveRounding, Transfer } from "./types";
 import { payoutOf } from "./types";
 import { formatMoney as money } from "./output";
+import { commissionDopAmount } from "./commissionDop";
 import { formatCrossRate } from "./crossRate";
 import { rateMoment } from "./suggestions";
 import { allocationRows } from "./commissionOutput";
@@ -36,6 +37,7 @@ export function QuoteDetails({ quote }: { quote: Quotation }) {
         <dl className="remittance-summary">
           <div><dt>Principal</dt><dd>{money(quote.amount, quote.sourceCurrency)}</dd></div>
           <div><dt>Comisión ({quote.commissionBps / 100}%)</dt><dd>{money(quote.commissionAmount, quote.sourceCurrency)}</dd></div>
+          <div><dt>Equivalente de la comisión en DOP</dt><dd>{commissionDopAmount(quote) === undefined ? "No disponible" : money(commissionDopAmount(quote)!, "DOP")}</dd></div>
           <div className="remittance-total"><dt>Total que paga el remitente</dt><dd>{money(quote.totalAmount, quote.sourceCurrency)}{totalAsked !== undefined && <small role="status"> Pediste {money(totalAsked, quote.sourceCurrency)}: es el total más cercano que no lo pasa.</small>}</dd></div>
         </dl>
       </section>

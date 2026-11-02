@@ -238,7 +238,7 @@ dialog.remittances-dialog { position: fixed; inset: 0; margin: auto; }
     .remittances-fixed > .remittance-send-form .remittance-money-rate { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
     /* The data of the recipient chosen, beside its phone, in two columns. */
     .remittances-fixed > .remittance-send-form .remittance-party-fields + .remittance-party-fields .remittance-contact { grid-template-columns: repeat(auto-fit, minmax(88px, 1fr)); }
-    .remittances-fixed > .remittance-send-form .remittance-money-rate { grid-column: 2 / span 2; width: auto; justify-self: stretch; }
+    .remittances-fixed > .remittance-send-form .remittance-money-rate { grid-column: 1 / -1; width: auto; justify-self: stretch; }
   }
   /* A narrow window: one column. */
   @container (max-width: 600px) {
