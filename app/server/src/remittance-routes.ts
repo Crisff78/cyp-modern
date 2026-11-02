@@ -58,6 +58,7 @@ export function registerRemittanceRoutes(
       commissionBps: z.string().regex(/^\d{1,5}$/).transform(Number).pipe(bps).optional(),
       amountMode: z.enum(amountModes).default("source"),
       deliveryConceptId: id.optional(),
+      deliveryCommissionBps: z.string().max(4).regex(/^[0-9]{1,4}$/).transform(Number).pipe(bps.max(9999)).optional(),
     }).strict().parse(req.query);
     // The manager's share and the exchange gain are seen only with the commissions.
     return visibleRemittanceResult(user(req), quoteRemittance(await store.read(), input));
@@ -79,6 +80,7 @@ export function registerRemittanceRoutes(
     sendingUserId: id.optional(), recipientPhone: phone.optional(),
     requestedReceiveAmount: amount.positive().optional(), requestedTotalAmount: amount.positive().optional(),
     deliveryConceptId: id.optional(),
+    deliveryCommissionBps: bps.max(9999).optional(),
     payment: z.object({ method: z.enum(paymentMethods), tenderedAmount: amount.optional(), reference: paymentText.min(1).optional(), bank: paymentText.optional(), verified: z.literal(true).optional() }).strict().optional(),
     quote: z.object({ date: z.iso.date(), sourceRate: z.string().max(19), destinationRate: z.string().max(19),
       quotedAt: z.iso.datetime().optional(), sourceRateChangeId: id.optional(), destinationRateChangeId: id.optional(),

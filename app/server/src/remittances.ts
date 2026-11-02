@@ -100,6 +100,8 @@ export type QuoteInput = {
   commissionBps?: number;
   amountMode?: AmountMode;
   deliveryConceptId?: string;
+  // Percentage entered for this send, in hundredths of a percent; omitted keeps catalog compatibility.
+  deliveryCommissionBps?: number;
 };
 export type CreateRemittanceInput = Omit<QuoteInput, "amountMode"> & {
   senderClientId: string; recipientClientId: string; sendingUserId?: string; quote: Quote; note?: string;
@@ -203,6 +205,16 @@ function deliveryConcept(state: State, id?: string) {
   if (!concept || !concept.active) return fail("DELIVERY_CONCEPT_UNAVAILABLE", "La comisión de entrega elegida ya no está disponible. Elige otra y vuelve a calcular.", 409);
   return concept;
 }
+function deliveryCommission(state: State, input: QuoteInput) {
+  if (input.deliveryCommissionBps === undefined) return deliveryConcept(state, input.deliveryConceptId);
+  if (!Number.isSafeInteger(input.deliveryCommissionBps) || input.deliveryCommissionBps < 0 || input.deliveryCommissionBps >= 10000)
+    fail("INVALID_DELIVERY_COMMISSION", "La comisión de entrega debe estar entre 0% y 99.99%.");
+  if (input.deliveryConceptId !== undefined)
+    fail("INVALID_DELIVERY_COMMISSION", "Indica el porcentaje de entrega o un concepto, no ambos.");
+  return input.deliveryCommissionBps === 0 ? NO_DELIVERY_CONCEPT : {
+    id: "comision-entrega-manual", name: "Comisión de entrega", commissionBps: input.deliveryCommissionBps, active: true,
+  };
+}
 /** Administración adds or changes a concept of commission at the destination. «Sin comisión» cannot be changed. */
 export function saveDeliveryConcept(state: State, user: User, input: { id?: string; name: string; commissionBps: number; active: boolean }, now = new Date()) {
   remittanceOperators(state, user); assertAdmin(user);
@@ -287,7 +299,7 @@ export function quoteRemittance(state: State, input: QuoteInput, now = new Date(
   if (input.commissionBps !== undefined && input.commissionBps !== policy.transactionCommissionBps)
     fail("COMMISSION_POLICY_MISMATCH", "La comisión se toma de la configuración guardada. Actualiza y vuelve a cotizar.", 409);
   const commissionBps = policy.transactionCommissionBps;
-  const concept = deliveryConcept(state, input.deliveryConceptId);
+  const concept = deliveryCommission(state, input);
   const deliveryBps = BigInt(concept.commissionBps);
   const commissionOf = (value: bigint) => roundHalfUp(value * BigInt(commissionBps), 10000n);
   let amount: bigint;
@@ -561,8 +573,9 @@ export function createRemittance(state: State, user: User, input: CreateRemittan
     amount: input.requestedReceiveAmount ?? input.requestedTotalAmount ?? input.amount,
     amountMode: input.requestedReceiveAmount !== undefined ? "destination" : input.requestedTotalAmount !== undefined ? "total" : "source", commissionBps: input.commissionBps,
     sourceCurrency: input.sourceCurrency, destinationCurrency: input.destinationCurrency, deliveryConceptId: input.deliveryConceptId,
+    deliveryCommissionBps: input.deliveryCommissionBps,
   }, now);
-  // The commission at the destination reviewed in the quote must still be the one of its concept.
+  // Freeze the percentage reviewed in the quote, whether entered for this send or taken from a catalog concept.
   if ((input.quote.deliveryConceptId !== undefined && input.quote.deliveryConceptId !== calculated.quote.deliveryConceptId) ||
       (input.quote.deliveryCommissionBps !== undefined && input.quote.deliveryCommissionBps !== calculated.quote.deliveryCommissionBps))
     fail("QUOTE_CHANGED", "La comisión de entrega cambió. Vuelve a calcular antes de guardar.", 409);

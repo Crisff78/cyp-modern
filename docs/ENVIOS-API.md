@@ -241,8 +241,15 @@ Visibilidad de las operaciones, igual en `snapshot`, listados y reportes:
   `amountMode=total` cotiza desde el total que paga quien envía y `destination` desde lo que recibe la
   persona; `calculation` trae la comisión de entrega, el redondeo, lo que recibe y la ganancia por cambio; ver
   [REMESAS-COTIZACION-REPARTO.md](REMESAS-COTIZACION-REPARTO.md).
+  La captura permite escribir **Comisión de entrega (%)**, inicialmente 0. Envía `deliveryCommissionBps`
+  (entero 0..9999; 550 significa 5.50%) en lugar de `deliveryConceptId`; no se admiten ambos.
+  En la consulta solo se aceptan dígitos, sin signos, exponentes ni decimales. El servidor descuenta este
+  porcentaje del monto convertido en destino, antes del redondeo configurado. Por ejemplo, DOP 100.00 con
+  10% entrega DOP 90.00; pedir DOP 90.00 netos requiere DOP 100.00 de principal. La comisión del envío
+  sigue sumándose al total del remitente. Los conceptos anteriores conservan su comportamiento si se omite
+  el porcentaje manual. No se modifican las operaciones históricas.
 - `POST /envios`:
-  `{senderClientId | newSenderClient, recipientClientId | newRecipientClient, sendingUserId?, recipientPhone?, sourceCurrency, destinationCurrency, amount, requestedReceiveAmount? | requestedTotalAmount?, deliveryConceptId?, commissionBps?, managerCommission?, quote, note?, payment?}`
+  `{senderClientId | newSenderClient, recipientClientId | newRecipientClient, sendingUserId?, recipientPhone?, sourceCurrency, destinationCurrency, amount, requestedReceiveAmount? | requestedTotalAmount?, deliveryConceptId? | deliveryCommissionBps?, commissionBps?, managerCommission?, quote, note?, payment?}`
   → `TransferView`, con `senderContact`, `recipientContact`, `payment` y
   `receiptIssuer` congelados. Ver [REMESAS-PAGOS-RECIBOS.md](REMESAS-PAGOS-RECIBOS.md).
   - Por cada participante va **exactamente una** alternativa: el ID de un cliente
@@ -251,6 +258,9 @@ Visibilidad de las operaciones, igual en `snapshot`, listados y reportes:
   - `quote` debe ser exactamente la cotización recibida. Cambio de
     fecha/tasa/configuración devuelve `QUOTE_CHANGED` 409. Si `commissionBps`
     viene presente, se valida contra la tasa central y no puede reemplazarla.
+    Al usar porcentaje de entrega manual, se reenvía como número entero `deliveryCommissionBps` junto con
+    la cotización. El servidor lo recalcula y compara con ella; cambiarlo requiere volver a cotizar.
+    El porcentaje y el descuento quedan congelados en `calculation` para recibos, pagos y reportes.
   - `sendingUserId` omitido usa el usuario autenticado; solo Admin puede
     representar a otro operador activo, y ese operador debe tener
     `remittances.create` (`OPERATOR_FORBIDDEN` 403). `registeredBy` siempre es el

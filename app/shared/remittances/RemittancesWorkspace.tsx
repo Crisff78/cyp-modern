@@ -19,6 +19,7 @@ import { RemittanceDialog as Dialog } from "./RemittanceDialog";
 import { RemittanceWindow } from "./RemittanceWindow";
 import { QuickClientDialog } from "./QuickClientDialog";
 import { restrictPaste } from "./fieldInput";
+import { DELIVERY_COMMISSION_MESSAGE, deliveryCommissionBps, isDeliveryCommissionDraft } from "./deliveryCommissionInput";
 import { advanceCaptureField } from "./formKeyboard";
 import { focusNextField } from "../keyboard";
 import { useAdjustablePanel } from "../useAdjustablePanel";
@@ -58,12 +59,12 @@ const pendingByActor = new Map<string, Confirmation>();
 // VALIDATION comes before it, for a body that could never have been saved: the same body cannot succeed on a retry.
 const definitiveDomainErrors = new Set(["QUOTE_CHANGED", "COMMISSION_POLICY_MISMATCH", "CASH_NOT_OPEN", "RATE_MISSING", "RATE_DATE", "DOP_RATE", "CASH_EXISTS", "PREVIOUS_CASH_OPEN", "CASH_CLOSED", "CASH_UNBALANCED", "CASH_NOT_FOUND", "CLIENT_INACTIVE", "CLIENT_NOT_FOUND", "CLIENT_ALREADY_EXISTS", "CLIENT_INACTIVE_EXISTS", "CLIENT_OTHER_ROUTE", "ROUTE_NOT_FOUND", "SAME_CLIENT", "TRANSFER_NOT_PENDING", "TRANSFER_NOT_FOUND", "INSUFFICIENT_CASH", "SEQUENCE_EXHAUSTED", "MONEY_RANGE", "INVALID_AMOUNT", "INVALID_RATE", "INVALID_CURRENCY", "INVALID_COMMISSION", "INVALID_AMOUNT_MODE", "COMMISSION_EXCEEDS_TOTAL", "AMOUNT_TOO_SMALL", "REASON_REQUIRED", "VALIDATION"]);
 // amountMode: the box typed (what is sent, the total paid or what the person receives); the others are calculated.
-type Draft = { senderClientId: string; recipientClientId: string; sendingUserId: string; sourceCurrency: Currency; destinationCurrency: Currency; amount: string; amountMode: AmountMode; deliveryConceptId: string; note: string };
-const NO_DELIVERY = "sin-comision";
+type Draft = { senderClientId: string; recipientClientId: string; sendingUserId: string; sourceCurrency: Currency; destinationCurrency: Currency; amount: string; amountMode: AmountMode; deliveryPercent: string; note: string };
 // Cents as the plain amount a money box holds (1234 → "12.34").
 const LIST_MIN_HEIGHT = 140, FORM_MIN_HEIGHT = 120;
 const centsDraft = (cents: number) => `${Math.trunc(cents / 100)}.${String(Math.abs(cents) % 100).padStart(2, "0")}`;
 for (const code of ["INVALID_PAYMENT", "INSUFFICIENT_TENDERED", "PAYMENT_NOT_VERIFIED", "REFUND_NOT_VERIFIED"]) definitiveDomainErrors.add(code);
+definitiveDomainErrors.add("INVALID_DELIVERY_COMMISSION");
 const statusText = { pending: "Pendiente de entrega", paid: "Pagado", cancelled: "Cancelado" };
 const phoneRecordText = {
   newRecord: " También quedará guardado en la ficha nueva del destinatario, que no tiene teléfono.",
@@ -216,7 +217,8 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   // The funnel shows and hides Buscar and Estado of the list, like the filters of every window (Rardiel, 28-10-2026).
   const [listFiltersShown, setListFiltersShown] = useState(true);
   const [formOpen, setFormOpen] = useState(true);
-  const [draft, setDraft] = useState<Draft>({ senderClientId: "", recipientClientId: "", sendingUserId: user.id, sourceCurrency: "DOP", destinationCurrency: "DOP", amount: "", amountMode: "source", deliveryConceptId: NO_DELIVERY, note: "" });
+  const [draft, setDraft] = useState<Draft>({ senderClientId: "", recipientClientId: "", sendingUserId: user.id, sourceCurrency: "DOP", destinationCurrency: "DOP", amount: "", amountMode: "source", deliveryPercent: "0", note: "" });
+  const [deliveryEntryError, setDeliveryEntryError] = useState(false);
   const [newClients, setNewClients] = useState<{ sender?: NewRemittanceClient; recipient?: NewRemittanceClient }>({});
   const [clientEditor, setClientEditor] = useState<ClientSide | null>(null);
   const senderStoredContact = useClientContact(api, formOpen ? draft.senderClientId : "", "sender", "", snapshot);
@@ -442,12 +444,15 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   const clearErrors = () => { setError(""); setOutputError(""); };
   const rejectEntry = (message: string) => { retireQuote(); setError(message); };
   const rejectMoney = (field: "amount" | "opening" | "counted" | "discharged" | "addition") => { setMoneyEntryErrors((current) => ({ ...current, [field]: moneyInputMessage })); rejectEntry(moneyInputMessage); };
+  const rejectDeliveryPercent = () => { setDeliveryEntryError(true); rejectEntry(DELIVERY_COMMISSION_MESSAGE); };
   const updateDraft = <K extends keyof Draft>(key: K, value: Draft[K]) => {
     if (typeof value === "string") {
       if (key === "amount" && !isMoneyDraft(value)) { rejectMoney("amount"); return; }
+      if (key === "deliveryPercent" && !isDeliveryCommissionDraft(value)) { rejectDeliveryPercent(); return; }
       if (key === "note" && !isTextDraft(value, INPUT_LIMITS.freeNote, true)) { rejectEntry("La nota admite hasta 500 caracteres, sin caracteres de control."); return; }
     }
     if (key === "amount" || key === "amountMode") setMoneyEntryErrors((current) => ({ ...current, amount: undefined }));
+    if (key === "deliveryPercent") setDeliveryEntryError(false);
     setDraft((current) => ({ ...current, [key]: value })); retireQuote(); clearErrors();
   };
   const chooseClient = (side: ClientSide, client: RemittanceClient) => {
@@ -465,9 +470,10 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   const resetForm = () => {
     setPaymentDraft(paymentDraftFor(0));
     setMoneyEntryErrors({});
+    setDeliveryEntryError(false);
     retireQuote(); setFormOpen(true); clearErrors(); setNewClients({}); setSenderSearch(""); setRecipientSearch("");
     quietCapture.current = false;
-    setDraft({ senderClientId: "", recipientClientId: "", sendingUserId: user.id, sourceCurrency: "DOP", destinationCurrency: "DOP", amount: "", amountMode: "source", deliveryConceptId: NO_DELIVERY, note: "" });
+    setDraft({ senderClientId: "", recipientClientId: "", sendingUserId: user.id, sourceCurrency: "DOP", destinationCurrency: "DOP", amount: "", amountMode: "source", deliveryPercent: "0", note: "" });
     recipientPhoneTyped.current = false; setRecipientPhone(""); setFocusVersion((value) => value + 1);
   };
   const clearListFilters = () => { setSearch(""); setStatus("all"); };
@@ -565,9 +571,10 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
       if ((draft.senderClientId && !eligibleClients(snapshot.clients, "sender", draft.senderClientId).some((client) => client.id === draft.senderClientId)) || (draft.recipientClientId && !eligibleClients(snapshot.clients, "recipient", draft.senderClientId).some((client) => client.id === draft.recipientClientId))) throw new Error("El cliente seleccionado ya no está disponible. Selecciónalo de nuevo.");
       if (moneyEntryErrors.amount) throw new Error("Corrige el monto señalado antes de calcular la cotización.");
       if (!isMoneyDraft(draft.amount)) throw new Error(moneyInputMessage);
+      if (deliveryEntryError) throw new Error(DELIVERY_COMMISSION_MESSAGE);
       const amount = decimalCents(draft.amount);
       const params = new URLSearchParams({ sourceCurrency: draft.sourceCurrency, destinationCurrency: draft.destinationCurrency, amount: String(amount), amountMode: draft.amountMode });
-      if (deliveryConceptId !== NO_DELIVERY) params.set("deliveryConceptId", deliveryConceptId);
+      params.set("deliveryCommissionBps", String(deliveryCommissionBps(draft.deliveryPercent)));
       const result = await api<Quotation>(`/envios/cotizacion?${params}`);
       if (quoteRequests.current.accepts(request)) setQuote(result);
     } catch (failure) { if (quoteRequests.current.accepts(request)) setError(failureMessage(failure)); }
@@ -609,7 +616,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
       ...(quote.calculation?.amountMode === "destination" ? { requestedReceiveAmount: quote.calculation.requestedAmount }
         : quote.calculation?.amountMode === "total" ? { requestedTotalAmount: quote.calculation.requestedAmount }
         : quote.requestedReceiveAmount === undefined ? {} : { requestedReceiveAmount: quote.requestedReceiveAmount }),
-      ...(quote.calculation && quote.calculation.deliveryConceptId !== NO_DELIVERY ? { deliveryConceptId: quote.calculation.deliveryConceptId } : {}),
+      deliveryCommissionBps: quote.calculation?.deliveryCommissionBps ?? 0,
     }, description: <><p><strong>{senderContact.contact.name}</strong> envía a <strong>{recipientContact.contact.name}</strong>.</p><h3>Remitente</h3><ContactDetails contact={senderContact.contact} label="Remitente" />{newRecordDetails("sender", "Remitente")}<h3>Destinatario</h3><ContactDetails contact={recipientContact.contact} label="Destinatario" />{newRecordDetails("recipient", "Destinatario")}{typedRecipientPhone && <p><strong>Teléfono para este envío: {typedRecipientPhone}.</strong>{phoneRecordText[recipientPhoneRecord(typedRecipientPhone, recipientContact.contact, newClients.recipient, isAdmin)]}</p>}<p className="remittance-help">Datos actuales de las fichas de clientes. El comprobante conserva la copia guardada al registrar el envío.</p><QuoteDetails quote={quote} /><p>Operador: {operatorName(draft.sendingUserId)}. Registrado por: {user.name}.</p><p>Confirma después de recibir el total del remitente. La tasa queda guardada para este envío.</p></> });
   }
 
@@ -770,9 +777,6 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
       onFocus={(event) => { if (!typed && event.currentTarget.value) event.currentTarget.select(); }}
       onValueChange={(nextValue) => typeIn(mode, nextValue)} onInvalidEntry={() => rejectMoney("amount")} /></label>;
   };
-  // Commission at the destination: «Sin comisión» first; only the active concepts are offered.
-  const deliveryOptions = snapshot?.deliveryConcepts?.filter((concept) => concept.active) ?? [];
-  const deliveryConceptId = deliveryOptions.some((concept) => concept.id === draft.deliveryConceptId) ? draft.deliveryConceptId : NO_DELIVERY;
   const commissionHint = "Se aplica sola, según la configuración de comisiones." + (can("remittances.commissions.view") ? ` Parte del gestor (${operatorName(draft.sendingUserId)}): ${managerShare}% de la comisión del envío, sin cargo adicional. La ganancia por cambio es de la empresa.` : "");
 
   // Envíos and Entregas place the keyboard themselves (the sender without unfolding its list, the search of receipts):
@@ -811,7 +815,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
             </fieldset>
             <fieldset className="remittance-money remittance-money-receive"><legend>Dinero que se recibe</legend>
               <label title="Sale la moneda habitual del destinatario; puedes cambiarla.">Moneda del destinatario<select value={draft.destinationCurrency} onChange={(event) => updateDraft("destinationCurrency", event.target.value as Currency)}>{snapshot.currencies.map((currency) => <option key={currency}>{currency}</option>)}</select></label>
-              <label title="Lo que cobran en el destino (una entrega a domicilio, por ejemplo): se descuenta de lo que recibe la persona.">Comisión de entrega<select value={deliveryConceptId} onChange={(event) => updateDraft("deliveryConceptId", event.target.value)}>{deliveryOptions.map((concept) => <option key={concept.id} value={concept.id}>{concept.id === NO_DELIVERY ? concept.name : `${concept.name} (${concept.commissionBps / 100}%)`}</option>)}{!deliveryOptions.length && <option value={NO_DELIVERY}>Sin comisión</option>}</select></label>
+              <label title="Porcentaje que se descuenta del monto convertido en destino. Déjalo en 0 si no hay comisión de entrega.">Comisión de entrega (%)<input required inputMode="decimal" maxLength={5} value={draft.deliveryPercent} title={DELIVERY_COMMISSION_MESSAGE} aria-invalid={deliveryEntryError || undefined} onPaste={(event) => restrictPaste(event, isDeliveryCommissionDraft, rejectDeliveryPercent)} onChange={(event) => updateDraft("deliveryPercent", event.target.value)} /></label>
               {amountBox("destination", `Monto a recibir (${draft.destinationCurrency})`, "Lo que recibe la persona, ya descontada la comisión de entrega. Escríbelo aquí y se calcula cuánto se envía.")}
               <label>Tasa<input aria-label="Tasa del dinero que se recibe" readOnly title={quote ? `1 ${quote.destinationCurrency} = ${quote.quote.destinationRate} DOP` : undefined} value={quote ? `${shortRate(quote.quote.destinationRate)} DOP` : ""} placeholder="Al cotizar" /></label>
             </fieldset>
