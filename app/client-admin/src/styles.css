@@ -408,10 +408,34 @@ input::placeholder {
 .topbar-actions > .header-help-action,
 .topbar-actions > .theme-toggle {
   margin-inline-start: 12px;
+  position: relative;
+}
+.topbar-actions > .notification-trigger + .header-finance-action::before,
+.topbar-actions > .header-help-action::before,
+.topbar-actions > .theme-toggle::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: -14px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1px;
+  height: 22px;
+  background: var(--cyp-border-strong, #cbd5e1);
+  pointer-events: none;
+}
+@media (max-width: 1280px) {
+  .topbar-actions > .notification-trigger + .header-finance-action::before,
+  .topbar-actions > .header-help-action::before,
+  .topbar-actions > .theme-toggle::before {
+    inset-inline-start: -10px;
+  }
 }
 @media (max-width: 1000px) {
   .topbar-actions > .theme-toggle {
     margin-inline-start: 8px;
+  }
+  .topbar-actions > .theme-toggle::before {
+    inset-inline-start: -6px;
   }
 }
 .command-trigger {
