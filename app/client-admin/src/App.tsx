@@ -5318,7 +5318,7 @@ export default function App() {
                 {/* Grouped by topic (Dionel, 26-10): Facturas and Pagos together, then help and the theme.
                     The backup is made by the hosting in the background, so it has no button here. */}
                 {hasPermission(effectiveUser, 320) && <button
-                  className="icon-button tablet-secondary"
+                  className="icon-button tablet-secondary header-finance-action"
                   aria-label="Facturas"
                   title="Ventana de Facturas"
                   onClick={() => setAuxWindow("facturas")}
@@ -5326,7 +5326,7 @@ export default function App() {
                   <ReceiptText size={19} />
                 </button>}
                 {hasPermission(effectiveUser, 370) && <button
-                  className="icon-button tablet-secondary"
+                  className="icon-button tablet-secondary header-finance-action"
                   aria-label="Ventana de Pagos"
                   title="Ventana de Pagos"
                   onClick={() => setAuxWindow("pagos")}
@@ -5334,7 +5334,7 @@ export default function App() {
                   <Wallet size={19} />
                 </button>}
                 <button
-                  className="icon-button tablet-secondary"
+                  className="icon-button tablet-secondary header-help-action"
                   aria-label="Qué hay de nuevo"
                   title="Qué hay de nuevo"
                   onClick={() => setAuxWindow("novedades")}

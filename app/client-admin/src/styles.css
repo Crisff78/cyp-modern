@@ -403,6 +403,17 @@ input::placeholder {
   align-items: center;
   gap: 15px;
 }
+/* Separate notifications, documents, help and theme; keep Facturas/Pagos at the regular gap. */
+.topbar-actions > .notification-trigger + .header-finance-action,
+.topbar-actions > .header-help-action,
+.topbar-actions > .theme-toggle {
+  margin-inline-start: 12px;
+}
+@media (max-width: 1000px) {
+  .topbar-actions > .theme-toggle {
+    margin-inline-start: 8px;
+  }
+}
 .command-trigger {
   display: flex;
   align-items: center;
