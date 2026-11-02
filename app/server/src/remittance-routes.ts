@@ -64,8 +64,8 @@ export function registerRemittanceRoutes(
     return visibleRemittanceResult(user(req), quoteRemittance(await store.read(), input));
   });
   mutate("/api/envios/politica-comisiones", "Configurar la comisión, la parte del gestor y el redondeo para envíos futuros", z.object({
-    transactionCommissionBps: bps.optional(), managerCommissionBps: bps.optional(), managerShareBps: bps.optional(), receiveRounding: z.enum(receiveRoundings).optional(),
-  }).strict().refine((input) => input.managerCommissionBps !== undefined || input.managerShareBps !== undefined || input.receiveRounding !== undefined || input.transactionCommissionBps !== undefined, "Indica algo que cambiar."),
+    transactionCommissionBps: bps.optional(), managerCommissionBps: bps.optional(), managerShareBps: bps.optional(), deliveryCommissionBps: bps.max(9999).optional(), receiveRounding: z.enum(receiveRoundings).optional(),
+  }).strict().refine((input) => input.managerCommissionBps !== undefined || input.managerShareBps !== undefined || input.deliveryCommissionBps !== undefined || input.receiveRounding !== undefined || input.transactionCommissionBps !== undefined, "Indica algo que cambiar."),
   (state, actor, input) => setCommissionPolicy(state, actor, input));
   mutate("/api/envios/conceptos-entrega", "Agregar o cambiar un concepto de comisión de entrega en destino", z.object({
     id: id.optional(), name: singleLine(80, 1), commissionBps: bps.max(9999), active: z.boolean(),

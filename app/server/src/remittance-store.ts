@@ -61,7 +61,7 @@ export async function readRemittances(client: pg.PoolClient): Promise<Remittance
     }
   }
   const policy = (await client.query(`SELECT revision,transaction_commission_bps AS "transactionCommissionBps",manager_commission_bps AS "managerCommissionBps",
-    manager_share_bps AS "managerShareBps",receive_rounding AS "receiveRounding",updated_at AS "updatedAt",updated_by AS "updatedBy" FROM remittance_commission_policy WHERE id=1`)).rows[0];
+    manager_share_bps AS "managerShareBps",delivery_commission_bps AS "deliveryCommissionBps",receive_rounding AS "receiveRounding",updated_at AS "updatedAt",updated_by AS "updatedBy" FROM remittance_commission_policy WHERE id=1`)).rows[0];
   const deliveryConcepts = (await client.query(`SELECT id,name,commission_bps AS "commissionBps",active,updated_at AS "updatedAt",updated_by AS "updatedBy"
     FROM remittance_delivery_concepts ORDER BY name,id`)).rows.map((row) => clean<DeliveryConcept>(row));
   return { rates, rateHistory, cashSessions, cashMovements, transfers, events, deliveryConcepts, ...(policy ? { commissionPolicy: clean<NonNullable<RemittanceState["commissionPolicy"]>>(policy) } : {}) };
@@ -70,10 +70,10 @@ export async function readRemittances(client: pg.PoolClient): Promise<Remittance
 export async function saveRemittances(client: pg.PoolClient, state: RemittanceState, before: RemittanceState) {
   if (state.commissionPolicy && JSON.stringify(state.commissionPolicy) !== JSON.stringify(before.commissionPolicy)) {
     const policy = state.commissionPolicy;
-    await client.query(`INSERT INTO remittance_commission_policy(id,revision,manager_commission_bps,transaction_commission_bps,manager_share_bps,receive_rounding,updated_at,updated_by) VALUES(1,$1,$2,$3,$4,$5,$6,$7)
+    await client.query(`INSERT INTO remittance_commission_policy(id,revision,manager_commission_bps,transaction_commission_bps,manager_share_bps,receive_rounding,updated_at,updated_by,delivery_commission_bps) VALUES(1,$1,$2,$3,$4,$5,$6,$7,$8)
       ON CONFLICT(id) DO UPDATE SET revision=EXCLUDED.revision,manager_commission_bps=EXCLUDED.manager_commission_bps,transaction_commission_bps=EXCLUDED.transaction_commission_bps,
-        manager_share_bps=EXCLUDED.manager_share_bps,receive_rounding=EXCLUDED.receive_rounding,updated_at=EXCLUDED.updated_at,updated_by=EXCLUDED.updated_by`,
-      [policy.revision,policy.managerCommissionBps,policy.transactionCommissionBps ?? 0,policy.managerShareBps ?? 0,policy.receiveRounding ?? "none",policy.updatedAt ?? null,policy.updatedBy ?? null]);
+        manager_share_bps=EXCLUDED.manager_share_bps,receive_rounding=EXCLUDED.receive_rounding,updated_at=EXCLUDED.updated_at,updated_by=EXCLUDED.updated_by,delivery_commission_bps=EXCLUDED.delivery_commission_bps`,
+      [policy.revision,policy.managerCommissionBps,policy.transactionCommissionBps ?? 0,policy.managerShareBps ?? 0,policy.receiveRounding ?? "none",policy.updatedAt ?? null,policy.updatedBy ?? null,policy.deliveryCommissionBps ?? 0]);
   }
   for (const concept of state.deliveryConcepts ?? []) {
     const old = before.deliveryConcepts?.find((row) => row.id === concept.id);

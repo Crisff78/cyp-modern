@@ -8,12 +8,13 @@ const rate = (value: unknown) => typeof value === "number" && Number.isInteger(v
  * commission (since 29-10-2026 it may be any share, it no longer depends on the total) and the rounding.
  */
 export function confirmedCommissionPolicy(value: unknown,
-  expected: Pick<CommissionPolicy, "transactionCommissionBps"> & Required<Pick<CommissionPolicy, "managerShareBps" | "receiveRounding">>): CommissionPolicy {
+  expected: Pick<CommissionPolicy, "transactionCommissionBps" | "deliveryCommissionBps"> & Required<Pick<CommissionPolicy, "managerShareBps" | "receiveRounding">>): CommissionPolicy {
   const policy = value as CommissionPolicy | null;
   if (!policy || typeof policy !== "object" || Array.isArray(policy) ||
       typeof policy.revision !== "string" || !policy.revision || policy.revision !== policy.revision.trim() || policy.revision.length > 80 ||
       ![policy.transactionCommissionBps, policy.managerShareBps].every(rate) || !roundings.includes(String(policy.receiveRounding)) ||
       policy.transactionCommissionBps !== expected.transactionCommissionBps || policy.managerShareBps !== expected.managerShareBps ||
+      (expected.deliveryCommissionBps !== undefined && (!rate(policy.deliveryCommissionBps) || policy.deliveryCommissionBps! >= 10000 || policy.deliveryCommissionBps !== expected.deliveryCommissionBps)) ||
       policy.receiveRounding !== expected.receiveRounding)
     throw new StrictApiError("No pudimos confirmar la configuración guardada. Reintenta la misma operación.", 200, true);
   return policy;

@@ -16,7 +16,7 @@ export type Quote = {
   commissionPolicyRevision?: string; managerCommissionBps?: number;
   managerShareBps?: number; deliveryConceptId?: string; deliveryCommissionBps?: number; receiveRounding?: ReceiveRounding;
 };
-export type CommissionPolicy = { revision: string; transactionCommissionBps: number; managerCommissionBps?: number; managerShareBps?: number; receiveRounding?: ReceiveRounding; updatedAt?: string; updatedBy?: string };
+export type CommissionPolicy = { revision: string; transactionCommissionBps: number; managerCommissionBps?: number; managerShareBps?: number; deliveryCommissionBps?: number; receiveRounding?: ReceiveRounding; updatedAt?: string; updatedBy?: string };
 // Version 1: the manager's % of the received amount (sends before 29-10-2026). Version 2: his share of the commission.
 export type CommissionAllocation = {
   version: 1 | 2; currency: Currency; policyRevision: string; managerCommissionBps: number;

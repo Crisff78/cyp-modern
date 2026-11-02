@@ -26,7 +26,7 @@ test("PostgreSQL 044 saves the whole calculation of a send and refuses forged nu
     const saved = await store.transaction((state) => {
       setDailyRate(state, admin, { currency: "USD", rate: "60", purchaseRate: "58", saleRate: "61", date: day }, now);
       setDailyRate(state, admin, { currency: "EUR", rate: "68", purchaseRate: "66", saleRate: "70", date: day }, now);
-      setCommissionPolicy(state, admin, { transactionCommissionBps: 500, managerShareBps: 4000, receiveRounding: "normal" }, now);
+      setCommissionPolicy(state, admin, { transactionCommissionBps: 500, managerShareBps: 4000, receiveRounding: "normal", deliveryCommissionBps: 1000 }, now);
       const concept = saveDeliveryConcept(state, admin, { name: "Entrega a domicilio", commissionBps: 1000, active: true }, now);
       for (const currency of ["USD", "EUR"] as const) openRemittanceCash(state, admin, { operatorId: admin.id, currency, openingAmount: currency === "EUR" ? 1000000 : 0 }, [], now);
       const quoted = quoteRemittance(state, { sourceCurrency: "USD", destinationCurrency: "EUR", amount: 10500, amountMode: "total", deliveryConceptId: concept.id }, now);
@@ -67,6 +67,7 @@ test("PostgreSQL 044 saves the whole calculation of a send and refuses forged nu
 
     // A percentage entered for one send needs no catalog row: its immutable snapshot survives a database reload.
     const manual = await store.transaction((state) => {
+      setCommissionPolicy(state, admin, { deliveryCommissionBps: 550 }, now);
       const quoted = quoteRemittance(state, { sourceCurrency: "USD", destinationCurrency: "EUR", amount: 10000, deliveryCommissionBps: 550 }, now);
       return createRemittance(state, admin, { sourceCurrency: "USD", destinationCurrency: "EUR", amount: quoted.amount,
         deliveryCommissionBps: 550, senderClientId: "cli-1", recipientClientId: "cli-5", quote: quoted.quote }, [], now);
