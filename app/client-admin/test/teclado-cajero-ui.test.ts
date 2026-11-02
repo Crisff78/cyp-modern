@@ -115,10 +115,8 @@ test("Cajero with the keyboard only: sign in, open the box, send, deliver, count
     await keys("Enter");
     assert.deepEqual([(await focused()).label, await box()], ["Moneda del destinatario", "Dinero que se recibe"]);
     await keys("Enter");
-    assert.equal((await focused()).label, "Comisión de entrega (%)");
-    // The last field of money: Enter goes on to «Calcular cotización» without pressing it (Rardiel, 28-10-2026: there it
+    // Readonly delivery percentage is skipped; Enter from the recipient currency goes on to «Calcular cotización» without pressing it (Rardiel, 28-10-2026: there it
     // used to stay still). Back to the sender with ← and forth again with →, without changing anything.
-    await keys("Enter");
     assert.equal((await focused()).label, "Calcular cotización");
     for (let step = 0; step < 30 && (await focused()).label !== "Remitente"; step += 1) await keys("ArrowLeft");
     assert.equal((await focused()).label, "Remitente");

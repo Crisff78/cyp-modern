@@ -241,13 +241,21 @@ Visibilidad de las operaciones, igual en `snapshot`, listados y reportes:
   `amountMode=total` cotiza desde el total que paga quien envía y `destination` desde lo que recibe la
   persona; `calculation` trae la comisión de entrega, el redondeo, lo que recibe y la ganancia por cambio; ver
   [REMESAS-COTIZACION-REPARTO.md](REMESAS-COTIZACION-REPARTO.md).
-  La captura permite escribir **Comisión de entrega (%)**, inicialmente 0. Envía `deliveryCommissionBps`
-  (entero 0..9999; 550 significa 5.50%) en lugar de `deliveryConceptId`; no se admiten ambos.
-  En la consulta solo se aceptan dígitos, sin signos, exponentes ni decimales. El servidor descuenta este
-  porcentaje del monto convertido en destino, antes del redondeo configurado. Por ejemplo, DOP 100.00 con
-  10% entrega DOP 90.00; pedir DOP 90.00 netos requiere DOP 100.00 de principal. La comisión del envío
-  sigue sumándose al total del remitente. Los conceptos anteriores conservan su comportamiento si se omite
-  el porcentaje manual. No se modifican las operaciones históricas.
+  **Comisión de entrega (%)** es de solo lectura en la captura. Administración configura el porcentaje
+  central mediante `POST /envios/politica-comisiones`, campo `deliveryCommissionBps` (entero 0..9999;
+  550 significa 5.50%). Empieza en 0: la migración 046 no copia porcentajes de prueba de conceptos antiguos.
+  El servidor toma este valor aunque el cliente omita el campo. Los parámetros anteriores de porcentaje o
+  concepto sirven únicamente como comprobación de compatibilidad: si difieren de la configuración se rechazan
+  con `COMMISSION_POLICY_MISMATCH` 409. El catálogo anterior se conserva para compatibilidad e históricos;
+  la pantalla de configuración reúne ahora los porcentajes centrales, sin un segundo formulario de entrega.
+  Se descuenta del monto convertido en destino antes del redondeo. DOP 100.00 con 10% entrega DOP 90.00;
+  pedir DOP 90.00 netos requiere DOP 100.00 de principal. Cambiar la configuración exige volver a cotizar.
+  No se modifican las operaciones históricas.
+  La captura y el desglose muestran además el **equivalente de la comisión normal en DOP**. Se convierte
+  la comisión ya calculada con `quote.sourceRate`, usando enteros y redondeo a centavos, sin tomar una tasa
+  posterior ni alterar importes. Es informativo: el cobro y la caja conservan la moneda de origen; no registra
+  pagos mezclados en dos monedas. Ejemplo: USD 100 + USD 5 de comisión = USD 105; a 59, la comisión equivale
+  a DOP 295.00. Los importes fuera del rango seguro se muestran como no disponibles.
 - `POST /envios`:
   `{senderClientId | newSenderClient, recipientClientId | newRecipientClient, sendingUserId?, recipientPhone?, sourceCurrency, destinationCurrency, amount, requestedReceiveAmount? | requestedTotalAmount?, deliveryConceptId? | deliveryCommissionBps?, commissionBps?, managerCommission?, quote, note?, payment?}`
   → `TransferView`, con `senderContact`, `recipientContact`, `payment` y
@@ -258,8 +266,8 @@ Visibilidad de las operaciones, igual en `snapshot`, listados y reportes:
   - `quote` debe ser exactamente la cotización recibida. Cambio de
     fecha/tasa/configuración devuelve `QUOTE_CHANGED` 409. Si `commissionBps`
     viene presente, se valida contra la tasa central y no puede reemplazarla.
-    Al usar porcentaje de entrega manual, se reenvía como número entero `deliveryCommissionBps` junto con
-    la cotización. El servidor lo recalcula y compara con ella; cambiarlo requiere volver a cotizar.
+    La comisión de entrega se toma de la configuración central y se compara con la cotización revisada.
+    Los clientes nuevos omiten el porcentaje en el cuerpo de creación; enviarlo no permite reemplazarlo.
     El porcentaje y el descuento quedan congelados en `calculation` para recibos, pagos y reportes.
   - `sendingUserId` omitido usa el usuario autenticado; solo Admin puede
     representar a otro operador activo, y ese operador debe tener

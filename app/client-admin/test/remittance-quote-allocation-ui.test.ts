@@ -119,7 +119,8 @@ createRoot(document.getElementById("root")).render(<App />);`);
           await workspace.waitFor(); await workspace.getByText("Cargando configuración…", { exact: true }).waitFor({ state: "detached" });
         };
         await openWorkspace();
-        const savePolicy = async (transaction: string, manager: string) => {
+        const savePolicy = async (transaction: string, manager: string, delivery = "0") => {
+          await workspace.getByLabel("Comisión de entrega (%)", {exact:true}).fill(delivery);
           await workspace.getByLabel("Comisión total de la transacción (%)", { exact: true }).fill(transaction);
           await workspace.getByLabel("Comisión del gestor (%)", { exact: true }).fill(manager);
           await workspace.getByRole("button", { name: "Revisar reparto", exact: true }).click();
@@ -127,10 +128,11 @@ createRoot(document.getElementById("root")).render(<App />);`);
           await workspace.getByText("Configuración guardada. Se aplicará a los próximos envíos.", { exact: true }).waitFor();
           await page.waitForFunction(() => !document.querySelector('dialog[open]'));
         };
-        await savePolicy("6", "2");
+        await savePolicy("6", "2", "2.50");
         assert.equal((await store.read()).remittances.commissionPolicy!.transactionCommissionBps, 600);
         await openWorkspace();
         assert.equal(await workspace.getByLabel("Comisión total de la transacción (%)", { exact: true }).inputValue(), "6", "configuration survives reload");
+        assert.equal(await workspace.getByLabel("Comisión de entrega (%)", {exact:true}).inputValue(), "2.5", "delivery configuration survives reload");
         // The manager's share is a part of the commission (29-10-2026): any share up to 100%, never more.
         await workspace.getByLabel("Comisión del gestor (%)", { exact: true }).fill("101");
         await workspace.getByRole("button", { name: "Revisar reparto", exact: true }).click();
@@ -272,6 +274,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
         const dop = workspace.getByRole("textbox", { name: "Equivalente del principal en DOP", exact: true });
         await page.waitForFunction(() => Array.from(document.querySelectorAll<HTMLInputElement>('input[readonly]')).some((input) => input.value === "DOP 6,000.00"));
         assert.equal(await dop.getAttribute("readonly"), ""); assert.equal(await dop.inputValue(), "DOP 6,000.00");
+        assert.equal(await workspace.getByLabel("Equivalente de la comisión en DOP", {exact:true}).inputValue(), "DOP 300.00", "USD 5 at the quoted rate of 60; collection remains USD 105");
         assert.equal(await commission.inputValue(), "5", "changing the DOM cannot change the server-derived rate");
         assert.equal(await workspace.getByLabel("Monto a recibir (EUR)", { exact: true }).inputValue(), "80.00", "the box of what the person receives is calculated");
         assert.equal(await workspace.getByLabel("Total a pagar (USD)", { exact: true }).inputValue(), "105.00", "the box of the total paid is calculated");
@@ -694,7 +697,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
       setCommissionPolicy(state, admin, { transactionCommissionBps: 0, managerCommissionBps: 0 }, now);
     });
     const exactResults: object[] = [];
-    for (const surface of ["admin", "collector"]) await t.test(`${surface} exact 59/61 example and editable delivery percentage: quote, inverse, save and receipt`, async () => {
+    for (const surface of ["admin", "collector"]) await t.test(`${surface} exact 59/61 example and configured readonly delivery percentage: quote, inverse, save and receipt`, async () => {
       const context = await browser.newContext({ viewport: surface === "admin" ? { width: 1440, height: 1100 } : { width: 390, height: 844 }, locale: "es-DO", serviceWorkers: "block", extraHTTPHeaders: { "x-qa-rate-refresh-client": surface } });
       const before = await store.read();
       try {
@@ -733,6 +736,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
         await workspace.getByLabel("Monto a enviar (USD)", { exact: true }).fill("100.00");
         const source = await calculate("source", "100");
         assert.equal(source.amount, 10000); assert.equal(source.receiveAmount, 590000);
+        assert.equal(await workspace.getByLabel("Equivalente de la comisión en DOP", {exact:true}).inputValue(), "DOP 0.00");
         assert.equal(source.quote.sourceRate, "59.000000"); assert.equal(source.quote.sourceRateKind, "purchase");
         const receive = workspace.getByLabel("Monto a recibir (DOP)", { exact: true });
         await page.waitForFunction(() => document.querySelector<HTMLInputElement>('[data-amount-box="destination"]')?.value === "5,900.00");
@@ -770,23 +774,19 @@ createRoot(document.getElementById("root")).render(<App />);`);
         // Delivery is a percentage for this send, zero by default; all three money boxes use its net.
         const deliveryPercent = workspace.getByLabel("Comisión de entrega (%)", { exact: true });
         assert.equal(await deliveryPercent.inputValue(), "0");
-        assert.equal(await deliveryPercent.getAttribute("inputmode"), "decimal");
+        assert.equal(await deliveryPercent.getAttribute("readonly"), "");
         await workspace.getByLabel("Moneda del remitente").selectOption("DOP");
         await workspace.getByLabel("Moneda del destinatario").selectOption("DOP");
         await workspace.getByLabel("Monto a enviar (DOP)", { exact: true }).fill("100.00");
-        await deliveryPercent.fill("letras");
-        assert.equal(await deliveryPercent.inputValue(), "0");
-        assert.equal(await deliveryPercent.getAttribute("aria-invalid"), "true");
-        await deliveryPercent.evaluate((element: HTMLInputElement) => {
-          element.select();
-          const data = new DataTransfer(); data.setData("text/plain", "12.345");
-          element.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
-        });
-        assert.equal(await deliveryPercent.inputValue(), "0", "an overlong paste is rejected whole, never truncated to a different percentage");
-        await deliveryPercent.fill("5.50");
+        assert.equal(await deliveryPercent.getAttribute("readonly"), "");
+        await store.transaction(state => setCommissionPolicy(state, admin, {deliveryCommissionBps:550}, now));
+        await workspace.getByRole("button", {name:"Actualizar",exact:true}).click();
+        await page.waitForFunction(() => [...document.querySelectorAll('label')].find(el=>el.firstChild?.textContent?.trim()==="Comisión de entrega (%)")?.querySelector('input')?.value==="5.5");
         const decimal = await calculate("source", "100 with 5.50% delivery");
         assert.equal(decimal.calculation.deliveryCommissionBps, 550); assert.equal(decimal.calculation.payoutAmount, 9450);
-        await deliveryPercent.fill("10");
+        await store.transaction(state => setCommissionPolicy(state, admin, {deliveryCommissionBps:1000}, now));
+        await workspace.getByRole("button", {name:"Actualizar",exact:true}).click();
+        await page.waitForFunction(() => [...document.querySelectorAll("label")].find(el=>el.firstChild?.textContent?.trim()==="Comisión de entrega (%)")?.querySelector("input")?.value==="10");
         assert.equal(await workspace.getByRole("button", { name: "Revisar y confirmar envío", exact: true }).count(), 0, "changing the percentage retires the earlier quote");
         const manual = await calculate("source", "100 with 10% delivery");
         assert.equal(manual.receiveAmount, 10000); assert.equal(manual.calculation.deliveryCommissionAmount, 1000);
@@ -809,12 +809,12 @@ createRoot(document.getElementById("root")).render(<App />);`);
         const savedReply = page.waitForResponse((reply: any) => reply.request().method() === "POST" && new URL(reply.url()).pathname === "/api/envios");
         await deliveryReview.getByRole("button", { name: "Aceptar", exact: true }).click();
         const reply = await savedReply; assert.equal(reply.status(), 200, await reply.text());
-        assert.equal(reply.request().postDataJSON().deliveryCommissionBps, 1000);
+        assert.equal(reply.request().postDataJSON().deliveryCommissionBps, undefined, "creation takes its percentage from the server");
         const saved = await reply.json();
         assert.equal(saved.calculation.deliveryCommissionBps, 1000); assert.equal(saved.calculation.payoutAmount, 9000);
         const prompt = page.getByRole("dialog", { name: "¿Quieres imprimir el recibo?", exact: true });
         await prompt.getByRole("button", { name: "No imprimir", exact: true }).click();
-        assert.equal(await workspace.getByLabel("Comisión de entrega (%)", { exact: true }).inputValue(), "0", "a new send starts without a delivery charge");
+        assert.equal(await workspace.getByLabel("Comisión de entrega (%)", { exact: true }).inputValue(), "10", "new sends retain the centrally configured percentage");
         const frozen = (await store.read()).remittances.transfers.find((row) => row.id === saved.id)!;
         const { exchangeGain: storedGain, ...storedAmounts } = frozen.calculation!;
         const { exchangeGain: reviewedGain, ...reviewedAmounts } = manualInverse.calculation;
@@ -826,6 +826,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
         await receipt.waitFor();
         assert.match(await receipt.innerText(), /Cargo de entrega/);
         assert.match(await receipt.innerText(), /DOP 10\.00/); assert.match(await receipt.innerText(), /DOP 90\.00/);
+        await store.transaction(state => setCommissionPolicy(state, admin, {deliveryCommissionBps:0}, now));
       } finally { await context.close(); }
     });
     // Rardiel, 29-10-2026: «Estas ventanas aquí deberían poder cambiarse de tamaño … y que se queden guardadas como yo las dejé».
