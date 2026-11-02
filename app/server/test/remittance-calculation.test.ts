@@ -6,6 +6,7 @@ import { buildApp } from "../src/app.js";
 import { businessDate, type State, type User } from "../src/domain.js";
 import { seed } from "../src/seed.js";
 import { MemoryStore } from "../src/store.js";
+import { deliveryCommissionBps, isDeliveryCommissionDraft } from "../../shared/remittances/deliveryCommissionInput.js";
 import { cashBalance, createRemittance, getCommissionPolicy, openRemittanceCash, payRemittance, payoutOf, quoteRemittance, remittanceReports,
   saveDeliveryConcept, setCommissionPolicy, setDailyRate, transferView, type AmountMode, type Currency, type ReceiveRounding } from "../src/remittances.js";
 
@@ -19,6 +20,14 @@ const gestor: User = { id: "demo-collector", name: "Synthetic Gestor", role: "co
 const plainGestor: User = { id: "demo-collector", name: "Synthetic Gestor", role: "collector", collectorId: "col-1" };
 const receiver: User = { id: "synthetic-receiver", name: "Synthetic Receiver", role: "collector", collectorId: "col-2" };
 const code = (expected: string) => (error: unknown) => { assert.equal((error as { code: string }).code, expected); return true; };
+
+test("delivery percentage input: exact hundredths, no letters, signs, grouping or silent paste truncation", () => {
+  for (const [value, bps] of [["0", 0], ["5", 500], ["5.50", 550], [".25", 25], ["99.99", 9999]] as const)
+    assert.equal(deliveryCommissionBps(value), bps, value);
+  for (const value of ["a", "5%", "1e1", "+5", "-5", "5,5", "100", "1.234", " 5", "5 ", "5\n", "0;DROP TABLE users"])
+    { assert.equal(isDeliveryCommissionDraft(value), false, value); assert.throws(() => deliveryCommissionBps(value), value); }
+  for (const value of ["", "."]) assert.throws(() => deliveryCommissionBps(value));
+});
 
 function fixture(policy: { transactionCommissionBps: number; managerShareBps?: number; receiveRounding?: ReceiveRounding } = { transactionCommissionBps: 2000, managerShareBps: 5000 }) {
   const state = seed();
@@ -131,6 +140,37 @@ test("6. commission at the destination: concepts with «Sin comisión» first; i
   assert.equal(report.delivered[0].amount, 9000);
 });
 
+test("manual delivery percentage: default zero, forward/inverse totals, foreign currencies and payment use the frozen net", () => {
+  const state = fixture();
+  const input = { sourceCurrency: "DOP", destinationCurrency: "DOP", amount: 10000, deliveryCommissionBps: 550 } as const;
+  const zero = quoteRemittance(state, { ...input, deliveryCommissionBps: 0 }, now);
+  assert.equal(zero.calculation.deliveryConceptId, "sin-comision"); assert.equal(zero.calculation.payoutAmount, 10000);
+  const quoted = quoteRemittance(state, input, now);
+  assert.equal(quoted.calculation.deliveryCommissionBps, 550); assert.equal(quoted.calculation.deliveryCommissionAmount, 550);
+  assert.equal(quoted.calculation.payoutAmount, 9450); assert.equal(quoted.totalAmount, 12000);
+  const inverse = quoteRemittance(state, { ...input, amountMode: "destination", amount: 9450 }, now);
+  assert.equal(inverse.amount, 10000); assert.equal(inverse.calculation.payoutAmount, 9450);
+  const total = quoteRemittance(state, { ...input, amountMode: "total", amount: 12000 }, now);
+  assert.equal(total.amount, 10000); assert.equal(total.calculation.payoutAmount, 9450);
+  const foreign = quoteRemittance(state, { ...input, sourceCurrency: "USD", destinationCurrency: "EUR" }, now);
+  assert.equal(foreign.receiveAmount, 8286); assert.equal(foreign.calculation.deliveryCommissionAmount, 456);
+  assert.equal(foreign.calculation.payoutAmount, 7830);
+  for (const invalid of [-1, 10000, 0.5, NaN, Infinity, "550", null])
+    assert.throws(() => quoteRemittance(state, { ...input, deliveryCommissionBps: invalid as number }, now), code("INVALID_DELIVERY_COMMISSION"));
+  assert.throws(() => quoteRemittance(state, { ...input, deliveryConceptId: "sin-comision" }, now), code("INVALID_DELIVERY_COMMISSION"));
+  const body = { ...input, senderClientId: "cli-1", recipientClientId: "cli-5", quote: quoted.quote };
+  assert.throws(() => createRemittance(state, gestor, { ...body, deliveryCommissionBps: 600 }, [gestor], now), code("QUOTE_CHANGED"));
+  assert.throws(() => createRemittance(state, gestor, { ...body, deliveryCommissionBps: undefined }, [gestor], now), code("QUOTE_CHANGED"));
+  assert.equal(state.remittances.transfers.length, 0, "a changed percentage cannot save an unreviewed amount");
+  const saved = createRemittance(state, gestor, body, [gestor], now);
+  assert.deepEqual(saved.calculation, quoted.calculation);
+  const box = state.remittances.cashSessions.find((cash) => cash.operatorId === receiver.id && cash.currency === "DOP")!;
+  const before = cashBalance(state, box).expected;
+  payRemittance(state, receiver, saved.id, now);
+  assert.equal(before - cashBalance(state, box).expected, 9450);
+  assert.equal(state.remittances.events.at(-1)?.amount, 9450);
+});
+
 test("7. delivery concepts: Administración only, unique names, «Sin comisión» reserved, an inactive one is not offered", () => {
   const state = fixture();
   assert.throws(() => saveDeliveryConcept(state, gestor, { name: "Otro", commissionBps: 100, active: true }, now), code("FORBIDDEN"));
@@ -217,6 +257,21 @@ test("11. API: three boxes, concepts and the new policy fields, strict and admin
     const quoted = await get(`/envios/cotizacion?sourceCurrency=DOP&destinationCurrency=DOP&amount=120000&amountMode=total&deliveryConceptId=${concept.json().id}`);
     assert.equal(quoted.statusCode, 200, quoted.body);
     assert.equal(quoted.json().amount, 100000); assert.equal(quoted.json().calculation.payoutAmount, 90000);
+    // New manual percentages and the former catalog contract coexist without allowing ambiguous inputs.
+    for (const raw of ["-1", "+500", "1e3", "5.5", "10000", "500abc", "", " 500", "500&deliveryCommissionBps=600"])
+      assert.equal((await get(`/envios/cotizacion?sourceCurrency=DOP&destinationCurrency=DOP&amount=10000&deliveryCommissionBps=${raw}`)).statusCode, 400, raw);
+    const manual = await get("/envios/cotizacion?sourceCurrency=DOP&destinationCurrency=DOP&amount=10000&deliveryCommissionBps=550");
+    assert.equal(manual.statusCode, 200, manual.body); assert.equal(manual.json().calculation.payoutAmount, 9450);
+    const manualBody = { sourceCurrency: "DOP", destinationCurrency: "DOP", amount: 10000, deliveryCommissionBps: 550,
+      senderClientId: "cli-1", recipientClientId: "cli-5", quote: manual.json().quote };
+    for (const invalid of ["550", -1, 10000, 5.5, null])
+      assert.equal((await post("/envios", { ...manualBody, deliveryCommissionBps: invalid })).statusCode, 400, String(invalid));
+    assert.equal((await post("/envios", { ...manualBody, deliveryConceptId: concept.json().id })).statusCode, 422);
+    assert.equal((await post("/envios", { ...manualBody, deliveryCommissionBps: 600 })).statusCode, 409);
+    const manualKey = randomUUID(), manualSaved = await post("/envios", manualBody, token, manualKey);
+    assert.equal(manualSaved.statusCode, 200, manualSaved.body); assert.equal(manualSaved.json().calculation.payoutAmount, 9450);
+    assert.deepEqual((await post("/envios", manualBody, token, manualKey)).json(), manualSaved.json(), "retry creates no second charge");
+    assert.equal((await store.read()).remittances.transfers.length, 1);
     const body = { sourceCurrency: "DOP", destinationCurrency: "DOP", amount: 100000, requestedTotalAmount: 120000, deliveryConceptId: concept.json().id,
       senderClientId: "cli-1", recipientClientId: "cli-5", quote: quoted.json().quote };
     assert.equal((await post("/envios", { ...body, requestedReceiveAmount: 90000 })).statusCode, 422, "two boxes at once are refused");

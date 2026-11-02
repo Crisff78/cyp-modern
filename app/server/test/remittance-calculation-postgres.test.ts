@@ -65,6 +65,18 @@ test("PostgreSQL 044 saves the whole calculation of a send and refuses forged nu
     const paid = (await sql.query("SELECT amount FROM remittance_events WHERE transfer_id=$1 AND type='paid'", [saved.id])).rows[0];
     assert.equal(paid.amount, 7500);
 
+    // A percentage entered for one send needs no catalog row: its immutable snapshot survives a database reload.
+    const manual = await store.transaction((state) => {
+      const quoted = quoteRemittance(state, { sourceCurrency: "USD", destinationCurrency: "EUR", amount: 10000, deliveryCommissionBps: 550 }, now);
+      return createRemittance(state, admin, { sourceCurrency: "USD", destinationCurrency: "EUR", amount: quoted.amount,
+        deliveryCommissionBps: 550, senderClientId: "cli-1", recipientClientId: "cli-5", quote: quoted.quote }, [], now);
+    });
+    const manualRead = (await parallel.read()).remittances.transfers.find((transfer) => transfer.id === manual.id)!;
+    assert.deepEqual(manualRead.calculation, manual.calculation);
+    assert.equal(manualRead.quote.deliveryCommissionBps, 550);
+    assert.equal(manualRead.calculation?.deliveryCommissionAmount, 456);
+    assert.equal(manualRead.calculation?.payoutAmount, 7800, "78.30 EUR rounds to 78.00 under the saved normal rounding policy");
+
     // The configuration tables keep their rules.
     await assert.rejects(sql.query("UPDATE remittance_commission_policy SET manager_share_bps=10001 WHERE id=1"));
     await assert.rejects(sql.query("UPDATE remittance_commission_policy SET receive_rounding='abajo' WHERE id=1"));
