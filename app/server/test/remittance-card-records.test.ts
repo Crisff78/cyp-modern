@@ -5,7 +5,7 @@ import { seed } from "../src/seed.js";
 import { buildApp } from "../src/app.js";
 import { MemoryStore } from "../src/store.js";
 import { businessDate, type User } from "../src/domain.js";
-import { cashBalance, cancelRemittance, createRemittance, getCommissionPolicy, openRemittanceCash, quoteRemittance, remittanceReports, setCommissionPolicy } from "../src/remittances.js";
+import { cashBalance, cancelRemittance, createRemittance, getCommissionPolicy, openRemittanceCash, quoteRemittance, remittanceReports, setCommissionPolicy, setDailyRate } from "../src/remittances.js";
 import { cardPaymentCharge, isCardLast4Draft, paymentAmounts, totalPaidForTransfer } from "../../shared/remittances/payment.mjs";
 import { remittanceReceipt, receiptHtml } from "../../shared/remittances/receipt.js";
 import { confirmedCreatedTransfer } from "../../shared/remittances/createdTransferResponse.js";
@@ -60,6 +60,24 @@ test("card records reject full numbers, security codes, expiry, missing metadata
     assert.throws(() => createRemittance(state, admin, { ...body, payment } as never, [], at), undefined, JSON.stringify(payment));
     assert.deepEqual(state, before);
   }
+});
+
+test("USD and EUR credit surcharges stay in the sender's currency without changing any destination conversion", () => {
+  const state = fixture();
+  for (const currency of ["USD", "EUR"] as const) {
+    setDailyRate(state, admin, {currency, date:businessDate(at), rate:currency === "USD" ? "60" : "70", purchaseRate:currency === "USD" ? "59" : "69", saleRate:currency === "USD" ? "61" : "71"}, at);
+    openRemittanceCash(state, admin, {operatorId:admin.id, currency, openingAmount:0}, [], at);
+  }
+  for (const sourceCurrency of ["USD", "EUR"] as const) for (const destinationCurrency of ["DOP", "USD", "EUR"] as const) {
+    const input = {...pair, sourceCurrency, destinationCurrency}, q = quoteRemittance(state, input, at);
+    const saved = createRemittance(state, admin, {...input, senderClientId:"cli-1", recipientClientId:"cli-5", quote:q.quote, payment:credit}, [], at);
+    assert.equal(saved.payment?.cardSurchargeAmount,275); assert.equal(totalPaidForTransfer(saved),11275);
+    assert.equal(saved.receiveAmount,q.receiveAmount); assert.deepEqual(saved.calculation,q.calculation);
+    assert.equal(saved.commissionAllocation?.managerAmount,q.commissionAllocation.managerAmount);
+    const row = remittanceReceipt(saved).sections.find(section=>section.title==="Importes del envío")!.rows.find(([label])=>label==="Recargo tarjeta de crédito");
+    assert.deepEqual(row,["Recargo tarjeta de crédito",`${sourceCurrency} 2.75`]);
+  }
+  for (const cash of state.remittances.cashSessions) assert.equal(cashBalance(state,cash).expected,0);
 });
 
 test("frozen card surcharge survives configuration changes, receipts, reports and cancellation without cash or manager inflation", () => {
