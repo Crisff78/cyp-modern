@@ -383,7 +383,7 @@ cancelación y cierre deja evento append-only con actor e instante.
   from:string; to:string; grouping:'range'|'day';
   amounts: {date:string; sourceCurrency:Currency; destinationCurrency:Currency;
     count:number; pendingCount:number; paidCount:number; cancelledCount:number;
-    amount:number; commissionAmount:number; totalAmount:number; receiveAmount:number}[];
+    amount:number; commissionAmount:number; cardSurchargeAmount?:number; totalAmount:number; receiveAmount:number}[];
   deliveryTimes: {id:string; envioReference:string; createdAt:string; paidAt:string;
     elapsedSeconds:number}[];
   deliveryTimeSummary: {date:string;count:number;minSeconds:number;maxSeconds:number;averageSeconds:number}[];
@@ -419,6 +419,49 @@ no borra historial ni bloquea pago/cancelación de un envío existente.
 GPS se mantiene mediante el contrato existente `POST /clientes/:id`.
 
 ## Persistencia y alcance
+
+### Registro externo de tarjetas (migración 047)
+
+CyP **registra un pago ya recibido y comprobado fuera del sistema**. No realiza
+cargos, no autoriza tarjetas, no comprueba fondos ni ejecuta devoluciones bancarias.
+El operador debe contar con el comprobante antes de marcar que verificó el pago.
+
+- En `Comisiones de remesas`, `Recargo por tarjeta de crédito (%)` configura
+  `creditCardCommissionBps` (0–10000 puntos básicos; inicialmente 0). Requiere
+  `remittances.commissions.manage` y los controles de rol existentes. No cambia
+  operaciones anteriores. El cambio de revisión invalida cotizaciones anteriores.
+- Crédito: `payment` admite `method:"card"`, `cardType:"credit"`, `cardholderName`
+  (1–120 caracteres), `last4` (exactamente cuatro dígitos ASCII), `reference`,
+  `bank` opcional y `verified:true`. Débito usa `cardType:"debit"`, comprobante y
+  verificación; no admite titular ni últimos dígitos y no lleva este recargo.
+- **No hay campos para PAN completo, vencimiento ni CVV**. Las listas estrictas
+  de la API, el dominio y la base de datos rechazan claves adicionales. No se
+  deben escribir esos datos en referencias, nombres, notas ni ningún otro campo.
+  No se ofrece cifrado como sustituto de evitar su recopilación.
+- La cotización congela `quote.creditCardCommissionBps`. El recargo se calcula
+  sobre el subtotal `principal + cargo del envío`, con redondeo de medio centavo
+  hacia arriba usando aritmética entera. No se calcula sobre sí mismo, no afecta
+  al destinatario, no entra en el reparto del gestor y no representa efectivo.
+- `totalAmount` conserva el subtotal existente. El pago versión 2 guarda
+  `cardSurchargeBps`, `cardSurchargeAmount` y `tenderedAmount = totalAmount +
+  cardSurchargeAmount`, sin cambio. `totalPaidForTransfer` obtiene el total real.
+  La confirmación y el recibo muestran el recargo en dinero y la tarjeta como
+  `•••• 0042`; el recibo no expone el nombre del titular ni el porcentaje.
+- El listado y el reporte de montos incluyen el total real, con columna separada
+  del recargo. Las exportaciones e impresiones usan esos mismos datos. Los envíos
+  cancelados quedan fuera de las sumas; la cancelación exige comprobar la
+  devolución externa completa, incluido el recargo, sin retirar efectivo de caja.
+- Los pagos históricos versión 1 se conservan intactos. No se inventa si eran
+  crédito o débito. Con recargo activo, un registro nuevo sin tipo se rechaza.
+
+Ejemplo ficticio: principal DOP 100.00 + cargo de envío DOP 10.00 = subtotal
+DOP 110.00. Con crédito al 2.5%, recargo DOP 2.75, total DOP 112.75. Con débito,
+total DOP 110.00. El importe del destinatario conserva su cálculo original.
+
+Aplicación local: `pnpm db:migrate --apply`, con la base local correcta configurada.
+La migración es aditiva; no modifica porcentajes comerciales existentes ni añade
+recargos a pagos anteriores. Las pruebas usan datos ficticios y una base aislada;
+no acreditan un cobro bancario real ni una certificación PCI.
 
 Migración aditiva 012: `clients.active`, tasas en la tabla existente `exchange_rates`,
 `remittance_transfers`, `remittance_cash_sessions`, `remittance_events`.

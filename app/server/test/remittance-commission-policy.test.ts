@@ -28,7 +28,7 @@ function fixture() {
 
 test("central commissions default to zero and quotes take the saved rate without a manual input", () => {
   const state = fixture();
-  assert.deepEqual(getCommissionPolicy(state), { revision: "default", transactionCommissionBps: 0, managerCommissionBps: 0, managerShareBps: 0, deliveryCommissionBps: 0, receiveRounding: "none" });
+  assert.deepEqual(getCommissionPolicy(state), { revision: "default", transactionCommissionBps: 0, managerCommissionBps: 0, managerShareBps: 0, deliveryCommissionBps: 0, creditCardCommissionBps: 0, receiveRounding: "none" });
   assert.equal(quoteRemittance(state, pair, at).commissionAmount, 0);
   const policy = setCommissionPolicy(state, admin, rate, at);
   const quoted = quoteRemittance(state, pair, at);

@@ -19,8 +19,8 @@ export const roundingHelp: Record<ReceiveRounding, string> = {
 /** Presentation only: every amount and the frozen rates come from the server.
  * Capture and confirmation show the parties' amounts. Keep the conversion and internal breakdowns
  * available for internal views without including them in the customer-facing summary's DOM. */
-export function QuoteDetails({ quote, showConversion = false, showInternalDetails = false }: {
-  quote: Quotation; showConversion?: boolean; showInternalDetails?: boolean;
+export function QuoteDetails({ quote, showConversion = false, showInternalDetails = false, cardSurchargeAmount = 0 }: {
+  quote: Quotation; showConversion?: boolean; showInternalDetails?: boolean; cardSurchargeAmount?: number;
 }) {
   const crossRate = formatCrossRate(quote.quote.sourceRate, quote.quote.destinationRate);
   const saved = "status" in quote;
@@ -42,7 +42,8 @@ export function QuoteDetails({ quote, showConversion = false, showInternalDetail
           <div><dt>Principal</dt><dd>{money(quote.amount, quote.sourceCurrency)}</dd></div>
           <div><dt>Cargo servicio</dt><dd>{money(quote.commissionAmount, quote.sourceCurrency)}</dd></div>
           <div><dt>Equivalente de la comisión en DOP</dt><dd>{commissionDopAmount(quote) === undefined ? "No disponible" : money(commissionDopAmount(quote)!, "DOP")}</dd></div>
-          <div className="remittance-total"><dt>Total que paga el remitente</dt><dd>{money(quote.totalAmount, quote.sourceCurrency)}{totalAsked !== undefined && <small role="status"> Pediste {money(totalAsked, quote.sourceCurrency)}: es el total más cercano que no lo pasa.</small>}</dd></div>
+          {cardSurchargeAmount > 0 && <div><dt>Recargo tarjeta de crédito</dt><dd>{money(cardSurchargeAmount, quote.sourceCurrency)}</dd></div>}
+          <div className="remittance-total"><dt>Total que paga el remitente</dt><dd>{money(Number(BigInt(quote.totalAmount) + BigInt(cardSurchargeAmount)), quote.sourceCurrency)}{totalAsked !== undefined && <small role="status"> Pediste {money(totalAsked, quote.sourceCurrency)}: es el total más cercano que no lo pasa.</small>}</dd></div>
         </dl>
       </section>
       <section className="remittance-quote-card" aria-label="Recibe el destinatario">
