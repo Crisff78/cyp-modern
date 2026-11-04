@@ -225,7 +225,7 @@ test("Dionel's review (26-10): header, double click, funnel, paged Clientes, «N
       }
     });
 
-    await t.test("3.1: Envíos de dinero without the two fixed texts; the commission keeps its hint", async () => {
+    await t.test("3.1: Envíos de dinero without fixed texts; the service charge keeps a hint without internal allocation", async () => {
       await reset();
       const sidebar = page.locator(".sidebar");
       await sidebar.getByRole("button", { name: "REMESAS", exact: true }).click();
@@ -235,7 +235,10 @@ test("Dionel's review (26-10): header, double click, funnel, paged Clientes, «N
       const text = await workspace.innerText();
       for (const fixed of ["Reparto automático", "Cada cliente carga su moneda habitual", "Necesitas una caja abierta", "Envíos registrados por tu operación", "Se aplica automáticamente"])
         assert.equal(text.includes(fixed), false, fixed);
-      assert.match(String(await workspace.getByLabel("Comisión (%)", { exact: true }).getAttribute("title")), /Parte del gestor/);
+      const charge = workspace.getByLabel("Cargo servicio", { exact: true });
+      assert.match(String(await charge.getAttribute("title")), /Se calcula automáticamente al cotizar/);
+      assert.doesNotMatch(String(await charge.getAttribute("title")), /Parte del gestor|%/);
+      assert.equal(await charge.getAttribute("readonly"), "");
       assert.match(String(await workspace.locator("label").filter({ hasText: "Moneda del remitente" }).getAttribute("title")), /caja de remesas abierta/);
       await shot("3.1-envios-de-dinero");
     });
