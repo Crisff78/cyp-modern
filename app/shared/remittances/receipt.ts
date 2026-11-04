@@ -1,5 +1,5 @@
 import type { ReceiptIssuer } from "./payment.mjs";
-import { paymentMethodLabels } from "./payment.mjs";
+import { paymentLabel, totalPaidForTransfer } from "./payment.mjs";
 import type { Transfer } from "./types";
 import { payoutOf } from "./types";
 import { escapeHtml, formatDate, formatMoney, type OutputSection } from "./output";
@@ -40,14 +40,16 @@ export function remittanceReceipt(transfer: Transfer, fallback?: ReceiptIssuer, 
   const amounts: (string | number)[][] = printed ? [
     ["Monto a enviar", formatMoney(transfer.amount, transfer.sourceCurrency)],
     ["Cargo del envío", formatMoney(transfer.commissionAmount, transfer.sourceCurrency)],
-    ["Total pagado por el remitente", formatMoney(transfer.totalAmount, transfer.sourceCurrency)],
+    ...(payment?.cardSurchargeAmount ? [["Recargo tarjeta de crédito", formatMoney(payment.cardSurchargeAmount, transfer.sourceCurrency)]] : []),
+    ["Total pagado por el remitente", formatMoney(totalPaidForTransfer(transfer), transfer.sourceCurrency)],
     ...(delivery ? [["Cargo de entrega", formatMoney(delivery.deliveryCommissionAmount, transfer.destinationCurrency)]] : []),
     ["Recibe el destinatario", formatMoney(payoutOf(transfer), transfer.destinationCurrency)],
   ] : [
     ["Monto a enviar", formatMoney(transfer.amount, transfer.sourceCurrency)],
     ...(transfer.amountDop === undefined ? [] : [["Equivalente del principal en pesos", formatMoney(transfer.amountDop, "DOP")]]),
     ["Cargo del envío", formatMoney(transfer.commissionAmount, transfer.sourceCurrency)],
-    ["Total pagado por el remitente", formatMoney(transfer.totalAmount, transfer.sourceCurrency)],
+    ...(payment?.cardSurchargeAmount ? [["Recargo tarjeta de crédito", formatMoney(payment.cardSurchargeAmount, transfer.sourceCurrency)]] : []),
+    ["Total pagado por el remitente", formatMoney(totalPaidForTransfer(transfer), transfer.sourceCurrency)],
     ...(calculation && (delivery || calculation.roundingAdjustment) ? [["Monto convertido", formatMoney(transfer.receiveAmount, transfer.destinationCurrency)]] : []),
     ...(delivery ? [[`Cargo de entrega · ${delivery.deliveryConceptName}`, formatMoney(delivery.deliveryCommissionAmount, transfer.destinationCurrency)]] : []),
     ...(calculation?.roundingAdjustment ? [["Ajuste por redondeo", formatMoney(calculation.roundingAdjustment, transfer.destinationCurrency)]] : []),
@@ -60,9 +62,9 @@ export function remittanceReceipt(transfer: Transfer, fallback?: ReceiptIssuer, 
       { title: "Registro del recibo", columns: ["Dato", "Valor"], rows: [["Envío", transfer.envioReference], ["Código de operación", transfer.operatingCode], ["Estado", status[transfer.status]], ["Operador del envío", operator], ["Registrado por", registeredBy]] },
       party("sender", "Remitente"), party("recipient", "Destinatario"),
       { title: "Importes del envío", columns: ["Dato", "Valor"], rows: amounts },
-      { title: "Pago del remitente", columns: ["Dato", "Valor"], rows: payment ? [["Forma de pago", paymentMethodLabels[payment.method]],
+      { title: "Pago del remitente", columns: ["Dato", "Valor"], rows: payment ? [["Forma de pago", paymentLabel(payment)],
         ...(payment.method === "cash" ? [["Dinero recibido", formatMoney(payment.tenderedAmount, transfer.sourceCurrency)], ["Devuelta", formatMoney(payment.changeAmount, transfer.sourceCurrency)]]
-          : [["Referencia del comprobante", payment.reference ?? "—"], ...(payment.bank ? [["Banco o proveedor", payment.bank]] : [])])]
+          : [["Referencia del comprobante", payment.reference ?? "—"], ...(payment.last4 ? [["Tarjeta", `•••• ${payment.last4}`]] : []), ...(payment.bank ? [["Banco o proveedor", payment.bank]] : [])])]
         : [["Forma de pago", "No registrada en esta operación histórica"]] },
       ...(printed ? [] : [{ title: "Tasas aplicadas al registrar el envío", columns: ["Dato", "Valor"], rows: rates }]),
       ...(transfer.paidAt ? [{ title: "Entrega al destinatario", columns: ["Dato", "Valor"], rows: [["Fecha de entrega", formatDate(transfer.paidAt)]] }] : []),

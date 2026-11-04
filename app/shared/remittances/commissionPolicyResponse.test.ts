@@ -16,3 +16,12 @@ test("policy confirmation requires the commission, the manager's share of it, th
     { ...policy, receiveRounding: "up" }, { ...policy, receiveRounding: "abajo" }, { ...policy, receiveRounding: undefined }])
     assert.throws(() => confirmedCommissionPolicy(value, expected), (error: unknown) => error instanceof StrictApiError && error.uncertain);
 });
+
+test("policy confirmation checks the exact credit-card surcharge including configured zero", () => {
+  for (const rate of [0, 250, 10000]) {
+    const review = {...expected, creditCardCommissionBps:rate};
+    assert.equal(confirmedCommissionPolicy({...policy,creditCardCommissionBps:rate},review).creditCardCommissionBps,rate);
+    for (const received of [undefined, "250", rate === 0 ? 1 : 0, -1, 10001])
+      assert.throws(() => confirmedCommissionPolicy({...policy,creditCardCommissionBps:received},review));
+  }
+});

@@ -11,6 +11,8 @@ import { MemoryStore } from "../../server/src/store.js";
 import { seed } from "../../server/src/seed.js";
 import { businessDate } from "../../server/src/domain.js";
 import { randomUUID } from "node:crypto";
+import { formatMoney } from "../../shared/remittances/output.js";
+import { totalPaidForTransfer } from "../../shared/remittances/payment.mjs";
 import { setCommissionPolicy, setDailyRate, openRemittanceCash, quoteRemittance, createRemittance, cancelRemittance, payRemittance } from "../../server/src/remittances.js";
 
 const adminRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -119,7 +121,8 @@ createRoot(document.getElementById("root")).render(<App />);`);
           await workspace.waitFor(); await workspace.getByText("Cargando configuración…", { exact: true }).waitFor({ state: "detached" });
         };
         await openWorkspace();
-        const savePolicy = async (transaction: string, manager: string, delivery = "0") => {
+        const savePolicy = async (transaction: string, manager: string, delivery = "0", credit = "0") => {
+          await workspace.getByLabel("Recargo por tarjeta de crédito (%)", {exact:true}).fill(credit);
           await workspace.getByLabel("Comisión de entrega (%)", {exact:true}).fill(delivery);
           await workspace.getByLabel("Comisión total de la transacción (%)", { exact: true }).fill(transaction);
           await workspace.getByLabel("Comisión del gestor (%)", { exact: true }).fill(manager);
@@ -128,11 +131,12 @@ createRoot(document.getElementById("root")).render(<App />);`);
           await workspace.getByText("Configuración guardada. Se aplicará a los próximos envíos.", { exact: true }).waitFor();
           await page.waitForFunction(() => !document.querySelector('dialog[open]'));
         };
-        await savePolicy("6", "2", "2.50");
+        await savePolicy("6", "2", "2.50", "2.50");
         assert.equal((await store.read()).remittances.commissionPolicy!.transactionCommissionBps, 600);
         await openWorkspace();
         assert.equal(await workspace.getByLabel("Comisión total de la transacción (%)", { exact: true }).inputValue(), "6", "configuration survives reload");
         assert.equal(await workspace.getByLabel("Comisión de entrega (%)", {exact:true}).inputValue(), "2.5", "delivery configuration survives reload");
+        assert.equal(await workspace.getByLabel("Recargo por tarjeta de crédito (%)", {exact:true}).inputValue(), "2.5");
         // The manager's share is a part of the commission (29-10-2026): any share up to 100%, never more.
         await workspace.getByLabel("Comisión del gestor (%)", { exact: true }).fill("101");
         await workspace.getByRole("button", { name: "Revisar reparto", exact: true }).click();
@@ -695,6 +699,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
         await page.screenshot({ path: path.join(output, "cashier-after-permission-revocation.png") });
       } finally { await context.close(); }
     });
+    await store.transaction(state => setCommissionPolicy(state, admin, {creditCardCommissionBps:250}, now));
     for (const surface of ["admin", "collector"]) await t.test(`${surface} records only verified external payments and refunds without changing physical cash`, async () => {
       const actor = surface === "admin" ? admin : collector;
       await store.transaction((state) => {
@@ -711,7 +716,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
         await page.goto(`${origin}/${surface}/?view=remittances`);
         if (surface === "admin") await (await menuOption(page, "Envíos de dinero")).click();
         const workspace = page.getByRole("region", { name: "Envíos de dinero", exact: true });
-        for (const method of ["card", "transfer", "deposit"]) {
+        for (const method of ["credit", "card", "transfer", "deposit"]) {
           const choose = async (label: string, code: string) => {
             await workspace.getByRole("combobox", { name: label, exact: true }).fill(code);
             await workspace.getByRole("option").filter({ hasText: code }).first().click();
@@ -723,7 +728,21 @@ createRoot(document.getElementById("root")).render(<App />);`);
           await workspace.getByRole("button", { name: "Calcular cotización", exact: true }).click();
           await workspace.getByRole("button", { name: "Revisar y confirmar envío", exact: true }).click();
           const review = page.getByRole("dialog", { name: "Confirmar envío", exact: true });
-          await review.getByLabel("Forma de pago", { exact: true }).selectOption(method);
+          await review.getByLabel("Forma de pago", { exact: true }).selectOption(method === "card" ? "debit" : method);
+          assert.equal(await review.locator('input[autocomplete="cc-number"],input[autocomplete="cc-csc"],input[autocomplete="cc-exp"]').count(), 0);
+          if (method === "credit") {
+            const holder = review.getByLabel("Nombre del titular", {exact:true}), last4 = review.getByLabel("Últimos 4 dígitos", {exact:true});
+            await holder.fill("María O'Connor");
+            await last4.evaluate((input: HTMLInputElement) => { const data = new DataTransfer(); data.setData("text", "4111111111111111"); input.dispatchEvent(new ClipboardEvent("paste", {clipboardData:data,bubbles:true,cancelable:true})); });
+            assert.equal(await last4.inputValue(), "");
+            await last4.fill("0042");
+            const q = quoteRemittance(await store.read(), {sourceCurrency:"DOP",destinationCurrency:"DOP",amount:90000},now);
+            const surcharge = Number((BigInt(q.totalAmount)*250n+5000n)/10000n);
+            const card = review.locator('.remittance-quote-card[aria-label="Paga el remitente"]');
+            assert.match(await card.innerText(), /Recargo tarjeta de crédito/); assert.doesNotMatch(await card.innerText(), /%/);
+            assert((await card.innerText()).includes(formatMoney(q.totalAmount+surcharge,"DOP")));
+            assert.equal(await review.locator('.remittance-quote-card[aria-label="Recibe el destinatario"]').count(), 1);
+          } else assert.equal(await review.getByLabel("Nombre del titular", {exact:true}).count(), 0);
           const before = (await store.read()).remittances.transfers.length;
           await review.getByRole("button", { name: "Aceptar", exact: true }).click();
           await review.getByRole("alert").waitFor();
@@ -744,11 +763,14 @@ createRoot(document.getElementById("root")).render(<App />);`);
           const print = page.getByRole("dialog", { name: "¿Quieres imprimir el recibo?", exact: true }); await print.waitFor();
           await print.getByRole("button", { name: "No imprimir", exact: true }).click();
           const saved = (await store.read()).remittances.transfers.at(-1)!;
-          assert.equal(saved.payment?.method, method);
+          assert.equal(saved.payment?.method, method === "credit" || method === "card" ? "card" : method);
+          if (method === "credit") { assert.equal(saved.payment?.last4,"0042"); assert.equal(saved.payment?.cardType,"credit"); assert.equal(saved.payment?.cardSurchargeBps,250); assert(totalPaidForTransfer(saved)>saved.totalAmount); }
+          if (method === "card") { assert.equal(saved.payment?.cardType,"debit"); assert.equal(saved.payment?.cardSurchargeAmount,0); }
           assert.equal((await store.read()).remittances.events.find((event) => event.transferId === saved.id && event.type === "sent")?.amount, 0);
           await workspace.getByRole("button", { name: saved.envioReference, exact: true }).click();
           const detail = page.getByRole("dialog", { name: `${saved.envioReference} · ${saved.reciboReference}`, exact: true });
           const receipt = detail.getByRole("article", { name: "Recibo del envío de dinero", exact: true });
+          if (method === "credit") { assert.match(await receipt.innerText(), /•••• 0042/); assert((await receipt.innerText()).includes(formatMoney(totalPaidForTransfer(saved),"DOP"))); assert(!(await receipt.innerText()).includes("María O'Connor")); }
           assert.match(await receipt.innerText(), new RegExp(`QA-${surface}-${method}`)); assert.equal((await receipt.innerText()).includes("Devuelta"), false);
           await detail.getByLabel("Motivo de cancelación", { exact: true }).fill("Prueba de devolución externa");
           await detail.getByLabel("Referencia de devolución", { exact: true }).fill(`QA-REFUND-${surface}-${method}`);
@@ -765,7 +787,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
     // The operator's exact 59/61 example: test the same fields and real API traffic in both portals.
     await store.transaction((state) => {
       setDailyRate(state, admin, { currency: "USD", rate: "59", purchaseRate: "59", saleRate: "61", date: businessDate(now) }, now);
-      setCommissionPolicy(state, admin, { transactionCommissionBps: 0, managerCommissionBps: 0 }, now);
+      setCommissionPolicy(state, admin, { transactionCommissionBps: 0, managerCommissionBps: 0, creditCardCommissionBps: 0 }, now);
     });
     const exactResults: object[] = [];
     for (const surface of ["admin", "collector"]) await t.test(`${surface} exact 59/61 example and configured readonly delivery percentage: quote, inverse, save and receipt`, async () => {

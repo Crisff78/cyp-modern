@@ -12,7 +12,7 @@ import {
 import { boundedId, freeText, phone, singleLine } from "./input-validation.js";
 import { remittanceClientDraft } from "./client-schema.js";
 import { registerRemittanceClient } from "./remittance-client-registration.js";
-import { isPaymentTextDraft, paymentMethods } from "../../shared/remittances/payment.mjs";
+import { isCardholderNameDraft, isPaymentTextDraft, paymentMethods } from "../../shared/remittances/payment.mjs";
 
 type Mutate = <T, P = Record<string, string>>(
   path: string, summary: string, schema: z.ZodType<T>,
@@ -64,8 +64,8 @@ export function registerRemittanceRoutes(
     return visibleRemittanceResult(user(req), quoteRemittance(await store.read(), input));
   });
   mutate("/api/envios/politica-comisiones", "Configurar la comisión, la parte del gestor y el redondeo para envíos futuros", z.object({
-    transactionCommissionBps: bps.optional(), managerCommissionBps: bps.optional(), managerShareBps: bps.optional(), deliveryCommissionBps: bps.max(9999).optional(), receiveRounding: z.enum(receiveRoundings).optional(),
-  }).strict().refine((input) => input.managerCommissionBps !== undefined || input.managerShareBps !== undefined || input.deliveryCommissionBps !== undefined || input.receiveRounding !== undefined || input.transactionCommissionBps !== undefined, "Indica algo que cambiar."),
+    transactionCommissionBps: bps.optional(), managerCommissionBps: bps.optional(), managerShareBps: bps.optional(), deliveryCommissionBps: bps.max(9999).optional(), creditCardCommissionBps: bps.optional(), receiveRounding: z.enum(receiveRoundings).optional(),
+  }).strict().refine((input) => input.managerCommissionBps !== undefined || input.managerShareBps !== undefined || input.deliveryCommissionBps !== undefined || input.creditCardCommissionBps !== undefined || input.receiveRounding !== undefined || input.transactionCommissionBps !== undefined, "Indica algo que cambiar."),
   (state, actor, input) => setCommissionPolicy(state, actor, input));
   mutate("/api/envios/conceptos-entrega", "Agregar o cambiar un concepto de comisión de entrega en destino", z.object({
     id: id.optional(), name: singleLine(80, 1), commissionBps: bps.max(9999), active: z.boolean(),
@@ -81,14 +81,16 @@ export function registerRemittanceRoutes(
     requestedReceiveAmount: amount.positive().optional(), requestedTotalAmount: amount.positive().optional(),
     deliveryConceptId: id.optional(),
     deliveryCommissionBps: bps.max(9999).optional(),
-    payment: z.object({ method: z.enum(paymentMethods), tenderedAmount: amount.optional(), reference: paymentText.min(1).optional(), bank: paymentText.optional(), verified: z.literal(true).optional() }).strict().optional(),
+    payment: z.object({ method: z.enum(paymentMethods), tenderedAmount: amount.optional(), reference: paymentText.min(1).optional(), bank: paymentText.optional(), verified: z.literal(true).optional(),
+      cardType: z.enum(["credit", "debit"]).optional(), cardholderName: z.string().refine(isCardholderNameDraft, "Usa hasta 120 caracteres en una sola línea.").trim().min(1).optional(), last4: z.string().regex(/^[0-9]{4}$/).optional(),
+    }).strict().optional(),
     quote: z.object({ date: z.iso.date(), sourceRate: z.string().max(19), destinationRate: z.string().max(19),
       quotedAt: z.iso.datetime().optional(), sourceRateChangeId: id.optional(), destinationRateChangeId: id.optional(),
       sourceRateChangedAt: z.iso.datetime().optional(), destinationRateChangedAt: z.iso.datetime().optional(),
       sourceRateDate: z.iso.date().optional(), destinationRateDate: z.iso.date().optional(),
       sourceRateKind: z.enum(["base", "purchase", "sale", "operative"]).optional(), destinationRateKind: z.enum(["base", "purchase", "sale", "operative"]).optional(),
       commissionPolicyRevision: id.optional(), managerCommissionBps: bps.optional(),
-      managerShareBps: bps.optional(), deliveryConceptId: id.optional(), deliveryCommissionBps: bps.optional(), receiveRounding: z.enum(receiveRoundings).optional(),
+      managerShareBps: bps.optional(), deliveryConceptId: id.optional(), deliveryCommissionBps: bps.optional(), creditCardCommissionBps: bps.optional(), receiveRounding: z.enum(receiveRoundings).optional(),
     }).strict(),
     managerCommission: z.object({
       managerName: singleLine(160, 1)

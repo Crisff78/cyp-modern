@@ -31,8 +31,8 @@ export function confirmedCreatedTransfer(value: unknown, expected: Record<string
     if (!expected.payment) return true;
     if (!row?.payment) return false;
     try {
-      const calculated = paymentAmounts(row.totalAmount, expected.payment as RemittancePaymentInput);
-      return row.payment.version === 1 && row.payment.confirmedBy === actorId && row.payment.confirmedAt === row.createdAt &&
+      const calculated = paymentAmounts(row.totalAmount, expected.payment as RemittancePaymentInput, quotation?.quote.creditCardCommissionBps ?? row.quote.creditCardCommissionBps ?? 0);
+      return row.payment.version === (calculated.cardType ? 2 : 1) && row.payment.confirmedBy === actorId && row.payment.confirmedAt === row.createdAt &&
         Object.entries(calculated).every(([key, value]) => row.payment?.[key as keyof NonNullable<Transfer["payment"]>] === value);
     } catch { return false; }
   };

@@ -14,9 +14,9 @@ export type Quote = {
   sourceRateDate?: string; destinationRateDate?: string;
   sourceRateKind?: RateKind; destinationRateKind?: RateKind;
   commissionPolicyRevision?: string; managerCommissionBps?: number;
-  managerShareBps?: number; deliveryConceptId?: string; deliveryCommissionBps?: number; receiveRounding?: ReceiveRounding;
+  managerShareBps?: number; deliveryConceptId?: string; deliveryCommissionBps?: number; creditCardCommissionBps?: number; receiveRounding?: ReceiveRounding;
 };
-export type CommissionPolicy = { revision: string; transactionCommissionBps: number; managerCommissionBps?: number; managerShareBps?: number; deliveryCommissionBps?: number; receiveRounding?: ReceiveRounding; updatedAt?: string; updatedBy?: string };
+export type CommissionPolicy = { revision: string; transactionCommissionBps: number; managerCommissionBps?: number; managerShareBps?: number; deliveryCommissionBps?: number; creditCardCommissionBps?: number; receiveRounding?: ReceiveRounding; updatedAt?: string; updatedBy?: string };
 // Version 1: the manager's % of the received amount (sends before 29-10-2026). Version 2: his share of the commission.
 export type CommissionAllocation = {
   version: 1 | 2; currency: Currency; policyRevision: string; managerCommissionBps: number;
@@ -85,7 +85,7 @@ export type Report = {
       transactionAmount: number; companyAmount: number; managerAmount: number; cancelledTransactionAmount: number; cancelledCompanyAmount: number; cancelledManagerAmount: number }>;
   };
   from: string; to: string; grouping: "range" | "day";
-  amounts: { date: string; sourceCurrency: Currency; destinationCurrency: Currency; count: number; pendingCount: number; paidCount: number; cancelledCount: number; amount: number; commissionAmount: number; totalAmount: number; receiveAmount: number }[];
+  amounts: { date: string; sourceCurrency: Currency; destinationCurrency: Currency; count: number; pendingCount: number; paidCount: number; cancelledCount: number; amount: number; commissionAmount: number; cardSurchargeAmount?: number; totalAmount: number; receiveAmount: number }[];
   deliveryTimes: { id: string; envioReference: string; createdAt: string; paidAt: string; elapsedSeconds: number }[];
   deliveryTimeSummary: { date: string; count: number; minSeconds: number; maxSeconds: number; averageSeconds: number }[];
   delivered: { date: string; currency: Currency; count: number; amount: number }[];
