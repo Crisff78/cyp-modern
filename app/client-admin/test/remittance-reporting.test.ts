@@ -36,7 +36,8 @@ test("report presentation preserves currency pairs, cancelled counts and server 
   const before = structuredClone(report);
   const amounts = remittanceReportSections("amounts", report, null, (id) => id)[0];
   assert.equal(amounts.rows.length, 2);
-  assert.deepEqual(amounts.rows[0].slice(1), ["USD", "DOP", 2, 1, 0, 1, "USD 100.00", "USD 5.00", "USD 105.00", "DOP 6,000.00"]);
+  assert.deepEqual(amounts.rows[0].slice(1), ["USD", "DOP", 2, 1, 0, 1, "USD 100.00", "USD 5.00", "USD 0.00", "USD 105.00", "DOP 6,000.00"]);
+  assert.equal(amounts.columns[9], "Recargo tarjeta origen");
   assert.deepEqual(amounts.rows[1].slice(1, 3), ["EUR", "USD"]);
   assert.deepEqual(remittanceReportSections("delivered", report, null, (id) => id)[0].rows[0].slice(1), ["USD", 1, "USD 27.50"]);
   const cash = remittanceReportSections("cash", report, null, () => "Operador sintético")[0];
