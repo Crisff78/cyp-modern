@@ -144,6 +144,62 @@ createRoot(document.getElementById("root")).render(<App />);`);
         await page.screenshot({ path: path.join(output, "admin-central-commission-config.png") });
       } finally { await context.close(); }
     });
+    for (const surface of ["admin", "collector"]) await t.test(`${surface} shows effective purchase, sale and cross rates before quoting and on currency changes`, async () => {
+      const before = await store.read();
+      const context = await browser.newContext({ viewport: surface === "admin" ? { width: 1440, height: 1000 } : { width: 390, height: 844 }, locale: "es-DO", serviceWorkers: "block", extraHTTPHeaders: { "x-qa-rate-refresh-client": surface } });
+      try {
+        // Yesterday's rates must appear without registering new ones today or entering an amount.
+        await store.transaction((state) => {
+          setDailyRate(state, admin, { currency: "USD", rate: "59", purchaseRate: "59", saleRate: "61", date: sourceRateDate }, sourceRegisteredAt);
+          setDailyRate(state, admin, { currency: "EUR", rate: "70", purchaseRate: "70", saleRate: "75", date: destinationRateDate }, destinationRegisteredAt);
+        });
+        await context.addInitScript(({ token, surface }: { token: string; surface: string }) => {
+          sessionStorage.setItem(surface === "admin" ? "cyp-admin-token" : "cyp-collector-token", token);
+        }, { token: tokens[surface], surface });
+        await context.route("**/*", routeLocalOnly);
+        const page = await context.newPage(); page.setDefaultTimeout(15000);
+        page.on("pageerror", (error: Error) => errors.push(error.message));
+        let quotationRequests = 0;
+        page.on("request", (request: any) => { if (new URL(request.url()).pathname === "/api/envios/cotizacion") quotationRequests += 1; });
+        await page.goto(`${origin}/${surface}/?view=remittances`);
+        if (surface === "admin") await (await menuOption(page, "Envíos de dinero")).click();
+        const workspace = page.getByRole("region", { name: "Envíos de dinero", exact: true });
+        if (surface === "collector") await workspace.getByRole("button", { name: "Nuevo envío", exact: true }).click();
+        const sentRate = workspace.getByLabel("Tasa del dinero a enviar", { exact: true });
+        const receivedRate = workspace.getByLabel("Tasa del dinero que se recibe", { exact: true });
+        const crossRate = workspace.getByLabel("Tasa de origen a destino", { exact: true });
+        await sentRate.waitFor();
+        assert.equal(await sentRate.inputValue(), "1 DOP");
+        assert.equal(await receivedRate.inputValue(), "1 DOP");
+        assert.equal(await crossRate.inputValue(), "1 DOP = 1 DOP");
+        assert.equal(await sentRate.getAttribute("readonly"), "");
+        assert.equal(await receivedRate.getAttribute("readonly"), "");
+        await workspace.getByLabel("Moneda del remitente").selectOption("USD");
+        assert.equal(await sentRate.inputValue(), "59 DOP", "the sender uses purchase, carried from its last registration");
+        assert.equal(await crossRate.inputValue(), "1 USD = 59 DOP");
+        await workspace.getByLabel("Moneda del destinatario").selectOption("USD");
+        assert.equal(await receivedRate.inputValue(), "61 DOP", "USD to USD still uses sale at the destination");
+        await workspace.getByLabel("Moneda del remitente").selectOption("EUR");
+        assert.equal(await sentRate.inputValue(), "70 DOP", "changing the source changes its purchase rate immediately");
+        await workspace.getByLabel("Moneda del destinatario").selectOption("EUR");
+        assert.equal(await receivedRate.inputValue(), "75 DOP");
+        await workspace.getByLabel("Moneda del remitente").selectOption("USD");
+        assert.match(await crossRate.inputValue(), /^1 USD ≈ 0\.78666\d* EUR$/);
+        assert.equal(await workspace.getByLabel("Monto a enviar (USD)", { exact: true }).inputValue(), "");
+        assert.equal(await workspace.locator(".remittance-quote").count(), 0);
+        await page.screenshot({ path: path.join(output, `${surface}-rates-before-quote.png`), fullPage: true });
+        await store.transaction((state) => { state.remittances.rates = state.remittances.rates.filter((rate) => rate.currency !== "EUR"); });
+        await workspace.getByRole("button", { name: "Actualizar", exact: true }).click();
+        await page.waitForFunction(() => document.querySelector<HTMLInputElement>('input[aria-label="Tasa del dinero que se recibe"]')?.value === "");
+        assert.equal(await sentRate.inputValue(), "59 DOP");
+        assert.equal(await receivedRate.getAttribute("placeholder"), "Sin tasa registrada");
+        assert.equal(await crossRate.inputValue(), "Sin tasa registrada");
+        assert.equal(quotationRequests, 0, "rates do not require an amount, clients or a quotation request");
+      } finally {
+        await store.transaction((state) => { state.remittances.rates = before.remittances.rates; state.remittances.rateHistory = before.remittances.rateHistory; });
+        await context.close();
+      }
+    });
     for (const surface of ["admin", "collector"]) await t.test(`${surface} rejects invalid typing and whole pastes without creating clients or remittances`, async () => {
       const context = await browser.newContext({ viewport: surface === "admin" ? { width: 1440, height: 1000 } : { width: 390, height: 844 }, locale: "es-DO", serviceWorkers: "block" });
       const before = await store.read();
@@ -437,6 +493,8 @@ createRoot(document.getElementById("root")).render(<App />);`);
         await page.waitForFunction(() => Array.from(document.querySelectorAll<HTMLInputElement>('input[readonly]')).some((input) => input.value === "Calcula la cotización"));
         assert.equal(await dop.inputValue(), "Calcula la cotización");
         assert.equal(await workspace.locator(".remittance-quote").count(), 0, "an outdated quote cannot remain available for confirmation");
+        assert.equal(await workspace.getByLabel("Tasa del dinero a enviar", { exact: true }).inputValue(), "61 DOP", "a refreshed rate is visible before recalculating");
+        assert.equal(await workspace.getByLabel("Tasa del dinero que se recibe", { exact: true }).inputValue(), "75 DOP");
         await workspace.getByRole("button", { name: "Calcular cotización", exact: true }).click();
         await page.waitForFunction(() => Array.from(document.querySelectorAll<HTMLInputElement>('input[readonly]')).some((input) => input.value === "DOP 6,100.00"));
         assert.equal(await workspace.getByLabel("Monto a recibir (EUR)", { exact: true }).inputValue(), "81.33");
