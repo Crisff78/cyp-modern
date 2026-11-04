@@ -8,7 +8,8 @@ import { clientCurrency, clientLabel, eligibleClients, LatestRequestGate, matchi
 import "./remittances.css";
 import { QuoteDetails } from "./QuoteDetails";
 import { formatCrossRate } from "./crossRate";
-import { quoteStillCurrent } from "./quoteRates";
+import { effectiveRate, quoteStillCurrent } from "./quoteRates";
+import { appliedRate } from "./appliedRate.mjs";
 import { INPUT_LIMITS, isPhoneDraft, isTextDraft, PHONE_INPUT_MESSAGE, validatePhone, validateText } from "../inputRules";
 import { useClientContact } from "./useClientContact";
 import { FiltersToggle } from "../FiltersToggle";
@@ -48,8 +49,8 @@ const digitsOf = (value: string) => value.replace(/\D/g, "");
 const fold = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase();
 /** A rate without the zeros at its end, to fit its box (display only: «58.500000» shows «58.5»). */
 const shortRate = (rate: string) => rate.includes(".") ? rate.replace(/\.?0+$/, "") : rate;
-/** The rate from the currency sent to the currency received, as the quote shows it (display only). */
-const crossRateText = (quote: Quotation) => { try { const cross = formatCrossRate(quote.quote.sourceRate, quote.quote.destinationRate); return `1 ${quote.sourceCurrency} ${cross.approximate ? "≈" : "="} ${cross.text} ${quote.destinationCurrency}`; } catch { return "No disponible"; } };
+/** The rate from the currency sent to the currency received (display only). */
+const crossRateText = (sourceRate: string, destinationRate: string, sourceCurrency: Currency, destinationCurrency: Currency) => { try { const cross = formatCrossRate(sourceRate, destinationRate); return `1 ${sourceCurrency} ${cross.approximate ? "≈" : "="} ${cross.text} ${destinationCurrency}`; } catch { return "No disponible"; } };
 type Actor = { id: string; name: string; role?: string; access?: EffectiveAccess };
 type Confirmation = { title: string; path: string; body: Record<string, unknown>; description: ReactNode; kind: "create" | "pay" | "cancel" | "open" | "close" | "add"; idempotencyKey?: string; expectedQuotation?: Quotation };
 // Only in-memory: retain an uncertain action across route changes and same-actor login.
@@ -770,6 +771,15 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
       onValueChange={(nextValue) => typeIn(mode, nextValue)} onInvalidEntry={() => rejectMoney("amount")} /></label>;
   };
   const commissionHint = "Se aplica sola, según la configuración de comisiones." + (can("remittances.commissions.view") ? ` Parte del gestor (${operatorName(draft.sendingUserId)}): ${managerShare}% de la comisión del envío, sin cargo adicional. La ganancia por cambio es de la empresa.` : "");
+  // Show the latest effective purchase/sale rates before an amount is entered. A calculated quote keeps
+  // its exact server rates; changing a currency already retires that quote through updateDraft.
+  const previewRate = (currency: Currency, side: "source" | "destination") => {
+    if (!snapshot) return undefined;
+    const rate = effectiveRate(snapshot.rates, currency, snapshot.businessDate);
+    return currency === "DOP" || rate ? appliedRate(rate, currency, side).rate : undefined;
+  };
+  const sourceRate = quote?.quote.sourceRate ?? previewRate(draft.sourceCurrency, "source");
+  const destinationRate = quote?.quote.destinationRate ?? previewRate(draft.destinationCurrency, "destination");
 
   // Envíos and Entregas place the keyboard themselves (the sender without unfolding its list, the search of receipts):
   // data-own-focus keeps the desktop window from placing it first.
@@ -797,24 +807,24 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
             {isAdmin && <label className="remittance-operator-field">Operador del envío<select required value={draft.sendingUserId} onChange={(event) => updateDraft("sendingUserId", event.target.value)}>{sendingOperators.map((operator) => <option key={operator.id} value={operator.id}>{operator.name}</option>)}</select></label>}
             <label className="remittance-note-field">Nota (opcional)<textarea aria-label="Nota (opcional)" maxLength={INPUT_LIMITS.freeNote} rows={fixedForm ? 1 : 2} value={draft.note} onPaste={(event) => restrictPaste(event, (value) => isTextDraft(value, INPUT_LIMITS.freeNote, true), () => rejectEntry("La nota admite hasta 500 caracteres, sin caracteres de control."))} onChange={(event) => updateDraft("note", event.target.value)} /></label>
             {/* The money in the order of the whiteboard (Rardiel, 28-10-2026), for the eyes and for Enter and Tab: the money sent
-                (DF), then the money received (DR), then the money at the rate (DT). Every rate comes from the server's quote. */}
+                (DF), then the money received (DR), then the money at the rate (DT). Rates come from the server's snapshot or quote. */}
             <fieldset className="remittance-money remittance-money-send"><legend>Dinero a enviar</legend>
               <label title="Sale la moneda habitual del remitente; puedes cambiarla. Hace falta una caja de remesas abierta hoy en esta moneda.">Moneda del remitente<select value={draft.sourceCurrency} onChange={(event) => updateDraft("sourceCurrency", event.target.value as Currency)}>{snapshot.currencies.map((currency) => <option key={currency}>{currency}</option>)}</select></label>
               {amountBox("source", `Monto a enviar (${draft.sourceCurrency})`, "Lo que se envía. La comisión se suma aparte y la paga quien envía.")}
               {amountBox("total", `Total a pagar (${draft.sourceCurrency})`, "Lo que paga quien envía: lo que se envía más la comisión. Escríbelo aquí y se calcula cuánto se envía.")}
-              <label>Tasa<input aria-label="Tasa del dinero a enviar" readOnly title={quote ? `1 ${quote.sourceCurrency} = ${quote.quote.sourceRate} DOP` : undefined} value={quote ? `${shortRate(quote.quote.sourceRate)} DOP` : ""} placeholder="Al cotizar" /></label>
+              <label>Tasa<input aria-label="Tasa del dinero a enviar" readOnly title={sourceRate ? `1 ${draft.sourceCurrency} = ${sourceRate} DOP` : undefined} value={sourceRate ? `${shortRate(sourceRate)} DOP` : ""} placeholder="Sin tasa registrada" /></label>
               <label title={commissionHint}>Comisión (%)<input aria-label="Comisión (%)" readOnly title={commissionHint} value={String((quote?.commissionBps ?? snapshot.commissionPolicy?.transactionCommissionBps ?? 0) / 100)} /></label>
             </fieldset>
             <fieldset className="remittance-money remittance-money-receive"><legend>Dinero que se recibe</legend>
               <label title="Sale la moneda habitual del destinatario; puedes cambiarla.">Moneda del destinatario<select value={draft.destinationCurrency} onChange={(event) => updateDraft("destinationCurrency", event.target.value as Currency)}>{snapshot.currencies.map((currency) => <option key={currency}>{currency}</option>)}</select></label>
               <label title="Se toma automáticamente de Comisiones de remesas. Se descuenta del monto convertido que recibe el destinatario.">Comisión de entrega (%)<input readOnly value={String((quote?.calculation?.deliveryCommissionBps ?? snapshot.commissionPolicy?.deliveryCommissionBps ?? 0) / 100)} /></label>
               {amountBox("destination", `Monto a recibir (${draft.destinationCurrency})`, "Lo que recibe la persona, ya descontada la comisión de entrega. Escríbelo aquí y se calcula cuánto se envía.")}
-              <label>Tasa<input aria-label="Tasa del dinero que se recibe" readOnly title={quote ? `1 ${quote.destinationCurrency} = ${quote.quote.destinationRate} DOP` : undefined} value={quote ? `${shortRate(quote.quote.destinationRate)} DOP` : ""} placeholder="Al cotizar" /></label>
+              <label>Tasa<input aria-label="Tasa del dinero que se recibe" readOnly title={destinationRate ? `1 ${draft.destinationCurrency} = ${destinationRate} DOP` : undefined} value={destinationRate ? `${shortRate(destinationRate)} DOP` : ""} placeholder="Sin tasa registrada" /></label>
             </fieldset>
             <fieldset className="remittance-money remittance-money-rate"><legend>Tasa</legend>
               <label>Equivalente del principal en DOP<input readOnly value={quote?.amountDop === undefined ? (quote ? "Fuera de rango de visualización" : "Calcula la cotización") : money(quote.amountDop, "DOP")} /></label>
               <label title="Equivalente informativo con la tasa del envío. El cobro se mantiene en la moneda del remitente.">Equivalente de la comisión en DOP<input readOnly value={!quote ? "" : commissionDopAmount(quote) === undefined ? "No disponible" : money(commissionDopAmount(quote)!, "DOP")} placeholder="Al cotizar" /></label>
-              <label>Tasa de origen a destino<input readOnly value={quote ? crossRateText(quote) : "Calcula la cotización"} /></label>
+              <label>Tasa de origen a destino<input readOnly value={sourceRate && destinationRate ? crossRateText(sourceRate, destinationRate, draft.sourceCurrency, draft.destinationCurrency) : "Sin tasa registrada"} /></label>
               {quote?.calculation?.exchangeGain && <label title="Lo que gana la empresa al comprar y vender las monedas (venta menos compra). Es de la empresa; el gestor cobra solo de la comisión.">Ganancia por cambio<input readOnly value={money(quote.calculation.exchangeGain.totalAmount, "DOP")} /></label>}
             </fieldset>
           </fieldset>
