@@ -336,7 +336,9 @@ createRoot(document.getElementById("root")).render(<App />);`);
         assert.equal(await workspace.getByLabel("Total a pagar (USD)", { exact: true }).inputValue(), "105.00", "the box of the total paid is calculated");
         const quoteSummary = workspace.locator(".remittance-quote");
         const summaryText = await quoteSummary.innerText();
-        for (const label of ["Paga el remitente", "Recibe el destinatario", "Conversión por pesos dominicanos", "Última tasa registrada", sourceRateDate, destinationRateDate]) assert.ok(summaryText.includes(label), label);
+        for (const label of ["Paga el remitente", "Recibe el destinatario"]) assert.ok(summaryText.includes(label), label);
+        assert.equal(await quoteSummary.locator(".remittance-quote-conversion,.remittance-commission-details").count(), 0, "conversion and internal breakdowns are absent from the capture summary, including for administrators");
+        assert.equal(await workspace.getByLabel("Ganancia por cambio", { exact: true }).count(), 0);
         assert.match(summaryText, /USD 105\.00/, "the sender pays principal plus the configured USD 5 commission");
         assert.match(summaryText, /EUR 80\.00/, "the recipient receives the full principal converted through DOP");
         assert.ok(summaryText.includes("La comisión del envío la paga quien envía y no se descuenta de lo que se recibe."));
@@ -379,18 +381,22 @@ createRoot(document.getElementById("root")).render(<App />);`);
         await workspace.getByRole("button", { name: "Revisar y confirmar envío", exact: true }).click();
         await confirmation.getByLabel("Dinero recibido (USD)", { exact: true }).fill("110.00");
         assert.equal(await confirmation.getByLabel("Devuelta (USD)", { exact: true }).inputValue(), "USD 5.00");
-        if (surface === "admin") {
-          await confirmation.getByText("Reparto de la comisión entre empresa y gestor", { exact: true }).click();
-          // 40% of the USD 5.00 commission for the manager, the rest for the company.
-          assert.match(await confirmation.innerText(), /USD 2\.00/); assert.match(await confirmation.innerText(), /USD 3\.00/);
-        } else {
-          assert.equal(await confirmation.getByText("Reparto de la comisión entre empresa y gestor", { exact: true }).count(), 0, "Collectors without commission-view permission cannot read the internal split.");
-        }
+        assert.equal(await confirmation.locator(".remittance-quote-conversion,.remittance-commission-details").count(), 0, "the confirmation omits conversion, exchange gains and company/manager allocation for every role");
+        assert.equal(await confirmation.getByText("Reparto de la comisión entre empresa y gestor", { exact: true }).count(), 0);
+        const reviewedSummary = await confirmation.locator(".remittance-quote-details").innerText();
+        assert.match(reviewedSummary, /USD 105\.00/); assert.match(reviewedSummary, /EUR 80\.00/);
+        await confirmation.screenshot({ path: path.join(output, `${surface}-customer-confirmation.png`) });
         const savedReply = page.waitForResponse((reply: any) => reply.request().method() === "POST" && new URL(reply.url()).pathname === "/api/envios");
         await confirmation.getByRole("button", { name: "Aceptar", exact: true }).click();
         const registered = await savedReply;
         assert.equal(registered.status(), 200);
         const registeredTransfer = await registered.json();
+        if (surface === "admin") {
+          assert.equal(registeredTransfer.commissionAllocation.managerAmount, 200, "the hidden manager share is still calculated and recorded");
+          assert.equal(registeredTransfer.commissionAllocation.companyAmount, 300);
+        } else {
+          assert.equal(registeredTransfer.commissionAllocation, undefined, "hiding the presentation does not weaken API redaction for collectors");
+        }
         const print = page.getByRole("dialog", { name: "¿Quieres imprimir el recibo?", exact: true }); await print.waitFor();
         await print.getByRole("button", { name: "No imprimir", exact: true }).click();
         assert.equal(await workspace.getByRole("combobox", { name: "Remitente", exact: true }).inputValue(), "", "confirmed sends clear the prior sender");

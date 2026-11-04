@@ -16,8 +16,12 @@ export const roundingHelp: Record<ReceiveRounding, string> = {
   up: "Lo que recibe la persona se redondea siempre al entero siguiente.",
 };
 
-/** Presentation only: every amount and the frozen rates come from the server. */
-export function QuoteDetails({ quote }: { quote: Quotation }) {
+/** Presentation only: every amount and the frozen rates come from the server.
+ * Capture and confirmation show the parties' amounts. Keep the conversion and internal breakdowns
+ * available for internal views without including them in the customer-facing summary's DOM. */
+export function QuoteDetails({ quote, showConversion = false, showInternalDetails = false }: {
+  quote: Quotation; showConversion?: boolean; showInternalDetails?: boolean;
+}) {
   const crossRate = formatCrossRate(quote.quote.sourceRate, quote.quote.destinationRate);
   const saved = "status" in quote;
   const calculation = quote.calculation;
@@ -53,7 +57,7 @@ export function QuoteDetails({ quote }: { quote: Quotation }) {
         <p className="remittance-help">La comisión del envío la paga quien envía y no se descuenta de lo que se recibe.{calculation && calculation.deliveryCommissionAmount > 0 ? " La comisión de entrega sí se descuenta de lo que recibe la persona." : ""}</p>
       </section>
     </div>
-    <section className="remittance-quote-conversion" aria-label="Conversión por pesos dominicanos">
+    {showConversion && <section className="remittance-quote-conversion" aria-label="Conversión por pesos dominicanos">
       <h3>Conversión por pesos dominicanos</h3>
       <ol className="remittance-conversion-steps">
         <li><span>Principal en origen</span><strong>{money(quote.amount, quote.sourceCurrency)}</strong></li>
@@ -67,8 +71,8 @@ export function QuoteDetails({ quote }: { quote: Quotation }) {
         <div><dt>Hora de cotización</dt><dd>{rateMoment(quote.quote.quotedAt)}</dd></div>
       </dl>
       <p className="remittance-help">Compramos la moneda de origen y vendemos la de destino, pasando por pesos. Si ambas son iguales no se cambia de moneda. {roundingHelp[calculation?.receiveRounding ?? "none"]} Las tasas antiguas sin compra y venta conservan su tasa única registrada.</p>
-    </section>
-    {gain && <section className="remittance-quote-conversion" aria-label="Ganancia por cambio">
+    </section>}
+    {showInternalDetails && gain && <section className="remittance-quote-conversion" aria-label="Ganancia por cambio">
       <h3>Ganancia por cambio (DOP)</h3>
       <dl className="remittance-summary">
         <div><dt>Al comprar {quote.sourceCurrency}{gain.sourcePurchaseRate ? ` (venta ${gain.sourceSaleRate} − compra ${gain.sourcePurchaseRate})` : ""}</dt><dd>{money(gain.sourceAmount, "DOP")}</dd></div>
@@ -77,6 +81,6 @@ export function QuoteDetails({ quote }: { quote: Quotation }) {
       </dl>
       <p className="remittance-help">Es de la empresa: el gestor cobra solo de la comisión del envío.</p>
     </section>}
-    {quote.commissionAllocation && <details className="remittance-commission-details"><summary>Reparto de la comisión entre empresa y gestor</summary><dl className="remittance-summary">{allocationRows(quote.commissionAllocation, saved ? (quote as Transfer).status : undefined).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl><p className="remittance-help">Este reparto sale de la comisión ya cobrada. No es otro cargo al remitente ni un descuento al destinatario.</p></details>}
+    {showInternalDetails && quote.commissionAllocation && <details className="remittance-commission-details"><summary>Reparto de la comisión entre empresa y gestor</summary><dl className="remittance-summary">{allocationRows(quote.commissionAllocation, saved ? (quote as Transfer).status : undefined).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl><p className="remittance-help">Este reparto sale de la comisión ya cobrada. No es otro cargo al remitente ni un descuento al destinatario.</p></details>}
   </div>;
 }
