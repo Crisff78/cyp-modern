@@ -241,7 +241,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
       try {
         const outcome: Record<string, unknown> = {};
         const where = () => page.evaluate(() => { const element = document.activeElement as HTMLElement | null; return element ? `${element.tagName}:${element.tagName === "BUTTON" ? element.textContent : element.closest("label")?.firstChild?.textContent ?? ""}` : ""; });
-        await workspace.getByRole("textbox", { name: "Comisión (%)", exact: true }).focus(); await page.keyboard.press("Enter");
+        await workspace.getByRole("textbox", { name: "Cargo servicio", exact: true }).focus(); await page.keyboard.press("Enter");
         outcome["Enter in a readonly field"] = await where();
         await workspace.getByLabel("Monto a enviar (DOP)", { exact: true }).focus(); await page.keyboard.press("Enter");
         outcome["Enter in Monto, before the money received"] = await where();
