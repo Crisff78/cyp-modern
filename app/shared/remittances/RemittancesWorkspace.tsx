@@ -343,16 +343,37 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
       field.focus();
     }
   }, [tab, focusVersion, snapshot, loading, busy, confirmation, printTransfer, clientEditor, detailId, fixedForm]);
-  // Mayo, 26-10-2026: in the sending window, calculating the quote or changing a datum after it brings the form back to
-  // its top (sender, recipient and the amounts already calculated), not down to the list of sends under it.
+  // A quote takes the room it needs above the list. Reveal the whole summary and its review button;
+  // editing the quote restores the capture at the top without changing the user's saved list size.
+  const quoteShown = fixedForm && view === "envios" && formOpen && Boolean(quote);
   const hadQuote = useRef(false);
-  useEffect(() => {
-    const changed = Boolean(quote) || hadQuote.current;
-    hadQuote.current = Boolean(quote);
+  useLayoutEffect(() => {
+    const changed = quoteShown || hadQuote.current;
+    hadQuote.current = quoteShown;
     if (!fixedForm || !changed) return;
-    const form = root.current?.querySelector<HTMLElement>(".remittance-send-form");
-    for (let box: HTMLElement | null | undefined = form; box && box !== root.current?.parentElement; box = box.parentElement) if (box.scrollTop) box.scrollTop = 0;
-  }, [fixedForm, quote]);
+    const box = root.current;
+    const form = box?.querySelector<HTMLElement>(".remittance-send-form");
+    if (form) form.scrollTop = 0;
+    if (!box) return;
+    if (!quoteShown) { box.scrollTop = 0; return; }
+    const reveal = () => {
+      if (!window.matchMedia("(min-width: 701px)").matches) return;
+      const summary = form?.querySelector<HTMLElement>(".remittance-quote");
+      if (!summary) return;
+      const panel = box.getBoundingClientRect(), content = summary.getBoundingClientRect();
+      const top = panel.top + box.clientTop + 8, bottom = panel.top + box.clientTop + box.clientHeight - 8;
+      const offset = content.height > bottom - top ? content.top - top
+        : content.bottom > bottom ? content.bottom - bottom : content.top < top ? content.top - top : 0;
+      if (Math.abs(offset) > 1) box.scrollTop += offset;
+    };
+    reveal();
+    // Keep the summary in view if a contact finishes loading or the MDI window changes size.
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(reveal);
+    observer.observe(box);
+    if (form) observer.observe(form);
+    return () => observer.disconnect();
+  }, [fixedForm, quoteShown, quote]);
 
   const retireQuote = useCallback(() => { quoteRequests.current.invalidate(); quoteLock.current = false; setQuoteBusy(false); setQuote(null); }, []);
   const changeTab = useCallback((next: Tab) => { retireQuote(); reportRequests.current.invalidate(); setReportBusy(false); setTab(next); setError(""); setOutputError(""); }, [retireQuote]);
@@ -769,7 +790,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
       onFocus={(event) => { if (!typed && event.currentTarget.value) event.currentTarget.select(); }}
       onValueChange={(nextValue) => typeIn(mode, nextValue)} onInvalidEntry={() => rejectMoney("amount")} /></label>;
   };
-  const commissionHint = "Se aplica sola, según la configuración de comisiones.";
+  const commissionHint = "Se calcula automáticamente al cotizar, según la configuración de comisiones.";
   // Show the latest effective purchase/sale rates before an amount is entered. A calculated quote keeps
   // its exact server rates; changing a currency already retires that quote through updateDraft.
   const previewRate = (currency: Currency, side: "source" | "destination") => {
@@ -782,7 +803,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
 
   // Envíos and Entregas place the keyboard themselves (the sender without unfolding its list, the search of receipts):
   // data-own-focus keeps the desktop window from placing it first.
-  return <section ref={root} className={"remittances" + (fixedForm ? " remittances-fixed" : "") + (fixedForm && listSize.size !== null ? " has-list-size" : "") + (listSize.dragging ? " is-resizing" : "")} aria-label={heading} data-own-focus={view === "envios" || view === "recibos" ? "" : undefined}>
+  return <section ref={root} className={"remittances" + (fixedForm ? " remittances-fixed" : "") + (quoteShown ? " has-quote" : "") + (fixedForm && listSize.size !== null ? " has-list-size" : "") + (listSize.dragging ? " is-resizing" : "")} aria-label={heading} data-own-focus={view === "envios" || view === "recibos" ? "" : undefined}>
     <header className="remittance-heading"><div><h1>{heading}</h1><p>{snapshot ? `Fecha de operación: ${snapshot.businessDate}` : "Conexión con la API"} · {user.name}</p>{fixedForm && sendCashNotice}</div><button type="button" onClick={() => void refresh()} disabled={loading || working}>{loading ? "Cargando…" : "Actualizar"}</button></header>
     {permittedTabs.length > 1 && <nav className="remittance-tabs" aria-label="Secciones de remesas">{permittedTabs.map((item) => <button key={item.id} type="button" aria-current={view === item.id ? "page" : undefined} onClick={() => changeTab(item.id)}>{item.label}</button>)}</nav>}
     {error && <div className="remittance-error" role="alert">{error}</div>}
@@ -812,7 +833,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
               {amountBox("source", `Monto a enviar (${draft.sourceCurrency})`, "Lo que se envía. La comisión se suma aparte y la paga quien envía.")}
               {amountBox("total", `Total a pagar (${draft.sourceCurrency})`, "Lo que paga quien envía: lo que se envía más la comisión. Escríbelo aquí y se calcula cuánto se envía.")}
               <label>Tasa<input aria-label="Tasa del dinero a enviar" readOnly title={sourceRate ? `1 ${draft.sourceCurrency} = ${sourceRate} DOP` : undefined} value={sourceRate ? `${shortRate(sourceRate)} DOP` : ""} placeholder="Sin tasa registrada" /></label>
-              <label title={commissionHint}>Comisión (%)<input aria-label="Comisión (%)" readOnly title={commissionHint} value={String((quote?.commissionBps ?? snapshot.commissionPolicy?.transactionCommissionBps ?? 0) / 100)} /></label>
+              <label title={commissionHint}>Cargo servicio<input aria-label="Cargo servicio" readOnly title={quote ? `${commissionHint} ${money(quote.commissionAmount, quote.sourceCurrency)}` : commissionHint} value={quote ? money(quote.commissionAmount, quote.sourceCurrency) : ""} placeholder="Al cotizar" /></label>
             </fieldset>
             <fieldset className="remittance-money remittance-money-receive"><legend>Dinero que se recibe</legend>
               <label title="Sale la moneda habitual del destinatario; puedes cambiarla.">Moneda del destinatario<select value={draft.destinationCurrency} onChange={(event) => updateDraft("destinationCurrency", event.target.value as Currency)}>{snapshot.currencies.map((currency) => <option key={currency}>{currency}</option>)}</select></label>

@@ -315,9 +315,10 @@ createRoot(document.getElementById("root")).render(<App />);`);
         await choose("Remitente", sender.code); await choose("Destinatario", recipient.code);
         await workspace.getByLabel("Moneda del remitente").selectOption("USD");
         await workspace.getByLabel("Moneda del destinatario").selectOption("EUR");
-        const commission = workspace.getByRole("textbox", { name: "Comisión (%)", exact: true });
+        const commission = workspace.getByRole("textbox", { name: "Cargo servicio", exact: true });
         assert.equal(await commission.getAttribute("readonly"), "");
-        assert.equal(await commission.inputValue(), "5", "both surfaces use the saved central policy");
+        assert.equal(await commission.inputValue(), "", "a monetary charge needs a quotation, not the configured percentage");
+        assert.equal(await commission.getAttribute("placeholder"), "Al cotizar");
         await commission.evaluate((input: HTMLInputElement) => { input.value = "0"; });
         const sourceAmount = workspace.getByLabel("Monto a enviar (USD)", { exact: true });
         await sourceAmount.press("ControlOrMeta+A"); await sourceAmount.pressSequentially("1000"); await sourceAmount.press("Tab");
@@ -325,18 +326,22 @@ createRoot(document.getElementById("root")).render(<App />);`);
         assert.equal(await sourceAmount.evaluate((input: HTMLInputElement) => input.checkValidity()), true);
         await workspace.getByRole("button", { name: "Calcular cotización", exact: true }).click();
         await page.waitForFunction(() => Array.from(document.querySelectorAll<HTMLInputElement>('input[readonly]')).some((input) => input.value === "DOP 60,000.00"));
+        assert.equal(await commission.inputValue(), "USD 50.00", "the field displays the calculated monetary charge, not 5%");
         await sourceAmount.fill("100.00");
         await workspace.getByRole("button", { name: "Calcular cotización", exact: true }).click();
         const dop = workspace.getByRole("textbox", { name: "Equivalente del principal en DOP", exact: true });
         await page.waitForFunction(() => Array.from(document.querySelectorAll<HTMLInputElement>('input[readonly]')).some((input) => input.value === "DOP 6,000.00"));
         assert.equal(await dop.getAttribute("readonly"), ""); assert.equal(await dop.inputValue(), "DOP 6,000.00");
         assert.equal(await workspace.getByLabel("Equivalente de la comisión en DOP", {exact:true}).inputValue(), "DOP 300.00", "USD 5 at the quoted rate of 60; collection remains USD 105");
-        assert.equal(await commission.inputValue(), "5", "changing the DOM cannot change the server-derived rate");
+        assert.equal(await commission.inputValue(), "USD 5.00", "changing the DOM cannot change the server-derived charge");
         assert.equal(await workspace.getByLabel("Monto a recibir (EUR)", { exact: true }).inputValue(), "80.00", "the box of what the person receives is calculated");
         assert.equal(await workspace.getByLabel("Total a pagar (USD)", { exact: true }).inputValue(), "105.00", "the box of the total paid is calculated");
         const quoteSummary = workspace.locator(".remittance-quote");
         const summaryText = await quoteSummary.innerText();
         for (const label of ["Paga el remitente", "Recibe el destinatario"]) assert.ok(summaryText.includes(label), label);
+        const senderSummary = quoteSummary.locator('.remittance-quote-card[aria-label="Paga el remitente"]');
+        assert.match(await senderSummary.innerText(), /Cargo servicio/);
+        assert.doesNotMatch(await senderSummary.innerText(), /%/, "the sender's service charge does not expose its percentage");
         assert.equal(await quoteSummary.locator(".remittance-quote-conversion,.remittance-commission-details").count(), 0, "conversion and internal breakdowns are absent from the capture summary, including for administrators");
         assert.equal(await workspace.getByLabel("Ganancia por cambio", { exact: true }).count(), 0);
         assert.match(summaryText, /USD 105\.00/, "the sender pays principal plus the configured USD 5 commission");
@@ -385,6 +390,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
         assert.equal(await confirmation.getByText("Reparto de la comisión entre empresa y gestor", { exact: true }).count(), 0);
         const reviewedSummary = await confirmation.locator(".remittance-quote-details").innerText();
         assert.match(reviewedSummary, /USD 105\.00/); assert.match(reviewedSummary, /EUR 80\.00/);
+        assert.doesNotMatch(await confirmation.locator('.remittance-quote-card[aria-label="Paga el remitente"]').innerText(), /%/);
         await confirmation.screenshot({ path: path.join(output, `${surface}-customer-confirmation.png`) });
         const savedReply = page.waitForResponse((reply: any) => reply.request().method() === "POST" && new URL(reply.url()).pathname === "/api/envios");
         await confirmation.getByRole("button", { name: "Aceptar", exact: true }).click();
@@ -453,11 +459,12 @@ createRoot(document.getElementById("root")).render(<App />);`);
         await choose("Remitente", sender.code); await choose("Destinatario", recipient.code);
         await workspace.getByLabel("Moneda del remitente").selectOption("USD");
         await workspace.getByLabel("Moneda del destinatario").selectOption("DOP");
-        assert.equal(await commission.inputValue(), "5", "the next remittance keeps the configured rate");
+        assert.equal(await commission.inputValue(), "", "the next remittance waits for its own calculated monetary charge");
         await workspace.getByLabel("Monto a recibir (DOP)", { exact: true }).fill("72.01");
         await workspace.getByRole("button", { name: "Calcular cotización", exact: true }).click();
         await workspace.getByText(/El importe real difiere por redondeo/).waitFor();
         assert.match(await workspace.locator('.remittance-quote').innerText(), /DOP 72\.00/);
+        assert.equal(await commission.inputValue(), "USD 0.06", "inverse quotes also show the monetary service charge");
         if (surface === "collector") {
           assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
           assert.equal(await workspace.getByRole("button", { name: "Reportes", exact: true }).count(), 0);
@@ -894,6 +901,54 @@ createRoot(document.getElementById("root")).render(<App />);`);
       } finally { await context.close(); }
     });
     // Rardiel, 29-10-2026: «Estas ventanas aquí deberían poder cambiarse de tamaño … y que se queden guardadas como yo las dejé».
+    for (const scenario of [{ name: "laptop", width: 1366, height: 768, listSize: null }, { name: "saved-list", width: 1440, height: 1000, listSize: 300 }]) await t.test(`admin ${scenario.name}: calculating moves the list below the visible cards and confirmation button`, async () => {
+      const context = await browser.newContext({ viewport: { width: scenario.width, height: scenario.height }, locale: "es-DO", serviceWorkers: "block", extraHTTPHeaders: { "x-qa-rate-refresh-client": "admin" } });
+      try {
+        await context.addInitScript(({ token, size }: { token: string; size: number | null }) => {
+          sessionStorage.setItem("cyp-admin-token", token);
+          if (size !== null) localStorage.setItem("cyp-admin-panel-prefs-v1", JSON.stringify({ "remittances.envios.list.demo-admin": { size } }));
+        }, { token: tokens.admin, size: scenario.listSize });
+        await context.route("**/*", routeLocalOnly);
+        const page = await context.newPage(); page.setDefaultTimeout(15000); page.on("pageerror", (error: Error) => errors.push(error.message));
+        await page.goto(`${origin}/admin/`);
+        await (await menuOption(page, "Envíos de dinero")).click();
+        const workspace = page.getByRole("region", { name: "Envíos de dinero", exact: true });
+        const state = await store.read();
+        for (const [label, id] of [["Remitente", "cli-1"], ["Destinatario", "cli-5"]]) {
+          const code = state.clients.find((client) => client.id === id)!.code;
+          await workspace.getByRole("combobox", { name: label, exact: true }).fill(code);
+          await workspace.getByRole("option").filter({ hasText: code }).first().click();
+        }
+        await workspace.getByText("Cargando teléfono y dirección…", { exact: true }).waitFor({ state: "hidden" });
+        await workspace.getByLabel("Moneda del remitente").selectOption("USD");
+        await workspace.getByLabel("Moneda del destinatario").selectOption("EUR");
+        await workspace.getByLabel("Monto a enviar (USD)", { exact: true }).fill("100.00");
+        const list = workspace.locator(".remittance-list-area");
+        const before = (await list.boundingBox())!;
+        const prefsBefore = await page.evaluate(() => localStorage.getItem("cyp-admin-panel-prefs-v1"));
+        await workspace.getByRole("button", { name: "Calcular cotización", exact: true }).click();
+        // Read geometry before clicking anything in the result: Playwright must not scroll it into view for us.
+        await page.waitForFunction(() => {
+          const panel = document.querySelector<HTMLElement>(".remittances-fixed"), summary = panel?.querySelector<HTMLElement>(".remittance-quote");
+          if (!panel || !summary) return false;
+          const bounds = panel.getBoundingClientRect(), items = [...summary.querySelectorAll<HTMLElement>(".remittance-quote-card,button")];
+          return items.length === 3 && items.every((item) => { const rect = item.getBoundingClientRect(); return rect.height > 0 && rect.top >= bounds.top && rect.bottom <= bounds.bottom; });
+        });
+        assert.equal(await workspace.getByLabel("Cargo servicio", { exact: true }).inputValue(), "USD 0.00", "a configured zero charge is shown as money");
+        const review = workspace.getByRole("button", { name: "Revisar y confirmar envío", exact: true });
+        assert.equal(await review.evaluate((button: HTMLElement) => { const rect = button.getBoundingClientRect(); return button.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)); }), true, "the review button is unobstructed without manual scrolling");
+        const summary = (await workspace.locator(".remittance-quote").boundingBox())!;
+        const after = (await list.boundingBox())!;
+        assert.ok(after.y >= summary.y + summary.height - 1, "the list starts below the entire summary and its review button");
+        assert.ok(after.y > before.y + 20, `calculating moves the list down (${before.y} → ${after.y})`);
+        assert.equal(await page.evaluate(() => localStorage.getItem("cyp-admin-panel-prefs-v1")), prefsBefore, "automatic expansion never overwrites the saved list size");
+        await page.screenshot({ path: path.join(output, `admin-${scenario.name}-quote-visible.png`) });
+        await workspace.getByLabel("Nota (opcional)", { exact: true }).fill("Revisar el importe");
+        await page.waitForFunction(() => { const panel = document.querySelector<HTMLElement>(".remittances-fixed"); return panel && !panel.querySelector(".remittance-quote") && panel.scrollTop === 0; });
+        assert.ok(Math.abs((await list.boundingBox())!.height - before.height) <= 2, "editing restores the previous list height");
+        assert.equal(await page.evaluate(() => localStorage.getItem("cyp-admin-panel-prefs-v1")), prefsBefore);
+      } finally { await context.close(); }
+    });
     await t.test("admin: the list of Envíos de dinero takes the height the user leaves it, kept for the account", async () => {
       const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, locale: "es-DO", serviceWorkers: "block" });
       try {

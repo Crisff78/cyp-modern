@@ -158,6 +158,11 @@ dialog.remittances-dialog { position: fixed; inset: 0; margin: auto; }
   .remittances-fixed.is-resizing { user-select: none; }
   .remittances-fixed.has-list-size > .remittance-send-form { flex: 1 1 0; min-height: 120px; }
   .remittances-fixed.has-list-size > .remittance-list-area { flex-grow: 0; flex-shrink: 1; }
+  /* A calculated quote expands the capture instead of clipping the cards behind the list. In a short
+     window the workspace scrolls as a whole; the list stays below and keeps its own saved height. */
+  .remittances-fixed.has-quote { overflow-y: auto; overflow-x: hidden; }
+  .remittances-fixed.has-quote > .remittance-send-form { flex: 0 0 auto; min-height: 0; overflow: visible; }
+  .remittances-fixed.has-quote > .remittance-list-area { flex: 0 0 140px; }
   .remittances-fixed .remittance-list-area > * { flex: 0 0 auto; }
   .remittances-fixed .remittance-list-area > .remittance-table-wrap { flex: 1 1 0; min-height: 0; overflow: auto; }
   .remittances-fixed .remittance-list-area .remittance-table thead th { position: sticky; top: 0; z-index: 1; }
@@ -233,7 +238,7 @@ dialog.remittances-dialog { position: fixed; inset: 0; margin: auto; }
     .remittances-fixed > .remittance-send-form .remittance-form-grid:not(:has(.remittance-operator-field)) .remittance-note-field { grid-column: span 4; }
     .remittances-fixed > .remittance-send-form :is(.remittance-money-send, .remittance-money-receive) { grid-column: span 2; }
     /* Each box in one row: its names may take two lines, its fields stay in line. The amounts get the wider columns. */
-    .remittances-fixed > .remittance-send-form .remittance-money-send { grid-template-columns: minmax(0, 0.8fr) repeat(2, minmax(0, 1.2fr)) repeat(2, minmax(0, 0.8fr)); }
+    .remittances-fixed > .remittance-send-form .remittance-money-send { grid-template-columns: minmax(0, 0.8fr) repeat(2, minmax(0, 1fr)) minmax(0, 0.8fr) minmax(0, 1.2fr); }
     .remittances-fixed > .remittance-send-form .remittance-money-receive { grid-template-columns: minmax(0, 0.8fr) repeat(2, minmax(0, 1.2fr)) minmax(0, 0.8fr); }
     .remittances-fixed > .remittance-send-form .remittance-money-rate { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
     /* The data of the recipient chosen, beside its phone, in two columns. */
