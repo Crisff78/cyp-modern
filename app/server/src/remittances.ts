@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { assertAdmin, businessDate, DomainError, type State, type User } from "./domain.js";
 import { effectiveAccess, hasRemittancePermission, hasRemittanceAccess, hasRoleExceptions } from "../../shared/access.mjs";
-import { cashReceivedForTransfer, isPaymentTextDraft, paymentAmounts, PaymentValidationError, type ReceiptIssuer, type RemittancePayment, type RemittancePaymentInput, type RemittanceRefund, type RemittanceRefundInput } from "../../shared/remittances/payment.mjs";
+import { cashReceivedForTransfer, isPaymentTextDraft, paymentAmounts, totalPaidForTransfer, PaymentValidationError, type ReceiptIssuer, type RemittancePayment, type RemittancePaymentInput, type RemittanceRefund, type RemittanceRefundInput } from "../../shared/remittances/payment.mjs";
 import { appliedRate, type RateKind } from "../../shared/remittances/appliedRate.mjs";
 
 export const currencies = ["DOP", "USD", "EUR"] as const;
@@ -20,11 +20,11 @@ export type Quote = {
   sourceRateDate?: string; destinationRateDate?: string;
   sourceRateKind?: RateKind; destinationRateKind?: RateKind;
   commissionPolicyRevision?: string; managerCommissionBps?: number;
-  managerShareBps?: number; deliveryConceptId?: string; deliveryCommissionBps?: number; receiveRounding?: ReceiveRounding;
+  managerShareBps?: number; deliveryConceptId?: string; deliveryCommissionBps?: number; creditCardCommissionBps?: number; receiveRounding?: ReceiveRounding;
 };
 // managerCommissionBps: the former percentage of the received amount, kept for history only.
 // managerShareBps: what the manager takes of the commission of each send (never of the exchange).
-export type CommissionPolicy = { revision: string; transactionCommissionBps: number; managerCommissionBps: number; managerShareBps: number; deliveryCommissionBps?: number; receiveRounding: ReceiveRounding; updatedAt?: string; updatedBy?: string };
+export type CommissionPolicy = { revision: string; transactionCommissionBps: number; managerCommissionBps: number; managerShareBps: number; deliveryCommissionBps?: number; creditCardCommissionBps?: number; receiveRounding: ReceiveRounding; updatedAt?: string; updatedBy?: string };
 // Version 1 (before 29-10-2026): manager = % of the received amount, in the destination currency.
 // Version 2: manager = % of the commission, in the currency the commission is paid (the sender's).
 export type CommissionAllocation = {
@@ -168,23 +168,26 @@ const assertCurrency = (currency: Currency) => {
 };
 export function getCommissionPolicy(state: State): CommissionPolicy {
   const policy = state.remittances.commissionPolicy;
-  if (!policy) return { revision: "default", transactionCommissionBps: 0, managerCommissionBps: 0, managerShareBps: 0, deliveryCommissionBps: 0, receiveRounding: "none" };
+  if (!policy) return { revision: "default", transactionCommissionBps: 0, managerCommissionBps: 0, managerShareBps: 0, deliveryCommissionBps: 0, creditCardCommissionBps: 0, receiveRounding: "none" };
   const transactionCommissionBps = policy.transactionCommissionBps ?? 0;
   return { ...policy, transactionCommissionBps,
     managerShareBps: policy.managerShareBps ?? managerShareFromLegacy(policy.managerCommissionBps ?? 0, transactionCommissionBps),
-    deliveryCommissionBps: policy.deliveryCommissionBps ?? 0, receiveRounding: policy.receiveRounding ?? "none" };
+    deliveryCommissionBps: policy.deliveryCommissionBps ?? 0, creditCardCommissionBps: policy.creditCardCommissionBps ?? 0, receiveRounding: policy.receiveRounding ?? "none" };
 }
 /**
  * The commission of each send, the manager's share of it and how the money received is rounded. A request that
  * still sends the former percentage of the amount (managerCommissionBps) gets the matching share of the commission.
  */
 export function setCommissionPolicy(state: State, user: User,
-  input: Partial<Pick<CommissionPolicy, "transactionCommissionBps" | "managerCommissionBps" | "managerShareBps" | "deliveryCommissionBps" | "receiveRounding">>, now = new Date()) {
+  input: Partial<Pick<CommissionPolicy, "transactionCommissionBps" | "managerCommissionBps" | "managerShareBps" | "deliveryCommissionBps" | "creditCardCommissionBps" | "receiveRounding">>, now = new Date()) {
   remittanceOperators(state, user); assertAdmin(user);
   const current = getCommissionPolicy(state);
   const transactionCommissionBps = input.transactionCommissionBps ?? current.transactionCommissionBps;
   const managerCommissionBps = input.managerCommissionBps ?? current.managerCommissionBps;
   const deliveryCommissionBps = input.deliveryCommissionBps ?? current.deliveryCommissionBps ?? 0;
+  const creditCardCommissionBps = input.creditCardCommissionBps ?? current.creditCardCommissionBps ?? 0;
+  if (!Number.isInteger(creditCardCommissionBps) || creditCardCommissionBps < 0 || creditCardCommissionBps > 10000)
+    fail("INVALID_COMMISSION", "El recargo de tarjeta debe estar entre 0% y 100%.");
   if (!Number.isSafeInteger(deliveryCommissionBps) || deliveryCommissionBps < 0 || deliveryCommissionBps >= 10000)
     fail("INVALID_DELIVERY_COMMISSION", "La comisión de entrega debe estar entre 0% y 99.99%.");
   if ([transactionCommissionBps, managerCommissionBps, input.managerShareBps ?? 0].some((value) => !Number.isInteger(value) || value < 0 || value > 10000))
@@ -195,8 +198,8 @@ export function setCommissionPolicy(state: State, user: User,
   const receiveRounding = input.receiveRounding ?? current.receiveRounding;
   if (!receiveRoundings.includes(receiveRounding)) fail("INVALID_ROUNDING", "Elige cómo se redondea lo que recibe la persona.");
   if (current.managerCommissionBps === managerCommissionBps && current.transactionCommissionBps === transactionCommissionBps &&
-      current.managerShareBps === managerShareBps && current.deliveryCommissionBps === deliveryCommissionBps && current.receiveRounding === receiveRounding) return current;
-  return state.remittances.commissionPolicy = { revision: randomUUID(), transactionCommissionBps, managerCommissionBps, managerShareBps, deliveryCommissionBps, receiveRounding, updatedAt: now.toISOString(), updatedBy: user.id };
+      current.managerShareBps === managerShareBps && current.deliveryCommissionBps === deliveryCommissionBps && current.creditCardCommissionBps === creditCardCommissionBps && current.receiveRounding === receiveRounding) return current;
+  return state.remittances.commissionPolicy = { revision: randomUUID(), transactionCommissionBps, managerCommissionBps, managerShareBps, deliveryCommissionBps, creditCardCommissionBps, receiveRounding, updatedAt: now.toISOString(), updatedBy: user.id };
 }
 /** Concepts charged at the destination, in their order; «Sin comisión» always first and never stored. */
 export function deliveryConcepts(state: State) {
@@ -350,7 +353,7 @@ export function quoteRemittance(state: State, input: QuoteInput, now = new Date(
       sourceRateDate: source.date, destinationRateDate: destination.date,
       sourceRateKind: source.kind, destinationRateKind: destination.kind,
       commissionPolicyRevision: policy.revision, managerShareBps: policy.managerShareBps,
-      deliveryConceptId: concept.id, deliveryCommissionBps: concept.commissionBps, receiveRounding: policy.receiveRounding,
+      deliveryConceptId: concept.id, deliveryCommissionBps: concept.commissionBps, creditCardCommissionBps: policy.creditCardCommissionBps ?? 0, receiveRounding: policy.receiveRounding,
       ...(source.changeId ? { sourceRateChangeId: source.changeId } : {}),
       ...(destination.changeId ? { destinationRateChangeId: destination.changeId } : {}),
       ...(source.changedAt ? { sourceRateChangedAt: source.changedAt } : {}),
@@ -580,6 +583,8 @@ export function createRemittance(state: State, user: User, input: CreateRemittan
     sourceCurrency: input.sourceCurrency, destinationCurrency: input.destinationCurrency, deliveryConceptId: input.deliveryConceptId,
     deliveryCommissionBps: input.deliveryCommissionBps,
   }, now);
+  if (input.quote.creditCardCommissionBps !== undefined && input.quote.creditCardCommissionBps !== calculated.quote.creditCardCommissionBps)
+    fail("QUOTE_CHANGED", "El recargo de tarjeta cambió. Vuelve a cotizar.", 409);
   // Freeze the percentage reviewed in the quote, whether entered for this send or taken from a catalog concept.
   if ((input.quote.deliveryConceptId !== undefined && input.quote.deliveryConceptId !== calculated.quote.deliveryConceptId) ||
       (input.quote.deliveryCommissionBps !== undefined && input.quote.deliveryCommissionBps !== calculated.quote.deliveryCommissionBps))
@@ -593,9 +598,9 @@ export function createRemittance(state: State, user: User, input: CreateRemittan
     fail("QUOTE_CHANGED", "La fecha o la tasa cambió. Vuelve a cotizar antes de guardar.", 409);
   if (calculated.amount !== input.amount) fail("QUOTE_CHANGED", "El principal no coincide con el cálculo del importe de destino. Vuelve a cotizar.", 409);
   let received;
-  try { received = paymentAmounts(calculated.totalAmount, input.payment); }
+  try { received = paymentAmounts(calculated.totalAmount, input.payment, calculated.quote.creditCardCommissionBps ?? 0); }
   catch (error) { if (error instanceof PaymentValidationError) return fail(error.code, error.message); throw error; }
-  const payment: RemittancePayment = { ...received, version: 1, confirmedBy: user.id, confirmedAt: now.toISOString() };
+  const payment: RemittancePayment = { ...received, version: received.cardType ? 2 : 1, confirmedBy: user.id, confirmedAt: now.toISOString() };
   const cash = currentCash(state, sendingUser.id, input.sourceCurrency, now);
   assertCashMovement(state, cash, "sent", cashReceivedForTransfer(calculated.totalAmount, payment));
   const recipientContact = contactSnapshot(state, input.recipientClientId);
@@ -706,7 +711,7 @@ export function remittanceSnapshot(state: State, user: User, systemOperators: Us
   return {
     businessDate: date, currencies, access: user.access ?? effectiveAccess(user.role),
     commissionPolicy: hasRemittancePermission(user, "remittances.commissions.view") ? getCommissionPolicy(state)
-      : { revision: getCommissionPolicy(state).revision, transactionCommissionBps: getCommissionPolicy(state).transactionCommissionBps, deliveryCommissionBps: getCommissionPolicy(state).deliveryCommissionBps ?? 0, receiveRounding: getCommissionPolicy(state).receiveRounding },
+      : { revision: getCommissionPolicy(state).revision, transactionCommissionBps: getCommissionPolicy(state).transactionCommissionBps, deliveryCommissionBps: getCommissionPolicy(state).deliveryCommissionBps ?? 0, creditCardCommissionBps: getCommissionPolicy(state).creditCardCommissionBps ?? 0, receiveRounding: getCommissionPolicy(state).receiveRounding },
     // Legacy catalog remains available for compatibility; new sends use the central delivery percentage.
     deliveryConcepts: deliveryConcepts(state).map(({ updatedBy: _by, ...row }) => row),
     receiptFooterNote: typeof state.systemConfig?.receiptFooterNote === "string" ? state.systemConfig.receiptFooterNote : "",
@@ -733,7 +738,7 @@ export function remittanceReports(state: State, user: User, input: { from: strin
   const within = (timestamp: string) => { const date = businessDate(new Date(timestamp)); return date >= input.from && date <= input.to; };
   const groupDate = (timestamp: string) => input.grouping === "day" ? businessDate(new Date(timestamp)) : `${input.from}/${input.to}`;
   const visible = state.remittances.transfers.filter((t) => canReportTransfer(state, user, t));
-  type AmountRow = { date: string; sourceCurrency: Currency; destinationCurrency: Currency; count: number; pendingCount: number; paidCount: number; cancelledCount: number; amount: number; commissionAmount: number; totalAmount: number; receiveAmount: number };
+  type AmountRow = { date: string; sourceCurrency: Currency; destinationCurrency: Currency; count: number; pendingCount: number; paidCount: number; cancelledCount: number; amount: number; commissionAmount: number; cardSurchargeAmount?: number; totalAmount: number; receiveAmount: number };
   const amounts = new Map<string, AmountRow>();
   type CommissionTotal = { date: string; currency: Currency; count: number; commissionAmount: number; cancelledCount: number; cancelledCommissionAmount: number };
   const commissionTotals = new Map<string, CommissionTotal>();
@@ -758,7 +763,9 @@ export function remittanceReports(state: State, user: User, input: { from: strin
       const row = amounts.get(key) ?? { date, sourceCurrency: transfer.sourceCurrency, destinationCurrency: transfer.destinationCurrency, count: 0, pendingCount: 0, paidCount: 0, cancelledCount: 0, amount: 0, commissionAmount: 0, totalAmount: 0, receiveAmount: 0 };
       row.count++; row[`${transfer.status}Count`]++;
       if (transfer.status !== "cancelled") {
-        for (const field of ["amount", "commissionAmount", "totalAmount"] as const) row[field] = safeMoney(BigInt(row[field]) + BigInt(transfer[field]));
+        for (const field of ["amount", "commissionAmount"] as const) row[field] = safeMoney(BigInt(row[field]) + BigInt(transfer[field]));
+        row.totalAmount = safeMoney(BigInt(row.totalAmount) + BigInt(totalPaidForTransfer(transfer)));
+        if (transfer.payment?.cardSurchargeAmount) row.cardSurchargeAmount = safeMoney(BigInt(row.cardSurchargeAmount ?? 0) + BigInt(transfer.payment.cardSurchargeAmount));
         // «A entregar» is what the person receives.
         row.receiveAmount = safeMoney(BigInt(row.receiveAmount) + BigInt(payoutOf(transfer)));
       }
