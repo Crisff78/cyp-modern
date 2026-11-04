@@ -753,7 +753,6 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   // Classes that only the compact layout of the sending window uses to place a field.
   const fixedPlace = (name: string) => fixedForm ? ` ${name}` : "";
   // Dionel (26-10): no fixed help texts in the form; what matters is the hint of its field.
-  const managerShare = (snapshot?.commissionPolicy?.managerShareBps ?? 0) / 100;
   // The three boxes (meeting of 29-10-2026): type in any of them and the other two are calculated. The one typed keeps
   // what was written; the others show the calculation and are skipped by Enter (Tab and the arrows still reach them).
   const boxValue = (mode: AmountMode) => draft.amountMode === mode ? draft.amount
@@ -770,7 +769,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
       onFocus={(event) => { if (!typed && event.currentTarget.value) event.currentTarget.select(); }}
       onValueChange={(nextValue) => typeIn(mode, nextValue)} onInvalidEntry={() => rejectMoney("amount")} /></label>;
   };
-  const commissionHint = "Se aplica sola, según la configuración de comisiones." + (can("remittances.commissions.view") ? ` Parte del gestor (${operatorName(draft.sendingUserId)}): ${managerShare}% de la comisión del envío, sin cargo adicional. La ganancia por cambio es de la empresa.` : "");
+  const commissionHint = "Se aplica sola, según la configuración de comisiones.";
   // Show the latest effective purchase/sale rates before an amount is entered. A calculated quote keeps
   // its exact server rates; changing a currency already retires that quote through updateDraft.
   const previewRate = (currency: Currency, side: "source" | "destination") => {
@@ -825,7 +824,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
               <label>Equivalente del principal en DOP<input readOnly value={quote?.amountDop === undefined ? (quote ? "Fuera de rango de visualización" : "Calcula la cotización") : money(quote.amountDop, "DOP")} /></label>
               <label title="Equivalente informativo con la tasa del envío. El cobro se mantiene en la moneda del remitente.">Equivalente de la comisión en DOP<input readOnly value={!quote ? "" : commissionDopAmount(quote) === undefined ? "No disponible" : money(commissionDopAmount(quote)!, "DOP")} placeholder="Al cotizar" /></label>
               <label>Tasa de origen a destino<input readOnly value={sourceRate && destinationRate ? crossRateText(sourceRate, destinationRate, draft.sourceCurrency, draft.destinationCurrency) : "Sin tasa registrada"} /></label>
-              {quote?.calculation?.exchangeGain && <label title="Lo que gana la empresa al comprar y vender las monedas (venta menos compra). Es de la empresa; el gestor cobra solo de la comisión.">Ganancia por cambio<input readOnly value={money(quote.calculation.exchangeGain.totalAmount, "DOP")} /></label>}
+              {/* Exchange gains and the company/manager split stay in the internal reports. */}
             </fieldset>
           </fieldset>
           {fixedForm ? <div className="remittance-form-actions">
