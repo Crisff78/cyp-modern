@@ -10,7 +10,7 @@ import { cancelRemittance, createRemittance, getCommissionPolicy, openRemittance
 test("PostgreSQL 047: fresh migrations, frozen credit/debit records, exact fee, strict SQL allowlist and quote binding", {skip: !process.env.CYP_CARD_RECORDS_TEST_DATABASE_URL}, async () => {
   const url = new URL(process.env.CYP_CARD_RECORDS_TEST_DATABASE_URL!);
   assert.equal(url.hostname,"127.0.0.1"); assert.equal(url.port,"55437");
-  assert(["/cyp_card_records_qa","/cyp_card_records_qa_final"].includes(url.pathname)); assert.equal(url.username,"card_records_qa");
+  assert(["/cyp_card_records_qa","/cyp_card_records_qa_final","/cyp_card_records_qa_verified"].includes(url.pathname)); assert.equal(url.username,"card_records_qa");
   const store = new PostgresStore(url.href), reader = new PostgresStore(url.href);
   const sql = new pg.Client({connectionString:url.href}); await sql.connect();
   const now = new Date(), admin: User = {id:"demo-admin",name:"Synthetic Admin",role:"admin"};
@@ -48,6 +48,10 @@ test("PostgreSQL 047: fresh migrations, frozen credit/debit records, exact fee, 
       to_jsonb(t) || $2::jsonb)).* FROM remittance_transfers t WHERE id=$1`,[saved.id,JSON.stringify({id,sequence:99999998,envio_reference:"ENV99999998",recibo_reference:"REC99999998",operating_code:id,payment:forged})]), /remittance_card_rate_matches_quote/);
     await assert.rejects(sql.query(`INSERT INTO remittance_transfers SELECT (jsonb_populate_record(NULL::remittance_transfers,
       to_jsonb(t) || $2::jsonb)).* FROM remittance_transfers t WHERE id=$1`,[saved.id,JSON.stringify({id,sequence:99999998,envio_reference:"ENV99999998",recibo_reference:"REC99999998",operating_code:id,payment:legacy})]), /remittance_card_rate_matches_quote/);
+    // PostgreSQL preserves 2.0 as numeric text. Its value is still version 2: never bypass the quote binding.
+    await assert.rejects(sql.query(`INSERT INTO remittance_transfers SELECT (jsonb_populate_record(NULL::remittance_transfers,
+      to_jsonb(t) || jsonb_set($2::jsonb,'{payment,version}','2.0'::jsonb))).* FROM remittance_transfers t WHERE id=$1`,
+      [saved.id,JSON.stringify({id,sequence:99999998,envio_reference:"ENV99999998",recibo_reference:"REC99999998",operating_code:id,payment:saved.payment,quote_credit_card_commission_bps:0})]), /remittance_card_rate_matches_quote/);
     for (const rate of [-1,10001]) await assert.rejects(sql.query("UPDATE remittance_commission_policy SET credit_card_commission_bps=$1 WHERE id=1",[rate]));
     await store.transaction(state => {
       const pair = {sourceCurrency:"DOP" as const,destinationCurrency:"DOP" as const,amount:10000};

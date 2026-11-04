@@ -61,7 +61,7 @@ EXCEPTION WHEN OTHERS THEN RETURN false;
 END $$;
 
 ALTER TABLE remittance_transfers ADD CONSTRAINT remittance_card_rate_matches_quote CHECK (
-  payment IS NULL OR CASE WHEN payment->>'version' = '2' THEN
+  payment IS NULL OR CASE WHEN (payment->>'version')::numeric = 2 THEN
     ((payment->>'cardSurchargeBps')::integer = CASE WHEN payment->>'cardType' = 'credit' THEN quote_credit_card_commission_bps ELSE 0 END) IS TRUE
   WHEN payment->>'method' = 'card' THEN COALESCE(quote_credit_card_commission_bps,0) = 0
   ELSE true END

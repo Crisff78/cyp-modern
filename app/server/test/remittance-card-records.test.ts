@@ -115,7 +115,7 @@ test("API strictly rejects sensitive/forged fields before idempotency storage; a
   assert.equal((await post("/api/envios/politica-comisiones", { creditCardCommissionBps: 0 })).statusCode, 200);
   assert.equal((await post("/api/envios/politica-comisiones", { creditCardCommissionBps: 250 })).statusCode, 200);
   const state = await store.read(), body = bodyFor(state, now), before = JSON.stringify(state);
-  for (const extra of [{ cardNumber: "4111111111111111" }, { cvv: "123" }, { expiry: "12/29" }, { cardSurchargeAmount: 0 }]) {
+  for (const extra of [{ cardNumber: "4111111111111111" }, { cvv: "123" }, { expiry: "12/29" }, { cardSurchargeAmount: 0 }, {version:2}]) {
     const invalid = await post("/api/envios", { ...body, payment: { ...credit, ...extra } });
     assert.equal(invalid.statusCode, 400, invalid.body);
     assert.doesNotMatch(invalid.body, /4111111111111111|12\/29/);
