@@ -8,6 +8,7 @@ import { readAdminTools, saveAdminTools } from "./admin-tools-store.js";
 import { readCatalogs, saveCatalogMasters, saveRecurringCharges } from "./catalog-store.js";
 pg.types.setTypeParser(20, Number);
 export interface Store {
+  sameCurrencySchemaReady?(): Promise<boolean | null>;
   cardPaymentSchemaReady?(): Promise<boolean | null>;
   read(): Promise<State>;
   readRequest?(): Promise<State>;
@@ -674,6 +675,18 @@ async function saveState(client: pg.PoolClient, state: State, before: State) {
   await saveAdminTools(client, state, before);
 }
 export class PostgresStore implements Store {
+  async sameCurrencySchemaReady() {
+    try {
+      for (const [currency,purchase,sale,received] of [["USD","63","64",9844],["EUR","70","72",9722]] as const) {
+        const sourceGain = 10000 * (Number(sale)-Number(purchase)), destinationGain = received * (Number(sale)-Number(purchase));
+        const calculation = {version:2,amountMode:"source",requestedAmount:10000,convertedAmount:received,deliveryConceptId:"sin-comision",deliveryConceptName:"Sin comisión",deliveryCommissionBps:0,deliveryCommissionAmount:0,receiveRounding:"none",roundingAdjustment:0,payoutAmount:received,
+          exchangeGain:{currency:"DOP",sourceAmount:sourceGain,destinationAmount:destinationGain,totalAmount:sourceGain+destinationGain,sourcePurchaseRate:purchase,sourceSaleRate:sale,destinationPurchaseRate:purchase,destinationSaleRate:sale}};
+        const result = await this.pool.query("SELECT valid_remittance_calculation($1::jsonb,10000,$2::bigint,$2::bigint,$3::text,$3::text) AS ok",[JSON.stringify(calculation),received,currency]);
+        if (result.rows[0]?.ok !== true) return false;
+      }
+      return true;
+    } catch { return null; }
+  }
   async cardPaymentSchemaReady() {
     const actor = "synthetic-schema-check", at = "2026-01-01T00:00:00.000Z";
     try {
