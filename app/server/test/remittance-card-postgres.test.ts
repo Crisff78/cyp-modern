@@ -63,6 +63,6 @@ test("PostgreSQL 047: fresh migrations, frozen credit/debit records, exact fee, 
     const after = await reader.read();
     assert.equal(after.remittances.transfers.find(row=>row.id===saved.id)!.status,"cancelled");
     assert.equal(after.remittances.events.find(e=>e.type==="cancelled")?.amount,0);
-    assert.equal((await sql.query("SELECT count(*)::int AS n FROM cyp_schema_migrations")).rows[0].n,48);
+    assert.equal((await sql.query("SELECT count(*)::int AS n FROM cyp_schema_migrations")).rows[0].n,49);
   } finally {await sql.end();await store.close();await reader.close();}
 });
