@@ -480,3 +480,13 @@ Migración aditiva 012: `clients.active`, tasas en la tabla existente `exchange_
 Referencias y ledger se conservan tras reinicios. Idempotencia usa el store común.
 No se integra Western Union, netbanking ni bancos. No se aplican migraciones a
 la base de operación como parte de la preparación local.
+
+
+## Cierre de la revisión de Mayo (04-11-2026)
+
+- El cargo de entrega en captura/confirmación muestra el importe descontado, sin su porcentaje. La configuración administrativa conserva el porcentaje.
+- Un cierre anterior distinto de cero fija la siguiente apertura para todas las cuentas, incluso con permiso de cambiar la apertura. Un cierre cero mantiene el control de permiso existente; la primera apertura permite indicar su efectivo. La API aplica la misma regla, sin modificar cajas históricas ni requerir migración.
+- En la confirmación y en el detalle del envío hay papel normal, térmico de tres pulgadas (76 mm), 80 mm y 58 mm, y un recibo resumido para envío telefónico. La impresión aislada usa los mismos importes guardados; el resumen conserva referencia, fecha, nombres, teléfonos, pago, totales y pie de empresa. El tamaño físico también se selecciona en el diálogo de la impresora. Una prueba del navegador no acredita impresión física.
+- El titular admite letras Unicode, marcas de acento, espacios, guiones, apóstrofes y puntos, sin números, con al menos una letra y máximo 120 caracteres. Se valida en pantalla y en la API; no modifica fichas de clientes ni titulares históricos.
+- Para la revisión visual solicitada hay controles **opcionales y temporales de prueba** para vencimiento MM/YY (mes 01–12) y CVV de 3–4 dígitos. Solo se usan datos ficticios. No procesan ni autorizan un pago. No tienen nombre de formulario, no entran en el estado del pago, no se envían, registran ni almacenan en el servidor, ni se imprimen. Se borran al bloquear el guardado, cancelar, cambiar el método, desmontar el formulario u ocultar/abandonar la página. El CVV se presenta oculto mientras se escribe. Una operación restaurada no puede recuperar estos campos.
+- Esta captura temporal sustituye la indicación anterior de ausencia total de esos controles. El contrato del servidor sigue rechazando PAN completo, vencimiento y CVV; **no se añade almacenamiento cifrado de CVV**. El registro persistido conserva solo los cuatro últimos dígitos. Antes de un cobro real se requiere un proveedor de pago y sus campos seguros; esta pantalla no acredita certificación PCI.

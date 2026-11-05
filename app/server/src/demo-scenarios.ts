@@ -6,7 +6,7 @@ import {
 import { fillDemoCatalogs } from "./demo-catalog-scenarios.js";
 import {
   cancelRemittance, cashBalance, closeRemittanceCash, createRemittance, getCommissionPolicy,
-  openRemittanceCash, payRemittance, quoteRemittance, setDailyRate, type Currency,
+  openRemittanceCash, payRemittance, quoteRemittance, remittanceOpeningCarry, setDailyRate, type Currency,
 } from "./remittances.js";
 
 const version = "public-v2";
@@ -192,7 +192,7 @@ function fillTransfers(fixture: State, existing: State, baseDate: string, now: D
     }
     try {
       for (const currency of currencies) openRemittanceCash(draft, admin, {
-        operatorId: admin.id, currency, openingAmount: currency === "DOP" ? 2_000_000 : 200_000,
+        operatorId: admin.id, currency, openingAmount: remittanceOpeningCarry(draft, admin.id, currency, date)?.amount ?? (currency === "DOP" ? 2_000_000 : 200_000),
       }, [], at(date, 7, 15));
       for (let index = 0; index < 3; index++) {
         const sourceCurrency = currencies[(index + offset + 6) % 3];
