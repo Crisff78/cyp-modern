@@ -731,11 +731,15 @@ createRoot(document.getElementById("root")).render(<App />);`);
           await review.getByLabel("Forma de pago", { exact: true }).selectOption(method === "card" ? "debit" : method);
           assert.equal(await review.locator('input[autocomplete="cc-number"],input[autocomplete="cc-csc"],input[autocomplete="cc-exp"]').count(), 0);
           if (method === "credit") {
-            const holder = review.getByLabel("Nombre del titular", {exact:true}), last4 = review.getByLabel("Últimos 4 dígitos", {exact:true});
+            const holder = review.getByLabel("Nombre del titular", {exact:true}), number = review.getByLabel("Número de tarjeta (16 dígitos)", {exact:true});
             await holder.fill("María O'Connor");
-            await last4.evaluate((input: HTMLInputElement) => { const data = new DataTransfer(); data.setData("text", "4111111111111111"); input.dispatchEvent(new ClipboardEvent("paste", {clipboardData:data,bubbles:true,cancelable:true})); });
-            assert.equal(await last4.inputValue(), "");
-            await last4.fill("0042");
+            await number.evaluate((input: HTMLInputElement) => { const data = new DataTransfer(); data.setData("text", "41111111111111111"); input.dispatchEvent(new ClipboardEvent("paste", {clipboardData:data,bubbles:true,cancelable:true})); });
+            assert.equal(await number.inputValue(), "");
+            await number.fill("4111111111110042");
+            assert.equal(await number.inputValue(), "4111 1111 1111 0042");
+            assert.equal(await number.getAttribute("name"), null, "native form serialization cannot include the complete number");
+            const browserStorage = await page.evaluate(() => JSON.stringify({local:{...localStorage},session:{...sessionStorage}}));
+            assert(!browserStorage.includes("4111111111110042") && !browserStorage.includes("4111 1111 1111 0042"));
             const q = quoteRemittance(await store.read(), {sourceCurrency:"DOP",destinationCurrency:"DOP",amount:90000},now);
             const surcharge = Number((BigInt(q.totalAmount)*250n+5000n)/10000n);
             const card = review.locator('.remittance-quote-card[aria-label="Paga el remitente"]');
@@ -758,13 +762,19 @@ createRoot(document.getElementById("root")).render(<App />);`);
           await review.getByRole("alert").filter({ hasText: "Corrige el campo señalado" }).waitFor();
           assert.equal((await store.read()).remittances.transfers.length, before);
           await reference.fill(`QA-${surface}-${method}/0001`); await bank.fill("Banco O'Connor & Hijos #2");
+          if (method === "credit") assert.equal(await review.getByLabel("Número de tarjeta (16 dígitos)", {exact:true}).inputValue(), "•••• •••• •••• 0042");
           await page.screenshot({ path: path.join(output, `${surface}-${method}-confirmation.png`) });
+          const recordedReply = page.waitForResponse((response: any) => response.request().method() === "POST" && new URL(response.url()).pathname === "/api/envios");
           await review.getByRole("button", { name: "Aceptar", exact: true }).click();
+          const sent = (await recordedReply).request().postDataJSON();
+          assert(!JSON.stringify(sent).includes("4111111111110042") && !JSON.stringify(sent).includes("4111 1111 1111 0042"), "the real API receives only the last four digits");
+          assert.equal(sent.payment.cardNumber, undefined); assert.equal(sent.payment.cvv, undefined);
+          if (method === "credit") assert.equal(sent.payment.last4, "0042");
           const print = page.getByRole("dialog", { name: "¿Quieres imprimir el recibo?", exact: true }); await print.waitFor();
           await print.getByRole("button", { name: "No imprimir", exact: true }).click();
           const saved = (await store.read()).remittances.transfers.at(-1)!;
           assert.equal(saved.payment?.method, method === "credit" || method === "card" ? "card" : method);
-          if (method === "credit") { assert.equal(saved.payment?.last4,"0042"); assert.equal(saved.payment?.cardType,"credit"); assert.equal(saved.payment?.cardSurchargeBps,250); assert(totalPaidForTransfer(saved)>saved.totalAmount); }
+          if (method === "credit") { assert(!JSON.stringify(await store.read()).includes("4111111111110042")); assert.equal(saved.payment?.last4,"0042"); assert.equal(saved.payment?.cardType,"credit"); assert.equal(saved.payment?.cardSurchargeBps,250); assert(totalPaidForTransfer(saved)>saved.totalAmount); }
           if (method === "card") { assert.equal(saved.payment?.cardType,"debit"); assert.equal(saved.payment?.cardSurchargeAmount,0); }
           assert.equal((await store.read()).remittances.events.find((event) => event.transferId === saved.id && event.type === "sent")?.amount, 0);
           await workspace.getByRole("button", { name: saved.envioReference, exact: true }).click();
