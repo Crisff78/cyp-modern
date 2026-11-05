@@ -50,7 +50,7 @@ export function CardNumberInput({ last4, onLast4Change, onInvalid, invalid, lock
       if (digits.length && digits.length !== 16) onLast4Change("", CARD_NUMBER_MESSAGE);
     }
   };
-  return <input ref={field} type="text" inputMode="numeric" autoComplete="off" autoCapitalize="off" spellCheck={false}
+  return <input ref={field} data-card-number type="text" inputMode="numeric" autoComplete="off" autoCapitalize="off" spellCheck={false}
     maxLength={19} defaultValue={maskedCardNumber(last4)} disabled={locked} aria-invalid={invalid || undefined}
     placeholder="0000 0000 0000 0000" title={CARD_NUMBER_MESSAGE}
     onFocus={(event) => { if (isMaskedCardNumber(event.currentTarget.value)) event.currentTarget.select(); }}

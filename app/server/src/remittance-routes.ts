@@ -13,6 +13,7 @@ import { boundedId, freeText, phone, singleLine } from "./input-validation.js";
 import { remittanceClientDraft } from "./client-schema.js";
 import { registerRemittanceClient } from "./remittance-client-registration.js";
 import { isCardholderNameDraft, isPaymentTextDraft, paymentMethods } from "../../shared/remittances/payment.mjs";
+import { CardVault, cardEnvelopeSchema } from "./card-vault.js";
 
 type Mutate = <T, P = Record<string, string>>(
   path: string, summary: string, schema: z.ZodType<T>,
@@ -31,13 +32,13 @@ const quoteFields = {
 };
 export function registerRemittanceRoutes(
   app: FastifyInstance, store: Store, user: (req: FastifyRequest) => User,
-  mutate: Mutate, describe: Describe, systemOperators: User[],
+  mutate: Mutate, describe: Describe, systemOperators: User[], vault?: CardVault,
 ) {
   const get = (path: string, summary: string, handler: (req: FastifyRequest) => unknown) => {
     app.get(path, handler); describe("get", path, summary);
   };
   get("/api/envios/snapshot", "Estado de envíos, tasas y cajas por moneda", async (req) =>
-    remittanceSnapshot(await store.read(), user(req), systemOperators));
+    ({ ...remittanceSnapshot(await store.read(), user(req), systemOperators), cardStorage: vault?.info() ?? { enabled: false } }));
   get("/api/envios/clientes/buscar", "Buscar clientes de envíos por código, nombre o teléfono sin devolver notas", async (req) => {
     const input = z.object({ query: singleLine(160, 1), side: z.enum(["sender", "recipient"]), senderId: id.optional() }).strict().parse(req.query);
     return searchRemittanceClients(await store.read(), user(req), input.query, input.side, input.senderId);
@@ -81,6 +82,7 @@ export function registerRemittanceRoutes(
     requestedReceiveAmount: amount.positive().optional(), requestedTotalAmount: amount.positive().optional(),
     deliveryConceptId: id.optional(),
     deliveryCommissionBps: bps.max(9999).optional(),
+    cardArchive: cardEnvelopeSchema.optional(),
     payment: z.object({ method: z.enum(paymentMethods), tenderedAmount: amount.optional(), reference: paymentText.min(1).optional(), bank: paymentText.optional(), verified: z.literal(true).optional(),
       cardType: z.enum(["credit", "debit"]).optional(), cardholderName: z.string().refine(isCardholderNameDraft, "Usa solo letras, espacios, tildes, guiones o apóstrofes (máximo 120).").trim().min(1).optional(), last4: z.string().regex(/^[0-9]{4}$/).optional(),
     }).strict().optional(),
@@ -107,8 +109,12 @@ export function registerRemittanceRoutes(
     const recipientDraft = input.newRecipientClient && !input.newRecipientClient.phone && input.recipientPhone
       ? { ...input.newRecipientClient, phone: input.recipientPhone } : input.newRecipientClient;
     const recipientClientId = input.recipientClientId ?? registerRemittanceClient(state, actor, recipientDraft!, "recipient", senderClientId);
-    const { newSenderClient: _sender, newRecipientClient: _recipient, ...values } = input;
-    return createRemittance(state, actor, { ...values, senderClientId, recipientClientId }, systemOperators);
+    const { newSenderClient: _sender, newRecipientClient: _recipient, cardArchive, ...values } = input;
+    if (vault && input.payment?.cardType === "credit" && !cardArchive) throw new DomainError("CARD_ARCHIVE_REQUIRED", "Actualiza la pantalla y completa el archivo cifrado de la tarjeta antes de confirmar.", 400);
+    if (cardArchive && (!vault || input.payment?.cardType !== "credit")) throw new DomainError("CARD_STORAGE_UNAVAILABLE", "El guardado cifrado de tarjeta no está disponible para este pago.", 409);
+    const result = createRemittance(state, actor, { ...values, senderClientId, recipientClientId }, systemOperators);
+    if (cardArchive) (state.remittances.cardArchives ??= []).push(vault!.archive(cardArchive, result.id, actor.id, input.payment!.last4!));
+    return cardArchive ? { ...result, cardStored: true } : result;
   });
   mutate("/api/envios/:id/pagar", "Pagar recibo completo", z.object({}).strict(),
     (state, actor, _input, params) => payRemittance(state, actor, params.id));

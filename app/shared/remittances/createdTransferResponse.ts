@@ -66,7 +66,7 @@ export function confirmedCreatedTransfer(value: unknown, expected: Record<string
       (!quotation.commissionAllocation || (row.commissionAllocation?.managerId === row.sendingUserId && typeof row.commissionAllocation?.managerName === "string" &&
         Object.entries(quotation.commissionAllocation).every(([key, value]) => row.commissionAllocation?.[key as keyof NonNullable<Transfer["commissionAllocation"]>] === value)))
     )) &&
-    paymentValid() && managerCommissionMatches(expected.managerCommission as Transfer["managerCommission"], row.managerCommission));
+    (!expected.cardArchive || row.cardStored === true) && paymentValid() && managerCommissionMatches(expected.managerCommission as Transfer["managerCommission"], row.managerCommission));
   // An answer 200 means the API finished this operation, and a retry with the same key repeats the same answer:
   // the window does not wait for another one. It names the saved reference so the operator checks it in the list.
   if (!valid) {

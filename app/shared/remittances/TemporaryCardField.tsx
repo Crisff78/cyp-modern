@@ -32,7 +32,7 @@ export function TemporaryCardField({ kind, locked, onValidityChange }: {
     input.setCustomValidity(complete ? "" : message); notify.current(complete ? undefined : message);
   };
   return <label>{kind === "expiry" ? "Vencimiento (MM/YY)" : "CVV"}<input ref={field} type={kind === "cvv" ? "password" : "text"}
-    inputMode="numeric" autoComplete="off" spellCheck={false} autoCapitalize="off" disabled={locked}
+    data-card-expiry={kind === "expiry" || undefined} inputMode="numeric" autoComplete="off" spellCheck={false} autoCapitalize="off" disabled={locked}
     maxLength={kind === "expiry" ? 5 : 4} placeholder={kind === "expiry" ? "MM/YY" : "CVV"} title={message}
     onKeyDown={(event) => { if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key.length === 1 && !(kind === "expiry" ? /^[0-9/]$/ : /^[0-9]$/).test(event.key)) { event.preventDefault(); notify.current(message); } }}
     onPaste={(event) => {

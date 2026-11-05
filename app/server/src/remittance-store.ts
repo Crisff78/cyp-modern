@@ -65,7 +65,8 @@ export async function readRemittances(client: pg.PoolClient): Promise<Remittance
     manager_share_bps AS "managerShareBps",delivery_commission_bps AS "deliveryCommissionBps",credit_card_commission_bps AS "creditCardCommissionBps",receive_rounding AS "receiveRounding",updated_at AS "updatedAt",updated_by AS "updatedBy" FROM remittance_commission_policy WHERE id=1`)).rows[0];
   const deliveryConcepts = (await client.query(`SELECT id,name,commission_bps AS "commissionBps",active,updated_at AS "updatedAt",updated_by AS "updatedBy"
     FROM remittance_delivery_concepts ORDER BY name,id`)).rows.map((row) => clean<DeliveryConcept>(row));
-  return { rates, rateHistory, cashSessions, cashMovements, transfers, events, deliveryConcepts, ...(policy ? { commissionPolicy: clean<NonNullable<RemittanceState["commissionPolicy"]>>(policy) } : {}) };
+  const cardArchives = (await client.query(`SELECT transfer_id AS "transferId",actor_id AS "actorId",key_id AS "keyId",created_at AS "createdAt",expires_at AS "expiresAt",envelope FROM remittance_card_vault ORDER BY transfer_id`)).rows.map((row) => ({ ...row.envelope, ...clean({ transferId: row.transferId, actorId: row.actorId, keyId: row.keyId, createdAt: row.createdAt, expiresAt: row.expiresAt }) })) as import("./card-vault.js").ArchivedCard[];
+  return { rates, rateHistory, cashSessions, cashMovements, transfers, events, deliveryConcepts, ...(cardArchives.length ? { cardArchives } : {}), ...(policy ? { commissionPolicy: clean<NonNullable<RemittanceState["commissionPolicy"]>>(policy) } : {}) };
 }
 
 export async function saveRemittances(client: pg.PoolClient, state: RemittanceState, before: RemittanceState) {
@@ -134,4 +135,12 @@ export async function saveRemittances(client: pg.PoolClient, state: RemittanceSt
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
       [event.id,event.type,event.transferId ?? null,event.cashSessionId,event.operatorId,event.currency,event.amount,event.actorId,event.createdAt,event.reason ?? null,event.refund ? JSON.stringify(event.refund) : null]);
   }
+  for (const row of state.cardArchives ?? []) {
+    const old = before.cardArchives?.find((item) => item.transferId === row.transferId);
+    if (old) { if (JSON.stringify(old) !== JSON.stringify(row)) throw new DomainError("CARD_ARCHIVE_IMMUTABLE", "El archivo cifrado no se puede modificar.", 409); continue; }
+    const { transferId, actorId, keyId, createdAt, expiresAt, ...envelope } = row;
+    await client.query(`INSERT INTO remittance_card_vault(transfer_id,actor_id,key_id,created_at,expires_at,envelope) VALUES($1,$2,$3,$4,$5,$6)`, [transferId,actorId,keyId,createdAt,expiresAt,JSON.stringify(envelope)]);
+  }
+  for (const row of before.cardArchives ?? []) if (!state.cardArchives?.some((item) => item.transferId === row.transferId))
+    await client.query(`DELETE FROM remittance_card_vault WHERE transfer_id=$1 AND expires_at <= CURRENT_TIMESTAMP`, [row.transferId]);
 }
