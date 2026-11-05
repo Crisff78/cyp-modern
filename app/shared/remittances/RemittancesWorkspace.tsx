@@ -935,7 +935,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
       <p>Puedes imprimirlo ahora o más tarde desde el detalle del envío.</p>
       <ReceiptPrintControls value={receiptOptions} onChange={setReceiptOptions} />
       {receiptPrintError && <p className="remittance-error" role="alert">{receiptPrintError}</p>}
-      <div className="remittance-actions"><button type="button" onClick={closePrintPrompt}>No imprimir</button><button type="button" className="remittance-primary" onClick={printSavedReceipt}>Imprimir</button></div>
+      <div className="remittance-actions"><button type="button" onClick={closePrintPrompt}>No imprimir</button><button type="button" data-autofocus className="remittance-primary" onClick={printSavedReceipt}>Imprimir</button></div>
     </Dialog>}
   </section>;
 }
