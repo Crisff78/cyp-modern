@@ -17,7 +17,7 @@ const other: User = { id: "cashier-otro", name: "Otro cajero", role: "cashier" }
 const operators = [admin, cashier, other];
 const code = (expected: string) => (error: unknown) => { assert.equal((error as { code: string }).code, expected); return true; };
 
-test("the opening is the close before less the discharge; only the permission apart changes it", () => {
+test("the opening is the close before less the discharge; a nonzero carry is fixed even with the special permission", () => {
   const state = seed();
   // A first box: there is nothing to carry, the cashier writes it.
   assert.equal(remittanceOpeningCarry(state, cashier.id, "DOP", businessDate(day1)), undefined);
@@ -43,13 +43,18 @@ test("the opening is the close before less the discharge; only the permission ap
   assert.equal(second.carriedFrom, first.id); assert.equal(second.openingAmount, 130000);
   closeRemittanceCash(state, cashier, second.id, 130000, day2);
   // Administration has the permission by its role; a cashier only as an additional permission.
-  const third = openRemittanceCash(state, admin, { operatorId: cashier.id, currency: "DOP", openingAmount: 99900 }, operators, day3);
-  assert.equal(third.carriedFrom, second.id); assert.equal(third.openingAmount, 99900);
+  assert.throws(() => openRemittanceCash(state, admin, { operatorId: cashier.id, currency: "DOP", openingAmount: 99900 }, operators, day3), code("OPENING_FIXED"));
+  const third = openRemittanceCash(state, admin, { operatorId: cashier.id, currency: "DOP", openingAmount: 130000 }, operators, day3);
+  assert.equal(third.carriedFrom, second.id); assert.equal(third.openingAmount, 130000);
   const granted: User = { ...other, access: effectiveAccess("cashier", { permissionMode: "custom", roleExceptions: true, permissionIds: [1, 2],
     remittancePermissions: ["remittances.view", "remittances.cash.view", "remittances.cash.open", "remittances.cash.close", "remittances.cash.opening.edit"] }) };
   const own = openRemittanceCash(state, granted, { operatorId: other.id, currency: "USD", openingAmount: 1000 }, operators, day1);
   closeRemittanceCash(state, granted, own.id, 1000, day1);
-  assert.equal(openRemittanceCash(state, granted, { operatorId: other.id, currency: "USD", openingAmount: 400 }, operators, day2).openingAmount, 400);
+  assert.throws(() => openRemittanceCash(state, granted, { operatorId: other.id, currency: "USD", openingAmount: 400 }, operators, day2), code("OPENING_FIXED"));
+  openRemittanceCash(state, granted, { operatorId: other.id, currency: "USD", openingAmount: 1000 }, operators, day2);
+  const zero = openRemittanceCash(state, granted, { operatorId: other.id, currency: "EUR", openingAmount: 0 }, operators, day1);
+  closeRemittanceCash(state, granted, zero.id, 0, day1);
+  assert.equal(openRemittanceCash(state, granted, { operatorId: other.id, currency: "EUR", openingAmount: 400 }, operators, day2).openingAmount, 400);
 });
 
 test("an entrega adicional goes only to the open box of today, by whoever may open it", () => {

@@ -513,10 +513,10 @@ export function openRemittanceCash(state: State, user: User, input: { operatorId
   const previous = state.remittances.cashSessions.filter((c) => c.operatorId === input.operatorId && c.currency === input.currency);
   if (previous.some((c) => c.date === date)) fail("CASH_EXISTS", "Ya existe una caja para ese operador, moneda y fecha.", 409);
   if (previous.some((c) => c.status === "open")) fail("PREVIOUS_CASH_OPEN", "Cierra la caja anterior antes de abrir otra.", 409);
-  // The opening is the close of the box before (less its discharge); only the permission apart changes it.
+  // Nonzero carry is fixed for every account; the existing permission applies only to a zero carry.
   const carry = remittanceOpeningCarry(state, input.operatorId, input.currency, date);
-  if (carry && input.openingAmount !== carry.amount && !hasRemittancePermission(user, "remittances.cash.opening.edit"))
-    fail("OPENING_FIXED", `El efectivo inicial de esta caja es el cierre del ${carry.date}. Solo una cuenta con el permiso «Cambiar el efectivo inicial de la caja de remesas» puede cambiarlo.`, 409);
+  if (carry && input.openingAmount !== carry.amount && (carry.amount !== 0 || !hasRemittancePermission(user, "remittances.cash.opening.edit")))
+    fail("OPENING_FIXED", `El efectivo inicial de esta caja es el cierre del ${carry.date}. ${carry.amount !== 0 ? "Un cierre distinto de cero no se puede modificar." : "Para cambiar una apertura en cero se requiere el permiso correspondiente."}`, 409);
   const cash: CashSession = { id: randomUUID(), ...input, date, openedBy: user.id, openedAt: now.toISOString(), status: "open", ...(carry ? { carriedFrom: carry.cashId } : {}) };
   state.remittances.cashSessions.push(cash);
   addEvent(state, user, cash, "opened", cash.openingAmount, now);

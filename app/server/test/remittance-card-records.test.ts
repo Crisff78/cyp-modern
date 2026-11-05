@@ -51,7 +51,7 @@ test("card records reject full numbers, security codes, expiry, missing metadata
   const state = fixture(), body = bodyFor(state), before = structuredClone(state);
   for (const payment of [
     { ...credit, last4: "4111111111111111" }, { ...credit, last4: "123" }, { ...credit, last4: 1234 },
-    { ...credit, cardholderName: "" }, { ...credit, cardholderName: "X\u200bY" }, { ...credit, cardholderName: "x".repeat(121) },
+    { ...credit, cardholderName: "" }, { ...credit, cardholderName: "Titular 123" }, { ...credit, cardholderName: "X\u200bY" }, { ...credit, cardholderName: "x".repeat(121) },
     { ...credit, cardNumber: "4111111111111111" }, { ...credit, cvv: "123" }, { ...credit, expiry: "12/29" },
     { ...credit, cardSurchargeBps: 0 }, { ...credit, cardSurchargeAmount: 0 },
     { method: "card", reference: "UNTYPED", verified: true }, { ...credit, cardType: "other" },

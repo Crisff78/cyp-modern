@@ -82,7 +82,7 @@ export function registerRemittanceRoutes(
     deliveryConceptId: id.optional(),
     deliveryCommissionBps: bps.max(9999).optional(),
     payment: z.object({ method: z.enum(paymentMethods), tenderedAmount: amount.optional(), reference: paymentText.min(1).optional(), bank: paymentText.optional(), verified: z.literal(true).optional(),
-      cardType: z.enum(["credit", "debit"]).optional(), cardholderName: z.string().refine(isCardholderNameDraft, "Usa hasta 120 caracteres en una sola línea.").trim().min(1).optional(), last4: z.string().regex(/^[0-9]{4}$/).optional(),
+      cardType: z.enum(["credit", "debit"]).optional(), cardholderName: z.string().refine(isCardholderNameDraft, "Usa solo letras, espacios, tildes, guiones o apóstrofes (máximo 120).").trim().min(1).optional(), last4: z.string().regex(/^[0-9]{4}$/).optional(),
     }).strict().optional(),
     quote: z.object({ date: z.iso.date(), sourceRate: z.string().max(19), destinationRate: z.string().max(19),
       quotedAt: z.iso.datetime().optional(), sourceRateChangeId: id.optional(), destinationRateChangeId: id.optional(),
