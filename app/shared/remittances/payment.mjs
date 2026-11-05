@@ -5,7 +5,7 @@ export const paymentMethodLabels = {
 export const cardTypes = ["credit", "debit"];
 export const cardTypeLabels = { credit: "Crédito", debit: "Débito" };
 export const isCardLast4Draft = (value) => typeof value === "string" && /^[0-9]{0,4}$/.test(value);
-export const isCardholderNameDraft = (value) => isPaymentTextDraft(value) && value.length <= 120;
+export const isCardholderNameDraft = (value) => isPaymentTextDraft(value) && value.length <= 120 && /^[\p{L}\p{M} '\u2019.-]*$/u.test(value);
 export const paymentLabel = (payment) => payment.method === "card" && cardTypes.includes(payment.cardType)
     ? `Tarjeta de ${cardTypeLabels[payment.cardType].toLocaleLowerCase("es")}` : paymentMethodLabels[payment.method];
 export class PaymentValidationError extends Error {
@@ -75,7 +75,7 @@ export function paymentAmounts(total, input, creditCardCommissionBps = 0) {
             return invalid("Selecciona crédito o débito para comprobar el recargo.");
         if (input.cardType === "debit" && (input.cardholderName !== undefined || input.last4 !== undefined))
             return invalid("El débito solo requiere el comprobante de pago.");
-        if (input.cardType === "credit" && (!isCardholderNameDraft(input.cardholderName) || !input.cardholderName.trim() || (typeof input.last4 !== "string" || !/^[0-9]{4}$/.test(input.last4))))
+        if (input.cardType === "credit" && (!isCardholderNameDraft(input.cardholderName) || !/\p{L}/u.test(input.cardholderName) || (typeof input.last4 !== "string" || !/^[0-9]{4}$/.test(input.last4))))
             return invalid("Escribe el titular y solo los últimos 4 dígitos de la tarjeta.");
         if (input.cardType !== undefined) {
             const charge = cardPaymentCharge(total, input.cardType, creditCardCommissionBps);
