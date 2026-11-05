@@ -90,6 +90,7 @@ export type RemittanceEvent = {
   refund?: RemittanceRefund;
 };
 export type RemittanceState = {
+  cardArchives?: import("./card-vault.js").ArchivedCard[];
   rates: ExchangeRate[]; transfers: Remittance[];
   cashSessions: CashSession[]; events: RemittanceEvent[]; rateHistory?: RateChange[]; cashMovements?: CashMovement[];
   commissionPolicy?: CommissionPolicy; deliveryConcepts?: DeliveryConcept[];
@@ -445,6 +446,7 @@ export function visibleRemittanceResult<T>(user: User, value: T): T {
 export function transferView(state: State, user: User, transfer: Remittance) {
   return visibleRemittanceResult(user, {
     ...transfer,
+    ...(state.remittances.cardArchives?.some((row) => row.transferId === transfer.id && Date.parse(row.expiresAt) > Date.now()) ? { cardStored: true } : {}),
     canPay: hasRemittancePermission(user, "remittances.pay") && transfer.status === "pending" && canSeeReceipt(state, user, transfer),
     canCancel: hasRemittancePermission(user, "remittances.cancel") && transfer.status === "pending" && (user.role === "admin" || transfer.sendingUserId === user.id),
   });

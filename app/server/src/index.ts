@@ -9,6 +9,7 @@ import { registerPublicWeb } from "./public-web.js";
 import { createDemoStationControl, createRraaValidator, limitRraaCalls, type RraaValidator } from "./rraa.js";
 import { validateDemoAccessCode } from "./demo-access.js";
 import { businessDate } from "./domain.js";
+import { configuredCardVault } from "./card-vault.js";
 import { generateScheduledCharges, nextChargeDate } from "./recurring-charges.js";
 
 const requestedDemo = process.env.DEMO_MODE === "true";
@@ -108,6 +109,7 @@ catch (error) {
 if (publicWeb) console.log(rraa ? `Estaciones: validación con RRAA (máximo ${PUBLIC_DEMO_RRAA_CALLS_PER_MINUTE} consultas por minuto).` : "Estaciones: control de prueba de la demo (RRAA sin configurar).");
 const { store, demo, source } = await openStore();
 const app = await buildApp({
+  cardVault: configuredCardVault(process.env),
   store,
   secret: process.env.JWT_SECRET,
   demo,

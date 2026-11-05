@@ -6,6 +6,7 @@ import type { State } from "./domain.js";
 // to migrations, maintenance, backups and integration tests without changing it.
 export function requestStore(store: Store): Store {
   return {
+    ...(store.cardPaymentSchemaReady ? { cardPaymentSchemaReady: store.cardPaymentSchemaReady.bind(store) } : {}),
     read: () => store.readRequest ? store.readRequest() : store.read(),
     transaction: <T>(fn: (state: State) => T | Promise<T>) => store.transactionRequest ? store.transactionRequest(fn) : store.transaction(fn),
     close: () => store.close(),

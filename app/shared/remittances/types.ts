@@ -44,6 +44,7 @@ export type Quotation = { sourceCurrency: Currency; destinationCurrency: Currenc
 /** What the person receives: after the commission at the destination and the rounding; a former send, its converted amount. */
 export const payoutOf = (quotation: Pick<Quotation, "receiveAmount" | "calculation">) => quotation.calculation?.payoutAmount ?? quotation.receiveAmount;
 export type Transfer = Quotation & {
+  cardStored?: boolean;
   id: string; sequence: number; envioReference: string; reciboReference: string; operatingCode: string;
   senderClientId: string; recipientClientId: string; sendingUserId: string; registeredBy: string;
   note: string; status: "pending" | "paid" | "cancelled"; createdAt: string;
@@ -62,6 +63,7 @@ export type Cash = {
   added?: number; discharged?: number; carry?: number; carriedFrom?: string; canAdd?: boolean;
 };
 export type RemittanceSnapshot = {
+  cardStorage?: import("./cardArchive.mjs").CardStorageInfo;
   access?: EffectiveAccess;
   clientRoutes?: { id: string; name: string }[];
   businessDate: string; currencies: Currency[];

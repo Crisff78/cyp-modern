@@ -34,6 +34,7 @@ import { isMoneyDraft, MONEY_INPUT_MESSAGE as moneyInputMessage } from "./moneyI
 import { printRemittanceReceipt, remittanceReceipt } from "./receipt";
 import { RemittanceReceipt } from "./RemittanceReceipt";
 import { ReceiptPrintControls, type ReceiptPrintOptions } from "./ReceiptPrintControls";
+import { encryptCardArchive } from "./cardArchive.mjs";
 
 export type RemittanceSection = "envios" | "recibos" | "caja" | "reportes";
 type Tab = RemittanceSection;
@@ -65,7 +66,7 @@ type Draft = { senderClientId: string; recipientClientId: string; sendingUserId:
 // Cents as the plain amount a money box holds (1234 → "12.34").
 const LIST_MIN_HEIGHT = 140, FORM_MIN_HEIGHT = 120;
 const centsDraft = (cents: number) => `${Math.trunc(cents / 100)}.${String(Math.abs(cents) % 100).padStart(2, "0")}`;
-for (const code of ["INVALID_PAYMENT", "INSUFFICIENT_TENDERED", "PAYMENT_NOT_VERIFIED", "REFUND_NOT_VERIFIED"]) definitiveDomainErrors.add(code);
+for (const code of ["INVALID_PAYMENT", "INSUFFICIENT_TENDERED", "PAYMENT_NOT_VERIFIED", "REFUND_NOT_VERIFIED", "CARD_PAYMENT_REJECTED", "INVALID_CARD_ARCHIVE", "CARD_STORAGE_UNAVAILABLE", "CARD_ARCHIVE_REQUIRED"]) definitiveDomainErrors.add(code);
 definitiveDomainErrors.add("INVALID_DELIVERY_COMMISSION");
 const statusText = { pending: "Pendiente de entrega", paid: "Pagado", cancelled: "Cancelado" };
 const phoneRecordText = {
@@ -532,13 +533,20 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
 
   async function submitConfirmation() {
     if (!confirmation || mutationLock.current) return;
+    mutationLock.current = true;
     let action = confirmation;
     if (action.kind === "create" && !uncertain) {
       try {
         const payment = paymentInput(action.expectedQuotation!.totalAmount, paymentDraft, action.expectedQuotation!.quote.creditCardCommissionBps ?? 0);
-        action = { ...action, body: { ...action.body, payment } };
+        let cardArchive;
+        if (payment.cardType === "credit" && snapshot?.cardStorage?.enabled) {
+          const encrypted = encryptCardArchive(root.current?.querySelector<HTMLInputElement>("[data-card-number]")?.value ?? "", root.current?.querySelector<HTMLInputElement>("[data-card-expiry]")?.value ?? "", snapshot.cardStorage);
+          setBusy(true); cardArchive = await encrypted;
+        }
+        const { cardArchive: _previousArchive, ...currentBody } = action.body;
+        action = { ...action, body: { ...currentBody, payment, ...(cardArchive ? { cardArchive } : {}) } };
         setConfirmation(action);
-      } catch (failure) { setConfirmationError(failureMessage(failure)); return; }
+      } catch (failure) { mutationLock.current = false; setBusy(false); setConfirmationError(failureMessage(failure)); return; }
     }
     mutationLock.current = true; setBusy(true); setConfirmationError("");
     pendingByActor.set(pendingKey, action);
@@ -925,7 +933,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
     {adding && <Dialog title={`Entrega adicional · caja ${adding.currency}`} onClose={() => setAdding(null)}><form onSubmit={prepareAddition}><p>{operatorName(adding.operatorId)} · {adding.date}</p><p>Esperado ahora: <strong>{money(adding.expected, adding.currency)}</strong></p><label>Importe que se entrega<MoneyInput data-autofocus required title={moneyInputMessage} value={addition.amount} aria-invalid={Boolean(moneyEntryErrors.addition) || undefined} onValueChange={(nextValue) => { if (!isMoneyDraft(nextValue)) { rejectMoney("addition"); return; } setMoneyEntryErrors((current) => ({ ...current, addition: undefined })); setAddition((current) => ({ ...current, amount: nextValue })); setError(""); }} onInvalidEntry={() => rejectMoney("addition")} /></label><label>Nota (opcional)<input maxLength={500} value={addition.note} onChange={(event) => { if (!isTextDraft(event.target.value, 500)) return; setAddition((current) => ({ ...current, note: event.target.value })); }} /></label><p className="remittance-help">Efectivo que se le da a esta caja después de abrirla. Se suma a lo esperado y al acumulado de entregas adicionales de la fecha.</p>{error && <p role="alert" className="remittance-error">{error}</p>}<button className="remittance-primary" type="submit">Revisar entrega</button></form></Dialog>}
     {confirmation && <Dialog title={confirmation.title} onClose={() => { setConfirmation(null); setPaymentDraft(paymentDraftFor(0)); }} locked={busy || uncertain}>
       {confirmation.description}
-      {confirmation.kind === "create" && confirmation.expectedQuotation && <><QuoteDetails quote={confirmation.expectedQuotation} cardSurchargeAmount={previewPaymentCharge(confirmation.expectedQuotation.totalAmount, paymentDraft, confirmation.expectedQuotation.quote.creditCardCommissionBps ?? 0)?.cardSurchargeAmount ?? 0} /><PaymentFields creditCardCommissionBps={confirmation.expectedQuotation.quote.creditCardCommissionBps ?? 0} total={confirmation.expectedQuotation.totalAmount} currency={confirmation.expectedQuotation.sourceCurrency} value={paymentDraft} locked={busy || uncertain} onChange={(next) => { setPaymentDraft(next); setConfirmationError(""); }} /></>}
+      {confirmation.kind === "create" && confirmation.expectedQuotation && <><QuoteDetails quote={confirmation.expectedQuotation} cardSurchargeAmount={previewPaymentCharge(confirmation.expectedQuotation.totalAmount, paymentDraft, confirmation.expectedQuotation.quote.creditCardCommissionBps ?? 0)?.cardSurchargeAmount ?? 0} /><PaymentFields cardStorage={snapshot?.cardStorage} creditCardCommissionBps={confirmation.expectedQuotation.quote.creditCardCommissionBps ?? 0} total={confirmation.expectedQuotation.totalAmount} currency={confirmation.expectedQuotation.sourceCurrency} value={paymentDraft} locked={busy || uncertain} onChange={(next) => { setPaymentDraft(next); setConfirmationError(""); }} /></>}
       {confirmationError && <p className="remittance-error" role="alert">{confirmationError}</p>}
       {uncertain && <p>No cambies los datos ni cierres esta ventana. El reintento usa la misma referencia de operación.</p>}
       <div className="remittance-actions"><button type="button" disabled={busy || uncertain} onClick={() => { setConfirmation(null); setPaymentDraft(paymentDraftFor(0)); }}>{confirmation.kind === "create" ? "Cancelar" : "Volver"}</button><button type="button" className={confirmation.kind === "cancel" ? "remittance-danger" : "remittance-primary"} disabled={busy} onClick={() => void submitConfirmation()}>{busy ? "Registrando…" : uncertain ? "Reintentar misma operación" : confirmation.kind === "create" ? "Aceptar" : "Confirmar"}</button></div>

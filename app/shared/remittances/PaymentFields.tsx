@@ -36,7 +36,8 @@ export function previewPaymentCharge(total: number, value: PaymentDraft, bps = 0
   try { return cardPaymentCharge(total, value.method === "card" ? value.cardType : undefined, bps); }
   catch { return undefined; }
 }
-export function PaymentFields({ total, currency, creditCardCommissionBps = 0, value, onChange, locked = false }: {
+export function PaymentFields({ total, currency, creditCardCommissionBps = 0, value, onChange, locked = false, cardStorage }: {
+  cardStorage?: import("./cardArchive.mjs").CardStorageInfo;
   total: number; currency: Currency; creditCardCommissionBps?: number; value: PaymentDraft; onChange: (value: PaymentDraft) => void; locked?: boolean;
 }) {
   const textMessage = "Usa hasta 160 caracteres en una sola línea, sin caracteres de control ni marcas invisibles.";
@@ -68,11 +69,11 @@ export function PaymentFields({ total, currency, creditCardCommissionBps = 0, va
         <label>Nombre del titular<input autoComplete="off" maxLength={120} value={value.cardholderName} aria-invalid={Boolean(value.entryErrors?.cardholderName) || undefined} onPaste={(event) => restrictPaste(event, isCardholderNameDraft, () => reject("cardholderName", "Usa solo letras, espacios, tildes, guiones o apóstrofes (máximo 120)."))} onChange={(event) => { if (!isCardholderNameDraft(event.target.value)) { reject("cardholderName", "Usa solo letras, espacios, tildes, guiones o apóstrofes (máximo 120)."); return; } update("cardholderName", event.target.value); }} /></label>
         <label>Número de tarjeta (16 dígitos)<CardNumberInput last4={value.last4} locked={locked} invalid={Boolean(value.entryErrors?.last4)} onInvalid={() => reject("last4", CARD_NUMBER_MESSAGE)} onLast4Change={(last4, error) => onChange({ ...value, last4, verified: false, entryErrors: { ...value.entryErrors, last4: error } })} /></label>
       </div>}
-      {value.method === "card" && value.cardType === "credit" && <fieldset><legend>Captura temporal de prueba (opcional)</legend>
-        <p className="remittance-help">Usa únicamente datos ficticios. Vencimiento y CVV no autorizan pagos, no se envían al servidor y se borran al guardar, cancelar o abandonar la página.</p>
-        <div className="remittance-payment-cash">{(["expiry", "cvv"] as const).map((field) => <TemporaryCardField key={field} kind={field} locked={locked} onValidityChange={(error, cleared) => onChange({ ...value, entryErrors: cleared ? { ...value.entryErrors, expiry: undefined, cvv: undefined } : { ...value.entryErrors, [field]: error } })} />)}</div>
+      {value.method === "card" && value.cardType === "credit" && <fieldset><legend>{cardStorage?.enabled ? "Archivo cifrado de tarjeta" : "Captura temporal de prueba (opcional)"}</legend>
+        <p className="remittance-help">{cardStorage?.enabled ? `El número completo y el vencimiento se guardarán cifrados durante ${cardStorage.retentionDays} días. El CVV no se envía ni se guarda. Estos datos no autorizan un cobro.` : "El guardado de la tarjeta completa no está activado: solo se conservan los últimos cuatro dígitos. Usa datos ficticios en vencimiento y CVV; ambos se borran y no se guardan."}</p>
+        <div className="remittance-payment-cash">{(cardStorage?.enabled ? ["expiry"] as const : ["expiry", "cvv"] as const).map((field) => <TemporaryCardField key={field} kind={field} locked={locked} onValidityChange={(error, cleared) => onChange({ ...value, entryErrors: cleared ? { ...value.entryErrors, expiry: undefined, cvv: undefined } : { ...value.entryErrors, [field]: error } })} />)}</div>
       </fieldset>}
-      {value.method === "card" && value.cardType === "credit" && <p className="remittance-help">Revisa los 16 dígitos antes de guardar. Al guardar se conservan solo los últimos cuatro, también en el recibo. El número se oculta si abandonas esta página.</p>}
+      {value.method === "card" && value.cardType === "credit" && <p className="remittance-help">Revisa los 16 dígitos antes de guardar. {cardStorage?.enabled ? "En los recibos y consultas solo se muestran los últimos cuatro." : "Al guardar se conservan solo los últimos cuatro, también en el recibo."} El número se oculta si abandonas esta página.</p>}
       <label>Referencia del comprobante<input maxLength={160} inputMode="text" title={textMessage} autoComplete="off" value={value.reference} aria-invalid={Boolean(value.entryErrors?.reference) || undefined} onPaste={(event) => restrictPaste(event, isPaymentTextDraft, () => reject("reference", textMessage))} onChange={(event) => { const next = event.target.value; if (!isPaymentTextDraft(next)) { reject("reference", textMessage); return; } update("reference", next); }} /></label>
       <label>Banco o proveedor (opcional)<select aria-label="Banco o proveedor (opcional)" value={value.bank} onChange={(event) => update("bank", event.target.value)}>
         <option value="">Selecciona un banco</option>
