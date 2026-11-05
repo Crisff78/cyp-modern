@@ -460,6 +460,7 @@ export async function buildApp(config: Config) {
   app.get("/api/health", async () => ({
     status: "ok",
     mode: config.demo ? "demo" : "configured",
+    ...(config.store.sameCurrencySchemaReady ? { sameCurrencyRecordsReady: await config.store.sameCurrencySchemaReady() } : {}),
     ...(config.store.cardPaymentSchemaReady ? { cardRecordsReady: await config.store.cardPaymentSchemaReady() } : {}),
     businessDate: businessDate(),
     // The version published (Render gives its commit): anyone can check that the latest one is the one running.
