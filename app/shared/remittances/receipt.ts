@@ -4,6 +4,7 @@ import type { Transfer } from "./types";
 import { payoutOf } from "./types";
 import { escapeHtml, formatDate, formatMoney, type OutputSection } from "./output";
 import { formatCrossRate } from "./crossRate";
+import { thermalReceiptImages, thermalReceiptSize } from "./thermalReceipt";
 
 const status = { pending: "Pendiente de entrega", paid: "Pagado", cancelled: "Cancelado" };
 export const defaultReceiptFooter = "Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío.";
@@ -73,25 +74,45 @@ export function remittanceReceipt(transfer: Transfer, fallback?: ReceiptIssuer, 
     ] };
 }
 
-export function receiptHtml(receipt: Receipt, options: import("./ReceiptPrintControls").ReceiptPrintOptions = { paper: "auto", compact: false }) {
-  const thermal = options.paper === "76" || options.paper === "80" || options.paper === "58" ? Number(options.paper) : undefined;
-  const sections = options.compact ? receipt.sections.filter((section) => section.title !== "Nota" && !section.title.startsWith("Tasas aplicadas")).map((section) => ({ ...section,
+function receiptSections(receipt: Receipt, compact: boolean) {
+  return compact ? receipt.sections.filter((section) => section.title !== "Nota" && !section.title.startsWith("Tasas aplicadas")).map((section) => ({ ...section,
     rows: section.title === "Registro del recibo" ? section.rows.filter(([label]) => label === "Envío" || label === "Estado")
       : section.title === "Remitente" || section.title === "Destinatario" ? section.rows.filter(([label]) => label === "Nombre" || label === "Teléfono") : section.rows,
   })) : receipt.sections;
+}
+export function receiptHtml(receipt: Receipt, options: import("./ReceiptPrintControls").ReceiptPrintOptions = { paper: "auto", compact: false }) {
+  const thermal = thermalReceiptSize(options.paper);
+  const sections = receiptSections(receipt, options.compact);
   const { issuer } = receipt;
   const logo = issuer.logoDataUrl && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(issuer.logoDataUrl) && issuer.logoDataUrl.length <= 24576 ? `<img alt="" src="${escapeHtml(issuer.logoDataUrl)}">` : "";
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${escapeHtml(receipt.reference)}</title><style>
     @page{size:auto;margin:12mm}*{box-sizing:border-box}body{font:13px Arial,sans-serif;color:#132b29;margin:0 auto;max-width:660px}header{text-align:center;border-bottom:2px solid #31534e;padding:10px 0}header img{max-width:130px;max-height:65px}h1{font-size:19px}h2{font-size:14px;border-bottom:1px solid #bbb;padding-bottom:4px}p{margin:5px 0;white-space:pre-wrap;overflow-wrap:anywhere}.ref{display:flex;justify-content:space-between;gap:12px;padding:12px 0;font-weight:bold}section{break-inside:avoid}dl{margin:8px 0}dl>div{display:flex;justify-content:space-between;gap:14px;padding:4px 0;border-bottom:1px solid #eee}dt{flex:1}dd{margin:0;text-align:right;flex:1;overflow-wrap:anywhere;white-space:pre-wrap}footer{border-top:2px solid #31534e;margin-top:16px;padding-top:12px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}
-    ${thermal ? `@page{size:auto;margin:3mm}body{margin:0;width:${thermal - 6}mm;max-width:${thermal - 6}mm;font-size:11px;color:#000}h1{font-size:15px}h2{font-size:12px}.ref{flex-direction:column;gap:3px;overflow-wrap:anywhere}header img{max-width:40mm}dl>div{gap:4px}section{break-inside:auto}footer{font-size:10px}` : ""}
+    ${thermal ? `@page{size:auto;margin:${thermal.marginMm}mm}body{margin:0;width:${thermal.widthMm}mm;max-width:${thermal.widthMm}mm;font-size:11px;color:#000}h1{font-size:15px}h2{font-size:12px}.ref{flex-direction:column;gap:3px;overflow-wrap:anywhere}header img{max-width:40mm}dl>div{gap:4px}section{break-inside:auto}footer{font-size:10px}` : ""}
     ${options.compact ? "header{padding:5px 0}section h2{margin:6px 0}dl{margin:3px 0}dl>div{padding:2px 0}footer{margin-top:8px;padding-top:6px}" : ""}
-    </style></head><body><div class="ref"><span>Recibo ${escapeHtml(receipt.reference)}</span><span>${escapeHtml(receipt.date)}</span></div><header>${logo}<h1>${escapeHtml(issuer.name)}</h1>${[issuer.address, issuer.phone, issuer.email].filter(Boolean).map((line) => `<p>${escapeHtml(line)}</p>`).join("")}</header>${sections.map((section) => `<section><h2>${escapeHtml(section.title)}</h2><dl>${section.rows.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join("")}</dl></section>`).join("")}<footer>${escapeHtml(receipt.footer)}</footer></body></html>`;
+    @media print{.thermal-print-help{display:none!important}}.thermal-image-output{margin:0;padding:0;width:100%}
+    </style></head><body><div class="ref"><span>Recibo ${escapeHtml(receipt.reference)}</span><span>${escapeHtml(receipt.date)}</span></div><header>${logo}<h1>${escapeHtml(issuer.name)}</h1>${[issuer.address, issuer.phone, issuer.email].filter(Boolean).map((line) => `<p>${escapeHtml(line)}</p>`).join("")}</header>${sections.map((section) => `<section><h2>${escapeHtml(section.title)}</h2><dl>${section.rows.map(([label, value]) => `<div><dt>${escapeHtml(label)}: </dt><dd>${escapeHtml(value)}</dd></div>`).join("")}</dl></section>`).join("")}<footer>${escapeHtml(receipt.footer)}</footer></body></html>`;
 }
 export function printRemittanceReceipt(receipt: Receipt, options?: import("./ReceiptPrintControls").ReceiptPrintOptions) {
   const popup = window.open("", "_blank", "width=780,height=820");
   if (!popup) throw new Error("Permite abrir la ventana de impresión para este sitio.");
   popup.opener = null; popup.document.write(receiptHtml(receipt, options)); popup.document.close();
   const print = () => { if (!popup.closed) { popup.focus(); popup.print(); } };
+  const thermal = thermalReceiptSize(options?.paper);
+  if (thermal) {
+    const compact = options?.compact ?? false;
+    void thermalReceiptImages(popup.document, {...receipt, sections: receiptSections(receipt, compact)}, thermal.widthMm, compact).then(content => {
+      if (popup.closed) return;
+      const help = popup.document.createElement("p"); help.className = "thermal-print-help";
+      help.textContent = "Recibo preparado como imagen para conservar acentos y formato. Selecciona el papel térmico y el controlador de tu impresora.";
+      popup.document.body.replaceChildren(help, content); print();
+    }).catch(() => {
+      if (popup.closed) return;
+      const message = popup.document.createElement("p"); message.setAttribute("role", "alert");
+      message.textContent = "No se pudo preparar el recibo para impresión. Cierra esta ventana y vuelve a intentarlo.";
+      popup.document.body.replaceChildren(message);
+    });
+    return;
+  }
   const images = Array.from(popup.document.images).filter((img) => !img.complete);
   if (!images.length) window.setTimeout(print, 150);
   else void Promise.all(images.map((img) => new Promise<void>((resolve) => { img.onload = () => resolve(); img.onerror = () => resolve(); }))).then(print);

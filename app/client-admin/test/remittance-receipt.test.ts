@@ -38,7 +38,7 @@ test("thermal and telephone receipts retain references, frozen names, amounts, p
   const before = JSON.stringify(model);
   for (const paper of ["76", "80", "58"] as const) {
     const html = receiptHtml(model, { paper, compact: true });
-    assert(html.includes(`width:${Number(paper) - 6}mm`));
+    assert(html.includes(`width:${paper === "80" ? 72 : paper === "58" ? 48 : 70}mm`));
     for (const text of ["REC00000001", "ENV00000001", "O&#39;Connor &lt;sender&gt;", "Destinatario", "8095550101", "DOP 990.00", "DOP 1,000.00", "DOP 10.00", "Conserve este recibo"]) assert(html.includes(text), text);
     for (const text of ["Fictional &amp; Co", "Código de operación", "Comisión del gestor", "Prueba &amp; validación"]) assert(!html.includes(text), text);
   }
