@@ -78,6 +78,7 @@ import { clientInput } from "./client-schema.js";
 import { previousCashPreview, reconcilePreviousCash } from "./cash-reconciliation.js";
 
 type Config = {
+  cardVault?: import("./card-vault.js").CardVault;
   store: Store;
   secret: string;
   demo: boolean;
@@ -248,11 +249,19 @@ export async function buildApp(config: Config) {
           message: "Inicia sesión para continuar.",
         },
       });
-    console.error("Request failed", request.id, (error as Error).message);
+    const reference = /^[a-zA-Z0-9_-]{1,64}$/.test(request.id) ? request.id : "soporte";
+    const databaseError = error as { code?: string; constraint?: string };
+    if (databaseError.code === "23514" && ["remittance_payment_valid", "remittance_card_rate_matches_quote"].includes(databaseError.constraint ?? "")) {
+      console.error("Request failed", reference, databaseError.code, databaseError.constraint);
+      return reply.code(409).send({ error: { code: "CARD_PAYMENT_REJECTED", requestId: reference,
+        message: `El servidor rechazó los datos del comprobante de tarjeta; el envío no se guardó. Contacta a soporte con la referencia ${reference}.` } });
+    }
+    console.error("Request failed", reference, (error as Error).message);
     return reply.code(500).send({
       error: {
         code: "INTERNAL",
-        message: "No se pudo completar la operación. Intenta de nuevo.",
+        message: `No se pudo completar la operación. Referencia para soporte: ${reference}.`,
+        requestId: reference,
       },
     });
   });
@@ -448,9 +457,10 @@ export async function buildApp(config: Config) {
       });
     });
   };
-  app.get("/api/health", () => ({
+  app.get("/api/health", async () => ({
     status: "ok",
     mode: config.demo ? "demo" : "configured",
+    ...(config.store.cardPaymentSchemaReady ? { cardRecordsReady: await config.store.cardPaymentSchemaReady() } : {}),
     businessDate: businessDate(),
     // The version published (Render gives its commit): anyone can check that the latest one is the one running.
     ...(process.env.RENDER_GIT_COMMIT ? { version: process.env.RENDER_GIT_COMMIT.slice(0, 7) } : {}),
@@ -1569,7 +1579,7 @@ export async function buildApp(config: Config) {
   registerRemittanceRoutes(app, config.store, user, mutate, describe, config.demo ? [
     { id: "demo-admin", name: "Administración", role: "admin" },
     { id: "demo-collector", name: "Cobrador", role: "collector", collectorId: "col-1" },
-  ] : [{ id: "configured-admin", name: "Administración", role: "admin" }]);
+  ] : [{ id: "configured-admin", name: "Administración", role: "admin" }], config.cardVault);
   app.get("/api/openapi.json", () => ({
     openapi: "3.1.0",
     info: {
@@ -1587,5 +1597,18 @@ export async function buildApp(config: Config) {
     paths,
   }));
   app.addHook("onClose", async () => config.store.close());
+  let pruningCards = false;
+  const pruneCards = async () => {
+    if (pruningCards) return;
+    pruningCards = true;
+    try {
+      if (!(await config.store.read()).remittances.cardArchives?.some((row) => Date.parse(row.expiresAt) <= Date.now())) return;
+      await config.store.transaction((state) => { state.remittances.cardArchives = state.remittances.cardArchives?.filter((row) => Date.parse(row.expiresAt) > Date.now()); });
+    } finally { pruningCards = false; }
+  };
+  app.addHook("onReady", pruneCards);
+  const cardsTimer = setInterval(() => void pruneCards().catch(() => app.log.error("No se pudo depurar el archivo cifrado vencido.")), 3600000);
+  cardsTimer.unref();
+  app.addHook("onClose", async () => { clearInterval(cardsTimer); });
   return app;
 }

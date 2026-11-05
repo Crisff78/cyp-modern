@@ -8,6 +8,7 @@ import { readAdminTools, saveAdminTools } from "./admin-tools-store.js";
 import { readCatalogs, saveCatalogMasters, saveRecurringCharges } from "./catalog-store.js";
 pg.types.setTypeParser(20, Number);
 export interface Store {
+  cardPaymentSchemaReady?(): Promise<boolean | null>;
   read(): Promise<State>;
   readRequest?(): Promise<State>;
   transactionRequest?<T>(fn: (s: State) => T | Promise<T>): Promise<T>;
@@ -19,6 +20,11 @@ export interface Store {
   close(): Promise<void>;
 }
 function protectCashJournal(before: State, after: State) {
+  for (const row of before.remittances.cardArchives ?? []) {
+    const saved = after.remittances.cardArchives?.find((item) => item.transferId === row.transferId);
+    if ((saved && JSON.stringify(saved) !== JSON.stringify(row)) || (!saved && Date.parse(row.expiresAt) > Date.now()))
+      throw new DomainError("CARD_ARCHIVE_IMMUTABLE", "El archivo cifrado no se puede modificar ni borrar antes de vencer.", 409);
+  }
   for (const record of before.cashReconciliations ?? []) {
     const saved = after.cashReconciliations?.find((row) => row.id === record.id);
     if (!saved || JSON.stringify(record) !== JSON.stringify(saved))
@@ -668,6 +674,17 @@ async function saveState(client: pg.PoolClient, state: State, before: State) {
   await saveAdminTools(client, state, before);
 }
 export class PostgresStore implements Store {
+  async cardPaymentSchemaReady() {
+    const actor = "synthetic-schema-check", at = "2026-01-01T00:00:00.000Z";
+    try {
+      for (const rate of [0, 250]) {
+        const payment = { version: 2, method: "card", cardType: "credit", cardholderName: "Prueba de compatibilidad", last4: "4242", reference: "SCHEMA-CHECK", confirmedBy: actor, confirmedAt: at, tenderedAmount: 10000 + rate, changeAmount: 0, cardSurchargeBps: rate, cardSurchargeAmount: rate };
+        const result = await this.pool.query("SELECT valid_remittance_payment($1::jsonb,$2::bigint,$3::text,$4::timestamptz) AS ok", [JSON.stringify(payment),10000,actor,at]);
+        if (result.rows[0]?.ok !== true) return false;
+      }
+      return true;
+    } catch { return null; }
+  }
   private pool: pg.Pool;
   constructor(url: string) {
     this.pool = new pg.Pool({ connectionString: url, max: 8 });
