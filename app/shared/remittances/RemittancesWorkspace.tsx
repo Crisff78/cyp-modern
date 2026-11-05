@@ -264,7 +264,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   const [confirmationError, setConfirmationError] = useState("");
   const [printTransfer, setPrintTransfer] = useState<Transfer | null>(null);
   const [receiptPrintError, setReceiptPrintError] = useState("");
-  const [receiptOptions, setReceiptOptions] = useState<ReceiptPrintOptions>({ paper: "auto", compact: false });
+  const [receiptOptions, setReceiptOptions] = useState<ReceiptPrintOptions>({ paper: "auto", compact: false, output: "text" });
   const pendingCash = cashShown && cashRequest && cashRequest.id > appliedCashRequest ? cashRequest : undefined;
   const [opening, setOpening] = useState({ operatorId: pendingCash?.operatorId ?? user.id, currency: pendingCash?.currency ?? "DOP" as Currency, amount: "0" });
   // The keyboard goes to the box asked from a notice (the receipt closed by «Ir a Caja de remesas» does not take it back).
