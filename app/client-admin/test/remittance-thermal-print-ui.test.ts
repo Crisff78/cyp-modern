@@ -20,7 +20,7 @@ test("thermal receipt prints decoded raster blocks with Spanish glyphs, clear ga
   const fixture = path.join(output,"fixture.ts");
   fs.writeFileSync(fixture,`import {printRemittanceReceipt} from ${JSON.stringify(path.resolve(root,"../shared/remittances/receipt.ts").replaceAll("\\","/"))};
 const receipt={reference:'REC-QA-ACENTOS',date:'05/11/2026, 11:13 a. m.',status:'pending',issuer:{name:'Empresa Álvarez y Núñez',address:'Calle del Niño, Santo Domingo',phone:'8095550100'},footer:'Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío.',sections:[{title:'Registro del recibo',columns:['Dato','Valor'],rows:[['Envío','ENV-QA-0001'],['Código de operación','OP-SYNTHETIC-01'],['Estado','Pendiente de entrega']]},{title:'Remitente',columns:['Dato','Valor'],rows:[['Nombre','José Núñez'],['Identificación','QA-001'],['Dirección','Calle de la Constitución, número doce, próximo al Parque de los Héroes']]},{title:'Destinatario',columns:['Dato','Valor'],rows:[['Nombre','María Rodríguez']]},{title:'Importes del envío',columns:['Dato','Valor'],rows:[['Monto a enviar','DOP 2,000.00'],['Cargo del envío','DOP 200.00'],['Total pagado por el remitente','DOP 2,200.00'],['Recibe el destinatario','DOP 2,000.00']]},{title:'Pago del remitente',columns:['Dato','Valor'],rows:[['Forma de pago','Efectivo'],['Dinero recibido','DOP 2,200.00'],['Devuelta','DOP 0.00']]},{title:'Nota',columns:['Dato','Valor'],rows:[['Nota de la operación','${"REFERENCIA".repeat(80)}']]}]};
-for(const paper of ['76','80','58','auto']){const button=document.createElement('button');button.textContent=paper;button.onclick=()=>printRemittanceReceipt(receipt,{paper,compact:false});document.body.append(button);}`);
+for(const paper of ['76','80','58','auto']){for(const output of ['graphics','text']){const button=document.createElement('button');button.textContent=output==='text'?'text-'+paper:paper;button.onclick=()=>printRemittanceReceipt(receipt,{paper,compact:false,output});document.body.append(button);}}`);
   let browser:any, server:ReturnType<typeof createServer>|undefined;
   const errors:string[]=[], external:string[]=[];
   try {
@@ -62,10 +62,22 @@ for(const paper of ['76','80','58','auto']){const button=document.createElement(
     }
     const opening=page.waitForEvent("popup");await page.getByRole("button",{name:"auto",exact:true}).click();const normal=await opening;await normal.waitForFunction(()=>(window as any).__prints===1);
     assert(await normal.locator("dt").count()>0);assert.equal(await normal.locator("main.thermal-image-output").count(),0);assert.match(await normal.locator("body").innerText(),/Nombre:\s+José Núñez/);await normal.close();
-    // Failed raster preparation must not silently print the broken text fallback.
+    for(const paper of ["80","76","58","auto"]){
+      const opening=page.waitForEvent("popup");await page.getByRole("button",{name:`text-${paper}`,exact:true}).click();const plain=await opening;
+      await plain.waitForFunction(()=>(window as any).__prints===1);
+      assert.equal(await plain.locator("img,canvas,svg,dl").count(),0,"generic mode does not need graphics support");
+      const content=await plain.locator("pre").textContent(),columns=paper==="80"?40:paper==="76"?38:paper==="58"?26:72;
+      assert.match(content,/Nombre: {2,}José Núñez/);assert(content.includes("Código de operación:"));assert(content.includes("María Rodríguez"));
+      for(const line of content.split("\n"))assert(Array.from(line).length<=columns);
+      assert.equal(await plain.evaluate(()=>document.body.scrollWidth<=document.body.clientWidth+1),true);
+      assert.equal(await plain.evaluate(()=>(window as any).__runs.length),0,"no canvas is used by the generic driver path");
+      await plain.screenshot({path:path.join(output,`receipt-text-${paper}.png`),fullPage:true});await plain.close();
+    }
+    // Failed raster preparation must not silently print a different format.
     await context.addInitScript(()=>{HTMLCanvasElement.prototype.toDataURL=()=>{throw new Error("Synthetic raster failure");};});
     const failing=page.waitForEvent("popup");await page.getByRole("button",{name:"80",exact:true}).click();const failed=await failing;
     await failed.getByRole("alert").waitFor();assert.equal(await failed.evaluate(()=>(window as any).__prints),0);await failed.close();
+    const compatible=page.waitForEvent("popup");await page.getByRole("button",{name:"text-80",exact:true}).click();const noCanvas=await compatible;await noCanvas.waitForFunction(()=>(window as any).__prints===1);assert.equal(await noCanvas.locator("img,canvas").count(),0);await noCanvas.close();
     assert.deepEqual(errors,[]);assert.deepEqual(external,[]);await context.close();
     t.diagnostic(`Synthetic receipt screenshots: ${output}; no physical printer used.`);
   } finally {await browser?.close();if(server)await new Promise<void>(resolve=>server!.close(()=>resolve()));}

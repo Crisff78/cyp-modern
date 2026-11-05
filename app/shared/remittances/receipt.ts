@@ -5,6 +5,7 @@ import { payoutOf } from "./types";
 import { escapeHtml, formatDate, formatMoney, type OutputSection } from "./output";
 import { formatCrossRate } from "./crossRate";
 import { thermalReceiptImages, thermalReceiptSize } from "./thermalReceipt";
+import { receiptText, receiptTextColumns } from "./receiptText";
 
 const status = { pending: "Pendiente de entrega", paid: "Pagado", cancelled: "Cancelado" };
 export const defaultReceiptFooter = "Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío.";
@@ -83,6 +84,10 @@ function receiptSections(receipt: Receipt, compact: boolean) {
 export function receiptHtml(receipt: Receipt, options: import("./ReceiptPrintControls").ReceiptPrintOptions = { paper: "auto", compact: false }) {
   const thermal = thermalReceiptSize(options.paper);
   const sections = receiptSections(receipt, options.compact);
+  if (options.output === "text") {
+    const columns = receiptTextColumns(options.paper), fontSize = thermal ? 11 : 12;
+    return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${escapeHtml(receipt.reference)}</title><style>@page{size:auto;margin:${thermal?.marginMm ?? 12}mm}*{box-sizing:border-box}body{margin:0;color:#000;background:#fff;${thermal?`width:${thermal.widthMm}mm;max-width:${thermal.widthMm}mm;`:""}}pre{font:${fontSize}px/1.5 "Courier New",Courier,monospace;white-space:pre;margin:0;padding:0;tab-size:2}</style></head><body><pre aria-label="Recibo en formato de texto">${escapeHtml(receiptText({...receipt,sections},columns))}</pre></body></html>`;
+  }
   const { issuer } = receipt;
   const logo = issuer.logoDataUrl && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(issuer.logoDataUrl) && issuer.logoDataUrl.length <= 24576 ? `<img alt="" src="${escapeHtml(issuer.logoDataUrl)}">` : "";
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${escapeHtml(receipt.reference)}</title><style>
@@ -97,6 +102,7 @@ export function printRemittanceReceipt(receipt: Receipt, options?: import("./Rec
   if (!popup) throw new Error("Permite abrir la ventana de impresión para este sitio.");
   popup.opener = null; popup.document.write(receiptHtml(receipt, options)); popup.document.close();
   const print = () => { if (!popup.closed) { popup.focus(); popup.print(); } };
+  if (options?.output === "text") { window.setTimeout(print,150); return; }
   const thermal = thermalReceiptSize(options?.paper);
   if (thermal) {
     const compact = options?.compact ?? false;
