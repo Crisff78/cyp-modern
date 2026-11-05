@@ -2,7 +2,9 @@ import { MoneyInput } from "../MoneyInput";
 import { restrictPaste } from "./fieldInput";
 import { decimalCents, formatMoney } from "./output";
 import { isMoneyDraft, MONEY_INPUT_MESSAGE } from "./moneyInput";
-import { cardPaymentCharge, isCardholderNameDraft, isCardLast4Draft, isPaymentTextDraft, paymentAmounts, type CardType, type PaymentMethod, type RemittancePaymentInput } from "./payment.mjs";
+import { cardPaymentCharge, isCardholderNameDraft, isPaymentTextDraft, paymentAmounts, type CardType, type PaymentMethod, type RemittancePaymentInput } from "./payment.mjs";
+import { CardNumberInput } from "./CardNumberInput";
+import { CARD_NUMBER_MESSAGE } from "./cardNumberEntry";
 import type { Currency } from "./types";
 
 type PaymentField = "tendered" | "reference" | "bank" | "cardholderName" | "last4";
@@ -15,6 +17,8 @@ export function paymentInput(total: number, draft: PaymentDraft, creditCardCommi
   const fields: PaymentField[] = draft.method === "cash" ? ["tendered"] : draft.method === "card" && draft.cardType === "credit" ? ["reference", "bank", "cardholderName", "last4"] : ["reference", "bank"];
   const error = fields.map((field) => draft.entryErrors?.[field]).find(Boolean);
   if (error) throw new Error(`Corrige el campo señalado. ${error}`);
+  if (draft.method === "card" && draft.cardType === "credit" && (!isCardholderNameDraft(draft.cardholderName) || !draft.cardholderName.trim())) throw new Error("Escribe el nombre del titular.");
+  if (draft.method === "card" && draft.cardType === "credit" && !/^[0-9]{4}$/.test(draft.last4)) throw new Error(CARD_NUMBER_MESSAGE);
   if (draft.method === "cash" && !isMoneyDraft(draft.tendered)) throw new Error(MONEY_INPUT_MESSAGE);
   if (draft.method !== "cash" && (!isPaymentTextDraft(draft.reference) || !isPaymentTextDraft(draft.bank))) throw new Error("La referencia y el banco admiten hasta 160 caracteres en una sola línea, sin caracteres de control ni marcas invisibles.");
   const input: RemittancePaymentInput = draft.method === "cash"
@@ -57,11 +61,12 @@ export function PaymentFields({ total, currency, creditCardCommissionBps = 0, va
       <label>Devuelta ({currency})<input readOnly value={change === undefined ? "Revisa el dinero recibido" : formatMoney(change, currency)} /></label>
       <p className="remittance-help">El cambio se calcula sobre el total a pagar, incluida la comisión. En caja queda el total neto del envío.</p>
     </div> : <>
-      <p className="remittance-help">Registra un pago ya recibido y comprobado fuera de CyP. CyP no cobra tarjetas ni verifica fondos bancarios. No escribas el número completo, vencimiento, código de seguridad ni claves en ningún campo.</p>
+      <p className="remittance-help">Registra un pago ya recibido y comprobado fuera de CyP. CyP no cobra tarjetas ni verifica fondos bancarios. No escribas vencimiento, código de seguridad ni claves.</p>
       {value.method === "card" && value.cardType === "credit" && <div className="remittance-payment-cash">
         <label>Nombre del titular<input autoComplete="off" maxLength={120} value={value.cardholderName} aria-invalid={Boolean(value.entryErrors?.cardholderName) || undefined} onPaste={(event) => restrictPaste(event, isCardholderNameDraft, () => reject("cardholderName", "Usa hasta 120 caracteres en una sola línea."))} onChange={(event) => { if (!isCardholderNameDraft(event.target.value)) { reject("cardholderName", "Usa hasta 120 caracteres en una sola línea."); return; } update("cardholderName", event.target.value); }} /></label>
-        <label>Últimos 4 dígitos<input inputMode="numeric" autoComplete="off" maxLength={4} value={value.last4} aria-invalid={Boolean(value.entryErrors?.last4) || undefined} title="Escribe solo los últimos 4 dígitos." onPaste={(event) => restrictPaste(event, isCardLast4Draft, () => reject("last4", "Escribe solo los últimos 4 dígitos."))} onChange={(event) => { if (!isCardLast4Draft(event.target.value)) { reject("last4", "Escribe solo los últimos 4 dígitos."); return; } update("last4", event.target.value); }} /></label>
+        <label>Número de tarjeta (16 dígitos)<CardNumberInput last4={value.last4} locked={locked} invalid={Boolean(value.entryErrors?.last4)} onInvalid={() => reject("last4", CARD_NUMBER_MESSAGE)} onLast4Change={(last4, error) => onChange({ ...value, last4, verified: false, entryErrors: { ...value.entryErrors, last4: error } })} /></label>
       </div>}
+      {value.method === "card" && value.cardType === "credit" && <p className="remittance-help">Digita los 16 dígitos únicamente en el campo de tarjeta. Al salir se oculta el número y se conservan solo los últimos cuatro. Para corregirlo, digítalo de nuevo.</p>}
       <label>Referencia del comprobante<input maxLength={160} inputMode="text" title={textMessage} autoComplete="off" value={value.reference} aria-invalid={Boolean(value.entryErrors?.reference) || undefined} onPaste={(event) => restrictPaste(event, isPaymentTextDraft, () => reject("reference", textMessage))} onChange={(event) => { const next = event.target.value; if (!isPaymentTextDraft(next)) { reject("reference", textMessage); return; } update("reference", next); }} /></label>
       <label>Banco o proveedor (opcional)<input maxLength={160} inputMode="text" title={textMessage} value={value.bank} aria-invalid={Boolean(value.entryErrors?.bank) || undefined} onPaste={(event) => restrictPaste(event, isPaymentTextDraft, () => reject("bank", textMessage))} onChange={(event) => { const next = event.target.value; if (!isPaymentTextDraft(next)) { reject("bank", textMessage); return; } update("bank", next); }} /></label>
       <label className="remittance-payment-check"><input type="checkbox" checked={value.verified} onChange={(event) => onChange({ ...value, verified: event.target.checked })} />Comprobé que el pago fue recibido</label>
