@@ -8,6 +8,7 @@ import { CARD_NUMBER_MESSAGE } from "./cardNumberEntry";
 import type { Currency } from "./types";
 
 type PaymentField = "tendered" | "reference" | "bank" | "cardholderName" | "last4";
+const paymentBanks = ["Banreservas", "Banco Popular", "BHD", "Scotiabank", "Banco Santa Cruz", "APAP", "Asociación Cibao", "Banesco", "Banco Promerica"];
 export type PaymentDraft = { method: PaymentMethod; cardType?: CardType; cardholderName: string; last4: string; tendered: string; reference: string; bank: string; verified: boolean; entryErrors?: Partial<Record<PaymentField, string>> };
 const decimal = (cents: number) => `${BigInt(cents) / 100n}.${String(BigInt(cents) % 100n).padStart(2, "0")}`;
 export function paymentDraftFor(total: number, input?: RemittancePaymentInput): PaymentDraft {
@@ -66,9 +67,13 @@ export function PaymentFields({ total, currency, creditCardCommissionBps = 0, va
         <label>Nombre del titular<input autoComplete="off" maxLength={120} value={value.cardholderName} aria-invalid={Boolean(value.entryErrors?.cardholderName) || undefined} onPaste={(event) => restrictPaste(event, isCardholderNameDraft, () => reject("cardholderName", "Usa hasta 120 caracteres en una sola línea."))} onChange={(event) => { if (!isCardholderNameDraft(event.target.value)) { reject("cardholderName", "Usa hasta 120 caracteres en una sola línea."); return; } update("cardholderName", event.target.value); }} /></label>
         <label>Número de tarjeta (16 dígitos)<CardNumberInput last4={value.last4} locked={locked} invalid={Boolean(value.entryErrors?.last4)} onInvalid={() => reject("last4", CARD_NUMBER_MESSAGE)} onLast4Change={(last4, error) => onChange({ ...value, last4, verified: false, entryErrors: { ...value.entryErrors, last4: error } })} /></label>
       </div>}
-      {value.method === "card" && value.cardType === "credit" && <p className="remittance-help">Digita los 16 dígitos únicamente en el campo de tarjeta. Al salir se oculta el número y se conservan solo los últimos cuatro. Para corregirlo, digítalo de nuevo.</p>}
+      {value.method === "card" && value.cardType === "credit" && <p className="remittance-help">Revisa los 16 dígitos antes de guardar. Al guardar se conservan solo los últimos cuatro, también en el recibo. El número se oculta si abandonas esta página.</p>}
       <label>Referencia del comprobante<input maxLength={160} inputMode="text" title={textMessage} autoComplete="off" value={value.reference} aria-invalid={Boolean(value.entryErrors?.reference) || undefined} onPaste={(event) => restrictPaste(event, isPaymentTextDraft, () => reject("reference", textMessage))} onChange={(event) => { const next = event.target.value; if (!isPaymentTextDraft(next)) { reject("reference", textMessage); return; } update("reference", next); }} /></label>
-      <label>Banco o proveedor (opcional)<input maxLength={160} inputMode="text" title={textMessage} value={value.bank} aria-invalid={Boolean(value.entryErrors?.bank) || undefined} onPaste={(event) => restrictPaste(event, isPaymentTextDraft, () => reject("bank", textMessage))} onChange={(event) => { const next = event.target.value; if (!isPaymentTextDraft(next)) { reject("bank", textMessage); return; } update("bank", next); }} /></label>
+      <label>Banco o proveedor (opcional)<select aria-label="Banco o proveedor (opcional)" value={value.bank} onChange={(event) => update("bank", event.target.value)}>
+        <option value="">Selecciona un banco</option>
+        {paymentBanks.map((bank) => <option key={bank} value={bank}>{bank}</option>)}
+        {value.bank && !paymentBanks.includes(value.bank) && <option value={value.bank}>{value.bank} (registro anterior)</option>}
+      </select></label>
       <label className="remittance-payment-check"><input type="checkbox" checked={value.verified} onChange={(event) => onChange({ ...value, verified: event.target.checked })} />Comprobé que el pago fue recibido</label>
     </>}
     {!charge && <p role="alert" className="remittance-error">El total con recargo excede el importe permitido. Vuelve al formulario y revisa el monto.</p>}
