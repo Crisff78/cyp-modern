@@ -437,8 +437,9 @@ El operador debe contar con el comprobante antes de marcar que verificó el pago
 - En pantalla se digitan 16 dígitos, agrupados de cuatro en cuatro. El número
   completo existe únicamente en el control sin nombre mientras se edita: no se
   incorpora al estado React del pago, borradores, almacenamiento web ni solicitudes.
-  Al salir del campo, ocultar la página o bloquear la operación se sustituye por
-  los últimos cuatro enmascarados; una entrada incompleta se borra. Al desmontar
+  Permanece visible al pasar a otros campos para revisarlo antes de guardar.
+  Al ocultar la página o bloquear el guardado se sustituye por
+  los últimos cuatro enmascarados; una entrada incompleta se borra al salir del campo. Al desmontar
   el control se limpia su valor. Para corregir un número ya oculto hay que
   digitarlo de nuevo. No se intenta recuperar los otros doce dígitos.
 - **La API y la base de datos siguen admitiendo solo `last4`**; sus listas
@@ -446,6 +447,9 @@ El operador debe contar con el comprobante antes de marcar que verificó el pago
   se escribe en su control temporal; esos datos no deben ir en referencias,
   nombres, notas ni otros campos. No se solicita CVV para registrar un pago
   externo ya recibido. Esta protección no acredita una certificación PCI.
+- Banco/proveedor se elige de una lista inicial de entidades dominicanas en
+  Administración y la PWA; los valores de registros anteriores se conservan.
+  El servidor mantiene su contrato de texto validado para compatibilidad.
 - La cotización congela `quote.creditCardCommissionBps`. El recargo se calcula
   sobre el subtotal `principal + cargo del envío`, con redondeo de medio centavo
   hacia arriba usando aritmética entera. No se calcula sobre sí mismo, no afecta

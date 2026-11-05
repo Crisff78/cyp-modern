@@ -27,6 +27,7 @@ return <main><form onSubmit={e=>e.preventDefault()}>{open&&<PaymentFields total=
 <button onClick={()=>{try{setSaved(JSON.stringify(paymentInput(11000,draft,250)));setResult("Registrado");setCount(c=>c+1)}catch(e){setResult(e.message)}}}>Guardar</button>
 <button onClick={()=>setLocked(true)}>Bloquear</button><button onClick={()=>setLocked(false)}>Desbloquear</button>
 <button onClick={()=>setOpen(false)}>Desmontar</button><button onClick={()=>setOpen(true)}>Restaurar</button>
+<button onClick={()=>setDraft({...initial(),bank:"Banco histórico"})}>Registro anterior</button>
 <button onClick={()=>{setOpen(false);setDraft(initial());setLocked(false)}}>Cancelar</button></main>};createRoot(document.getElementById("root")).render(<StrictMode><Test/></StrictMode>);`);
   let browser: any, server: ReturnType<typeof createServer> | undefined;
   const errors: string[] = [], requests: string[] = [];
@@ -49,20 +50,23 @@ return <main><form onSubmit={e=>e.preventDefault()}>{open&&<PaymentFields total=
         const number = page.getByLabel("Número de tarjeta (16 dígitos)",{exact:true});
         const verified = page.getByLabel("Comprobé que el pago fue recibido",{exact:true});
         const pan = "4111111111110042", grouped = "4111 1111 1111 0042", mask = "•••• •••• •••• 0042";
+        const bank = page.getByLabel("Banco o proveedor (opcional)",{exact:true});
+        assert.equal(await bank.evaluate((element:HTMLSelectElement)=>element.tagName),"SELECT");
+        for (const name of ["Banreservas","Banco Popular","BHD"]) { await bank.selectOption(name); assert.equal(JSON.parse((await page.getByLabel("Borrador seguro").textContent())!).bank,name); }
         await number.click(); await number.pressSequentially(pan); assert.equal(await number.inputValue(),grouped);
         assert.equal(await number.getAttribute("name"),null); assert.equal(await number.getAttribute("autocomplete"),"off");
         assert(!(await page.getByLabel("Borrador seguro").textContent()).includes(pan));
         assert(!(await page.getByLabel("Borrador seguro").textContent()).includes(grouped));
         assert(!(await number.getAttribute("value") ?? "").includes(grouped));
         assert(!(await page.evaluate(()=>JSON.stringify([...new FormData(document.querySelector("form")!).entries()]))).includes(pan));
-        await verified.check(); assert.equal(await number.inputValue(),mask);
+        await verified.check(); assert.equal(await number.inputValue(),grouped,"all digits stay visible for verification before saving");
         await page.getByRole("button",{name:"Guardar",exact:true}).click();
         const sent = JSON.parse((await page.getByLabel("Enviado").textContent())!); assert.equal(sent.last4,"0042");assert.equal(sent.cardNumber,undefined);assert.equal(sent.cvv,undefined);
         assert(!JSON.stringify(sent).includes(pan) && !JSON.stringify(sent).includes(grouped));
         const paste = (value:string)=>number.evaluate((input:HTMLInputElement,text:string)=>{const data=new DataTransfer();data.setData("text",text);input.dispatchEvent(new ClipboardEvent("paste",{clipboardData:data,bubbles:true,cancelable:true}));},value);
-        await number.focus(); await paste(pan+"1"); assert.equal(await number.inputValue(),mask);
+        await number.focus(); await paste(pan+"1"); assert.equal(await number.inputValue(),grouped);
         await page.getByRole("button",{name:"Guardar",exact:true}).click(); assert.equal(await page.getByLabel("Cantidad guardada").textContent(),"1");
-        await number.focus(); await paste(grouped);assert.equal(await number.inputValue(),grouped);assert.equal(await verified.isChecked(),false,"a new entry requires checking the external payment again");
+        await number.selectText(); await paste(grouped);assert.equal(await number.inputValue(),grouped);assert.equal(await verified.isChecked(),false,"a new entry requires checking the external payment again");
         await number.press("x"); assert.equal(await number.inputValue(),grouped);assert.equal(await number.getAttribute("aria-invalid"),"true");
         await number.fill(pan); await number.evaluate((input:HTMLInputElement)=>input.setSelectionRange(5,5));await number.press("Backspace");
         assert.equal((await number.inputValue()).replace(/ /g,"").length,15); assert.equal(JSON.parse((await page.getByLabel("Borrador seguro").textContent())!).last4,"");
@@ -91,6 +95,9 @@ return <main><form onSubmit={e=>e.preventDefault()}>{open&&<PaymentFields total=
         await number.fill(pan);await number.evaluate((input:HTMLInputElement)=>{(window as any).methodNumber=input;});
         await page.getByLabel("Forma de pago",{exact:true}).selectOption("cash");assert.equal(await number.count(),0);
         assert.equal(await page.evaluate(()=>(window as any).methodNumber.value),"");
+        await page.getByRole("button",{name:"Registro anterior",exact:true}).click();
+        assert.equal(await bank.inputValue(),"Banco histórico");
+        await bank.selectOption("Banco Popular");assert.equal(await bank.inputValue(),"Banco Popular");
       } finally {await context.close();}
     });
     assert.deepEqual(errors,[]);assert(!requests.some(url=>url.includes("4111111111110042") || url.includes("4111%201111")));

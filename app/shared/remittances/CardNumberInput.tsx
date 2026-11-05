@@ -87,7 +87,7 @@ export function CardNumberInput({ last4, onLast4Change, onInvalid, invalid, lock
       if (!input.value || isMaskedCardNumber(input.value)) return;
       const digits = cardNumberDigits(input.value);
       if (digits?.length === 16) {
-        const suffix = digits.slice(-4); input.value = maskedCardNumber(suffix);
+        const suffix = digits.slice(-4);
         if (suffix !== last4) onLast4Change(suffix);
       } else { input.value = ""; onLast4Change("", CARD_NUMBER_MESSAGE); }
     }} />;
