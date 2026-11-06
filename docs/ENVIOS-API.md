@@ -532,3 +532,47 @@ la base de operación como parte de la preparación local.
 - El titular admite letras Unicode, marcas de acento, espacios, guiones, apóstrofes y puntos, sin números, con al menos una letra y máximo 120 caracteres. Se valida en pantalla y en la API; no modifica fichas de clientes ni titulares históricos.
 - Actualización del 06-11-2026: se retiran los controles temporales de vencimiento y CVV. Crédito y débito muestran banco/proveedor primero, titular y número de 16 dígitos después y referencia del comprobante al final. Cambiar entre crédito y débito destruye el control anterior y limpia sus datos sin conservar el número completo.
 - El objeto `payment` sigue rechazando PAN completo, vencimiento y CVV. Conserva titular y últimos cuatro dígitos para ambos tipos. El archivo opcional, habilitado solo con su clave y plazo de conservación configurados, cifra el número sin pedir vencimiento; los sobres anteriores continúan siendo legibles. No se almacena CVV. Esta pantalla registra un pago externo, no procesa un cobro ni acredita certificación PCI.
+
+## Detalle de movimientos de caja y formatos de recibo (06-11-2026)
+
+- `GET /api/envios/cajas/:id/movimientos` consulta una caja existente sin modificarla. Requiere
+  `remittances.cash.view`: Administración y Supervisión conservan el alcance de consulta de cajas;
+  las demás cuentas solo consultan las propias. Una caja ajena o inexistente devuelve 404. El
+  permiso de caja no devuelve contactos, tarjetas, archivos cifrados ni repartos de comisiones.
+- La respuesta contiene `cash` (operador, moneda, fecha, apertura y cierre), `entries` (cada movimiento
+  con fecha/hora, tipo, entrada/salida de efectivo, referencias, usuario y nota), `groups` (cantidad
+  y total por tipo) y `totals` (los saldos contables originales). El detalle se construye del libro
+  de eventos y movimientos ya guardado, incluso para cajas cerradas; no se deduce del estado actual
+  de una remesa ni se reconstruyen movimientos históricos inexistentes.
+- Se incluyen cada entrega adicional, retiro durante el día, ingreso por envío, devolución,
+  pago al destinatario y retiro al cierre. Un envío cancelado mantiene su ingreso original y
+  su devolución como filas separadas. Tarjeta, transferencia y depósito conservan su referencia
+  e importe de operación, pero su movimiento de efectivo es cero. Apertura y conteo de cierre
+  se muestran en el encabezado/resumen, sin sumarlos de nuevo como movimientos.
+- El retiro al cierre no se resta dos veces: el efectivo esperado para el cuadre conserva su
+  fórmula; el saldo para la siguiente apertura es contado menos retirado al cierre. Cada consulta
+  pertenece a una sola caja/operador/moneda. No requiere una migración nueva.
+- En Caja de remesas, **Ver detalle** junto a cada importe abre la ventana filtrada por ese tipo;
+  **Ver todos los movimientos** abre el mismo detalle completo. Tiene filtros, desplazamiento,
+  refresco y bloqueo de fondo, y funciona por clic, teclado o pantalla táctil. Un refresco fallido
+  muestra el error sin presentar los saldos anteriores como una consulta actualizada.
+
+La impresión de recibos conserva sus importes y lista de datos permitidos. Agrega rollos nominales
+de 2, 3 y 4 pulgadas (51, 76 y 102 mm), mantiene POS de 58 y 80 mm, y permite Carta, A4, 8 × 4,
+8 × 11 pulgadas y medidas personalizadas en milímetros. Las hojas admiten vertical/horizontal;
+los rollos conservan la salida vertical a la izquierda. El texto se reparte en más líneas/páginas,
+sin encoger todo el recibo para forzarlo a una sola hoja. Las hojas anchas con diseño pueden
+distribuir sus secciones en dos columnas.
+
+Las medidas se validan antes de abrir la ventana: ancho personalizado de 50–320 mm y alto de
+50–600 mm. Se utilizan tamaños conocidos o números finitos, nunca texto libre dentro de CSS.
+**Automático** usa el área disponible y la orientación elegida; el navegador no proporciona a la
+aplicación las medidas de la impresora seleccionada. En el diálogo nativo debe seleccionarse el
+mismo papel. Ver [tamaño de página CSS](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/At-rules/@page/size)
+y [diálogo de impresión](https://developer.mozilla.org/en-US/docs/Web/API/Window/print).
+
+**Solo texto** conserva separadores, saltos y caracteres Unicode para controladores genéricos;
+su tabla de caracteres sigue dependiendo del controlador/impresora. **Con diseño** prepara los
+rollos como imágenes con acentos dibujados en el navegador y requiere un controlador gráfico.
+Las pruebas de navegador/PDF comprueban distribución y dimensiones solicitadas; no acreditan
+legibilidad física en un modelo o controlador no probado.

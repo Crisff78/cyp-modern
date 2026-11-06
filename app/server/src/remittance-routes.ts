@@ -14,6 +14,7 @@ import { remittanceClientDraft } from "./client-schema.js";
 import { registerRemittanceClient } from "./remittance-client-registration.js";
 import { isCardholderNameDraft, isPaymentTextDraft, paymentMethods } from "../../shared/remittances/payment.mjs";
 import { CardVault, cardEnvelopeSchema } from "./card-vault.js";
+import { remittanceCashActivity } from "./remittance-cash-activity.js";
 
 type Mutate = <T, P = Record<string, string>>(
   path: string, summary: string, schema: z.ZodType<T>,
@@ -39,6 +40,10 @@ export function registerRemittanceRoutes(
   };
   get("/api/envios/snapshot", "Estado de envíos, tasas y cajas por moneda", async (req) =>
     ({ ...remittanceSnapshot(await store.read(), user(req), systemOperators), cardStorage: vault?.info() ?? { enabled: false } }));
+  get("/api/envios/cajas/:id/movimientos", "Consultar el detalle de movimientos de una caja autorizada", async req => {
+    const params = z.object({ id }).strict().parse(req.params);
+    return remittanceCashActivity(await store.read(), user(req), params.id, systemOperators);
+  });
   get("/api/envios/clientes/buscar", "Buscar clientes de envíos por código, nombre o teléfono sin devolver notas", async (req) => {
     const input = z.object({ query: singleLine(160, 1), side: z.enum(["sender", "recipient"]), senderId: id.optional() }).strict().parse(req.query);
     return searchRemittanceClients(await store.read(), user(req), input.query, input.side, input.senderId);

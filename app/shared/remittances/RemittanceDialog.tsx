@@ -1,7 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { closeAfterAsking, dialogKeys, focusFirstUseful } from "../keyboard";
 
-export function RemittanceDialog({ title, children, onClose, locked = false }: { title: string; children: ReactNode; onClose: () => void; locked?: boolean }) {
+export function RemittanceDialog({ title, children, onClose, locked = false, wide = false }: { title: string; children: ReactNode; onClose: () => void; locked?: boolean; wide?: boolean }) {
   const element = useRef<HTMLDialogElement>(null);
   const tabsterId = useId();
   const [offset, setOffset] = useState({ x: 0, y: 0 });
@@ -38,7 +38,7 @@ export function RemittanceDialog({ title, children, onClose, locked = false }: {
     document.addEventListener("mousemove", move); document.addEventListener("mouseup", stop);
     return () => { document.removeEventListener("mousemove", move); document.removeEventListener("mouseup", stop); };
   }, [drag, offset]);
-  return <dialog ref={element} {...dialogKeys(tabsterId)} className="remittances-dialog" style={{ transform: `translate(${offset.x}px, ${offset.y}px)` }} aria-label={title} onCancel={(event) => { event.preventDefault(); if (!locked) void closeAfterAsking(element.current, onClose); }}>
+  return <dialog ref={element} {...dialogKeys(tabsterId)} className={`remittances-dialog${wide ? " remittances-dialog-wide" : ""}`} style={{ transform: `translate(${offset.x}px, ${offset.y}px)` }} aria-label={title} onCancel={(event) => { event.preventDefault(); if (!locked) void closeAfterAsking(element.current, onClose); }}>
     <header style={{ cursor: "move" }} onMouseDown={(event) => {
       if (event.button !== 0 || (event.target as Element).closest("button")) return;
       event.preventDefault(); setDrag({ x: event.clientX, y: event.clientY, left: offset.x, top: offset.y });
