@@ -5749,6 +5749,10 @@ export default function App() {
           >
             <div className="help-content">
               <SupportContact open={helpOpen} />
+              <a className="support-gamera-link" href="http://gamera.ddns.net:60032" target="_blank" rel="noopener noreferrer">
+                <strong>Comunicar dudas o problemas a Gamera</strong>
+                <span>Abrir el portal de soporte técnico ↗</span>
+              </a>
               {/* Where each thing is: the same names as the menu, in the same order. */}
               {[
                 { icon: ServerCog, title: "CONFIGURACIÓN DE ADMINISTRACIÓN", text: "Usuarios y permisos, cobradores, rutas, zonas, tasas de cambio, comisiones y configuración." },
@@ -6302,7 +6306,6 @@ function SupportContact({ open }: Readonly<{ open: boolean }>) {
   return (
     <section className="support-contact" aria-label="Contacto de soporte técnico">
       <strong className="support-contact-title">¿Necesitas ayuda? Contacta a soporte técnico</strong>
-      <p><a href="http://gamera.ddns.net:60032" target="_blank" rel="noopener noreferrer">Entrar al soporte técnico de Gamera</a></p>
       <p>Soporte a cargo de <strong>{name}</strong>{hours ? ` · Horario: ${hours}` : ""}</p>
       {config === null ? <p>Cargando datos de contacto…</p> : failed ? <p className="support-contact-empty">No se pudieron cargar los datos de contacto. Cierra esta ventana y vuelve a abrirla para intentarlo de nuevo.</p> : phone || whatsapp || email ? (
         <ul>
