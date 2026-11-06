@@ -459,6 +459,9 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   const detail = snapshot?.transfers.find((transfer) => transfer.id === detailId);
   // Only an administrator chooses the operator of a box; anyone else opens their own.
   const openingOperator = isAdmin ? opening.operatorId : user.id;
+  const selectedTodayCash = snapshot?.cashSessions.find((cash) => cash.operatorId === openingOperator
+    && cash.currency === opening.currency && cash.date === snapshot.businessDate);
+  const selectedOpenCash = selectedTodayCash?.status === "open" ? selectedTodayCash : undefined;
   // The opening is the close of the box before (Mayo, 26-10-2026): fixed, unless the account has the permission apart
   // «Cambiar el efectivo inicial de la caja de remesas»; then it starts with that close and can be written.
   const openingCarry = snapshot ? remittanceOpeningCarry(snapshot, openingOperator, opening.currency) : undefined;
@@ -467,6 +470,13 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
     if (openingCarry) setOpening((current) => ({ ...current, amount: centsDraft(openingCarry.amount) }));
   }, [openingOperator, opening.currency, openingCarry?.amount, openingCarry?.date]);
   const clearErrors = () => { setError(""); setOutputError(""); };
+  function selectCashContext(operatorId: string, currency: Currency) {
+    setOpening({ operatorId, currency, amount: "0" });
+    // Keep the consulted box aligned with the operation selectors; historical searches remain read-only.
+    const filters = { date: snapshot?.businessDate ?? "", operatorId, currency };
+    setCashFilters(filters); setCashSearch(filters);
+    clearErrors(); setNotice("");
+  }
   const rejectEntry = (message: string) => { retireQuote(); setError(message); };
   const rejectMoney = (field: "amount" | "opening" | "counted" | "discharged" | "addition") => { setMoneyEntryErrors((current) => ({ ...current, [field]: moneyInputMessage })); rejectEntry(moneyInputMessage); };
   const updateDraft = <K extends keyof Draft>(key: K, value: Draft[K]) => {
@@ -647,6 +657,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
 
   function prepareOpening(event: FormEvent) {
     event.preventDefault();
+    if (!canOpenCash || selectedTodayCash) return;
     // The box of today was already closed: the server keeps one per operator, currency and day (CASH_EXISTS).
     if (snapshot && remittanceCashNotice(snapshot, openingOperator, opening.currency) === "closedToday") return;
     try {
@@ -677,6 +688,10 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
 
   function prepareCashMovement({ cash, kind, amount, note }: CashMovementReview) {
     clearErrors();
+    if (!selectedOpenCash || selectedOpenCash.id !== cash.id) {
+      setError("Selecciona la caja abierta de hoy del operador y la moneda antes de registrar el movimiento.");
+      return;
+    }
     const withdraw = kind === "withdraw";
     confirm({ title: withdraw ? "Confirmar retiro de efectivo" : "Confirmar entrega adicional",
       path: `/envios/cajas/${encodeURIComponent(cash.id)}/${withdraw ? "retiros" : "entregas"}`, kind,
@@ -778,7 +793,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
     {/* Going to the box moves the keyboard there: the receipt it closes does not give the focus back behind it. */}
     {onOpenCash && payCash !== "closedToday" && <button type="button" onClick={() => { detailFocusReturn.current = false; setDetailId(null); onOpenCash({ operatorId: user.id, currency: detail.destinationCurrency }); }}>Ir a Caja de remesas</button>}
   </div>;
-  const openingCash = snapshot && canOpenCash ? remittanceCashNotice(snapshot, openingOperator, opening.currency) : "ok";
+  const openingCash = snapshot ? remittanceCashNotice(snapshot, openingOperator, opening.currency) : "ok";
   const shownCash = snapshot ? filterCashSessions(snapshot.cashSessions, cashSearch, snapshot.businessDate) : [];
   // A transfer is registered only for an operator who can send; the boxes still list every operator.
   const sendingOperators = snapshot?.sendingOperatorIds ? snapshot.operators.filter(({ id }) => snapshot.sendingOperatorIds!.includes(id)) : snapshot?.operators ?? [];
@@ -869,8 +884,49 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
         {fixedForm ? <div ref={listArea} className="remittance-list-area" style={listSize.size !== null ? { flexBasis: listSize.size } : undefined}>{toolbar}{transferList}</div> : transferList}
       </>}
       {view === "caja" && <>
-        <p className="remittance-help">Caja solo para remesas. Saldo = apertura + entregas adicionales + lo cobrado por envíos − devoluciones − pagos. Cada moneda se cuenta aparte. La apertura de cada día es el cierre del día anterior, menos lo que se le descargó al operador.</p>
-        {canOpenCash && <form className="remittance-panel" aria-label="Abrir caja" onSubmit={prepareOpening}><h2>Abrir caja del {snapshot.businessDate}</h2><fieldset disabled={busy} className="remittance-form-grid">{isAdmin ? <label>Operador<select required value={opening.operatorId} onChange={(event) => setOpening((current) => ({ ...current, operatorId: event.target.value }))}>{snapshot.operators.map((operator) => <option key={operator.id} value={operator.id}>{operator.name}</option>)}</select></label> : <label>Operador<input readOnly value={operatorName(user.id)} /></label>}<label>Moneda<select value={opening.currency} onChange={(event) => setOpening((current) => ({ ...current, currency: event.target.value as Currency }))}>{snapshot.currencies.map((currency) => <option key={currency}>{currency}</option>)}</select></label><label>Efectivo inicial<MoneyInput data-cash-opening-amount required readOnly={Boolean(openingCarry && !canEditOpening)} title={openingCarry && !canEditOpening ? `Cierre del ${openingCarry.date}. Un cierre distinto de cero no se puede modificar. Si es cero, se requiere el permiso de apertura para cambiarlo.` : moneyInputMessage} value={openingCarry && !canEditOpening ? centsDraft(openingCarry.amount) : opening.amount} aria-invalid={Boolean(moneyEntryErrors.opening) || undefined} onValueChange={(nextValue) => { if (!isMoneyDraft(nextValue)) { rejectMoney("opening"); return; } setMoneyEntryErrors((current) => ({ ...current, opening: undefined })); setOpening((current) => ({ ...current, amount: nextValue })); setError(""); }} onInvalidEntry={() => rejectMoney("opening")} /></label><p className="remittance-help remittance-opening-source">{openingCarry ? `Viene del cierre del ${openingCarry.date}${canEditOpening ? ". Tu cuenta puede cambiarlo." : "."}` : "Primera caja de este operador en esta moneda: escribe el efectivo con que empieza."}</p></fieldset>{openingCash === "previousOpen" && <p className="remittance-cash-warning" role="status">La caja de remesas en {opening.currency} del {previousOpenCashDate(snapshot, openingOperator, opening.currency)} de {operatorName(openingOperator)} sigue abierta. Ciérrala con «Contar y cerrar» antes de abrir la de hoy.</p>}{openingCash === "closedToday" && <p className="remittance-cash-warning" role="status">La caja de remesas de hoy en {opening.currency} de {operatorName(openingOperator)} ya se cerró. Hay una sola caja por operador, moneda y día: no se puede abrir otra hasta la jornada siguiente.</p>}<button className="remittance-primary" disabled={busy || openingCash === "closedToday"}>Revisar apertura</button></form>}
+        <p className="remittance-help">Caja solo para remesas. Saldo = apertura + entregas adicionales + lo cobrado por envíos − devoluciones − pagos − retiros durante el día. Cada moneda se cuenta aparte. La apertura de cada día es el cierre del día anterior, menos lo que se le descargó al operador.</p>
+        {(canOpenCash || can("remittances.cash.close")) && <section className="remittance-panel" aria-label="Operar caja de remesas">
+          <form aria-label="Abrir caja" onSubmit={prepareOpening}>
+            <h2>Caja del {snapshot.businessDate}</h2>
+            <fieldset disabled={working || uncertain} className="remittance-form-grid">
+              {isAdmin ? <label>Operador<select required value={opening.operatorId} onChange={(event) => selectCashContext(event.target.value, opening.currency)}>
+                {snapshot.operators.map((operator) => <option key={operator.id} value={operator.id}>{operator.name}</option>)}
+              </select></label> : <label>Operador<input readOnly value={operatorName(user.id)} /></label>}
+              <label>Moneda<select value={opening.currency} onChange={(event) => selectCashContext(openingOperator, event.target.value as Currency)}>
+                {snapshot.currencies.map((currency) => <option key={currency}>{currency}</option>)}
+              </select></label>
+              <label>Efectivo inicial<MoneyInput data-cash-opening-amount required
+                readOnly={!canOpenCash || Boolean(selectedTodayCash) || Boolean(openingCarry && !canEditOpening)}
+                title={selectedTodayCash ? "El efectivo inicial de esta caja ya está registrado." : openingCarry && !canEditOpening ? `Cierre del ${openingCarry.date}. Un cierre distinto de cero no se puede modificar. Si es cero, se requiere el permiso de apertura para cambiarlo.` : moneyInputMessage}
+                value={selectedTodayCash ? centsDraft(selectedTodayCash.openingAmount) : openingCarry && !canEditOpening ? centsDraft(openingCarry.amount) : opening.amount}
+                aria-invalid={Boolean(moneyEntryErrors.opening) || undefined}
+                onValueChange={(nextValue) => { if (!isMoneyDraft(nextValue)) { rejectMoney("opening"); return; } setMoneyEntryErrors((current) => ({ ...current, opening: undefined })); setOpening((current) => ({ ...current, amount: nextValue })); setError(""); }}
+                onInvalidEntry={() => rejectMoney("opening")} /></label>
+              <p className="remittance-help remittance-opening-source">{selectedTodayCash
+                ? "El efectivo inicial de esta caja ya está registrado."
+                : !canOpenCash ? "El efectivo inicial se registra al abrir la caja."
+                : openingCarry ? `Viene del cierre del ${openingCarry.date}${canEditOpening ? ". Tu cuenta puede cambiarlo." : "."}`
+                : "Primera caja de este operador en esta moneda: escribe el efectivo con que empieza."}</p>
+            </fieldset>
+            {openingCash === "previousOpen" && <p className="remittance-cash-warning" role="status">La caja de remesas en {opening.currency} del {previousOpenCashDate(snapshot, openingOperator, opening.currency)} de {operatorName(openingOperator)} sigue abierta. Ciérrala con «Contar y cerrar» antes de abrir la de hoy.</p>}
+            {openingCash === "closedToday" && <p className="remittance-cash-warning" role="status">La caja de remesas de hoy en {opening.currency} de {operatorName(openingOperator)} ya se cerró. Hay una sola caja por operador, moneda y día: no se puede abrir otra hasta la jornada siguiente.</p>}
+            {canOpenCash && <button className="remittance-primary" disabled={working || uncertain || Boolean(selectedTodayCash)}>Revisar apertura</button>}
+          </form>
+          {selectedOpenCash ? <>
+            <p className="remittance-cash-target" role="status">Caja abierta de <strong>{operatorName(selectedOpenCash.operatorId)}</strong> en <strong>{selectedOpenCash.currency}</strong>. Las entregas y los retiros se registrarán en esta caja.</p>
+            <div className="remittance-cash-movements">
+              {selectedOpenCash.canAdd && <CashMovementForm key={`${selectedOpenCash.id}:add`} cash={selectedOpenCash} kind="add" disabled={working || uncertain} onReview={prepareCashMovement}
+                resetToken={completedCashMovement?.path === `/envios/cajas/${encodeURIComponent(selectedOpenCash.id)}/entregas` ? completedCashMovement.key : undefined} />}
+              {selectedOpenCash.canWithdraw && <CashMovementForm key={`${selectedOpenCash.id}:withdraw`} cash={selectedOpenCash} kind="withdraw" disabled={working || uncertain} onReview={prepareCashMovement}
+                resetToken={completedCashMovement?.path === `/envios/cajas/${encodeURIComponent(selectedOpenCash.id)}/retiros` ? completedCashMovement.key : undefined} />}
+            </div>
+            <dl className="remittance-summary" aria-label="Saldo de la caja seleccionada">
+              <div><dt>Entregas adicionales</dt><dd>{money(selectedOpenCash.added ?? 0, selectedOpenCash.currency)}</dd></div>
+              <div><dt>Retiros durante el día</dt><dd>{money(selectedOpenCash.withdrawn ?? 0, selectedOpenCash.currency)}</dd></div>
+              <div className="remittance-total"><dt>Efectivo esperado</dt><dd>{money(selectedOpenCash.expected, selectedOpenCash.currency)}</dd></div>
+            </dl>
+          </> : openingCash === "missing" && <p className="remittance-help">Para registrar dinero adicional o retiros, primero hay que abrir la caja de hoy del operador y la moneda seleccionados.</p>}
+        </section>}
         {/* Mayo, 26-10-2026: the boxes of a date, an operator and a currency, found with Buscar. */}
         <form className="remittance-panel remittance-cash-filters" aria-label="Buscar cajas" onSubmit={(event) => { event.preventDefault(); setCashSearch(cashFilters); }}>
           <FiltersToggle visible={cashFiltersShown} className="remittance-filters-toggle" onClick={() => setCashFiltersShown((shown) => !shown)} />
@@ -894,12 +950,6 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
             {Boolean(cash.discharged) && <div><dt>Descargado al cobrador</dt><dd>{money(cash.discharged ?? 0, cash.currency)}</dd></div>}
             {cash.carry !== undefined && <div><dt>Pasa a la próxima apertura</dt><dd>{money(cash.carry, cash.currency)}</dd></div>}
           </dl>
-          {cash.status === "open" && cash.date === snapshot.businessDate && <div className="remittance-cash-movements">
-            {cash.canAdd && <CashMovementForm cash={cash} kind="add" disabled={working || uncertain} onReview={prepareCashMovement}
-              resetToken={completedCashMovement?.path === `/envios/cajas/${encodeURIComponent(cash.id)}/entregas` ? completedCashMovement.key : undefined} />}
-            {cash.canWithdraw && <CashMovementForm cash={cash} kind="withdraw" disabled={working || uncertain} onReview={prepareCashMovement}
-              resetToken={completedCashMovement?.path === `/envios/cajas/${encodeURIComponent(cash.id)}/retiros` ? completedCashMovement.key : undefined} />}
-          </div>}
           {Boolean(cash.movements?.length) && <details className="remittance-cash-history"><summary>Ver movimientos de efectivo ({cash.movements!.length})</summary>
             <div className="remittance-table-wrap"><table className="remittance-table"><thead><tr><th>Fecha y hora</th><th>Movimiento</th><th>Importe</th><th>Registrado por</th><th>Nota / motivo</th></tr></thead>
               <tbody>{cash.movements!.map((movement) => <tr key={movement.id}><td>{formatDate(movement.createdAt)}</td><td>{movement.type === "addition" ? "Dinero adicional recibido" : movement.type === "withdrawal" ? "Dinero retirado durante el día" : "Retiro al cerrar"}</td><td>{money(movement.amount, cash.currency)}</td><td>{operatorName(movement.actorId)}</td><td>{movement.note || "Sin nota"}</td></tr>)}</tbody></table></div>

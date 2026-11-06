@@ -126,6 +126,7 @@
 .remittance-cash-movement { min-width: 0; padding: 12px; border: 1px solid var(--rem-edge); border-radius: 4px; background: var(--cyp-surface-muted, #f2f5f9); }
 .remittance-cash-movement fieldset { display: flex; flex-direction: column; gap: 8px; margin: 0; }
 .remittance-cash-movement .remittance-help { margin: 0; }
+.remittance-cash-target { padding-top: 12px; border-top: 1px solid var(--rem-edge); }
 .remittance-cash-history { margin-top: 14px; }
 .remittance-cash-history summary { cursor: pointer; font-weight: 600; }
 .remittance-cash-grid > article { min-width: 0; }
