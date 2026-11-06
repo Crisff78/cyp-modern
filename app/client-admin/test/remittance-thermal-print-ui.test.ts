@@ -20,7 +20,8 @@ test("thermal receipt prints decoded raster blocks with Spanish glyphs, clear ga
   const fixture = path.join(output,"fixture.ts");
   fs.writeFileSync(fixture,`import {printRemittanceReceipt} from ${JSON.stringify(path.resolve(root,"../shared/remittances/receipt.ts").replaceAll("\\","/"))};
 const receipt={reference:'REC-QA-ACENTOS',date:'05/11/2026, 11:13 a. m.',status:'pending',issuer:{name:'Empresa Álvarez y Núñez',address:'Calle del Niño, Santo Domingo',phone:'8095550100'},footer:'Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío.',sections:[{title:'Registro del recibo',columns:['Dato','Valor'],rows:[['Envío','ENV-QA-0001'],['Código de operación','OP-SYNTHETIC-01'],['Estado','Pendiente de entrega']]},{title:'Remitente',columns:['Dato','Valor'],rows:[['Nombre','José Núñez'],['Identificación','QA-001'],['Dirección','Calle de la Constitución, número doce, próximo al Parque de los Héroes']]},{title:'Destinatario',columns:['Dato','Valor'],rows:[['Nombre','María Rodríguez']]},{title:'Importes del envío',columns:['Dato','Valor'],rows:[['Monto a enviar','DOP 2,000.00'],['Cargo del envío','DOP 200.00'],['Total pagado por el remitente','DOP 2,200.00'],['Recibe el destinatario','DOP 2,000.00']]},{title:'Pago del remitente',columns:['Dato','Valor'],rows:[['Forma de pago','Efectivo'],['Dinero recibido','DOP 2,200.00'],['Devuelta','DOP 0.00']]},{title:'Nota',columns:['Dato','Valor'],rows:[['Nota de la operación','${"REFERENCIA".repeat(80)}']]}]};
-for(const paper of ['76','80','58','auto']){for(const output of ['graphics','text']){const button=document.createElement('button');button.textContent=output==='text'?'text-'+paper:paper;button.onclick=()=>printRemittanceReceipt(receipt,{paper,compact:false,output});document.body.append(button);}}`);
+for(const paper of ['51','76','80','58','102','auto']){for(const output of ['graphics','text']){const button=document.createElement('button');button.textContent=output==='text'?'text-'+paper:paper;button.onclick=()=>printRemittanceReceipt(receipt,{paper,compact:false,output});document.body.append(button);}}
+for(const [name,paper,orientation,customWidthMm,customHeightMm] of [['sheet-8x4','8x4','landscape'],['sheet-8x11','8x11','landscape'],['sheet-a4','a4','portrait'],['sheet-letter','letter','portrait'],['sheet-custom','custom','landscape',180,90]]){for(const output of ['graphics','text']){const button=document.createElement('button');button.textContent=output==='text'?'text-'+name:name;button.onclick=()=>printRemittanceReceipt(receipt,{paper,orientation,customWidthMm,customHeightMm,compact:false,output});document.body.append(button);}}`);
   let browser:any, server:ReturnType<typeof createServer>|undefined;
   const errors:string[]=[], external:string[]=[];
   try {
@@ -44,14 +45,14 @@ for(const paper of ['76','80','58','auto']){for(const output of ['graphics','tex
       };
     });
     const page=await context.newPage();page.on("pageerror",(error:Error)=>errors.push(error.message));await page.goto(origin);
-    for(const paper of ["76","80","58"]){
+    for(const paper of ["51","76","80","58","102"]){
       const opening=page.waitForEvent("popup");await page.getByRole("button",{name:paper,exact:true}).click();const popup=await opening;
       popup.on("pageerror",(error:Error)=>errors.push(error.message));await popup.waitForFunction(()=>(window as any).__prints===1);
       assert.equal(await popup.evaluate(()=>(window as any).__readyAtPrint),true);
       const images=popup.locator("main.thermal-image-output img");assert(await images.count()>20);
-      const result=await popup.evaluate(()=>({runs:(window as any).__runs,images:Array.from(document.querySelectorAll<HTMLImageElement>("main img")).map(image=>({src:image.src.slice(0,22),width:image.naturalWidth,heightMm:parseFloat(image.style.height),left:image.getBoundingClientRect().left})),bodyLeft:document.body.getBoundingClientRect().left}));
+      const result=await popup.evaluate(()=>({runs:(window as any).__runs,images:Array.from(document.querySelectorAll<HTMLImageElement>("main img")).map(image=>({src:image.src.slice(0,22),width:image.naturalWidth,heightMm:image.getBoundingClientRect().height*25.4/96,left:image.getBoundingClientRect().left})),bodyLeft:document.body.getBoundingClientRect().left}));
       assert.equal(result.bodyLeft,0);
-      for(const image of result.images){assert.equal(image.src,"data:image/png;base64,");assert.equal(image.width,(paper==="80"?72:paper==="58"?48:70)*8);assert.equal(image.left,0);assert(image.heightMm<60);}
+      for(const image of result.images){assert.equal(image.src,"data:image/png;base64,");assert.equal(image.width,(paper==="80"?72:paper==="58"?48:paper==="51"?45:paper==="102"?96:70)*8);assert.equal(image.left,0);assert(image.heightMm>0&&image.heightMm<60);}
       for(const run of result.runs){assert(run.left>=-0.05,JSON.stringify(run));assert(run.right<=run.widthMm+0.05,JSON.stringify(run));}
       const text=result.runs.map((run:any)=>run.text).join("\n");for(const expected of ["Envío:","Código de operación:","José Núñez","María Rodríguez","Identificación:","Dirección:","DOP 2,200.00"])assert(text.includes(expected),expected);
       const blocks=new Map<number,any[]>();for(const run of result.runs){const group=blocks.get(run.block)??[];group.push(run);blocks.set(run.block,group);}
@@ -62,16 +63,35 @@ for(const paper of ['76','80','58','auto']){for(const output of ['graphics','tex
     }
     const opening=page.waitForEvent("popup");await page.getByRole("button",{name:"auto",exact:true}).click();const normal=await opening;await normal.waitForFunction(()=>(window as any).__prints===1);
     assert(await normal.locator("dt").count()>0);assert.equal(await normal.locator("main.thermal-image-output").count(),0);assert.match(await normal.locator("body").innerText(),/Nombre:\s+José Núñez/);await normal.close();
-    for(const paper of ["80","76","58","auto"]){
+    for(const paper of ["51","80","76","58","102","auto"]){
       const opening=page.waitForEvent("popup");await page.getByRole("button",{name:`text-${paper}`,exact:true}).click();const plain=await opening;
       await plain.waitForFunction(()=>(window as any).__prints===1);
       assert.equal(await plain.locator("img,canvas,svg,dl").count(),0,"generic mode does not need graphics support");
-      const content=await plain.locator("pre").textContent(),columns=paper==="80"?40:paper==="76"?38:paper==="58"?26:72;
+      const content=await plain.locator("pre").textContent(),columns=paper==="80"?40:paper==="76"?38:paper==="58"?26:paper==="51"?24:paper==="102"?54:72;
       assert.match(content,/Nombre: {2,}José Núñez/);assert(content.includes("Código de operación:"));assert(content.includes("María Rodríguez"));
       for(const line of content.split("\n"))assert(Array.from(line).length<=columns);
       assert.equal(await plain.evaluate(()=>document.body.scrollWidth<=document.body.clientWidth+1),true);
       assert.equal(await plain.evaluate(()=>(window as any).__runs.length),0,"no canvas is used by the generic driver path");
       await plain.screenshot({path:path.join(output,`receipt-text-${paper}.png`),fullPage:true});await plain.close();
+    }
+    // The browser's PDF output proves the requested sheet size and orientation, not a physical printer result.
+    for(const [name,widthMm,heightMm] of [["8x4",203.2,101.6],["8x11",279.4,203.2],["a4",210,297],["letter",215.9,279.4],["custom",180,90]] as const) {
+      for(const textOnly of [false,true]) {
+        const label=`${textOnly?"text-":""}sheet-${name}`, opened=page.waitForEvent("popup");
+        await page.getByRole("button",{name:label,exact:true}).click(); const sheet=await opened;
+        await sheet.waitForFunction(()=>(window as any).__prints===1);
+        await sheet.emulateMedia({media:"print"});
+        assert.equal(await sheet.locator("main.thermal-image-output img").count(),0);
+        assert.match(await sheet.locator("body").innerText(),/José Núñez/);
+        assert.match(await sheet.locator("body").innerText(),/DOP 2,200\.00/);
+        assert.equal(await sheet.evaluate(()=>document.body.scrollWidth<=document.body.clientWidth+1),true);
+        if(!textOnly) assert(parseFloat(await sheet.locator("body").evaluate((node:HTMLElement)=>getComputedStyle(node).fontSize))>=12,"sheet type is not shrunk to squeeze a receipt onto a page");
+        const pdf=await sheet.pdf({path:path.join(output,`${label}.pdf`),preferCSSPageSize:true,printBackground:true});
+        const boxes=[...pdf.toString("latin1").matchAll(/\/MediaBox\s*\[\s*0\s+0\s+([0-9.]+)\s+([0-9.]+)\s*\]/g)];
+        assert(boxes.length>0,"PDF contains physical page dimensions");
+        for(const box of boxes) { assert(Math.abs(Number(box[1])-widthMm*72/25.4)<1.5,`${label}: page width`); assert(Math.abs(Number(box[2])-heightMm*72/25.4)<1.5,`${label}: page height`); }
+        await sheet.screenshot({path:path.join(output,`${label}.png`),fullPage:true}); await sheet.close();
+      }
     }
     // Failed raster preparation must not silently print a different format.
     await context.addInitScript(()=>{HTMLCanvasElement.prototype.toDataURL=()=>{throw new Error("Synthetic raster failure");};});

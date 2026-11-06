@@ -1,4 +1,5 @@
 import type { Receipt } from "./receipt";
+export { thermalReceiptSize } from "./receiptPaper";
 
 // Draw glyphs in the browser, not with the printer's resident fonts/code page.
 // Eight dots/mm matches common 203 dpi POS printers. Short image blocks can
@@ -8,16 +9,8 @@ const dotsPerMm = 8;
 type Font = { size: number; bold?: boolean };
 const regular: Font = { size: 3.1 }, bold: Font = { size: 3.1, bold: true };
 const fontCss = (font: Font) => `${font.bold ? "bold " : ""}${font.size}px Arial, Helvetica, sans-serif`;
-export function thermalReceiptSize(paper?: string) {
-  // Reserve side margins; 72 mm at eight dots/mm is a 576-dot image on an 80 mm roll.
-  if (paper === "80") return {widthMm:72, marginMm:4};
-  if (paper === "76") return {widthMm:70, marginMm:3};
-  if (paper === "58") return {widthMm:48, marginMm:5};
-  return undefined;
-}
-
 export async function thermalReceiptImages(document: Document, receipt: Receipt, widthMm: number, compact = false) {
-  if (!Number.isFinite(widthMm) || widthMm < 40 || widthMm > 80) throw new Error("Tamaño de recibo no válido.");
+  if (!Number.isFinite(widthMm) || widthMm < 40 || widthMm > 102) throw new Error("Tamaño de recibo no válido.");
   await document.fonts?.ready;
   const probe = document.createElement("canvas"), measure = probe.getContext("2d");
   if (!measure) throw new Error("El navegador no puede preparar la impresión gráfica.");
@@ -52,7 +45,7 @@ export async function thermalReceiptImages(document: Document, receipt: Receipt,
     draw(context);
     const image = document.createElement("img");
     image.alt = alternative; image.width = canvas.width; image.height = canvas.height;
-    image.style.cssText = `display:block;width:${widthMm}mm;height:${canvas.height / dotsPerMm}mm;max-width:none;break-inside:avoid;page-break-inside:avoid;`;
+    image.style.cssText = `display:block;width:${widthMm}mm;height:auto;max-width:100%;break-inside:avoid;page-break-inside:avoid;`;
     image.src = canvas.toDataURL("image/png");
     output.append(image);
   };
