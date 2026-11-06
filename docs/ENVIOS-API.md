@@ -552,9 +552,11 @@ la base de operación como parte de la preparación local.
 - El retiro al cierre no se resta dos veces: el efectivo esperado para el cuadre conserva su
   fórmula; el saldo para la siguiente apertura es contado menos retirado al cierre. Cada consulta
   pertenece a una sola caja/operador/moneda. No requiere una migración nueva.
-- En Caja de remesas, **Ver detalle** junto a cada importe abre la ventana filtrada por ese tipo;
-  **Ver todos los movimientos** abre el mismo detalle completo. Tiene filtros, desplazamiento,
-  refresco y bloqueo de fondo, y funciona por clic, teclado o pantalla táctil. Un refresco fallido
+- En Caja de remesas, el **doble clic en cualquier parte de la fila de un importe** (etiqueta,
+  monto o espacio intermedio) abre la ventana filtrada por ese tipo. Los totales abren el detalle
+  completo, al igual que **Ver todos los movimientos**. No hay un enlace «Ver detalle» junto al
+  monto. La fila también se activa con Enter o Espacio al enfocarla. Tiene filtros, desplazamiento,
+  refresco y bloqueo de fondo. Un refresco fallido
   muestra el error sin presentar los saldos anteriores como una consulta actualizada.
 
 La impresión de recibos conserva sus importes y lista de datos permitidos. Agrega rollos nominales
