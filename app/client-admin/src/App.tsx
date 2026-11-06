@@ -6302,6 +6302,7 @@ function SupportContact({ open }: Readonly<{ open: boolean }>) {
   return (
     <section className="support-contact" aria-label="Contacto de soporte técnico">
       <strong className="support-contact-title">¿Necesitas ayuda? Contacta a soporte técnico</strong>
+      <p><a href="http://gamera.ddns.net:60032" target="_blank" rel="noopener noreferrer">Entrar al soporte técnico de Gamera</a></p>
       <p>Soporte a cargo de <strong>{name}</strong>{hours ? ` · Horario: ${hours}` : ""}</p>
       {config === null ? <p>Cargando datos de contacto…</p> : failed ? <p className="support-contact-empty">No se pudieron cargar los datos de contacto. Cierra esta ventana y vuelve a abrirla para intentarlo de nuevo.</p> : phone || whatsapp || email ? (
         <ul>
