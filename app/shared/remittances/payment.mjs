@@ -73,15 +73,15 @@ export function paymentAmounts(total, input, creditCardCommissionBps = 0) {
         if (input.cardType !== undefined && !cardTypes.includes(input.cardType)) return invalid("Selecciona crédito o débito.");
         if (input.cardType === undefined && (creditCardCommissionBps > 0 || input.cardholderName !== undefined || input.last4 !== undefined))
             return invalid("Selecciona crédito o débito para comprobar el recargo.");
-        if (input.cardType === "debit" && (input.cardholderName !== undefined || input.last4 !== undefined))
-            return invalid("El débito solo requiere el comprobante de pago.");
-        if (input.cardType === "credit" && (!isCardholderNameDraft(input.cardholderName) || !/\p{L}/u.test(input.cardholderName) || (typeof input.last4 !== "string" || !/^[0-9]{4}$/.test(input.last4))))
+        // Older debit records have no card details. New callers provide the complete safe pair.
+        const hasCardDetails = input.cardholderName !== undefined || input.last4 !== undefined;
+        if ((input.cardType === "credit" || hasCardDetails) && (!isCardholderNameDraft(input.cardholderName) || !/\p{L}/u.test(input.cardholderName) || (typeof input.last4 !== "string" || !/^[0-9]{4}$/.test(input.last4))))
             return invalid("Escribe el titular y solo los últimos 4 dígitos de la tarjeta.");
         if (input.cardType !== undefined) {
             const charge = cardPaymentCharge(total, input.cardType, creditCardCommissionBps);
             return { method, tenderedAmount: charge.totalAmount, changeAmount: 0, reference, ...(bank ? { bank } : {}),
                 cardType: input.cardType, cardSurchargeBps: charge.cardSurchargeBps, cardSurchargeAmount: charge.cardSurchargeAmount,
-                ...(input.cardType === "credit" ? { cardholderName: input.cardholderName.trim(), last4: input.last4 } : {}) };
+                ...(hasCardDetails ? { cardholderName: input.cardholderName.trim(), last4: input.last4 } : {}) };
         }
     }
     return { method, tenderedAmount: total, changeAmount: 0, reference, ...(bank ? { bank } : {}) };

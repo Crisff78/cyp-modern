@@ -110,8 +110,9 @@ export function registerRemittanceRoutes(
       ? { ...input.newRecipientClient, phone: input.recipientPhone } : input.newRecipientClient;
     const recipientClientId = input.recipientClientId ?? registerRemittanceClient(state, actor, recipientDraft!, "recipient", senderClientId);
     const { newSenderClient: _sender, newRecipientClient: _recipient, cardArchive, ...values } = input;
-    if (vault && input.payment?.cardType === "credit" && !cardArchive) throw new DomainError("CARD_ARCHIVE_REQUIRED", "Actualiza la pantalla y completa el archivo cifrado de la tarjeta antes de confirmar.", 400);
-    if (cardArchive && (!vault || input.payment?.cardType !== "credit")) throw new DomainError("CARD_STORAGE_UNAVAILABLE", "El guardado cifrado de tarjeta no está disponible para este pago.", 409);
+    const archiveEligible = input.payment?.method === "card" && (input.payment.cardType === "credit" || (input.payment.cardType === "debit" && input.payment.last4 !== undefined));
+    if (vault && archiveEligible && !cardArchive) throw new DomainError("CARD_ARCHIVE_REQUIRED", "Actualiza la pantalla y completa el archivo cifrado de la tarjeta antes de confirmar.", 400);
+    if (cardArchive && (!vault || !archiveEligible)) throw new DomainError("CARD_STORAGE_UNAVAILABLE", "El guardado cifrado de tarjeta no está disponible para este pago.", 409);
     const result = createRemittance(state, actor, { ...values, senderClientId, recipientClientId }, systemOperators);
     if (cardArchive) (state.remittances.cardArchives ??= []).push(vault!.archive(cardArchive, result.id, actor.id, input.payment!.last4!));
     return cardArchive ? { ...result, cardStored: true } : result;

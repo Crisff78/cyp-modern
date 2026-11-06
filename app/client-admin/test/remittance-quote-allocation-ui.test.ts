@@ -738,6 +738,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
         if (surface === "admin") await (await menuOption(page, "Envíos de dinero")).click();
         const workspace = page.getByRole("region", { name: "Envíos de dinero", exact: true });
         for (const method of ["credit", "card", "transfer", "deposit"]) {
+          const isCard = method === "credit" || method === "card";
           const choose = async (label: string, code: string) => {
             await workspace.getByRole("combobox", { name: label, exact: true }).fill(code);
             await workspace.getByRole("option").filter({ hasText: code }).first().click();
@@ -751,11 +752,11 @@ createRoot(document.getElementById("root")).render(<App />);`);
           const review = page.getByRole("dialog", { name: "Confirmar envío", exact: true });
           await review.getByLabel("Forma de pago", { exact: true }).selectOption(method === "card" ? "debit" : method);
           assert.equal(await review.locator('input[autocomplete="cc-number"],input[autocomplete="cc-csc"],input[autocomplete="cc-exp"]').count(), 0);
-          if (method === "credit") {
+          assert.equal(await review.getByLabel("Vencimiento (MM/YY)",{exact:true}).count(),0);
+          assert.equal(await review.getByLabel("CVV",{exact:true}).count(),0);
+          if (isCard) {
             const holder = review.getByLabel("Nombre del titular", {exact:true}), number = review.getByLabel("Número de tarjeta (16 dígitos)", {exact:true});
             await holder.fill("María O'Connor");
-            await review.getByLabel("Vencimiento (MM/YY)",{exact:true}).fill("1299");
-            assert.equal(await review.getByLabel("CVV",{exact:true}).count(),0);
             await number.evaluate((input: HTMLInputElement) => { const data = new DataTransfer(); data.setData("text", "41111111111111111"); input.dispatchEvent(new ClipboardEvent("paste", {clipboardData:data,bubbles:true,cancelable:true})); });
             assert.equal(await number.inputValue(), "");
             await number.fill("4242424242424242");
@@ -764,9 +765,11 @@ createRoot(document.getElementById("root")).render(<App />);`);
             const browserStorage = await page.evaluate(() => JSON.stringify({local:{...localStorage},session:{...sessionStorage}}));
             assert(!browserStorage.includes("4242424242424242") && !browserStorage.includes("4242 4242 4242 4242"));
             const q = quoteRemittance(await store.read(), {sourceCurrency:"DOP",destinationCurrency:"DOP",amount:90000},now);
-            const surcharge = Number((BigInt(q.totalAmount)*250n+5000n)/10000n);
+            const surcharge = method === "credit" ? Number((BigInt(q.totalAmount)*250n+5000n)/10000n) : 0;
             const card = review.locator('.remittance-quote-card[aria-label="Paga el remitente"]');
-            assert.match(await card.innerText(), /Recargo tarjeta de crédito/); assert.doesNotMatch(await card.innerText(), /%/);
+            if (method === "credit") assert.match(await card.innerText(), /Recargo tarjeta de crédito/);
+            else assert.doesNotMatch(await card.innerText(), /Recargo tarjeta de crédito/);
+            assert.doesNotMatch(await card.innerText(), /%/);
             assert((await card.innerText()).includes(formatMoney(q.totalAmount+surcharge,"DOP")));
             assert.equal(await review.locator('.remittance-quote-card[aria-label="Recibe el destinatario"]').count(), 1);
           } else assert.equal(await review.getByLabel("Nombre del titular", {exact:true}).count(), 0);
@@ -786,36 +789,35 @@ createRoot(document.getElementById("root")).render(<App />);`);
           await review.getByRole("alert").filter({ hasText: "Corrige el campo señalado" }).waitFor();
           assert.equal((await store.read()).remittances.transfers.length, before);
           await reference.fill(`QA-${surface}-${method}/0001`); await bank.selectOption("BHD");
-          if (method === "credit") {
+          if (isCard) {
             assert.equal(await review.getByLabel("Número de tarjeta (16 dígitos)", {exact:true}).inputValue(), "4242 4242 4242 4242");
             // Capture only the masked synthetic number in screenshots.
             await page.evaluate(() => window.dispatchEvent(new Event("pagehide")));
           }
           await page.screenshot({ path: path.join(output, `${surface}-${method}-confirmation.png`) });
-          if (method === "credit") {
+          if (isCard) {
             await review.getByLabel("Número de tarjeta (16 dígitos)",{exact:true}).fill("4242424242424242");
             await review.getByLabel("Comprobé que el pago fue recibido",{exact:true}).check();
-            await review.getByLabel("Vencimiento (MM/YY)",{exact:true}).fill("1299");
-            assert.equal(await review.getByLabel("CVV",{exact:true}).count(),0);
           }
           const recordedReply = page.waitForResponse((response: any) => response.request().method() === "POST" && new URL(response.url()).pathname === "/api/envios");
           await review.getByRole("button", { name: "Aceptar", exact: true }).click();
           const sent = (await recordedReply).request().postDataJSON();
           assert(!JSON.stringify(sent).includes("4242424242424242") && !JSON.stringify(sent).includes("4242 4242 4242 4242"), "the real API receives only the last four digits");
           assert.equal(sent.payment.cardNumber, undefined); assert.equal(sent.payment.cvv, undefined);assert.equal(sent.payment.expiry, undefined);
-          if (method === "credit") { assert.equal(sent.payment.last4, "4242"); assert(sent.cardArchive.ciphertext); }
+          if (isCard) { assert.equal(sent.payment.last4, "4242"); assert.equal(sent.payment.cardholderName,"María O'Connor"); assert(sent.cardArchive.ciphertext); }
           const print = page.getByRole("dialog", { name: "¿Quieres imprimir el recibo?", exact: true }); await print.waitFor();
           await print.getByRole("button", { name: "No imprimir", exact: true }).click();
           const saved = (await store.read()).remittances.transfers.at(-1)!;
           assert.equal(saved.payment?.bank, "BHD");
           assert.equal(saved.payment?.method, method === "credit" || method === "card" ? "card" : method);
-          if (method === "credit") { assert(!JSON.stringify(await store.read()).includes("4242424242424242")); const archived = (await store.read()).remittances.cardArchives?.find(row=>row.transferId===saved.id); assert(archived); assert.deepEqual(cardVault.open(archived!,saved.id,saved.registeredBy),{pan:"4242424242424242",expiry:"12/99"}); assert.equal(saved.payment?.last4,"4242"); assert.equal(saved.payment?.cardType,"credit"); assert.equal(saved.payment?.cardSurchargeBps,250); assert(totalPaidForTransfer(saved)>saved.totalAmount); }
+          if (isCard) { assert(!JSON.stringify(await store.read()).includes("4242424242424242")); const archived = (await store.read()).remittances.cardArchives?.find(row=>row.transferId===saved.id); assert(archived); assert.deepEqual(cardVault.open(archived!,saved.id,saved.registeredBy),{pan:"4242424242424242"}); assert.equal(saved.payment?.last4,"4242"); }
+          if (method === "credit") { assert.equal(saved.payment?.cardType,"credit"); assert.equal(saved.payment?.cardSurchargeBps,250); assert(totalPaidForTransfer(saved)>saved.totalAmount); }
           if (method === "card") { assert.equal(saved.payment?.cardType,"debit"); assert.equal(saved.payment?.cardSurchargeAmount,0); }
           assert.equal((await store.read()).remittances.events.find((event) => event.transferId === saved.id && event.type === "sent")?.amount, 0);
           await workspace.getByRole("button", { name: saved.envioReference, exact: true }).click();
           const detail = page.getByRole("dialog", { name: `${saved.envioReference} · ${saved.reciboReference}`, exact: true });
           const receipt = detail.getByRole("article", { name: "Recibo del envío de dinero", exact: true });
-          if (method === "credit") { assert.match(await receipt.innerText(), /•••• 4242/); assert((await receipt.innerText()).includes(formatMoney(totalPaidForTransfer(saved),"DOP"))); assert(!(await receipt.innerText()).includes("María O'Connor")); }
+          if (isCard) { assert.match(await receipt.innerText(), /•••• 4242/); assert((await receipt.innerText()).includes(formatMoney(totalPaidForTransfer(saved),"DOP"))); assert(!(await receipt.innerText()).includes("María O'Connor")); }
           assert.match(await receipt.innerText(), new RegExp(`QA-${surface}-${method}`)); assert.equal((await receipt.innerText()).includes("Devuelta"), false);
           await detail.getByLabel("Motivo de cancelación", { exact: true }).fill("Prueba de devolución externa");
           await detail.getByLabel("Referencia de devolución", { exact: true }).fill(`QA-REFUND-${surface}-${method}`);

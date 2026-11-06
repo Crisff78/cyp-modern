@@ -690,8 +690,8 @@ export class PostgresStore implements Store {
   async cardPaymentSchemaReady() {
     const actor = "synthetic-schema-check", at = "2026-01-01T00:00:00.000Z";
     try {
-      for (const rate of [0, 250]) {
-        const payment = { version: 2, method: "card", cardType: "credit", cardholderName: "Prueba de compatibilidad", last4: "4242", reference: "SCHEMA-CHECK", confirmedBy: actor, confirmedAt: at, tenderedAmount: 10000 + rate, changeAmount: 0, cardSurchargeBps: rate, cardSurchargeAmount: rate };
+      for (const [cardType, rate] of [["credit", 0], ["credit", 250], ["debit", 0]] as const) {
+        const payment = { version: 2, method: "card", cardType, cardholderName: "Prueba de compatibilidad", last4: "4242", reference: "SCHEMA-CHECK", confirmedBy: actor, confirmedAt: at, tenderedAmount: 10000 + rate, changeAmount: 0, cardSurchargeBps: rate, cardSurchargeAmount: rate };
         const result = await this.pool.query("SELECT valid_remittance_payment($1::jsonb,$2::bigint,$3::text,$4::timestamptz) AS ok", [JSON.stringify(payment),10000,actor,at]);
         if (result.rows[0]?.ok !== true) return false;
       }
