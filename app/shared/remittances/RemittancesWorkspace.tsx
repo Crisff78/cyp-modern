@@ -37,7 +37,7 @@ import { ReceiptPrintControls, type ReceiptPrintOptions } from "./ReceiptPrintCo
 import { encryptCardArchive } from "./cardArchive.mjs";
 import { CashMovementForm, type CashMovementReview } from "./CashMovementForm";
 import { CashActivityDialog } from "./CashActivityDialog";
-import { cashActivityLabels, type CashActivityKind } from "./cashActivity.mjs";
+import type { CashActivityKind } from "./cashActivity.mjs";
 
 export type RemittanceSection = "envios" | "recibos" | "caja" | "reportes";
 type Tab = RemittanceSection;
@@ -798,10 +798,14 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   </div>;
   const openingCash = snapshot ? remittanceCashNotice(snapshot, openingOperator, opening.currency) : "ok";
   const shownCash = snapshot ? filterCashSessions(snapshot.cashSessions, cashSearch, snapshot.businessDate) : [];
-  const cashActivityValue = (cash: Cash, kind: CashActivityKind, amount: number) => <button type="button" className="remittance-cash-detail-link"
-    aria-label={`Ver detalle de ${cashActivityLabels[kind].toLocaleLowerCase("es")}`} onClick={() => setCashActivity({ id: cash.id, kind })}>
-    <span>{money(amount, cash.currency)}</span><small>Ver detalle</small>
-  </button>;
+  const cashActivityField = (cash: Cash, label: string, amount: number, kind: CashActivityKind | "all" = "all", total = false) => <div
+    className={`remittance-cash-field${total ? " remittance-total" : ""}`} role="button" tabIndex={0}
+    aria-label={`${label}: ${money(amount, cash.currency)}`} title="Doble clic para consultar el detalle"
+    onDoubleClick={event => { event.preventDefault(); event.stopPropagation(); setCashActivity({ id: cash.id, kind }); }}
+    onClick={event => { if (event.detail === 0) setCashActivity({ id: cash.id, kind }); }}
+    onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); if (!event.repeat) setCashActivity({ id: cash.id, kind }); } }}>
+    <dt>{label}</dt><dd>{money(amount, cash.currency)}</dd>
+  </div>;
   // A transfer is registered only for an operator who can send; the boxes still list every operator.
   const sendingOperators = snapshot?.sendingOperatorIds ? snapshot.operators.filter(({ id }) => snapshot.sendingOperatorIds!.includes(id)) : snapshot?.operators ?? [];
   // Classes that only the compact layout of the sending window uses to place a field.
@@ -928,9 +932,9 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
                 resetToken={completedCashMovement?.path === `/envios/cajas/${encodeURIComponent(selectedOpenCash.id)}/retiros` ? completedCashMovement.key : undefined} />}
             </div>
             <dl className="remittance-summary" aria-label="Saldo de la caja seleccionada">
-              <div><dt>Entregas adicionales</dt><dd>{cashActivityValue(selectedOpenCash, "addition", selectedOpenCash.added ?? 0)}</dd></div>
-              <div><dt>Retiros durante el día</dt><dd>{cashActivityValue(selectedOpenCash, "withdrawal", selectedOpenCash.withdrawn ?? 0)}</dd></div>
-              <div className="remittance-total"><dt>Efectivo esperado</dt><dd>{money(selectedOpenCash.expected, selectedOpenCash.currency)}</dd></div>
+              {cashActivityField(selectedOpenCash, "Entregas adicionales", selectedOpenCash.added ?? 0, "addition")}
+              {cashActivityField(selectedOpenCash, "Retiros durante el día", selectedOpenCash.withdrawn ?? 0, "withdrawal")}
+              {cashActivityField(selectedOpenCash, "Efectivo esperado", selectedOpenCash.expected, "all", true)}
             </dl>
             <button type="button" onClick={() => setCashActivity({ id: selectedOpenCash.id, kind: "all" })}>Ver todos los movimientos</button>
           </> : openingCash === "missing" && <p className="remittance-help">Para registrar dinero adicional o retiros, primero hay que abrir la caja de hoy del operador y la moneda seleccionados.</p>}
@@ -948,15 +952,17 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
         <div className="remittance-cash-grid" aria-label={`Cajas del ${cashSearch.date || snapshot.businessDate}`}>{shownCash.map((cash) => {
           const carriedFrom = cash.carriedFrom ? snapshot.cashSessions.find((row) => row.id === cash.carriedFrom) : undefined;
           return <article className="remittance-panel" key={cash.id}><h2>{cash.currency} · {operatorName(cash.operatorId)}</h2><p>{cash.date} · {cash.status === "open" ? "Abierta" : "Cerrada"}</p><dl className="remittance-summary">
-            <div><dt>Saldo inicial</dt><dd>{money(cash.openingAmount, cash.currency)}</dd></div>
+            {cashActivityField(cash, "Saldo inicial", cash.openingAmount)}
             {carriedFrom && <div className="remittance-cash-source"><dt>Viene del cierre del</dt><dd>{carriedFrom.date}</dd></div>}
-            <div><dt>Entregas adicionales</dt><dd>{cashActivityValue(cash, "addition", cash.added ?? 0)}</dd></div>
-            <div><dt>Retiros durante el día</dt><dd>{cashActivityValue(cash, "withdrawal", cash.withdrawn ?? 0)}</dd></div>
-            <div><dt>Ingresos por envíos</dt><dd>{cashActivityValue(cash, "sent", cash.sentTotal)}</dd></div><div><dt>Devoluciones</dt><dd>{cashActivityValue(cash, "refund", cash.cancelRefund)}</dd></div><div><dt>Pagos</dt><dd>{cashActivityValue(cash, "paid", cash.paid)}</dd></div>
-            <div className="remittance-total"><dt>Efectivo esperado</dt><dd>{money(cash.expected, cash.currency)}</dd></div>
-            {cash.countedAmount !== undefined && <div><dt>Contado al cierre</dt><dd>{money(cash.countedAmount, cash.currency)}</dd></div>}
-            {Boolean(cash.discharged) && <div><dt>Descargado al cobrador</dt><dd>{cashActivityValue(cash, "discharge", cash.discharged ?? 0)}</dd></div>}
-            {cash.carry !== undefined && <div><dt>Pasa a la próxima apertura</dt><dd>{money(cash.carry, cash.currency)}</dd></div>}
+            {cashActivityField(cash, "Entregas adicionales", cash.added ?? 0, "addition")}
+            {cashActivityField(cash, "Retiros durante el día", cash.withdrawn ?? 0, "withdrawal")}
+            {cashActivityField(cash, "Ingresos por envíos", cash.sentTotal, "sent")}
+            {cashActivityField(cash, "Devoluciones", cash.cancelRefund, "refund")}
+            {cashActivityField(cash, "Pagos", cash.paid, "paid")}
+            {cashActivityField(cash, "Efectivo esperado", cash.expected, "all", true)}
+            {cash.countedAmount !== undefined && cashActivityField(cash, "Contado al cierre", cash.countedAmount)}
+            {Boolean(cash.discharged) && cashActivityField(cash, "Descargado al cobrador", cash.discharged ?? 0, "discharge")}
+            {cash.carry !== undefined && cashActivityField(cash, "Pasa a la próxima apertura", cash.carry)}
           </dl>
           <div className="remittance-actions">
             <button type="button" onClick={() => setCashActivity({ id: cash.id, kind: "all" })}>Ver todos los movimientos</button>
