@@ -35,6 +35,36 @@ test("transport excludes CVV; at-rest envelope binds record, actor, expiration a
   const forbidden = publicEncrypt({key:keys.publicKey,oaepHash:"sha256",padding:constants.RSA_PKCS1_OAEP_PADDING},Buffer.from(JSON.stringify({pan,expiry,cvv:"123"}))).toString("base64");
   assert.throws(() => vault.archive({...transport,ciphertext:forbidden},"synthetic-record","synthetic-actor","4242"));
   await assert.rejects(encryptCardArchive(pan,"13/99",vault.info()));
+  const panOnly = await encryptCardArchive(pan, undefined, vault.info());
+  assert.deepEqual(vault.open(vault.archive(panOnly,"pan-only","synthetic-actor","4242"),"pan-only","synthetic-actor"), {pan});
+  for (const value of [{pan,cvv:"123"},{pan,expiry:null},{pan,extra:"forbidden"}]) {
+    const ciphertext = publicEncrypt({key:keys.publicKey,oaepHash:"sha256",padding:constants.RSA_PKCS1_OAEP_PADDING},Buffer.from(JSON.stringify(value))).toString("base64");
+    assert.throws(()=>vault.archive({...panOnly,ciphertext},"pan-only","synthetic-actor","4242"));
+  }
+});
+
+test("credit and debit archive only the number without requesting expiry; safe metadata and idempotency survive", async t => {
+  const now = new Date(), initial = seed(), admin = {id:"demo-admin",name:"Synthetic Admin",role:"admin" as const};
+  openRemittanceCash(initial,admin,{operatorId:admin.id,currency:"DOP",openingAmount:0},[],now);
+  const store = new MemoryStore(initial), app = await buildApp({store,demo:true,secret:"synthetic-pan-only-secret-at-least-32",origins:[],cardVault:vault}); t.after(()=>app.close());
+  const login = await app.inject({method:"POST",url:"/api/auth/login",payload:{email:"admin@cyp.local",password:DEMO_PASSWORD}});
+  assert.equal(login.statusCode,200); const authorization = `Bearer ${login.json().token}`;
+  const pair = {sourceCurrency:"DOP" as const,destinationCurrency:"DOP" as const,amount:10000};
+  for (const cardType of ["credit","debit"] as const) {
+    const payment = {method:"card",cardType,cardholderName:"Persona de Prueba",last4:"4242",reference:`QA-PAN-ONLY-${cardType}`,verified:true};
+    const body = {...pair,senderClientId:"cli-1",recipientClientId:"cli-5",quote:quoteRemittance(await store.read(),pair).quote,payment};
+    const post = (payload:unknown,key=randomUUID()) => app.inject({method:"POST",url:"/api/envios",headers:{authorization,"idempotency-key":key},payload:payload as never});
+    const before = JSON.stringify(await store.read()), missing = await post(body);
+    assert.equal(missing.statusCode,400); assert.equal(missing.json().error.code,"CARD_ARCHIVE_REQUIRED"); assert.equal(JSON.stringify(await store.read()),before);
+    const encrypted = {...body,cardArchive:await encryptCardArchive(pan,undefined,vault.info())}, key = randomUUID();
+    const first = await post(encrypted,key), replay = await post(encrypted,key);
+    assert.equal(first.statusCode,200,first.body); assert.deepEqual(replay.json(),first.json());
+    assert.equal(first.json().cardStored,true); assert.equal(first.json().payment.last4,"4242"); assert.equal(first.json().payment.cardholderName,payment.cardholderName);
+    const state = await store.read(), archive = state.remittances.cardArchives!.find(row=>row.transferId===first.json().id)!;
+    assert.deepEqual(vault.open(archive,first.json().id,admin.id),{pan});
+    assert(!JSON.stringify(state).includes(pan)); assert.doesNotMatch(first.body,/ciphertext|wrappedKey|cvv|expiry/i);
+  }
+  assert.equal((await store.read()).remittances.transfers.length,2); assert.equal((await store.read()).remittances.cardArchives!.length,2);
 });
 
 test("API atomically stores only ciphertext, acknowledges storage, redacts responses and replays without duplication", async (t) => {

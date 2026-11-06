@@ -550,8 +550,8 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
       try {
         const payment = paymentInput(action.expectedQuotation!.totalAmount, paymentDraft, action.expectedQuotation!.quote.creditCardCommissionBps ?? 0);
         let cardArchive;
-        if (payment.cardType === "credit" && snapshot?.cardStorage?.enabled) {
-          const encrypted = encryptCardArchive(root.current?.querySelector<HTMLInputElement>("[data-card-number]")?.value ?? "", root.current?.querySelector<HTMLInputElement>("[data-card-expiry]")?.value ?? "", snapshot.cardStorage);
+        if (payment.method === "card" && payment.cardType && snapshot?.cardStorage?.enabled) {
+          const encrypted = encryptCardArchive(root.current?.querySelector<HTMLInputElement>("[data-card-number]")?.value ?? "", undefined, snapshot.cardStorage);
           setBusy(true); cardArchive = await encrypted;
         }
         const { cardArchive: _previousArchive, ...currentBody } = action.body;

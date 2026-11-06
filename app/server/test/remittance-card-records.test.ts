@@ -47,7 +47,7 @@ test("credit surcharge uses exact half-up cents on subtotal; defaults, bounds an
   assert.equal(debit.tenderedAmount, 11000); assert.equal(debit.cardSurchargeAmount, 0);
 });
 
-test("card records reject full numbers, security codes, expiry, missing metadata, invented fees and debit metadata without mutations", () => {
+test("card records reject full numbers, security codes, expiry, incomplete metadata and invented fees without mutations", () => {
   const state = fixture(), body = bodyFor(state), before = structuredClone(state);
   for (const payment of [
     { ...credit, last4: "4111111111111111" }, { ...credit, last4: "123" }, { ...credit, last4: 1234 },
@@ -55,11 +55,25 @@ test("card records reject full numbers, security codes, expiry, missing metadata
     { ...credit, cardNumber: "4111111111111111" }, { ...credit, cvv: "123" }, { ...credit, expiry: "12/29" },
     { ...credit, cardSurchargeBps: 0 }, { ...credit, cardSurchargeAmount: 0 },
     { method: "card", reference: "UNTYPED", verified: true }, { ...credit, cardType: "other" },
-    { ...credit, cardType: "debit" }, { ...credit, method: "transfer" }, { ...credit, verified: false },
+    { ...credit, cardType: "debit", cardholderName: undefined }, { ...credit, cardType: "debit", last4: undefined },
+    { ...credit, cardType: "debit", last4: "12345" }, { ...credit, cardType: "debit", cardholderName: "Titular 123" },
+    { ...credit, method: "transfer" }, { ...credit, verified: false },
   ]) {
     assert.throws(() => createRemittance(state, admin, { ...body, payment } as never, [], at), undefined, JSON.stringify(payment));
     assert.deepEqual(state, before);
   }
+});
+
+test("debit records retain holder and last four without a credit surcharge or physical cash", () => {
+  const state = fixture(), body = bodyFor(state), saved = createRemittance(state, admin, { ...body, payment: { ...credit, cardType: "debit" } }, [], at);
+  assert.equal(saved.payment?.cardholderName, credit.cardholderName); assert.equal(saved.payment?.last4, credit.last4);
+  assert.equal(saved.payment?.cardSurchargeBps, 0); assert.equal(saved.payment?.cardSurchargeAmount, 0);
+  assert.equal(saved.payment?.tenderedAmount, saved.totalAmount); assert.equal(saved.receiveAmount, 10000);
+  assert.equal(cashBalance(state, state.remittances.cashSessions[0]).expected, 0);
+  assert.equal(confirmedCreatedTransfer(saved, { ...body, payment: { ...credit, cardType: "debit" } }, admin.id).id, saved.id);
+  const html = receiptHtml(remittanceReceipt(saved));
+  assert.match(html, /Tarjeta de débito/); assert.match(html, /•••• 0042/);
+  assert.doesNotMatch(html, /María O&#39;Connor|cvv|expiry|vencimiento/i);
 });
 
 test("USD and EUR credit surcharges stay in the sender's currency without changing any destination conversion", () => {
@@ -125,4 +139,9 @@ test("API strictly rejects sensitive/forged fields before idempotency storage; a
   assert.equal(first.statusCode, 200, first.body); assert.deepEqual(retry.json(), first.json());
   assert.equal(first.json().payment.cardSurchargeAmount, 275); assert.equal((await store.read()).remittances.transfers.length, 1);
   assert.equal(getCommissionPolicy(await store.read()).creditCardCommissionBps, 250);
+  const debitBody = { ...body, payment: { ...credit, cardType: "debit" } }, debitKey = randomUUID();
+  const debit = await post("/api/envios", debitBody, debitKey), debitReplay = await post("/api/envios", debitBody, debitKey);
+  assert.equal(debit.statusCode, 200, debit.body); assert.deepEqual(debitReplay.json(), debit.json());
+  assert.equal(debit.json().payment.last4, credit.last4); assert.equal(debit.json().payment.cardholderName, credit.cardholderName);
+  assert.equal(debit.json().payment.cardSurchargeAmount, 0); assert.equal((await store.read()).remittances.transfers.length, 2);
 });
