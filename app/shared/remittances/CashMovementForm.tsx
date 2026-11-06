@@ -18,7 +18,7 @@ export function CashMovementForm({ cash, kind, disabled, resetToken, onReview }:
   const [invalidMoney, setInvalidMoney] = useState(false);
   const errorId = useId();
   const withdraw = kind === "withdraw";
-  useEffect(() => { setAmount(""); setNote(""); setError(""); setInvalidMoney(false); }, [resetToken]);
+  useEffect(() => { if (!resetToken) return; setAmount(""); setNote(""); setError(""); setInvalidMoney(false); }, [resetToken]);
   function review(event: FormEvent) {
     event.preventDefault();
     if (disabled) return;

@@ -234,6 +234,8 @@ test("Mayo's review (26-10): Envíos, Caja de remesas, Tasas, escritorio, Soport
       assert.match(await box.innerText(), /Entregas adicionales\s+DOP 250\.00/);
       assert.match(await box.innerText(), /Efectivo esperado\s+DOP 250\.00/);
       await shot("2.1.2-entrega-adicional");
+      // An unsubmitted addition is preserved when the other cash movement form is saved.
+      await amount.click(); await amount.pressSequentially("50");
       // The two money fields are visible in the actual box, separately from its initial cash.
       const withdrawal = box.getByRole("form", { name: "Registrar retiro de efectivo" });
       const takenDuringDay = withdrawal.getByLabel("Dinero retirado (DOP)", { exact: true });
@@ -251,11 +253,11 @@ test("Mayo's review (26-10): Envíos, Caja de remesas, Tasas, escritorio, Soport
       await box.getByText("DOP 200.00", { exact: true }).first().waitFor();
       assert.match(await box.innerText(), /Retiros durante el día\s+DOP 50\.00/);
       assert.match(await box.innerText(), /Efectivo esperado\s+DOP 200\.00/);
+      assert.equal(await amount.inputValue(), "50.00", "saving a withdrawal does not erase another cash draft");
       await box.getByText("Ver movimientos de efectivo (2)", { exact: true }).click();
       assert.match(await box.locator(".remittance-cash-history").innerText(), /Encargado de oficina: devolver efectivo sobrante/);
       await shot("2.1.2-retiro-durante-dia");
       // Another physical addition is accumulated, not an overwrite of the initial cash or the first addition.
-      await amount.click(); await amount.pressSequentially("50");
       await add.getByRole("button", { name: "Revisar entrega", exact: true }).click();
       await page.getByRole("dialog", { name: "Confirmar entrega adicional" }).getByRole("button", { name: "Confirmar", exact: true }).click();
       await box.getByText("DOP 300.00", { exact: true }).first().waitFor();
