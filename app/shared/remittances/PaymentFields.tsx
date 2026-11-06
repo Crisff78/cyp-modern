@@ -43,6 +43,11 @@ export function PaymentFields({ total, currency, creditCardCommissionBps = 0, va
   const textMessage = "Usa hasta 160 caracteres en una sola línea, sin caracteres de control ni marcas invisibles.";
   const reject = (field: PaymentField, message: string) => onChange({ ...value, entryErrors: { ...value.entryErrors, [field]: message } });
   const update = (field: PaymentField, next: string) => onChange({ ...value, [field]: next, entryErrors: { ...value.entryErrors, [field]: undefined } });
+  const bankField = <label>Banco o proveedor (opcional)<select aria-label="Banco o proveedor (opcional)" value={value.bank} onChange={(event) => update("bank", event.target.value)}>
+    <option value="">Selecciona un banco</option>
+    {paymentBanks.map((bank) => <option key={bank} value={bank}>{bank}</option>)}
+    {value.bank && !paymentBanks.includes(value.bank) && <option value={value.bank}>{value.bank} (registro anterior)</option>}
+  </select></label>;
   const charge = previewPaymentCharge(total, value, creditCardCommissionBps);
   const choice = value.method === "card" ? value.cardType ?? "card" : value.method;
   const fieldError = Object.values(value.entryErrors ?? {}).find(Boolean);
@@ -65,6 +70,7 @@ export function PaymentFields({ total, currency, creditCardCommissionBps = 0, va
       <p className="remittance-help">El cambio se calcula sobre el total a pagar, incluida la comisión. En caja queda el total neto del envío.</p>
     </div> : <>
       <p className="remittance-help">Registra un pago ya recibido y comprobado fuera de CyP. CyP no cobra tarjetas ni verifica fondos bancarios. No escribas claves ni datos de tarjeta en referencias o notas.</p>
+      {value.method === "card" && value.cardType === "credit" && bankField}
       {value.method === "card" && value.cardType === "credit" && <div className="remittance-payment-cash">
         <label>Nombre del titular<input autoComplete="off" maxLength={120} value={value.cardholderName} aria-invalid={Boolean(value.entryErrors?.cardholderName) || undefined} onPaste={(event) => restrictPaste(event, isCardholderNameDraft, () => reject("cardholderName", "Usa solo letras, espacios, tildes, guiones o apóstrofes (máximo 120)."))} onChange={(event) => { if (!isCardholderNameDraft(event.target.value)) { reject("cardholderName", "Usa solo letras, espacios, tildes, guiones o apóstrofes (máximo 120)."); return; } update("cardholderName", event.target.value); }} /></label>
         <label>Número de tarjeta (16 dígitos)<CardNumberInput last4={value.last4} locked={locked} invalid={Boolean(value.entryErrors?.last4)} onInvalid={() => reject("last4", CARD_NUMBER_MESSAGE)} onLast4Change={(last4, error) => onChange({ ...value, last4, verified: false, entryErrors: { ...value.entryErrors, last4: error } })} /></label>
@@ -75,11 +81,7 @@ export function PaymentFields({ total, currency, creditCardCommissionBps = 0, va
       </fieldset>}
       {value.method === "card" && value.cardType === "credit" && <p className="remittance-help">Revisa los 16 dígitos antes de guardar. {cardStorage?.enabled ? "En los recibos y consultas solo se muestran los últimos cuatro." : "Al guardar se conservan solo los últimos cuatro, también en el recibo."} El número se oculta si abandonas esta página.</p>}
       <label>Referencia del comprobante<input maxLength={160} inputMode="text" title={textMessage} autoComplete="off" value={value.reference} aria-invalid={Boolean(value.entryErrors?.reference) || undefined} onPaste={(event) => restrictPaste(event, isPaymentTextDraft, () => reject("reference", textMessage))} onChange={(event) => { const next = event.target.value; if (!isPaymentTextDraft(next)) { reject("reference", textMessage); return; } update("reference", next); }} /></label>
-      <label>Banco o proveedor (opcional)<select aria-label="Banco o proveedor (opcional)" value={value.bank} onChange={(event) => update("bank", event.target.value)}>
-        <option value="">Selecciona un banco</option>
-        {paymentBanks.map((bank) => <option key={bank} value={bank}>{bank}</option>)}
-        {value.bank && !paymentBanks.includes(value.bank) && <option value={value.bank}>{value.bank} (registro anterior)</option>}
-      </select></label>
+      {!(value.method === "card" && value.cardType === "credit") && bankField}
       <label className="remittance-payment-check"><input type="checkbox" checked={value.verified} onChange={(event) => onChange({ ...value, verified: event.target.checked })} />Comprobé que el pago fue recibido</label>
     </>}
     {!charge && <p role="alert" className="remittance-error">El total con recargo excede el importe permitido. Vuelve al formulario y revisa el monto.</p>}
