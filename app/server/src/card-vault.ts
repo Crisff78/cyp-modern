@@ -25,9 +25,9 @@ export class CardVault {
     try {
       raw = privateDecrypt({ key: this.privateKey, oaepHash: "sha256", padding: constants.RSA_PKCS1_OAEP_PADDING }, Buffer.from(envelope.ciphertext, "base64"));
       const parsed: unknown = JSON.parse(raw.toString("utf8"));
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) || Object.keys(parsed).sort().join(",") !== "expiry,pan") throw invalid();
-      const value = parsed as { pan: unknown; expiry: unknown };
-      if (!validArchivePan(value.pan) || !validArchiveExpiry(value.expiry) || value.pan.slice(-4) !== last4) throw invalid();
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) || !["pan", "expiry,pan"].includes(Object.keys(parsed).sort().join(","))) throw invalid();
+      const value = parsed as { pan: unknown; expiry?: unknown };
+      if (!validArchivePan(value.pan) || ("expiry" in value && !validArchiveExpiry(value.expiry)) || value.pan.slice(-4) !== last4) throw invalid();
       const createdAt = now.toISOString(), expiresAt = new Date(now.getTime() + this.retentionDays * 86400000).toISOString();
       const iv = randomBytes(12), cipher = createCipheriv("aes-256-gcm", dataKey, iv); cipher.setAAD(aad(transferId, actorId, createdAt, expiresAt, this.keyId));
       const ciphertext = Buffer.concat([cipher.update(raw), cipher.final()]);
@@ -37,7 +37,7 @@ export class CardVault {
     } catch { throw invalid(); } finally { raw?.fill(0); dataKey.fill(0); }
   }
   /** Maintenance-only primitive. No API endpoint exposes this operation. */
-  open(record: ArchivedCard, transferId: string, actorId: string, now = new Date()): { pan: string; expiry: string } {
+  open(record: ArchivedCard, transferId: string, actorId: string, now = new Date()): { pan: string; expiry?: string } {
     if (record.keyId !== this.keyId || record.transferId !== transferId || record.actorId !== actorId || Date.parse(record.expiresAt) <= now.getTime()) throw invalid();
     let key: Buffer | undefined, raw: Buffer | undefined;
     try {

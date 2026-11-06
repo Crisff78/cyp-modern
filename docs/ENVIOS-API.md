@@ -465,23 +465,30 @@ El operador debe contar con el comprobante antes de marcar que verificó el pago
   `creditCardCommissionBps` (0–10000 puntos básicos; inicialmente 0). Requiere
   `remittances.commissions.manage` y los controles de rol existentes. No cambia
   operaciones anteriores. El cambio de revisión invalida cotizaciones anteriores.
-- Crédito: `payment` admite `method:"card"`, `cardType:"credit"`, `cardholderName`
+- Crédito y débito: `payment` admite `method:"card"`, `cardType:"credit"|"debit"`, `cardholderName`
   (1–120 caracteres), `last4` (exactamente cuatro dígitos ASCII), `reference`,
-  `bank` opcional y `verified:true`. Débito usa `cardType:"debit"`, comprobante y
-  verificación; no admite titular ni últimos dígitos y no lleva este recargo.
+  `bank` opcional y `verified:true`. Ambos formularios piden titular y número;
+  no solicitan vencimiento ni CVV. Débito no lleva el recargo de crédito. Los
+  clientes anteriores pueden seguir enviando débito sin titular ni últimos dígitos;
+  si se aporta alguno, ambos deben ser válidos. La migración aditiva 051 actualiza
+  la validación SQL sin modificar los pagos existentes.
 - En pantalla se digitan 16 dígitos, agrupados de cuatro en cuatro. El número
   completo existe únicamente en el control sin nombre mientras se edita: no se
-  incorpora al estado React del pago, borradores, almacenamiento web ni solicitudes.
+  incorpora al estado React del pago, borradores ni almacenamiento web. Si el
+  archivo cifrado está habilitado, se envía exclusivamente dentro de su sobre cifrado.
   Permanece visible al pasar a otros campos para revisarlo antes de guardar.
   Al ocultar la página o bloquear el guardado se sustituye por
   los últimos cuatro enmascarados; una entrada incompleta se borra al salir del campo. Al desmontar
   el control se limpia su valor. Para corregir un número ya oculto hay que
   digitarlo de nuevo. No se intenta recuperar los otros doce dígitos.
-- **La API y la base de datos siguen admitiendo solo `last4`**; sus listas
+- **El objeto `payment` de la API y de la base de datos admite solo `last4`**; sus listas
   estrictas rechazan PAN completo, vencimiento y CVV. El número completo solo
   se escribe en su control temporal; esos datos no deben ir en referencias,
   nombres, notas ni otros campos. No se solicita CVV para registrar un pago
-  externo ya recibido. Esta protección no acredita una certificación PCI.
+  externo ya recibido. El archivo cifrado opcional acepta solo el número para
+  nuevas capturas; conserva compatibilidad con los sobres históricos que incluían
+  vencimiento. El CVV se rechaza también dentro del sobre cifrado. Esta protección
+  no acredita una certificación PCI.
 - Banco/proveedor se elige de una lista inicial de entidades dominicanas en
   Administración y la PWA; los valores de registros anteriores se conservan.
   El servidor mantiene su contrato de texto validado para compatibilidad.
@@ -523,5 +530,5 @@ la base de operación como parte de la preparación local.
 - Un cierre anterior distinto de cero fija la siguiente apertura para todas las cuentas, incluso con permiso de cambiar la apertura. Un cierre cero mantiene el control de permiso existente; la primera apertura permite indicar su efectivo. La API aplica la misma regla, sin modificar cajas históricas ni requerir migración.
 - En la confirmación y en el detalle del envío hay papel normal, térmico de tres pulgadas (76 mm), 80 mm y 58 mm, y un recibo resumido para envío telefónico. La impresión aislada usa los mismos importes guardados; el resumen conserva referencia, fecha, nombres, teléfonos, pago, totales y pie de empresa. El tamaño físico también se selecciona en el diálogo de la impresora. Una prueba del navegador no acredita impresión física.
 - El titular admite letras Unicode, marcas de acento, espacios, guiones, apóstrofes y puntos, sin números, con al menos una letra y máximo 120 caracteres. Se valida en pantalla y en la API; no modifica fichas de clientes ni titulares históricos.
-- Para la revisión visual solicitada hay controles **opcionales y temporales de prueba** para vencimiento MM/YY (mes 01–12) y CVV de 3–4 dígitos. Solo se usan datos ficticios. No procesan ni autorizan un pago. No tienen nombre de formulario, no entran en el estado del pago, no se envían, registran ni almacenan en el servidor, ni se imprimen. Se borran al bloquear el guardado, cancelar, cambiar el método, desmontar el formulario u ocultar/abandonar la página. El CVV se presenta oculto mientras se escribe. Una operación restaurada no puede recuperar estos campos.
-- Esta captura temporal sustituye la indicación anterior de ausencia total de esos controles. El contrato del servidor sigue rechazando PAN completo, vencimiento y CVV; **no se añade almacenamiento cifrado de CVV**. El registro persistido conserva solo los cuatro últimos dígitos. Antes de un cobro real se requiere un proveedor de pago y sus campos seguros; esta pantalla no acredita certificación PCI.
+- Actualización del 06-11-2026: se retiran los controles temporales de vencimiento y CVV. Crédito y débito muestran banco/proveedor primero, titular y número de 16 dígitos después y referencia del comprobante al final. Cambiar entre crédito y débito destruye el control anterior y limpia sus datos sin conservar el número completo.
+- El objeto `payment` sigue rechazando PAN completo, vencimiento y CVV. Conserva titular y últimos cuatro dígitos para ambos tipos. El archivo opcional, habilitado solo con su clave y plazo de conservación configurados, cifra el número sin pedir vencimiento; los sobres anteriores continúan siendo legibles. No se almacena CVV. Esta pantalla registra un pago externo, no procesa un cobro ni acredita certificación PCI.
