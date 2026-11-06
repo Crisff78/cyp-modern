@@ -31,8 +31,9 @@ test("Mayo's review (26-10): Envíos, Caja de remesas, Tasas, escritorio, Soport
   const store = new MemoryStore(state);
   const app = await buildApp({ store, demo: true, secret: "synthetic-revision-mayo-secret-at-least-32-characters", origins: [], collectorUrl: "/collector/" });
   const token = (await app.inject({ method: "POST", url: "/api/auth/login", payload: { email: "admin", password: DEMO_PASSWORD } })).json().token as string;
+  // The API fixture and the browser are separate clients; keep the real rate limits enabled for each.
   const post = async (url: string, payload: unknown, auth = token) => {
-    const response = await app.inject({ method: "POST", url, headers: { authorization: `Bearer ${auth}`, "idempotency-key": randomUUID() }, payload });
+    const response = await app.inject({ method: "POST", url, remoteAddress: "127.0.0.2", headers: { authorization: `Bearer ${auth}`, "idempotency-key": randomUUID() }, payload });
     assert.equal(response.statusCode, 200, `${url}: ${response.body}`); return response.json();
   };
   const today = businessDate(new Date()), yesterday = businessDate(new Date(Date.now() - 24 * 60 * 60 * 1000));
@@ -452,7 +453,7 @@ test("Mayo's review (26-10): Envíos, Caja de remesas, Tasas, escritorio, Soport
       await shot("5.1-anio-de-izquierda-a-derecha");
     });
 
-    await t.test("cash drill-down shows every daily entry, filters and refreshes without mixing boxes or treating bank payments as cash", async () => {
+    await t.test("whole-field double clicks show the right cash detail from labels, amounts and empty space; filtering and refresh keep exact scope", async () => {
       const email = "detalle-caja@example.invalid", password = "Prueba-Detalle-Caja-2026!";
       const operator = await post("/api/usuarios",{role:"cashier",name:"Operador del detalle",email,password}) as {id:string};
       const login = await app.inject({method:"POST",url:"/api/auth/login",payload:{email,password}}); assert.equal(login.statusCode,200);
@@ -475,13 +476,39 @@ test("Mayo's review (26-10): Envíos, Caja de remesas, Tasas, escritorio, Soport
       const controls = caja.getByRole("region",{name:"Operar caja de remesas",exact:true});
       const opening = controls.getByRole("form",{name:"Abrir caja",exact:true});
       await field(opening,"Operador").selectOption(operator.id); await field(opening,"Moneda").selectOption("DOP");
-      await controls.getByRole("button",{name:"Ver detalle de entregas adicionales",exact:true}).click();
+      const additionField = controls.getByRole("button",{name:/^Entregas adicionales:/});
+      assert.equal(await controls.getByText("Ver detalle",{exact:true}).count(),0);
+      await additionField.click();
+      assert.equal(await page.getByRole("dialog",{name:"Movimientos de la caja de remesas",exact:true}).count(),0,"a single pointer click does not open the detail");
+      await additionField.locator("dt").dblclick();
       const detail = page.getByRole("dialog",{name:"Movimientos de la caja de remesas",exact:true});
       const filter = detail.getByLabel("Tipo de movimiento",{exact:true});
       await detail.getByText("Primera entrega detallada",{exact:true}).waitFor();
       await shot("caja-detalle-entregas");
       assert.equal(await filter.inputValue(),"addition"); assert.equal(await detail.locator("tbody tr").count(),2);
       assert.match(await detail.innerText(),/Operador del detalle.*DOP/);
+      const closeDetail = async () => { await detail.getByRole("button",{name:"Cerrar",exact:true}).click(); await detail.waitFor({state:"detached"}); };
+      const reopenedDetail = async (open:()=>Promise<unknown>, expectedKind:string, count:number) => {
+        await open(); await detail.locator("tbody tr").first().waitFor();
+        assert.equal(await filter.inputValue(),expectedKind); assert.equal(await detail.locator("tbody tr").count(),count);
+      };
+      await closeDetail();
+      await reopenedDetail(()=>additionField.locator("dd").dblclick(),"addition",2);
+      await closeDetail();
+      const bounds = await additionField.boundingBox(); assert(bounds);
+      await reopenedDetail(()=>additionField.dblclick({position:{x:bounds.width/2,y:bounds.height/2}}),"addition",2);
+      await closeDetail();
+      const withdrawalField = controls.getByRole("button",{name:/^Retiros durante el día:/});
+      await withdrawalField.focus(); await reopenedDetail(()=>withdrawalField.press("Enter"),"withdrawal",2);
+      await closeDetail();
+      await withdrawalField.focus(); await reopenedDetail(()=>withdrawalField.press("Space"),"withdrawal",2);
+      await closeDetail();
+      const card = caja.locator(".remittance-cash-grid article").first();
+      for(const [label,kind,count] of [["Ingresos por envíos","sent",3],["Devoluciones","refund",1],["Pagos","paid",1]] as const) {
+        await reopenedDetail(()=>card.getByRole("button",{name:new RegExp(`^${label}:`)}).locator("dt").dblclick(),kind,count);
+        await closeDetail();
+      }
+      await reopenedDetail(()=>controls.getByRole("button",{name:/^Efectivo esperado:/}).dblclick(),"all",9);
       await filter.selectOption("withdrawal"); assert.equal(await detail.locator("tbody tr").count(),2);
       assert.match(await detail.innerText(),/Primer retiro detallado/); assert.match(await detail.innerText(),/Segundo retiro detallado/);
       await filter.selectOption("sent"); assert.equal(await detail.locator("tbody tr").count(),3);
