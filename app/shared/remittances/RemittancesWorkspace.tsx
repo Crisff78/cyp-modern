@@ -35,6 +35,7 @@ import { printRemittanceReceipt, remittanceReceipt } from "./receipt";
 import { RemittanceReceipt } from "./RemittanceReceipt";
 import { ReceiptPrintControls, type ReceiptPrintOptions } from "./ReceiptPrintControls";
 import { encryptCardArchive } from "./cardArchive.mjs";
+import { CashMovementForm, type CashMovementReview } from "./CashMovementForm";
 
 export type RemittanceSection = "envios" | "recibos" | "caja" | "reportes";
 type Tab = RemittanceSection;
@@ -54,7 +55,7 @@ const shortRate = (rate: string) => rate.includes(".") ? rate.replace(/\.?0+$/, 
 /** The rate from the currency sent to the currency received (display only). */
 const crossRateText = (sourceRate: string, destinationRate: string, sourceCurrency: Currency, destinationCurrency: Currency) => { try { const cross = formatCrossRate(sourceRate, destinationRate); return `1 ${sourceCurrency} ${cross.approximate ? "≈" : "="} ${cross.text} ${destinationCurrency}`; } catch { return "No disponible"; } };
 type Actor = { id: string; name: string; role?: string; access?: EffectiveAccess };
-type Confirmation = { title: string; path: string; body: Record<string, unknown>; description: ReactNode; kind: "create" | "pay" | "cancel" | "open" | "close" | "add"; idempotencyKey?: string; expectedQuotation?: Quotation };
+type Confirmation = { title: string; path: string; body: Record<string, unknown>; description: ReactNode; kind: "create" | "pay" | "cancel" | "open" | "close" | "add" | "withdraw"; idempotencyKey?: string; expectedQuotation?: Quotation };
 // Only in-memory: retain an uncertain action across route changes and same-actor login.
 // Keyed by actor and sections, so one window does not show the uncertain action of another.
 const pendingByActor = new Map<string, Confirmation>();
@@ -76,6 +77,7 @@ const phoneRecordText = {
 };
 const tabs: { id: Tab; label: string }[] = [{ id: "envios", label: "Envíos" }, { id: "recibos", label: "Entregas" }, { id: "caja", label: "Caja" }, { id: "reportes", label: "Reportes" }];
 const money = formatMoney;
+const previewCashMoney = (value: string) => { try { return value.trim() ? decimalCents(value, true) : undefined; } catch { return undefined; } };
 function DataTable({ section, wide = false }: { section: OutputSection; wide?: boolean }) {
   return <div className="remittance-table-wrap"><table className={"remittance-table" + (wide ? " remittance-consolidated-table" : "")}><caption>{section.title}</caption><thead><tr>{section.columns.map((column) => <th scope="col" key={column}>{column}</th>)}</tr></thead><tbody>{section.rows.map((row, index) => <tr key={index}>{row.map((cell, cellIndex) => <td key={cellIndex} data-label={section.columns[cellIndex]}>{cell}</td>)}</tr>)}{!section.rows.length && <tr><td colSpan={section.columns.length}>No hay resultados para esta consulta.</td></tr>}</tbody></table></div>;
 }
@@ -273,9 +275,8 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   const [counted, setCounted] = useState("");
   // Lo que se le retira al operador al cerrar: no pasa a su próxima apertura (Mayo, 26-10-2026).
   const [discharged, setDischarged] = useState("");
-  // Entrega adicional to an open box of today.
-  const [adding, setAdding] = useState<Cash | null>(null);
-  const [addition, setAddition] = useState({ amount: "", note: "" });
+  // Clear only the cash form that was saved; other unsaved movement drafts remain intact.
+  const [completedCashMovement, setCompletedCashMovement] = useState<{ path: string; key: string }>();
   // The boxes shown: the consulted date, operator and currency, applied with Buscar (Mayo, 26-10-2026).
   const [cashFilters, setCashFilters] = useState<CashFilters>({ date: "", operatorId: "", currency: "" });
   const [cashSearch, setCashSearch] = useState<CashFilters>({ date: "", operatorId: "", currency: "" });
@@ -287,7 +288,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
     setCashFilters((current) => current.date ? current : { ...current, date: businessDay });
     setCashSearch((current) => current.date ? current : { ...current, date: businessDay });
   }, [businessDay]);
-  const [moneyEntryErrors, setMoneyEntryErrors] = useState<Partial<Record<"amount" | "opening" | "counted" | "discharged" | "addition", string>>>({});
+  const [moneyEntryErrors, setMoneyEntryErrors] = useState<Partial<Record<"amount" | "opening" | "counted" | "discharged", string>>>({});
   const [reportFilters, setReportFilters] = useState<RemittanceReportFilters>({ ...currentOperationalWeek(), grouping: "range", type: "amounts",
     groupBy: "managerCurrency" as CommissionReportGroupBy, operationStatus: "all" as CommissionReportStatus, managerId: "", currency: "" as Currency | "" });
   const [report, setReport] = useState<Report | null>(null);
@@ -560,7 +561,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
       // filters, so the new send is on its list; the fixed window keeps the filters of the list below its form.
       if (confirmation.kind === "create") { resetForm(); if (!fixedForm) clearListFilters(); }
       if (confirmation.kind === "close") { setClosing(null); setCounted(""); setDischarged(""); }
-      if (confirmation.kind === "add") { setAdding(null); setAddition({ amount: "", note: "" }); }
+      if (action.kind === "add" || action.kind === "withdraw") setCompletedCashMovement({ path: action.path, key: action.idempotencyKey! });
       if (confirmation.kind === "cancel") { setCancelReason(""); setRefundReference(""); setRefundVerified(false); }
       setConfirmation(null); setUncertain(false); setReport(null); setAllocationReport(null);
       if (savedTransfer) { setPrintTransfer(savedTransfer); setReceiptPrintError(""); }
@@ -674,17 +675,17 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
     } catch (failure) { setError(failureMessage(failure)); }
   }
 
-  function prepareAddition(event: FormEvent) {
-    event.preventDefault(); if (!adding) return;
-    try {
-      if (moneyEntryErrors.addition) throw new Error("Corrige el importe señalado antes de revisar la entrega.");
-      if (!isMoneyDraft(addition.amount)) throw new Error(moneyInputMessage);
-      const amount = decimalCents(addition.amount, true);
-      if (amount <= 0) throw new Error("La entrega debe ser mayor que cero.");
-      const note = addition.note.trim();
-      if (note) validateText(note, "La nota", 500);
-      confirm({ title: "Confirmar entrega adicional", path: `/envios/cajas/${encodeURIComponent(adding.id)}/entregas`, kind: "add", body: { amount, ...(note ? { note } : {}) }, description: <p>Entregar <strong>{money(amount, adding.currency)}</strong> a la caja de {operatorName(adding.operatorId)} · {adding.date}. Se suma al efectivo esperado de esa caja.</p> });
-    } catch (failure) { setError(failureMessage(failure)); }
+  function prepareCashMovement({ cash, kind, amount, note }: CashMovementReview) {
+    clearErrors();
+    const withdraw = kind === "withdraw";
+    confirm({ title: withdraw ? "Confirmar retiro de efectivo" : "Confirmar entrega adicional",
+      path: `/envios/cajas/${encodeURIComponent(cash.id)}/${withdraw ? "retiros" : "entregas"}`, kind,
+      body: { amount, ...(note ? { note } : {}) }, description: <p>
+        {withdraw ? "Retirar" : "Entregar"} <strong>{money(amount, cash.currency)}</strong> {withdraw ? "de" : "a"} la caja de {operatorName(cash.operatorId)} · {cash.date}.
+        <br />Saldo esperado después: <strong>{money(cash.expected + (withdraw ? -amount : amount), cash.currency)}</strong>.
+        {note && <><br />{withdraw ? "Entregado a / motivo" : "Nota"}: {note}.</>}
+        <br />La caja seguirá abierta. Confirma únicamente si el efectivo se entregó físicamente.
+      </p> });
   }
 
   function prepareCancellation(event: FormEvent) {
@@ -883,16 +884,27 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
         <div className="remittance-cash-grid" aria-label={`Cajas del ${cashSearch.date || snapshot.businessDate}`}>{shownCash.map((cash) => {
           const carriedFrom = cash.carriedFrom ? snapshot.cashSessions.find((row) => row.id === cash.carriedFrom) : undefined;
           return <article className="remittance-panel" key={cash.id}><h2>{cash.currency} · {operatorName(cash.operatorId)}</h2><p>{cash.date} · {cash.status === "open" ? "Abierta" : "Cerrada"}</p><dl className="remittance-summary">
-            <div><dt>Apertura</dt><dd>{money(cash.openingAmount, cash.currency)}</dd></div>
+            <div><dt>Saldo inicial</dt><dd>{money(cash.openingAmount, cash.currency)}</dd></div>
             {carriedFrom && <div className="remittance-cash-source"><dt>Viene del cierre del</dt><dd>{carriedFrom.date}</dd></div>}
             <div><dt>Entregas adicionales</dt><dd>{money(cash.added ?? 0, cash.currency)}</dd></div>
+            <div><dt>Retiros durante el día</dt><dd>{money(cash.withdrawn ?? 0, cash.currency)}</dd></div>
             <div><dt>Ingresos por envíos</dt><dd>{money(cash.sentTotal, cash.currency)}</dd></div><div><dt>Devoluciones</dt><dd>{money(cash.cancelRefund, cash.currency)}</dd></div><div><dt>Pagos</dt><dd>{money(cash.paid, cash.currency)}</dd></div>
             <div className="remittance-total"><dt>Efectivo esperado</dt><dd>{money(cash.expected, cash.currency)}</dd></div>
             {cash.countedAmount !== undefined && <div><dt>Contado al cierre</dt><dd>{money(cash.countedAmount, cash.currency)}</dd></div>}
             {Boolean(cash.discharged) && <div><dt>Descargado al cobrador</dt><dd>{money(cash.discharged ?? 0, cash.currency)}</dd></div>}
             {cash.carry !== undefined && <div><dt>Pasa a la próxima apertura</dt><dd>{money(cash.carry, cash.currency)}</dd></div>}
-          </dl><div className="remittance-actions">
-            {cash.canAdd && cash.status === "open" && cash.date === snapshot.businessDate && <button type="button" onClick={() => { setAdding(cash); setAddition({ amount: "", note: "" }); clearErrors(); }}>Entrega adicional</button>}
+          </dl>
+          {cash.status === "open" && cash.date === snapshot.businessDate && <div className="remittance-cash-movements">
+            {cash.canAdd && <CashMovementForm cash={cash} kind="add" disabled={working || uncertain} onReview={prepareCashMovement}
+              resetToken={completedCashMovement?.path === `/envios/cajas/${encodeURIComponent(cash.id)}/entregas` ? completedCashMovement.key : undefined} />}
+            {cash.canWithdraw && <CashMovementForm cash={cash} kind="withdraw" disabled={working || uncertain} onReview={prepareCashMovement}
+              resetToken={completedCashMovement?.path === `/envios/cajas/${encodeURIComponent(cash.id)}/retiros` ? completedCashMovement.key : undefined} />}
+          </div>}
+          {Boolean(cash.movements?.length) && <details className="remittance-cash-history"><summary>Ver movimientos de efectivo ({cash.movements!.length})</summary>
+            <div className="remittance-table-wrap"><table className="remittance-table"><thead><tr><th>Fecha y hora</th><th>Movimiento</th><th>Importe</th><th>Registrado por</th><th>Nota / motivo</th></tr></thead>
+              <tbody>{cash.movements!.map((movement) => <tr key={movement.id}><td>{formatDate(movement.createdAt)}</td><td>{movement.type === "addition" ? "Dinero adicional recibido" : movement.type === "withdrawal" ? "Dinero retirado durante el día" : "Retiro al cerrar"}</td><td>{money(movement.amount, cash.currency)}</td><td>{operatorName(movement.actorId)}</td><td>{movement.note || "Sin nota"}</td></tr>)}</tbody></table></div>
+          </details>}
+          <div className="remittance-actions">
             {cash.canClose && can("remittances.cash.close") && <button type="button" onClick={() => { setClosing(cash); setCounted(""); setDischarged(""); clearErrors(); }}>Contar y cerrar</button>}
           </div></article>;
         })}{!shownCash.length && <div className="remittance-empty">{snapshot.cashSessions.length ? `No hay cajas del ${cashSearch.date || snapshot.businessDate} con estos filtros.` : !canOpenCash ? "No hay cajas de envíos. Un administrador debe abrir la caja antes de operar." : isAdmin ? "No hay cajas de envíos. Abre la caja del operador antes de operar." : "No hay cajas de envíos. Abre tu caja antes de operar."}</div>}</div>
@@ -929,8 +941,23 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
         <label className="remittance-payment-check"><input type="checkbox" checked={refundVerified} onChange={(event) => setRefundVerified(event.target.checked)} />Comprobé la devolución al remitente</label>
       </div>}{cancelError && <p className="remittance-error" role="alert">{cancelError}</p>}<button className="remittance-danger" type="submit" disabled={!cancelReason.trim()}>Revisar cancelación</button></form>}
     </RemittanceWindow>}
-    {closing && <Dialog title={`Contar caja ${closing.currency}`} onClose={() => setClosing(null)}><form onSubmit={prepareClosing}><p>{operatorName(closing.operatorId)} · {closing.date}</p><p>Esperado: <strong>{money(closing.expected, closing.currency)}</strong></p><label>Efectivo contado<MoneyInput data-autofocus required title={moneyInputMessage} value={counted} aria-invalid={Boolean(moneyEntryErrors.counted) || undefined} onValueChange={(nextValue) => { if (!isMoneyDraft(nextValue)) { rejectMoney("counted"); return; } setMoneyEntryErrors((current) => ({ ...current, counted: undefined })); setCounted(nextValue); setError(""); }} onInvalidEntry={() => rejectMoney("counted")} /></label><label>Descargado al cobrador (opcional)<MoneyInput title={moneyInputMessage} value={discharged} aria-invalid={Boolean(moneyEntryErrors.discharged) || undefined} onValueChange={(nextValue) => { if (!isMoneyDraft(nextValue)) { rejectMoney("discharged"); return; } setMoneyEntryErrors((current) => ({ ...current, discharged: undefined })); setDischarged(nextValue); setError(""); }} onInvalidEntry={() => rejectMoney("discharged")} /></label><p className="remittance-help">Lo que se le retira al operador al cerrar. No pasa a su próxima apertura: la próxima caja empieza con lo contado menos lo descargado.</p>{error && <p role="alert" className="remittance-error">{error}</p>}<button className="remittance-primary" type="submit">Revisar cierre</button></form></Dialog>}
-    {adding && <Dialog title={`Entrega adicional · caja ${adding.currency}`} onClose={() => setAdding(null)}><form onSubmit={prepareAddition}><p>{operatorName(adding.operatorId)} · {adding.date}</p><p>Esperado ahora: <strong>{money(adding.expected, adding.currency)}</strong></p><label>Importe que se entrega<MoneyInput data-autofocus required title={moneyInputMessage} value={addition.amount} aria-invalid={Boolean(moneyEntryErrors.addition) || undefined} onValueChange={(nextValue) => { if (!isMoneyDraft(nextValue)) { rejectMoney("addition"); return; } setMoneyEntryErrors((current) => ({ ...current, addition: undefined })); setAddition((current) => ({ ...current, amount: nextValue })); setError(""); }} onInvalidEntry={() => rejectMoney("addition")} /></label><label>Nota (opcional)<input maxLength={500} value={addition.note} onChange={(event) => { if (!isTextDraft(event.target.value, 500)) return; setAddition((current) => ({ ...current, note: event.target.value })); }} /></label><p className="remittance-help">Efectivo que se le da a esta caja después de abrirla. Se suma a lo esperado y al acumulado de entregas adicionales de la fecha.</p>{error && <p role="alert" className="remittance-error">{error}</p>}<button className="remittance-primary" type="submit">Revisar entrega</button></form></Dialog>}
+    {closing && <Dialog title={`Contar caja ${closing.currency}`} onClose={() => { setClosing(null); setCounted(""); setDischarged(""); clearErrors(); }}>
+      <form onSubmit={prepareClosing}>
+        <p>{operatorName(closing.operatorId)} · {closing.date}</p>
+        <p>Esperado: <strong>{money(closing.expected, closing.currency)}</strong></p>
+        <p className="remittance-help">Cuenta el dinero que conserva después de los retiros ya registrados durante el día.</p>
+        <label>Efectivo contado<MoneyInput data-autofocus required title={moneyInputMessage} value={counted} aria-invalid={Boolean(moneyEntryErrors.counted) || undefined}
+          onValueChange={(nextValue) => { if (!isMoneyDraft(nextValue)) { rejectMoney("counted"); return; } setMoneyEntryErrors((current) => ({ ...current, counted: undefined })); setCounted(nextValue); setError(""); }}
+          onInvalidEntry={() => rejectMoney("counted")} /></label>
+        <p>Diferencia: <output aria-label="Diferencia del conteo">{previewCashMoney(counted) === undefined || moneyEntryErrors.counted ? "Pendiente de conteo" : money(previewCashMoney(counted)! - closing.expected, closing.currency)}</output></p>
+        <label>Descargado al cobrador (opcional)<MoneyInput title={moneyInputMessage} value={discharged} aria-invalid={Boolean(moneyEntryErrors.discharged) || undefined}
+          onValueChange={(nextValue) => { if (!isMoneyDraft(nextValue)) { rejectMoney("discharged"); return; } setMoneyEntryErrors((current) => ({ ...current, discharged: undefined })); setDischarged(nextValue); setError(""); }}
+          onInvalidEntry={() => rejectMoney("discharged")} /></label>
+        <p className="remittance-help">Solo dinero adicional que se le retira ahora, después del conteo. Los retiros anteriores ya están descontados; no los escribas otra vez. La próxima apertura empieza con lo contado menos este retiro al cerrar.</p>
+        {error && <p role="alert" className="remittance-error">{error}</p>}
+        <button className="remittance-primary" type="submit">Revisar cierre</button>
+      </form>
+    </Dialog>}
     {confirmation && <Dialog title={confirmation.title} onClose={() => { setConfirmation(null); setPaymentDraft(paymentDraftFor(0)); }} locked={busy || uncertain}>
       {confirmation.description}
       {confirmation.kind === "create" && confirmation.expectedQuotation && <><QuoteDetails quote={confirmation.expectedQuotation} cardSurchargeAmount={previewPaymentCharge(confirmation.expectedQuotation.totalAmount, paymentDraft, confirmation.expectedQuotation.quote.creditCardCommissionBps ?? 0)?.cardSurchargeAmount ?? 0} /><PaymentFields cardStorage={snapshot?.cardStorage} creditCardCommissionBps={confirmation.expectedQuotation.quote.creditCardCommissionBps ?? 0} total={confirmation.expectedQuotation.totalAmount} currency={confirmation.expectedQuotation.sourceCurrency} value={paymentDraft} locked={busy || uncertain} onChange={(next) => { setPaymentDraft(next); setConfirmationError(""); }} /></>}

@@ -272,7 +272,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         await detail.getByRole("button", { name: "Imprimir comprobante", exact: true }).click();
         const popup = await popupReady; await popup.waitForLoadState();
         const printed = await popup.locator("body").innerText(); await popup.close();
-        assert.match(printed, /Operador del envío\s+Administración/); assert.match(printed, /Registrado por\s+Administración/);
+        assert.match(printed, /Operador del envío:?\s+Administración/); assert.match(printed, /Registrado por:?\s+Administración/);
         assert.equal(printed.includes("demo-admin"), false, "the receipt never carries an internal id");
       } finally { await context.close(); }
     });

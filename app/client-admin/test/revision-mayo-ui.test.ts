@@ -226,19 +226,45 @@ test("Mayo's review (26-10): Envíos, Caja de remesas, Tasas, escritorio, Soport
       await field(search, "Moneda").selectOption("DOP");
       await search.getByRole("button", { name: "Buscar", exact: true }).click();
       const box = caja.locator(".remittance-cash-grid article").first();
-      await box.getByRole("button", { name: "Entrega adicional", exact: true }).click();
-      const add = page.getByRole("dialog", { name: "Entrega adicional · caja DOP" });
-      const amount = add.getByLabel("Importe que se entrega", { exact: true }); await amount.click(); await amount.pressSequentially("250");
+      const add = box.getByRole("form", { name: "Registrar entrega adicional" });
+      const amount = add.getByLabel("Dinero adicional recibido (DOP)", { exact: true }); await amount.click(); await amount.pressSequentially("250");
       await add.getByRole("button", { name: "Revisar entrega", exact: true }).click();
       await page.getByRole("dialog", { name: "Confirmar entrega adicional" }).getByRole("button", { name: "Confirmar", exact: true }).click();
       await box.getByText("DOP 250.00").first().waitFor();
       assert.match(await box.innerText(), /Entregas adicionales\s+DOP 250\.00/);
       assert.match(await box.innerText(), /Efectivo esperado\s+DOP 250\.00/);
       await shot("2.1.2-entrega-adicional");
+      // The two money fields are visible in the actual box, separately from its initial cash.
+      const withdrawal = box.getByRole("form", { name: "Registrar retiro de efectivo" });
+      const takenDuringDay = withdrawal.getByLabel("Dinero retirado (DOP)", { exact: true });
+      await takenDuringDay.click(); await takenDuringDay.pressSequentially("50");
+      await withdrawal.getByLabel("Entregado a / motivo", { exact: true }).fill("Encargado de oficina: devolver efectivo sobrante");
+      await withdrawal.getByRole("button", { name: "Revisar retiro", exact: true }).click();
+      const confirmWithdrawal = page.getByRole("dialog", { name: "Confirmar retiro de efectivo" });
+      assert.match(await confirmWithdrawal.innerText(), /Saldo esperado después: DOP 200\.00/);
+      // Cancelling confirmation neither books the withdrawal nor discards what was typed.
+      await confirmWithdrawal.getByRole("button", { name: "Volver", exact: true }).click();
+      assert.match(await box.innerText(), /Retiros durante el día\s+DOP 0\.00/);
+      assert.equal(await takenDuringDay.inputValue(), "50.00");
+      await withdrawal.getByRole("button", { name: "Revisar retiro", exact: true }).click();
+      await page.getByRole("dialog", { name: "Confirmar retiro de efectivo" }).getByRole("button", { name: "Confirmar", exact: true }).click();
+      await box.getByText("DOP 200.00", { exact: true }).first().waitFor();
+      assert.match(await box.innerText(), /Retiros durante el día\s+DOP 50\.00/);
+      assert.match(await box.innerText(), /Efectivo esperado\s+DOP 200\.00/);
+      await box.getByText("Ver movimientos de efectivo (2)", { exact: true }).click();
+      assert.match(await box.locator(".remittance-cash-history").innerText(), /Encargado de oficina: devolver efectivo sobrante/);
+      await shot("2.1.2-retiro-durante-dia");
+      // Another physical addition is accumulated, not an overwrite of the initial cash or the first addition.
+      await amount.click(); await amount.pressSequentially("50");
+      await add.getByRole("button", { name: "Revisar entrega", exact: true }).click();
+      await page.getByRole("dialog", { name: "Confirmar entrega adicional" }).getByRole("button", { name: "Confirmar", exact: true }).click();
+      await box.getByText("DOP 300.00", { exact: true }).first().waitFor();
+      assert.match(await box.innerText(), /Efectivo esperado\s+DOP 250\.00/);
       // Closing with a descargo: the next opening starts with the count less what was taken.
       await box.getByRole("button", { name: "Contar y cerrar", exact: true }).click();
       const close = page.getByRole("dialog", { name: "Contar caja DOP" });
       const counted = close.getByLabel("Efectivo contado", { exact: true }); await counted.click(); await counted.pressSequentially("250");
+      assert.equal(await close.getByLabel("Diferencia del conteo", { exact: true }).innerText(), "DOP 0.00");
       const taken = close.getByLabel("Descargado al cobrador (opcional)", { exact: true }); await taken.click(); await taken.pressSequentially("100");
       await close.getByRole("button", { name: "Revisar cierre", exact: true }).click();
       const confirmClose = page.getByRole("dialog", { name: "Confirmar cierre de caja" });
