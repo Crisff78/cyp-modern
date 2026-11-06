@@ -60,7 +60,8 @@ export type Cash = {
   countedAmount?: number; sentTotal: number; cancelRefund: number; paid: number; expected: number; canClose: boolean;
   // Review of Mayo (26-10-2026): entregas adicionales, descargo at the close, what passes to the next opening and the
   // box this opening came from. Optional: an older server does not send them.
-  added?: number; discharged?: number; carry?: number; carriedFrom?: string; canAdd?: boolean;
+  added?: number; withdrawn?: number; discharged?: number; carry?: number; carriedFrom?: string; canAdd?: boolean; canWithdraw?: boolean;
+  movements?: { id: string; type: "addition" | "withdrawal" | "discharge"; amount: number; note?: string; actorId: string; createdAt: string }[];
 };
 export type RemittanceSnapshot = {
   cardStorage?: import("./cardArchive.mjs").CardStorageInfo;
@@ -92,7 +93,7 @@ export type Report = {
   deliveryTimeSummary: { date: string; count: number; minSeconds: number; maxSeconds: number; averageSeconds: number }[];
   delivered: { date: string; currency: Currency; count: number; amount: number }[];
   cash: Cash[];
-  cashSummary: { operatorId: string; currency: Currency; date: string; sessionCount: number; sentTotal: number; cancelRefund: number; paid: number; firstOpening: number; lastExpected: number; added?: number }[];
+  cashSummary: { operatorId: string; currency: Currency; date: string; sessionCount: number; sentTotal: number; cancelRefund: number; paid: number; firstOpening: number; lastExpected: number; added?: number; withdrawn?: number; discharged?: number; lastCarry?: number }[];
   commissions?: {
     details: Array<Pick<Transfer, "id" | "envioReference" | "createdAt" | "sendingUserId" | "senderClientId" | "recipientClientId" | "sourceCurrency" | "destinationCurrency" | "amount" | "commissionBps" | "commissionAmount" | "status">>;
     totals: { date: string; currency: Currency; count: number; commissionAmount: number; cancelledCount: number; cancelledCommissionAmount: number }[];
