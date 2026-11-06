@@ -11212,6 +11212,22 @@ table {
   border-radius: 8px;
   background: #f0faf6;
 }
+.help-content > .support-gamera-link {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 12px 0;
+  padding: 14px 16px;
+  border: 2px solid #047857;
+  border-radius: 8px;
+  background: #047857;
+  color: #fff;
+  text-decoration: none;
+}
+.help-content > .support-gamera-link:hover { background: #065f46; border-color: #065f46; }
+.help-content > .support-gamera-link:focus-visible { outline: 3px solid var(--cyp-info-text, #164c85); outline-offset: 3px; }
+.help-content > .support-gamera-link strong { font-size: 15px; color: inherit; }
+.support-gamera-link span { font-size: 13px; color: inherit; }
 .help-content .support-contact .support-contact-title {
   font-size: 14px;
   color: #064e3b;
