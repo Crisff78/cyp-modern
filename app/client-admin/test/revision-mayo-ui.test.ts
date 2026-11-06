@@ -12,6 +12,7 @@ import { seed } from "../../server/src/seed.js";
 import { MemoryStore } from "../../server/src/store.js";
 import { DEMO_PASSWORD } from "../../server/src/demo-credentials.js";
 import { businessDate } from "../../server/src/domain.js";
+import { formatMoney } from "../../shared/remittances/output";
 
 // The review of Mayo (26-10-2026), point by point, in the actual App with a synthetic MemoryStore API.
 const adminRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -30,8 +31,8 @@ test("Mayo's review (26-10): Envíos, Caja de remesas, Tasas, escritorio, Soport
   const store = new MemoryStore(state);
   const app = await buildApp({ store, demo: true, secret: "synthetic-revision-mayo-secret-at-least-32-characters", origins: [], collectorUrl: "/collector/" });
   const token = (await app.inject({ method: "POST", url: "/api/auth/login", payload: { email: "admin", password: DEMO_PASSWORD } })).json().token as string;
-  const post = async (url: string, payload: unknown) => {
-    const response = await app.inject({ method: "POST", url, headers: { authorization: `Bearer ${token}`, "idempotency-key": randomUUID() }, payload });
+  const post = async (url: string, payload: unknown, auth = token) => {
+    const response = await app.inject({ method: "POST", url, headers: { authorization: `Bearer ${auth}`, "idempotency-key": randomUUID() }, payload });
     assert.equal(response.statusCode, 200, `${url}: ${response.body}`); return response.json();
   };
   const today = businessDate(new Date()), yesterday = businessDate(new Date(Date.now() - 24 * 60 * 60 * 1000));
@@ -257,8 +258,13 @@ test("Mayo's review (26-10): Envíos, Caja de remesas, Tasas, escritorio, Soport
       assert.match(await box.innerText(), /Retiros durante el día\s+DOP 50\.00/);
       assert.match(await box.innerText(), /Efectivo esperado\s+DOP 200\.00/);
       assert.equal(await amount.inputValue(), "50.00", "saving a withdrawal does not erase another cash draft");
-      await box.getByText("Ver movimientos de efectivo (2)", { exact: true }).click();
-      assert.match(await box.locator(".remittance-cash-history").innerText(), /Encargado de oficina: devolver efectivo sobrante/);
+      await box.getByRole("button", { name: "Ver todos los movimientos", exact: true }).click();
+      const movements = page.getByRole("dialog", { name: "Movimientos de la caja de remesas", exact: true });
+      await movements.getByRole("row").filter({hasText:"Encargado de oficina: devolver efectivo sobrante"}).waitFor();
+      assert.equal(await movements.locator("tbody tr").count(),2);
+      await movements.getByLabel("Tipo de movimiento",{exact:true}).selectOption("addition");
+      assert.equal(await movements.locator("tbody tr").count(),1);
+      await movements.getByRole("button",{name:"Cerrar",exact:true}).click();
       await shot("2.1.2-retiro-durante-dia");
       // Another physical addition is accumulated, not an overwrite of the initial cash or the first addition.
       await add.getByRole("button", { name: "Revisar entrega", exact: true }).click();
@@ -444,6 +450,81 @@ test("Mayo's review (26-10): Envíos, Caja de remesas, Tasas, escritorio, Soport
       await page.keyboard.press("ArrowLeft"); await page.keyboard.type("12");
       assert.equal(await date.inputValue(), "2026-12-09");
       await shot("5.1-anio-de-izquierda-a-derecha");
+    });
+
+    await t.test("cash drill-down shows every daily entry, filters and refreshes without mixing boxes or treating bank payments as cash", async () => {
+      const email = "detalle-caja@example.invalid", password = "Prueba-Detalle-Caja-2026!";
+      const operator = await post("/api/usuarios",{role:"cashier",name:"Operador del detalle",email,password}) as {id:string};
+      const login = await app.inject({method:"POST",url:"/api/auth/login",payload:{email,password}}); assert.equal(login.statusCode,200);
+      const auth = login.json().token as string;
+      const box = await post("/api/envios/cajas/abrir",{operatorId:operator.id,currency:"DOP",openingAmount:200000}) as {id:string};
+      await post(`/api/envios/cajas/${box.id}/entregas`,{amount:10000,note:"Primera entrega detallada"});
+      await post(`/api/envios/cajas/${box.id}/entregas`,{amount:20000,note:"Segunda entrega detallada"},auth);
+      await post(`/api/envios/cajas/${box.id}/retiros`,{amount:5000,note:"Primer retiro detallado"},auth);
+      await post(`/api/envios/cajas/${box.id}/retiros`,{amount:10000,note:"Segundo retiro detallado"});
+      const send = async (amount:number,bank=false) => {
+        const quoted = await app.inject({url:`/api/envios/cotizacion?sourceCurrency=DOP&destinationCurrency=DOP&amount=${amount}`,headers:{authorization:`Bearer ${auth}`}});
+        assert.equal(quoted.statusCode,200,quoted.body);
+        return post("/api/envios",{sourceCurrency:"DOP",destinationCurrency:"DOP",amount,senderClientId:"cli-1",recipientClientId:"cli-5",quote:quoted.json().quote,
+          ...(bank?{payment:{method:"transfer",reference:"QA-TRANSFERENCIA-DETALLE",verified:true}}:{})},auth);
+      };
+      const refunded = await send(10000), paid = await send(20000), bank = await send(8000,true);
+      await post(`/api/envios/${refunded.id}/cancelar`,{reason:"Devolución de prueba del detalle"},auth);
+      await post(`/api/envios/${paid.id}/pagar`,{},auth);
+      const caja = await openCaja(page);
+      const controls = caja.getByRole("region",{name:"Operar caja de remesas",exact:true});
+      const opening = controls.getByRole("form",{name:"Abrir caja",exact:true});
+      await field(opening,"Operador").selectOption(operator.id); await field(opening,"Moneda").selectOption("DOP");
+      await controls.getByRole("button",{name:"Ver detalle de entregas adicionales",exact:true}).click();
+      const detail = page.getByRole("dialog",{name:"Movimientos de la caja de remesas",exact:true});
+      const filter = detail.getByLabel("Tipo de movimiento",{exact:true});
+      await detail.getByText("Primera entrega detallada",{exact:true}).waitFor();
+      await shot("caja-detalle-entregas");
+      assert.equal(await filter.inputValue(),"addition"); assert.equal(await detail.locator("tbody tr").count(),2);
+      assert.match(await detail.innerText(),/Operador del detalle.*DOP/);
+      await filter.selectOption("withdrawal"); assert.equal(await detail.locator("tbody tr").count(),2);
+      assert.match(await detail.innerText(),/Primer retiro detallado/); assert.match(await detail.innerText(),/Segundo retiro detallado/);
+      await filter.selectOption("sent"); assert.equal(await detail.locator("tbody tr").count(),3);
+      assert.match(await detail.getByRole("row").filter({hasText:bank.envioReference}).innerText(),/Transferencia[\s\S]*Sin movimiento de efectivo/);
+      await filter.selectOption("refund"); assert.equal(await detail.locator("tbody tr").count(),1); assert.match(await detail.innerText(),new RegExp(refunded.envioReference));
+      await filter.selectOption("paid"); assert.equal(await detail.locator("tbody tr").count(),1); assert.match(await detail.innerText(),new RegExp(paid.envioReference));
+      await filter.selectOption("all"); assert.equal(await detail.locator("tbody tr").count(),9);
+      const rows = await detail.locator("tbody tr").allTextContents();
+      assert(rows.every((text:string)=>/\d{1,2}\/\d{1,2}\/\d{2},?/.test(text)),"every entry shows its real date/time");
+      assert.equal(await detail.evaluate((node:HTMLDialogElement)=>node.matches(":modal")),true,"background remains blocked by a native modal");
+      assert.equal(await detail.evaluate((node:HTMLElement)=>node.getBoundingClientRect().width<=innerWidth-16),true);
+      await post(`/api/envios/cajas/${box.id}/entregas`,{amount:5000,note:"Tercera entrega después de abrir el detalle"});
+      await detail.getByRole("button",{name:"Refrescar detalle",exact:true}).click();
+      await detail.getByText("Tercera entrega después de abrir el detalle",{exact:true}).waitFor();
+      assert.equal(await detail.locator("tbody tr").count(),10);
+      await shot("caja-detalle-todos-los-movimientos");
+      await page.setViewportSize({width:390,height:844});
+      assert.equal(await detail.evaluate((node:HTMLElement)=>node.getBoundingClientRect().width<=innerWidth-16),true,"the wide dialog fits a phone");
+      const grid = detail.getByRole("region",{name:"Detalle de movimientos",exact:true});
+      assert.equal(await grid.evaluate((node:HTMLElement)=>node.scrollWidth>node.clientWidth),true,"only the detailed table scrolls horizontally on a phone");
+      assert.equal(await grid.locator("thead").isVisible(),true,"the mobile card rules must not hide the audit headers");
+      assert.equal(await grid.locator("tbody tr:first-child td:first-child").evaluate((node:HTMLElement)=>getComputedStyle(node).display),"table-cell");
+      const positions = await grid.evaluate((node:HTMLElement)=>({grid:node.getBoundingClientRect().left,cell:node.querySelector("td")!.getBoundingClientRect().left,width:node.clientWidth}));
+      assert(positions.cell>=positions.grid && positions.cell<positions.grid+positions.width,"the first entry is actually visible, not aligned off the mobile screen");
+      await grid.scrollIntoViewIfNeeded(); await shot("caja-detalle-movil");
+      await page.setViewportSize({width:1366,height:768});
+      const endpoint = `**/api/envios/cajas/${box.id}/movimientos`;
+      await page.route(endpoint,(route:any)=>route.fulfill({status:503,contentType:"application/json",body:JSON.stringify({error:{message:"Detalle temporalmente no disponible"}})}));
+      await detail.getByRole("button",{name:"Refrescar detalle",exact:true}).click(); await detail.getByRole("alert").waitFor();
+      assert.equal(await detail.locator("tbody tr").count(),0,"a failed refresh never presents stale balances as current");
+      await page.unroute(endpoint); await detail.getByRole("button",{name:"Refrescar detalle",exact:true}).click();
+      await detail.getByText("Tercera entrega después de abrir el detalle",{exact:true}).waitFor();
+      await page.keyboard.press("Escape"); await detail.waitFor({state:"detached"});
+      assert.equal(await page.getByRole("dialog",{name:"Cambios sin guardar",exact:true}).count(),0,"read-only filters are not unsaved financial changes");
+      const read = await app.inject({url:`/api/envios/cajas/${box.id}/movimientos`,headers:{authorization:`Bearer ${token}`}});
+      const expected = read.json().totals.expected as number;
+      await post(`/api/envios/cajas/${box.id}/cerrar`,{countedAmount:expected,dischargedAmount:10000});
+      const reopened = await openCaja(page), reselected = reopened.getByRole("form",{name:"Abrir caja",exact:true});
+      await field(reselected,"Operador").selectOption(operator.id); await field(reselected,"Moneda").selectOption("DOP");
+      await reopened.locator(".remittance-cash-grid article").getByRole("button",{name:"Ver todos los movimientos",exact:true}).click();
+      await detail.getByText(formatMoney(expected-10000,"DOP"),{exact:true}).waitFor();
+      assert.match(await detail.innerText(),/Cerrada/); await filter.selectOption("discharge"); assert.equal(await detail.locator("tbody tr").count(),1);
+      await detail.getByRole("button",{name:"Cerrar",exact:true}).click();
     });
 
     assert.deepEqual(pageErrors, []);

@@ -6,6 +6,7 @@ import { escapeHtml, formatDate, formatMoney, type OutputSection } from "./outpu
 import { formatCrossRate } from "./crossRate";
 import { thermalReceiptImages, thermalReceiptSize } from "./thermalReceipt";
 import { receiptText, receiptTextColumns } from "./receiptText";
+import { receiptPrintLayout } from "./receiptPaper";
 
 const status = { pending: "Pendiente de entrega", paid: "Pagado", cancelled: "Cancelado" };
 export const defaultReceiptFooter = "Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío.";
@@ -82,25 +83,28 @@ function receiptSections(receipt: Receipt, compact: boolean) {
   })) : receipt.sections;
 }
 export function receiptHtml(receipt: Receipt, options: import("./ReceiptPrintControls").ReceiptPrintOptions = { paper: "auto", compact: false }) {
+  const layout = receiptPrintLayout(options);
   const thermal = thermalReceiptSize(options.paper);
   const sections = receiptSections(receipt, options.compact);
   if (options.output === "text") {
-    const columns = receiptTextColumns(options.paper), fontSize = thermal ? 11 : 12;
-    return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${escapeHtml(receipt.reference)}</title><style>@page{size:auto;margin:${thermal?.marginMm ?? 12}mm}*{box-sizing:border-box}body{margin:0;color:#000;background:#fff;${thermal?`width:${thermal.widthMm}mm;max-width:${thermal.widthMm}mm;`:""}}pre{font:${fontSize}px/1.5 "Courier New",Courier,monospace;white-space:pre;margin:0;padding:0;tab-size:2}</style></head><body><pre aria-label="Recibo en formato de texto">${escapeHtml(receiptText({...receipt,sections},columns))}</pre></body></html>`;
+    const columns = receiptTextColumns(options.paper, options), fontSize = thermal ? 11 : 12;
+    return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${escapeHtml(receipt.reference)}</title><style>@page{size:${layout.pageSize};margin:${layout.marginMm}mm}*{box-sizing:border-box}body{margin:0;width:100%;color:#000;background:#fff;${layout.widthMm === undefined ? "" : `max-width:${layout.widthMm}mm;`}}pre{font:${fontSize}px/1.5 "Courier New",Courier,monospace;white-space:pre-wrap;overflow-wrap:anywhere;margin:0;padding:0;tab-size:2}</style></head><body><pre aria-label="Recibo en formato de texto">${escapeHtml(receiptText({...receipt,sections},columns))}</pre></body></html>`;
   }
   const { issuer } = receipt;
   const logo = issuer.logoDataUrl && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(issuer.logoDataUrl) && issuer.logoDataUrl.length <= 24576 ? `<img alt="" src="${escapeHtml(issuer.logoDataUrl)}">` : "";
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${escapeHtml(receipt.reference)}</title><style>
-    @page{size:auto;margin:12mm}*{box-sizing:border-box}body{font:13px Arial,sans-serif;color:#132b29;margin:0 auto;max-width:660px}header{text-align:center;border-bottom:2px solid #31534e;padding:10px 0}header img{max-width:130px;max-height:65px}h1{font-size:19px}h2{font-size:14px;border-bottom:1px solid #bbb;padding-bottom:4px}p{margin:5px 0;white-space:pre-wrap;overflow-wrap:anywhere}.ref{display:flex;justify-content:space-between;gap:12px;padding:12px 0;font-weight:bold}section{break-inside:avoid}dl{margin:8px 0}dl>div{display:flex;justify-content:space-between;gap:14px;padding:4px 0;border-bottom:1px solid #eee}dt{flex:1}dd{margin:0;text-align:right;flex:1;overflow-wrap:anywhere;white-space:pre-wrap}footer{border-top:2px solid #31534e;margin-top:16px;padding-top:12px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}
-    ${thermal ? `@page{size:auto;margin:${thermal.marginMm}mm}body{margin:0;width:${thermal.widthMm}mm;max-width:${thermal.widthMm}mm;font-size:11px;color:#000}h1{font-size:15px}h2{font-size:12px}.ref{flex-direction:column;gap:3px;overflow-wrap:anywhere}header img{max-width:40mm}dl>div{gap:4px}section{break-inside:auto}footer{font-size:10px}` : ""}
+    @page{size:${layout.pageSize};margin:${layout.marginMm}mm}*{box-sizing:border-box}body{font:13px Arial,sans-serif;color:#000;margin:0;width:100%;${layout.widthMm === undefined ? "max-width:100%;" : `max-width:${layout.widthMm}mm;`}}header{text-align:center;border-bottom:2px solid #31534e;padding:10px 0}header img{max-width:130px;max-height:65px}h1{font-size:19px}h2{font-size:14px;border-bottom:1px solid #bbb;padding-bottom:4px;break-after:avoid}p{margin:5px 0;white-space:pre-wrap;overflow-wrap:anywhere}.ref{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;padding:12px 0;font-weight:bold;overflow-wrap:anywhere}section{break-inside:auto}dl{margin:8px 0}dl>div{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 14px;padding:4px 0;border-bottom:1px solid #eee;break-inside:avoid}dt{flex:1 1 130px;min-width:0;overflow-wrap:anywhere}dd{margin:0;text-align:right;flex:1 1 130px;min-width:0;overflow-wrap:anywhere;white-space:pre-wrap}footer{border-top:2px solid #31534e;margin-top:16px;padding-top:12px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}
+    ${thermal ? `body{font-size:11px}h1{font-size:15px}h2{font-size:12px}.ref{flex-direction:column;gap:3px}header img{max-width:40mm}dl>div{gap:4px}footer{font-size:10px}` : ""}
+    ${layout.landscape && (layout.widthMm ?? 200) >= 180 ? ".receipt-sections{columns:2;column-gap:8mm}" : ""}
     ${options.compact ? "header{padding:5px 0}section h2{margin:6px 0}dl{margin:3px 0}dl>div{padding:2px 0}footer{margin-top:8px;padding-top:6px}" : ""}
     @media print{.thermal-print-help{display:none!important}}.thermal-image-output{margin:0;padding:0;width:100%}
-    </style></head><body><div class="ref"><span>Recibo ${escapeHtml(receipt.reference)}</span><span>${escapeHtml(receipt.date)}</span></div><header>${logo}<h1>${escapeHtml(issuer.name)}</h1>${[issuer.address, issuer.phone, issuer.email].filter(Boolean).map((line) => `<p>${escapeHtml(line)}</p>`).join("")}</header>${sections.map((section) => `<section><h2>${escapeHtml(section.title)}</h2><dl>${section.rows.map(([label, value]) => `<div><dt>${escapeHtml(label)}: </dt><dd>${escapeHtml(value)}</dd></div>`).join("")}</dl></section>`).join("")}<footer>${escapeHtml(receipt.footer)}</footer></body></html>`;
+    </style></head><body><div class="ref"><span>Recibo ${escapeHtml(receipt.reference)}</span><span>${escapeHtml(receipt.date)}</span></div><header>${logo}<h1>${escapeHtml(issuer.name)}</h1>${[issuer.address, issuer.phone, issuer.email].filter(Boolean).map((line) => `<p>${escapeHtml(line)}</p>`).join("")}</header><main class="receipt-sections">${sections.map((section) => `<section><h2>${escapeHtml(section.title)}</h2><dl>${section.rows.map(([label, value]) => `<div><dt>${escapeHtml(label)}: </dt><dd>${escapeHtml(value)}</dd></div>`).join("")}</dl></section>`).join("")}</main><footer>${escapeHtml(receipt.footer)}</footer></body></html>`;
 }
 export function printRemittanceReceipt(receipt: Receipt, options?: import("./ReceiptPrintControls").ReceiptPrintOptions) {
+  const html = receiptHtml(receipt, options);
   const popup = window.open("", "_blank", "width=780,height=820");
   if (!popup) throw new Error("Permite abrir la ventana de impresión para este sitio.");
-  popup.opener = null; popup.document.write(receiptHtml(receipt, options)); popup.document.close();
+  popup.opener = null; popup.document.write(html); popup.document.close();
   const print = () => { if (!popup.closed) { popup.focus(); popup.print(); } };
   if (options?.output === "text") { window.setTimeout(print,150); return; }
   const thermal = thermalReceiptSize(options?.paper);

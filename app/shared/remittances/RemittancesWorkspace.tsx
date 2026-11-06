@@ -36,6 +36,8 @@ import { RemittanceReceipt } from "./RemittanceReceipt";
 import { ReceiptPrintControls, type ReceiptPrintOptions } from "./ReceiptPrintControls";
 import { encryptCardArchive } from "./cardArchive.mjs";
 import { CashMovementForm, type CashMovementReview } from "./CashMovementForm";
+import { CashActivityDialog } from "./CashActivityDialog";
+import { cashActivityLabels, type CashActivityKind } from "./cashActivity.mjs";
 
 export type RemittanceSection = "envios" | "recibos" | "caja" | "reportes";
 type Tab = RemittanceSection;
@@ -272,6 +274,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   // The keyboard goes to the box asked from a notice (the receipt closed by «Ir a Caja de remesas» does not take it back).
   const cashFocus = useRef(false);
   const [closing, setClosing] = useState<Cash | null>(null);
+  const [cashActivity, setCashActivity] = useState<{ id: string; kind: CashActivityKind | "all" } | null>(null);
   const [counted, setCounted] = useState("");
   // Lo que se le retira al operador al cerrar: no pasa a su próxima apertura (Mayo, 26-10-2026).
   const [discharged, setDischarged] = useState("");
@@ -795,6 +798,10 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   </div>;
   const openingCash = snapshot ? remittanceCashNotice(snapshot, openingOperator, opening.currency) : "ok";
   const shownCash = snapshot ? filterCashSessions(snapshot.cashSessions, cashSearch, snapshot.businessDate) : [];
+  const cashActivityValue = (cash: Cash, kind: CashActivityKind, amount: number) => <button type="button" className="remittance-cash-detail-link"
+    aria-label={`Ver detalle de ${cashActivityLabels[kind].toLocaleLowerCase("es")}`} onClick={() => setCashActivity({ id: cash.id, kind })}>
+    <span>{money(amount, cash.currency)}</span><small>Ver detalle</small>
+  </button>;
   // A transfer is registered only for an operator who can send; the boxes still list every operator.
   const sendingOperators = snapshot?.sendingOperatorIds ? snapshot.operators.filter(({ id }) => snapshot.sendingOperatorIds!.includes(id)) : snapshot?.operators ?? [];
   // Classes that only the compact layout of the sending window uses to place a field.
@@ -921,10 +928,11 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
                 resetToken={completedCashMovement?.path === `/envios/cajas/${encodeURIComponent(selectedOpenCash.id)}/retiros` ? completedCashMovement.key : undefined} />}
             </div>
             <dl className="remittance-summary" aria-label="Saldo de la caja seleccionada">
-              <div><dt>Entregas adicionales</dt><dd>{money(selectedOpenCash.added ?? 0, selectedOpenCash.currency)}</dd></div>
-              <div><dt>Retiros durante el día</dt><dd>{money(selectedOpenCash.withdrawn ?? 0, selectedOpenCash.currency)}</dd></div>
+              <div><dt>Entregas adicionales</dt><dd>{cashActivityValue(selectedOpenCash, "addition", selectedOpenCash.added ?? 0)}</dd></div>
+              <div><dt>Retiros durante el día</dt><dd>{cashActivityValue(selectedOpenCash, "withdrawal", selectedOpenCash.withdrawn ?? 0)}</dd></div>
               <div className="remittance-total"><dt>Efectivo esperado</dt><dd>{money(selectedOpenCash.expected, selectedOpenCash.currency)}</dd></div>
             </dl>
+            <button type="button" onClick={() => setCashActivity({ id: selectedOpenCash.id, kind: "all" })}>Ver todos los movimientos</button>
           </> : openingCash === "missing" && <p className="remittance-help">Para registrar dinero adicional o retiros, primero hay que abrir la caja de hoy del operador y la moneda seleccionados.</p>}
         </section>}
         {/* Mayo, 26-10-2026: the boxes of a date, an operator and a currency, found with Buscar. */}
@@ -942,19 +950,16 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
           return <article className="remittance-panel" key={cash.id}><h2>{cash.currency} · {operatorName(cash.operatorId)}</h2><p>{cash.date} · {cash.status === "open" ? "Abierta" : "Cerrada"}</p><dl className="remittance-summary">
             <div><dt>Saldo inicial</dt><dd>{money(cash.openingAmount, cash.currency)}</dd></div>
             {carriedFrom && <div className="remittance-cash-source"><dt>Viene del cierre del</dt><dd>{carriedFrom.date}</dd></div>}
-            <div><dt>Entregas adicionales</dt><dd>{money(cash.added ?? 0, cash.currency)}</dd></div>
-            <div><dt>Retiros durante el día</dt><dd>{money(cash.withdrawn ?? 0, cash.currency)}</dd></div>
-            <div><dt>Ingresos por envíos</dt><dd>{money(cash.sentTotal, cash.currency)}</dd></div><div><dt>Devoluciones</dt><dd>{money(cash.cancelRefund, cash.currency)}</dd></div><div><dt>Pagos</dt><dd>{money(cash.paid, cash.currency)}</dd></div>
+            <div><dt>Entregas adicionales</dt><dd>{cashActivityValue(cash, "addition", cash.added ?? 0)}</dd></div>
+            <div><dt>Retiros durante el día</dt><dd>{cashActivityValue(cash, "withdrawal", cash.withdrawn ?? 0)}</dd></div>
+            <div><dt>Ingresos por envíos</dt><dd>{cashActivityValue(cash, "sent", cash.sentTotal)}</dd></div><div><dt>Devoluciones</dt><dd>{cashActivityValue(cash, "refund", cash.cancelRefund)}</dd></div><div><dt>Pagos</dt><dd>{cashActivityValue(cash, "paid", cash.paid)}</dd></div>
             <div className="remittance-total"><dt>Efectivo esperado</dt><dd>{money(cash.expected, cash.currency)}</dd></div>
             {cash.countedAmount !== undefined && <div><dt>Contado al cierre</dt><dd>{money(cash.countedAmount, cash.currency)}</dd></div>}
-            {Boolean(cash.discharged) && <div><dt>Descargado al cobrador</dt><dd>{money(cash.discharged ?? 0, cash.currency)}</dd></div>}
+            {Boolean(cash.discharged) && <div><dt>Descargado al cobrador</dt><dd>{cashActivityValue(cash, "discharge", cash.discharged ?? 0)}</dd></div>}
             {cash.carry !== undefined && <div><dt>Pasa a la próxima apertura</dt><dd>{money(cash.carry, cash.currency)}</dd></div>}
           </dl>
-          {Boolean(cash.movements?.length) && <details className="remittance-cash-history"><summary>Ver movimientos de efectivo ({cash.movements!.length})</summary>
-            <div className="remittance-table-wrap"><table className="remittance-table"><thead><tr><th>Fecha y hora</th><th>Movimiento</th><th>Importe</th><th>Registrado por</th><th>Nota / motivo</th></tr></thead>
-              <tbody>{cash.movements!.map((movement) => <tr key={movement.id}><td>{formatDate(movement.createdAt)}</td><td>{movement.type === "addition" ? "Dinero adicional recibido" : movement.type === "withdrawal" ? "Dinero retirado durante el día" : "Retiro al cerrar"}</td><td>{money(movement.amount, cash.currency)}</td><td>{operatorName(movement.actorId)}</td><td>{movement.note || "Sin nota"}</td></tr>)}</tbody></table></div>
-          </details>}
           <div className="remittance-actions">
+            <button type="button" onClick={() => setCashActivity({ id: cash.id, kind: "all" })}>Ver todos los movimientos</button>
             {cash.canClose && can("remittances.cash.close") && <button type="button" onClick={() => { setClosing(cash); setCounted(""); setDischarged(""); clearErrors(); }}>Contar y cerrar</button>}
           </div></article>;
         })}{!shownCash.length && <div className="remittance-empty">{snapshot.cashSessions.length ? `No hay cajas del ${cashSearch.date || snapshot.businessDate} con estos filtros.` : !canOpenCash ? "No hay cajas de envíos. Un administrador debe abrir la caja antes de operar." : isAdmin ? "No hay cajas de envíos. Abre la caja del operador antes de operar." : "No hay cajas de envíos. Abre tu caja antes de operar."}</div>}</div>
@@ -991,6 +996,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
         <label className="remittance-payment-check"><input type="checkbox" checked={refundVerified} onChange={(event) => setRefundVerified(event.target.checked)} />Comprobé la devolución al remitente</label>
       </div>}{cancelError && <p className="remittance-error" role="alert">{cancelError}</p>}<button className="remittance-danger" type="submit" disabled={!cancelReason.trim()}>Revisar cancelación</button></form>}
     </RemittanceWindow>}
+    {cashActivity && <CashActivityDialog key={cashActivity.id} cashId={cashActivity.id} initialKind={cashActivity.kind} api={api} onClose={() => { setCashActivity(null); void refresh({background:true}); }} />}
     {closing && <Dialog title={`Contar caja ${closing.currency}`} onClose={() => { setClosing(null); setCounted(""); setDischarged(""); clearErrors(); }}>
       <form onSubmit={prepareClosing}>
         <p>{operatorName(closing.operatorId)} · {closing.date}</p>

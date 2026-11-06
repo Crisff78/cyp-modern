@@ -127,14 +127,28 @@
 .remittance-cash-movement fieldset { display: flex; flex-direction: column; gap: 8px; margin: 0; }
 .remittance-cash-movement .remittance-help { margin: 0; }
 .remittance-cash-target { padding-top: 12px; border-top: 1px solid var(--rem-edge); }
-.remittance-cash-history { margin-top: 14px; }
-.remittance-cash-history summary { cursor: pointer; font-weight: 600; }
 .remittance-cash-grid > article { min-width: 0; }
+.remittances .remittance-cash-detail-link { background: transparent; border: 0; padding: 0; min-height: 36px; color: var(--cyp-info-text, #164c85); text-align: right; text-decoration: underline; }
+.remittance-cash-detail-link small { display: block; font-size: 11px; font-weight: 400; }
+.remittance-cash-activity-filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin: 14px 0; }
+.remittance-cash-activity-filters label { min-width: min(100%, 240px); flex: 1; }
+.remittance-cash-activity-table.remittance-table-wrap { max-width: 100%; max-height: 46vh; overflow: auto; border: 1px solid var(--rem-edge); background: var(--cyp-surface, #fff); }
+/* Preserve an audit grid on small screens; the other remittance tables may still become cards. */
+.remittance-cash-activity-table .remittance-table { display: table; width: 100%; min-width: 960px; }
+.remittance-cash-activity-table .remittance-table thead { display: table-header-group; }
+.remittance-cash-activity-table .remittance-table tbody { display: table-row-group; }
+.remittance-cash-activity-table .remittance-table tr { display: table-row; width: auto; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; }
+.remittance-cash-activity-table .remittance-table td, .remittance-cash-activity-table .remittance-table th { display: table-cell; padding: 10px; text-align: left; }
+.remittance-cash-activity-table .remittance-table td::before { display: none; content: none; }
+.remittance-cash-activity-table th { position: sticky; top: 0; }
+.remittance-cash-activity-table .remittance-table td:nth-child(4), .remittance-cash-activity-table .remittance-table td:nth-child(5) { white-space: nowrap; text-align: right; }
+.remittance-cash-activity-table td:nth-child(7) { min-width: 170px; }
 .remittance-empty { padding: 28px 16px; border: 1px dashed var(--rem-edge); text-align: center; background: var(--cyp-surface, #fff); }
 .remittance-error { padding: 12px; margin: 12px 0; border: 1px solid var(--cyp-border-strong, #d6aaa7); color: var(--cyp-danger-text, #8b2924); background: var(--cyp-danger-surface, #fff1f0); border-radius: 4px; overflow-wrap: anywhere; }
 .remittance-notice { padding: 12px; margin: 12px 0; border: 1px solid var(--cyp-border-strong, #91bfaa); color: var(--cyp-success-text, #185c42); background: var(--cyp-surface-muted, #edf8f2); border-radius: 4px; }
 .remittances-dialog { max-width: min(620px, calc(100vw - 24px)); width: 620px; max-height: calc(100dvh - 32px); padding: 0; border: 1px solid var(--cyp-border-strong, #7a92ae); border-radius: 6px; box-shadow: 0 20px 80px #152c4b40; background: var(--cyp-surface, #fff); overflow: auto; }
 .remittances-dialog::backdrop { background: #12233b99; }
+.remittances-dialog.remittances-dialog-wide { width: 1080px; max-width: min(1080px, calc(100vw - 24px)); }
 dialog.remittances-dialog { position: fixed; inset: 0; margin: auto; }
 .remittances-dialog > header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; background: var(--cyp-info-surface, #dce7f4); border-bottom: 1px solid var(--rem-edge); gap: 12px; }
 /* The title stays at the top of a long dialog: it is always in sight and always drags it. */

@@ -1,4 +1,5 @@
 import type { Receipt } from "./receipt";
+import { receiptPrintLayout, type ReceiptPrintOptions } from "./receiptPaper";
 
 /** Literal spaces/newlines survive text-only drivers; accents remain Unicode, never transliterated. */
 export function receiptText(receipt: Receipt, columns: number) {
@@ -38,4 +39,4 @@ export function receiptText(receipt: Receipt, columns: number) {
   rule();add(receipt.footer);
   return lines.join("\n")+"\n";
 }
-export const receiptTextColumns = (paper?: string) => paper==="80"?40:paper==="76"?38:paper==="58"?26:72;
+export const receiptTextColumns = (paper?: string, options?: ReceiptPrintOptions) => receiptPrintLayout(options ?? {paper:(paper ?? "auto") as ReceiptPrintOptions["paper"],compact:false}).textColumns;
