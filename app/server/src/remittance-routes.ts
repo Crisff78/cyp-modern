@@ -7,7 +7,7 @@ import { consolidatedCommissionReport } from "./remittance-commission-report.js"
 import {
   addRemittanceCash, canSeeOutgoing, canSeeReceipt, cancelRemittance, closeRemittanceCash, createRemittance,
   amountModes, currencies, openRemittanceCash, payRemittance, quoteRemittance, receiveRoundings, remittanceReports,
-  remittanceSnapshot, saveDeliveryConcept, setDailyRate, setCommissionPolicy, transferView, visibleRemittanceResult,
+  remittanceSnapshot, saveDeliveryConcept, setDailyRate, setCommissionPolicy, transferView, visibleRemittanceResult, withdrawRemittanceCash,
 } from "./remittances.js";
 import { boundedId, freeText, phone, singleLine } from "./input-validation.js";
 import { remittanceClientDraft } from "./client-schema.js";
@@ -130,6 +130,9 @@ export function registerRemittanceRoutes(
   mutate("/api/envios/cajas/:id/entregas", "Entrega adicional de efectivo a la caja abierta de hoy",
     z.object({ amount, note: freeText(500).optional() }).strict(),
     (state, actor, input, params) => addRemittanceCash(state, actor, params.id, input));
+  mutate("/api/envios/cajas/:id/retiros", "Retirar efectivo de la caja abierta de hoy sin cerrarla",
+    z.object({ amount: amount.positive(), note: freeText(500, 1) }).strict(),
+    (state, actor, input, params) => withdrawRemittanceCash(state, actor, params.id, input));
   get("/api/envios/reportes", "Reportes de envíos por rango o día, sin mezclar monedas", async (req) => {
     const input = z.object({ from: z.iso.date(), to: z.iso.date(), grouping: z.enum(["range", "day"]).default("range") }).strict().parse(req.query);
     return remittanceReports(await store.read(), user(req), input);

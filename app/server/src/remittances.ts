@@ -77,10 +77,10 @@ export type CashSession = {
   // The box whose close this opening carried (Mayo, 26-10-2026); absent for a first box or one saved before.
   carriedFrom?: string;
 };
-// Money given to an open box after its opening (addition, «entrega adicional») or taken from the operator when his box
-// closes (discharge, «descargo»): the next opening brings the close minus what was discharged.
+// Additions and withdrawals affect the open box. A discharge is taken only after counting at the close;
+// keeping it separate preserves previous closes and avoids subtracting a daytime withdrawal twice.
 export type CashMovement = {
-  id: string; type: "addition" | "discharge"; cashSessionId: string; operatorId: string; currency: Currency;
+  id: string; type: "addition" | "withdrawal" | "discharge"; cashSessionId: string; operatorId: string; currency: Currency;
   amount: number; note?: string; actorId: string; createdAt: string;
 };
 export type RemittanceEvent = {
@@ -457,12 +457,12 @@ export function cashBalance(state: State, cash: CashSession) {
     if (event.cashSessionId === cash.id && event.type in sums)
       sums[event.type as keyof typeof sums] += BigInt(event.amount);
   }
-  const moved = { addition: 0n, discharge: 0n };
+  const moved = { addition: 0n, withdrawal: 0n, discharge: 0n };
   for (const movement of state.remittances.cashMovements ?? []) if (movement.cashSessionId === cash.id) moved[movement.type] += BigInt(movement.amount);
   return {
     sentTotal: safeMoney(sums.sent), cancelRefund: safeMoney(sums.cancelled), paid: safeMoney(sums.paid),
-    added: safeMoney(moved.addition), discharged: safeMoney(moved.discharge),
-    expected: safeMoney(BigInt(cash.openingAmount) + moved.addition + sums.sent - sums.cancelled - sums.paid),
+    added: safeMoney(moved.addition), withdrawn: safeMoney(moved.withdrawal), discharged: safeMoney(moved.discharge),
+    expected: safeMoney(BigInt(cash.openingAmount) + moved.addition + sums.sent - sums.cancelled - sums.paid - moved.withdrawal),
   };
 }
 /** What the next opening of this operator and currency brings: the close of his last box before `date`, less what was
@@ -481,6 +481,9 @@ export const cashView = (state: State, user: User, cash: CashSession) => {
     ...(cash.status === "closed" && cash.countedAmount !== undefined ? { carry: safeMoney(BigInt(cash.countedAmount) - BigInt(balance.discharged)) } : {}),
     canClose: hasRemittancePermission(user, "remittances.cash.close") && cash.status === "open" && (user.role === "admin" || cash.operatorId === user.id),
     canAdd: cash.status === "open" && canOpenCashOf(user, cash.operatorId),
+    canWithdraw: cash.status === "open" && hasRemittancePermission(user, "remittances.cash.close") && (user.role === "admin" || cash.operatorId === user.id),
+    movements: (state.remittances.cashMovements ?? []).filter((movement) => movement.cashSessionId === cash.id)
+      .map(({ id, type, amount, note, actorId, createdAt }) => ({ id, type, amount, note, actorId, createdAt })),
   };
 };
 // Administración opens (and adds to) any box; a cashier with the permission, only his own.
@@ -556,6 +559,22 @@ export function addRemittanceCash(state: State, user: User, id: string, input: {
   safeMoney(BigInt(cashBalance(state, cash).expected) + BigInt(input.amount));
   const note = input.note?.trim();
   addCashMovement(state, user, cash, "addition", input.amount, now, note || undefined);
+  return cashView(state, user, cash);
+}
+/** Cash physically returned to the person in charge during the day, while the box remains open. */
+export function withdrawRemittanceCash(state: State, user: User, id: string, input: { amount: number; note: string }, now = new Date()) {
+  remittanceOperators(state, user);
+  const cash = state.remittances.cashSessions.find((c) => c.id === id);
+  if (!cash) return fail("CASH_NOT_FOUND", "Caja no encontrada.", 404);
+  if (!hasRemittancePermission(user, "remittances.cash.close") || (user.role !== "admin" && cash.operatorId !== user.id))
+    fail("FORBIDDEN", "No tienes permiso para retirar efectivo de esta caja.", 403);
+  if (cash.status !== "open") fail("CASH_CLOSED", "La caja ya está cerrada.", 409);
+  if (cash.date !== businessDate(now)) fail("CASH_NOT_OPEN", "Solo se retira efectivo de la caja abierta de hoy.", 409);
+  integerMoney(input.amount, true);
+  if (input.amount > cashBalance(state, cash).expected) fail("INSUFFICIENT_CASH", "El retiro no puede superar el efectivo esperado de la caja.", 409);
+  const note = input.note?.trim();
+  if (!note) fail("REASON_REQUIRED", "Indica a quién se entrega el dinero y el motivo del retiro.");
+  addCashMovement(state, user, cash, "withdrawal", input.amount, now, note);
   return cashView(state, user, cash);
 }
 export function createRemittance(state: State, user: User, input: CreateRemittanceInput, systemOperators: User[] = [], now = new Date()) {
@@ -689,11 +708,13 @@ export function cancelRemittance(state: State, user: User, id: string, reason: s
 // and name: no role, access or route, and no operator the account does not already see.
 function visibleOperatorNames(state: State, user: User, systemOperators: User[], transfers: Remittance[], cashSessions: CashSession[]) {
   const reports = hasRemittancePermission(user, "remittances.reports");
+  const boxes = [...cashSessions, ...(reports ? state.remittances.cashSessions.filter((c) => readsAllOperations(user) || c.operatorId === user.id) : [])];
+  const boxIds = new Set(boxes.map((cash) => cash.id));
   const ids = new Set([
     ...[...transfers, ...(reports ? state.remittances.transfers.filter((t) => canReportTransfer(state, user, t)) : [])]
       .flatMap((t) => [t.sendingUserId, t.registeredBy, t.paidBy, t.cancelledBy]),
-    ...[...cashSessions, ...(reports ? state.remittances.cashSessions.filter((c) => readsAllOperations(user) || c.operatorId === user.id) : [])]
-      .map((c) => c.operatorId),
+    ...boxes.flatMap((cash) => [cash.operatorId, cash.openedBy, cash.closedBy]),
+    ...(state.remittances.cashMovements ?? []).filter((movement) => boxIds.has(movement.cashSessionId)).map((movement) => movement.actorId),
   ]);
   const names = new Map<string, string>([...systemOperators, ...state.accounts, user].map((row) => [row.id, row.name]));
   return Object.fromEntries([...ids].flatMap((id) => id && names.has(id) ? [[id, names.get(id)!]] : []));
@@ -852,14 +873,14 @@ export function remittanceReports(state: State, user: User, input: { from: strin
   const deliveryTimeSummary = [...timeGroups.values()].map(({ totalSeconds, ...row }) => ({ ...row, averageSeconds: safeMoney(totalSeconds) / row.count }));
   const cash = state.remittances.cashSessions.filter((c) => c.date >= input.from && c.date <= input.to && (readsAllOperations(user) || c.operatorId === user.id))
     .sort((a, b) => a.date.localeCompare(b.date) || a.openedAt.localeCompare(b.openedAt)).map((c) => cashView(state, user, c));
-  type CashSummary = { operatorId: string; currency: Currency; date: string; sessionCount: number; sentTotal: number; cancelRefund: number; paid: number; firstOpening: number; lastExpected: number; added: number };
+  type CashSummary = { operatorId: string; currency: Currency; date: string; sessionCount: number; sentTotal: number; cancelRefund: number; paid: number; firstOpening: number; lastExpected: number; added: number; withdrawn: number; discharged: number; lastCarry: number };
   const cashGroups = new Map<string, CashSummary>();
   for (const row of cash) {
     const date = input.grouping === "day" ? row.date : `${input.from}/${input.to}`;
     const key = `${row.operatorId}:${row.currency}:${date}`;
-    const group = cashGroups.get(key) ?? { operatorId: row.operatorId, currency: row.currency, date, sessionCount: 0, sentTotal: 0, cancelRefund: 0, paid: 0, firstOpening: row.openingAmount, lastExpected: row.expected, added: 0 };
-    group.sessionCount++; group.lastExpected = row.expected;
-    for (const field of ["sentTotal", "cancelRefund", "paid", "added"] as const) group[field] = safeMoney(BigInt(group[field]) + BigInt(row[field]));
+    const group = cashGroups.get(key) ?? { operatorId: row.operatorId, currency: row.currency, date, sessionCount: 0, sentTotal: 0, cancelRefund: 0, paid: 0, firstOpening: row.openingAmount, lastExpected: row.expected, added: 0, withdrawn: 0, discharged: 0, lastCarry: row.carry ?? row.expected };
+    group.sessionCount++; group.lastExpected = row.expected; group.lastCarry = row.carry ?? row.expected;
+    for (const field of ["sentTotal", "cancelRefund", "paid", "added", "withdrawn", "discharged"] as const) group[field] = safeMoney(BigInt(group[field]) + BigInt(row[field]));
     cashGroups.set(key, group);
   }
   const viewCommissions = hasRemittancePermission(user, "remittances.commissions.view");

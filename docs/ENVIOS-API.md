@@ -370,7 +370,37 @@ deja revisar esa apertura. Para entregar un
 recibo se requiere caja abierta del usuario que paga en la moneda de destino,
 con fondos suficientes; no se usa la caja de cobros ni se mezclan monedas.
 
-`expected = openingAmount + sentTotal - cancelRefund - paid` por caja/moneda.
+`expected = openingAmount + added + sentTotal - cancelRefund - paid - withdrawn` por caja/moneda.
+
+### Dinero adicional y retiros durante la jornada (05-11-2026)
+
+En **Cuadres Diarios → Caja de remesas**, cada caja abierta de hoy muestra campos separados para
+**Dinero adicional recibido** y **Dinero retirado**. Cada confirmación registra un movimiento nuevo;
+los acumulados y el saldo inicial no se editan. Los importes de la API son enteros en centavos.
+
+- `POST /envios/cajas/:id/entregas`: `{amount, note?}`, entrega física adicional a la caja. Requiere
+  `cash.open` y `cash.view`; Administración puede operar cualquier caja y las demás cuentas solo la propia.
+- `POST /envios/cajas/:id/retiros`: `{amount, note}`, devolución física de efectivo al encargado sin
+  cerrar la caja. Requiere `cash.close` y `cash.view`, con la misma restricción de propiedad que el cierre.
+  `amount` debe ser un entero positivo, `note` debe identificar a quién se entrega y el motivo (1–500 caracteres).
+  Solo se admite la caja abierta de hoy; un retiro superior al esperado devuelve `INSUFFICIENT_CASH` (409).
+- Ambos usan la idempotencia y la transacción existentes: repetir la misma clave no registra otro
+  movimiento, y dos retiros simultáneos no pueden gastar el mismo saldo.
+- `CashView.withdrawn` acumula los retiros durante el día. `movements` muestra los movimientos de
+  la caja visible con `id`, `type`, `amount`, `note?`, `actorId` y `createdAt`. Los nombres se resuelven
+  mediante `operatorNames`, solo para cajas que la cuenta puede consultar. El historial es inmutable.
+- El contado al cierre es el efectivo **que queda después** de esos retiros. El campo opcional
+  `dischargedAmount` conserva su significado anterior: dinero adicional que se retira **después del
+  conteo**, al cerrar. `carry = countedAmount - dischargedAmount`; `withdrawn` no se resta otra vez.
+  El cierre exige diferencia cero y conserva el bloqueo de cajas cerradas y la apertura heredada.
+- El reporte de caja, su CSV y su impresión incluyen los acumulados de retiros durante el día,
+  lo retirado al cierre y el último saldo que conserva el operador. Los saldos finales de varios
+  días no se suman entre sí.
+
+Ejemplo sin otros movimientos: inicial 50,000 + adicional 2,000 − pagos 46,000 − retiro 4,000 =
+esperado/contado 2,000. Si al cerrar devuelve otros 500, la siguiente apertura trae 1,500.
+La migración aditiva `050_remittance_cash_withdrawals.sql` habilita el tipo `withdrawal` y conserva
+intactos los movimientos `addition` y `discharge` anteriores.
 No se cruzan fondos con cobros ni se suman monedas. Cada apertura, envío, pago,
 cancelación y cierre deja evento append-only con actor e instante.
 
