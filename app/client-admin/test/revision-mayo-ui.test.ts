@@ -226,7 +226,10 @@ test("Mayo's review (26-10): Envíos, Caja de remesas, Tasas, escritorio, Soport
       await field(search, "Moneda").selectOption("DOP");
       await search.getByRole("button", { name: "Buscar", exact: true }).click();
       const box = caja.locator(".remittance-cash-grid article").first();
-      const add = box.getByRole("form", { name: "Registrar entrega adicional" });
+      const controls = caja.getByRole("region", { name: "Operar caja de remesas", exact: true });
+      assert.equal(await controls.getByRole("button", { name: "Revisar apertura", exact: true }).isDisabled(), true, "an open box is operated without reopening it");
+      assert.equal(await box.getByRole("form", { name: "Registrar entrega adicional" }).count(), 0, "money movements have a single entry point above the list");
+      const add = controls.getByRole("form", { name: "Registrar entrega adicional" });
       const amount = add.getByLabel("Dinero adicional recibido (DOP)", { exact: true }); await amount.click(); await amount.pressSequentially("250");
       await add.getByRole("button", { name: "Revisar entrega", exact: true }).click();
       await page.getByRole("dialog", { name: "Confirmar entrega adicional" }).getByRole("button", { name: "Confirmar", exact: true }).click();
@@ -237,7 +240,7 @@ test("Mayo's review (26-10): Envíos, Caja de remesas, Tasas, escritorio, Soport
       // An unsubmitted addition is preserved when the other cash movement form is saved.
       await amount.click(); await amount.pressSequentially("50");
       // The two money fields are visible in the actual box, separately from its initial cash.
-      const withdrawal = box.getByRole("form", { name: "Registrar retiro de efectivo" });
+      const withdrawal = controls.getByRole("form", { name: "Registrar retiro de efectivo" });
       const takenDuringDay = withdrawal.getByLabel("Dinero retirado (DOP)", { exact: true });
       await takenDuringDay.click(); await takenDuringDay.pressSequentially("50");
       await withdrawal.getByLabel("Entregado a / motivo", { exact: true }).fill("Encargado de oficina: devolver efectivo sobrante");
@@ -275,6 +278,65 @@ test("Mayo's review (26-10): Envíos, Caja de remesas, Tasas, escritorio, Soport
       await box.getByText("Pasa a la próxima apertura").waitFor();
       assert.match(await box.innerText(), /Descargado al cobrador\s+DOP 100\.00/);
       assert.match(await box.innerText(), /Pasa a la próxima apertura\s+DOP 150\.00/);
+    });
+
+    await t.test("cash movements above the list follow only the selected operator and currency, clear cross-box drafts and persist exact balances", async () => {
+      const adminEuro = await post("/api/envios/cajas/abrir", { operatorId: "demo-admin", currency: "EUR", openingAmount: 30000 }) as { id: string };
+      const cashierEuro = await post("/api/envios/cajas/abrir", { operatorId: cashier.id, currency: "EUR", openingAmount: 50000 }) as { id: string };
+      const caja = await openCaja(page);
+      const controls = caja.getByRole("region", { name: "Operar caja de remesas", exact: true });
+      const opening = controls.getByRole("form", { name: "Abrir caja", exact: true });
+      const chooseOperator = field(opening, "Operador"), chooseCurrency = field(opening, "Moneda");
+      const amount = controls.getByLabel("Dinero adicional recibido (EUR)", { exact: true });
+      const readBalance = () => controls.getByLabel("Saldo de la caja seleccionada", { exact: true }).innerText();
+      await chooseCurrency.selectOption("EUR");
+      assert.equal(await controls.getByRole("button", { name: "Revisar apertura", exact: true }).isDisabled(), true);
+      assert.equal(await opening.getByLabel("Efectivo inicial", { exact: true }).inputValue(), "300.00");
+      await amount.click(); await amount.pressSequentially("12");
+      await chooseOperator.selectOption(cashier.id);
+      assert.equal(await amount.inputValue(), "", "changing the operator cannot carry a money draft into another person's box");
+      assert.equal(await opening.getByLabel("Efectivo inicial", { exact: true }).inputValue(), "500.00");
+      assert.match(await controls.locator(".remittance-cash-target").innerText(), /Cajero de Mayo.*EUR/);
+      assert.equal(await caja.locator(".remittance-cash-grid article").count(), 1, "the displayed box follows the context selection");
+      assert.match(await caja.locator(".remittance-cash-grid article").innerText(), /EUR · Cajero de Mayo/);
+      await amount.click(); await amount.pressSequentially("50");
+      await controls.getByRole("button", { name: "Revisar entrega", exact: true }).click();
+      const addConfirm = page.getByRole("dialog", { name: "Confirmar entrega adicional", exact: true });
+      assert.match(await addConfirm.innerText(), /EUR 50\.00.*Cajero de Mayo/);
+      await addConfirm.getByRole("button", { name: "Confirmar", exact: true }).click();
+      await controls.getByText("EUR 550.00", { exact: true }).waitFor();
+      assert.match(await readBalance(), /Efectivo esperado\s+EUR 550\.00/);
+      const savedAddition = (await store.read()).remittances.cashMovements!.filter((movement) => movement.cashSessionId === cashierEuro.id);
+      assert.deepEqual(savedAddition.map(({ type, amount }) => ({ type, amount })), [{ type: "addition", amount: 5000 }]);
+      // Neither a missing box nor a closed box falls back to some other open box.
+      await chooseCurrency.selectOption("USD");
+      assert.equal(await controls.getByRole("form", { name: "Registrar entrega adicional", exact: true }).count(), 0);
+      assert.equal(await controls.getByRole("form", { name: "Registrar retiro de efectivo", exact: true }).count(), 0);
+      assert.match(await controls.innerText(), /primero hay que abrir la caja de hoy/);
+      await chooseOperator.selectOption("demo-admin"); await chooseCurrency.selectOption("EUR");
+      assert.match(await readBalance(), /Efectivo esperado\s+EUR 300\.00/, "the other operator's box was not changed");
+      const withdrawal = controls.getByLabel("Dinero retirado (EUR)", { exact: true });
+      await withdrawal.click(); await withdrawal.pressSequentially("100");
+      await controls.getByLabel("Entregado a / motivo", { exact: true }).fill("Encargado de prueba: efectivo sobrante");
+      await controls.getByRole("button", { name: "Revisar retiro", exact: true }).click();
+      const withdrawalConfirm = page.getByRole("dialog", { name: "Confirmar retiro de efectivo", exact: true });
+      assert.match(await withdrawalConfirm.innerText(), /EUR 100\.00.*Administración/);
+      await withdrawalConfirm.getByRole("button", { name: "Confirmar", exact: true }).click();
+      await controls.getByText("EUR 200.00", { exact: true }).waitFor();
+      assert.match(await readBalance(), /Retiros durante el día\s+EUR 100\.00/);
+      const savedWithdrawal = (await store.read()).remittances.cashMovements!.filter((movement) => movement.cashSessionId === adminEuro.id);
+      assert.deepEqual(savedWithdrawal.map(({ type, amount }) => ({ type, amount })), [{ type: "withdrawal", amount: 10000 }]);
+      await shot("caja-movimientos-arriba-operador-moneda");
+      await chooseCurrency.selectOption("DOP");
+      assert.equal(await controls.getByRole("form", { name: "Registrar entrega adicional", exact: true }).count(), 0);
+      assert.equal(await controls.getByRole("form", { name: "Registrar retiro de efectivo", exact: true }).count(), 0);
+      assert.equal(await controls.getByRole("button", { name: "Revisar apertura", exact: true }).isDisabled(), true);
+      assert.match(await controls.innerText(), /ya se cerró/);
+      // Reloading the actual MDI window loads the persisted balances for the same selector.
+      const reloaded = await openCaja(page);
+      const reloadedControls = reloaded.getByRole("region", { name: "Operar caja de remesas", exact: true });
+      await field(reloadedControls.getByRole("form", { name: "Abrir caja", exact: true }), "Moneda").selectOption("EUR");
+      assert.match(await reloadedControls.getByLabel("Saldo de la caja seleccionada", { exact: true }).innerText(), /Efectivo esperado\s+EUR 200\.00/);
     });
 
     await t.test("2.1.4: the cashier opens the day with the close before, and cannot change it", async () => {

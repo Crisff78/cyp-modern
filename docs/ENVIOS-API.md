@@ -374,9 +374,14 @@ con fondos suficientes; no se usa la caja de cobros ni se mezclan monedas.
 
 ### Dinero adicional y retiros durante la jornada (05-11-2026)
 
-En **Cuadres Diarios → Caja de remesas**, cada caja abierta de hoy muestra campos separados para
-**Dinero adicional recibido** y **Dinero retirado**. Cada confirmación registra un movimiento nuevo;
-los acumulados y el saldo inicial no se editan. Los importes de la API son enteros en centavos.
+En **Cuadres Diarios → Caja de remesas**, el panel superior de apertura y movimientos conserva los
+selectores **Operador** y **Moneda** aunque la caja ya esté abierta. Para las cuentas no administrativas,
+el operador queda fijado a la propia cuenta. Los campos **Dinero adicional recibido** y **Dinero retirado**
+operan únicamente sobre la caja abierta de hoy que coincida exactamente con esa selección, con los
+permisos existentes. Se muestran allí sus acumulados y su efectivo esperado. Cambiar la selección
+limpia los importes sin confirmar y alinea la consulta con la caja elegida; una caja inexistente, de otra
+fecha o cerrada no recibe movimientos. Cada confirmación registra un movimiento nuevo; los acumulados
+y el saldo inicial ya registrado no se editan. Los importes de la API son enteros en centavos.
 
 - `POST /envios/cajas/:id/entregas`: `{amount, note?}`, entrega física adicional a la caja. Requiere
   `cash.open` y `cash.view`; Administración puede operar cualquier caja y las demás cuentas solo la propia.
