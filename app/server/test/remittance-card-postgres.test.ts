@@ -10,7 +10,7 @@ import { cancelRemittance, createRemittance, getCommissionPolicy, openRemittance
 test("PostgreSQL 047: fresh migrations, frozen credit/debit records, exact fee, strict SQL allowlist and quote binding", {skip: !process.env.CYP_CARD_RECORDS_TEST_DATABASE_URL}, async () => {
   const url = new URL(process.env.CYP_CARD_RECORDS_TEST_DATABASE_URL!);
   assert.equal(url.hostname,"127.0.0.1"); assert.equal(url.port,"55437");
-  assert(["/cyp_card_records_qa","/cyp_card_records_qa_final","/cyp_card_records_qa_verified","/cyp_card_vault_qa_20261105","/cyp_card_vault_qa_20261105_v2","/cyp_card_details_qa_20261106"].includes(url.pathname)); assert.equal(url.username,"card_records_qa");
+  assert(["/cyp_card_records_qa","/cyp_card_records_qa_final","/cyp_card_records_qa_verified","/cyp_card_vault_qa_20261105","/cyp_card_vault_qa_20261105_v2","/cyp_card_details_qa_20261106","/cyp_card_manual_qa_20261110"].includes(url.pathname)); assert.equal(url.username,"card_records_qa");
   const store = new PostgresStore(url.href), reader = new PostgresStore(url.href);
   const sql = new pg.Client({connectionString:url.href}); await sql.connect();
   const now = new Date(), admin: User = {id:"demo-admin",name:"Synthetic Admin",role:"admin"};
@@ -67,10 +67,31 @@ test("PostgreSQL 047: fresh migrations, frozen credit/debit records, exact fee, 
     assert.deepEqual((await reader.read()).remittances.transfers.find(row=>row.id===debitWithDetails.id)!.payment,debitWithDetails.payment);
     assert.equal(await valid(debitWithDetails.payment),true);
     for (const invalid of [{...debitWithDetails.payment,last4:undefined},{...debitWithDetails.payment,cardholderName:undefined},{...debitWithDetails.payment,cvv:"123"},{...debitWithDetails.payment,expiry:"12/99"}]) assert.equal(await valid(invalid),false);
+    for (const cardType of ["credit","debit"] as const) for (const cardChargeAmount of [0,350]) {
+      const manual = await store.transaction(state => {
+        const pair = {sourceCurrency:"DOP" as const,destinationCurrency:"DOP" as const,amount:10000};
+        return createRemittance(state,admin,{...pair,senderClientId:"cli-1",recipientClientId:"cli-5",quote:quoteRemittance(state,pair,now).quote,
+          payment:{method:"card",cardType,cardholderName:"Persona Ficticia",last4:"0042",reference:"QA-MANUAL",verified:true,cardChargeAmount}},[],now);
+      });
+      const payment = (await reader.read()).remittances.transfers.find(row=>row.id===manual.id)!.payment!;
+      assert.deepEqual(payment,manual.payment); assert.equal(payment.version,3);
+      assert.equal(payment.cardSurchargeBps,undefined); assert.equal(payment.cardSurchargeAmount,cardChargeAmount);
+      assert.equal(payment.tenderedAmount,manual.totalAmount+cardChargeAmount);
+      assert.equal(await valid(payment),true);
+      for (const invalid of [
+        {...payment,cardSurchargeAmount:-1}, {...payment,cardSurchargeAmount:.5}, {...payment,cardSurchargeAmount:"350"},
+        {...payment,cardSurchargeAmount:undefined}, {...payment,tenderedAmount:payment.tenderedAmount+1},
+        {...payment,cardSurchargeBps:0}, {...payment,method:"transfer"}, {...payment,cardType:"other"},
+        {...payment,last4:undefined}, {...payment,cardholderName:undefined}, {...payment,cardChargeAmount},
+        {...payment,cvv:"123"}, {...payment,expiry:"12/99"}, {...payment,cardNumber:"4111111111111111"},
+      ]) assert.equal(await valid(invalid),false);
+    }
+    assert.equal(await reader.cardPaymentSchemaReady(),true);
     await store.transaction(state => cancelRemittance(state,admin,saved.id,"Synthetic external refund",now,{reference:"QA-REFUND-11275",verified:true}));
     const after = await reader.read();
     assert.equal(after.remittances.transfers.find(row=>row.id===saved.id)!.status,"cancelled");
     assert.equal(after.remittances.events.find(e=>e.type==="cancelled")?.amount,0);
     assert.equal((await sql.query("SELECT count(*)::int AS n FROM cyp_schema_migrations WHERE name = '051_remittance_debit_card_details.sql'")).rows[0].n,1);
+    assert.equal((await sql.query("SELECT count(*)::int AS n FROM cyp_schema_migrations WHERE name = '052_manual_card_charge.sql'")).rows[0].n,1);
   } finally {await sql.end();await store.close();await reader.close();}
 });

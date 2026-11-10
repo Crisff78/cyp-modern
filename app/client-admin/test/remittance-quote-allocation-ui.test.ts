@@ -751,6 +751,24 @@ createRoot(document.getElementById("root")).render(<App />);`);
           await workspace.getByRole("button", { name: "Revisar y confirmar envío", exact: true }).click();
           const review = page.getByRole("dialog", { name: "Confirmar envío", exact: true });
           await review.getByLabel("Forma de pago", { exact: true }).selectOption(method === "card" ? "debit" : method);
+          if (isCard) {
+            const chargeDialog=page.getByRole("dialog",{name:"Cargo adicional por tarjeta",exact:true});
+            await chargeDialog.waitFor();
+            const draftBefore=await review.getByLabel("Forma de pago",{exact:true}).inputValue();
+            assert.equal(draftBefore,"cash","choosing a card does not alter the payment until its charge is accepted");
+            await chargeDialog.getByRole("button",{name:"Cancelar",exact:true}).click();
+            assert.equal(await review.getByLabel("Forma de pago",{exact:true}).inputValue(),"cash");
+            await review.getByLabel("Forma de pago",{exact:true}).selectOption(method === "card" ? "debit" : method);
+            const chargeInput=chargeDialog.getByLabel("Cargo adicional (DOP)",{exact:true});
+            await chargeInput.fill("");
+            assert.equal(await chargeDialog.getByRole("button",{name:"Aceptar cargo",exact:true}).isDisabled(),true);
+            await chargeInput.fill(method === "credit" ? "3.50" : "1.25");
+            const q=quoteRemittance(await store.read(),{sourceCurrency:"DOP",destinationCurrency:"DOP",amount:90000},now);
+            assert((await chargeDialog.innerText()).includes(formatMoney(q.totalAmount,"DOP")));
+            assert((await chargeDialog.innerText()).includes(formatMoney(q.totalAmount+(method === "credit" ? 350 : 125),"DOP")));
+            await page.screenshot({path:path.join(output,`${surface}-${method}-manual-charge.png`)});
+            await chargeDialog.getByRole("button",{name:"Aceptar cargo",exact:true}).click();
+          }
           assert.equal(await review.locator('input[autocomplete="cc-number"],input[autocomplete="cc-csc"],input[autocomplete="cc-exp"]').count(), 0);
           assert.equal(await review.getByLabel("Vencimiento (MM/YY)",{exact:true}).count(),0);
           assert.equal(await review.getByLabel("CVV",{exact:true}).count(),0);
@@ -765,10 +783,9 @@ createRoot(document.getElementById("root")).render(<App />);`);
             const browserStorage = await page.evaluate(() => JSON.stringify({local:{...localStorage},session:{...sessionStorage}}));
             assert(!browserStorage.includes("4242424242424242") && !browserStorage.includes("4242 4242 4242 4242"));
             const q = quoteRemittance(await store.read(), {sourceCurrency:"DOP",destinationCurrency:"DOP",amount:90000},now);
-            const surcharge = method === "credit" ? Number((BigInt(q.totalAmount)*250n+5000n)/10000n) : 0;
+            const surcharge = method === "credit" ? 350 : 125;
             const card = review.locator('.remittance-quote-card[aria-label="Paga el remitente"]');
-            if (method === "credit") assert.match(await card.innerText(), /Recargo tarjeta de crédito/);
-            else assert.doesNotMatch(await card.innerText(), /Recargo tarjeta de crédito/);
+            assert.match(await card.innerText(), /Cargo adicional por tarjeta/);
             assert.doesNotMatch(await card.innerText(), /%/);
             assert((await card.innerText()).includes(formatMoney(q.totalAmount+surcharge,"DOP")));
             assert.equal(await review.locator('.remittance-quote-card[aria-label="Recibe el destinatario"]').count(), 1);
@@ -780,6 +797,14 @@ createRoot(document.getElementById("root")).render(<App />);`);
           await review.getByLabel("Referencia del comprobante", { exact: true }).fill(`QA-${surface}-${method}`);
           await review.getByLabel("Banco o proveedor (opcional)", { exact: true }).selectOption("Banreservas");
           await review.getByLabel("Comprobé que el pago fue recibido", { exact: true }).check();
+          if (isCard) {
+            await review.getByRole("button",{name:"Modificar cargo",exact:true}).click();
+            const chargeDialog=page.getByRole("dialog",{name:"Cargo adicional por tarjeta",exact:true});
+            assert.equal(await chargeDialog.getByLabel("Cargo adicional (DOP)",{exact:true}).inputValue(),method === "credit" ? "3.50" : "1.25");
+            await chargeDialog.getByRole("button",{name:"Aceptar cargo",exact:true}).click();
+            assert.equal(await review.getByLabel("Comprobé que el pago fue recibido",{exact:true}).isChecked(),false);
+            await review.getByLabel("Comprobé que el pago fue recibido",{exact:true}).check();
+          }
           const reference = review.getByLabel("Referencia del comprobante", { exact: true });
           const bank = review.getByLabel("Banco o proveedor (opcional)", { exact: true });
           await reference.fill("QA\u200bREF"); assert.equal(await reference.inputValue(), `QA-${surface}-${method}`);
@@ -811,8 +836,9 @@ createRoot(document.getElementById("root")).render(<App />);`);
           assert.equal(saved.payment?.bank, "BHD");
           assert.equal(saved.payment?.method, method === "credit" || method === "card" ? "card" : method);
           if (isCard) { assert(!JSON.stringify(await store.read()).includes("4242424242424242")); const archived = (await store.read()).remittances.cardArchives?.find(row=>row.transferId===saved.id); assert(archived); assert.deepEqual(cardVault.open(archived!,saved.id,saved.registeredBy),{pan:"4242424242424242"}); assert.equal(saved.payment?.last4,"4242"); }
-          if (method === "credit") { assert.equal(saved.payment?.cardType,"credit"); assert.equal(saved.payment?.cardSurchargeBps,250); assert(totalPaidForTransfer(saved)>saved.totalAmount); }
-          if (method === "card") { assert.equal(saved.payment?.cardType,"debit"); assert.equal(saved.payment?.cardSurchargeAmount,0); }
+          if (isCard) { assert.equal(saved.payment?.version,3); assert.equal(saved.payment?.cardSurchargeBps,undefined); assert.equal(sent.payment.cardChargeAmount,method === "credit" ? 350 : 125); }
+          if (method === "credit") { assert.equal(saved.payment?.cardType,"credit"); assert.equal(saved.payment?.cardSurchargeAmount,350); assert(totalPaidForTransfer(saved)>saved.totalAmount); }
+          if (method === "card") { assert.equal(saved.payment?.cardType,"debit"); assert.equal(saved.payment?.cardSurchargeAmount,125); }
           assert.equal((await store.read()).remittances.events.find((event) => event.transferId === saved.id && event.type === "sent")?.amount, 0);
           await workspace.getByRole("button", { name: saved.envioReference, exact: true }).click();
           const detail = page.getByRole("dialog", { name: `${saved.envioReference} · ${saved.reciboReference}`, exact: true });
