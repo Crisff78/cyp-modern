@@ -695,6 +695,11 @@ export class PostgresStore implements Store {
         const result = await this.pool.query("SELECT valid_remittance_payment($1::jsonb,$2::bigint,$3::text,$4::timestamptz) AS ok", [JSON.stringify(payment),10000,actor,at]);
         if (result.rows[0]?.ok !== true) return false;
       }
+      for (const cardType of ["credit", "debit"] as const) {
+        const payment = { version: 3, method: "card", cardType, cardholderName: "Prueba de compatibilidad", last4: "4242", reference: "SCHEMA-CHECK", confirmedBy: actor, confirmedAt: at, tenderedAmount: 10350, changeAmount: 0, cardSurchargeAmount: 350 };
+        const result = await this.pool.query("SELECT valid_remittance_payment($1::jsonb,$2::bigint,$3::text,$4::timestamptz) AS ok", [JSON.stringify(payment),10000,actor,at]);
+        if (result.rows[0]?.ok !== true) return false;
+      }
       return true;
     } catch { return null; }
   }

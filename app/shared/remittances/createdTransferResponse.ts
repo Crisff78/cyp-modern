@@ -1,7 +1,7 @@
 import { StrictApiError } from "./strictApi";
 import { managerCommissionMatches } from "./suggestions";
 import type { NewRemittanceClient, Quotation, RemittanceContact, Transfer } from "./types";
-import { paymentAmounts, type RemittancePaymentInput } from "./payment.mjs";
+import { paymentAmounts, paymentRecordVersion, type RemittancePaymentInput } from "./payment.mjs";
 
 // A phone is the same however it is written: the server compares only its digits.
 const phoneDigits = (value: string) => value.replace(/\D/g, "");
@@ -32,7 +32,7 @@ export function confirmedCreatedTransfer(value: unknown, expected: Record<string
     if (!row?.payment) return false;
     try {
       const calculated = paymentAmounts(row.totalAmount, expected.payment as RemittancePaymentInput, quotation?.quote.creditCardCommissionBps ?? row.quote.creditCardCommissionBps ?? 0);
-      return row.payment.version === (calculated.cardType ? 2 : 1) && row.payment.confirmedBy === actorId && row.payment.confirmedAt === row.createdAt &&
+      return row.payment.version === paymentRecordVersion(expected.payment as RemittancePaymentInput) && row.payment.confirmedBy === actorId && row.payment.confirmedAt === row.createdAt &&
         Object.entries(calculated).every(([key, value]) => row.payment?.[key as keyof NonNullable<Transfer["payment"]>] === value);
     } catch { return false; }
   };
