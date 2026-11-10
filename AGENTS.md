@@ -74,7 +74,25 @@ proyecto separado de Hermes-BI.
 
 ## Current state
 
-**Last updated:** 2026-10-10, hora dominicana, por Codex.
+**Last updated:** 2026-11-10, por Codex.
+
+- Alcance actual autorizado: cargo adicional por tarjeta del punto 1.1.1 de Pagos.
+  Rardiel indicó «Haz el punto 1.1, el 1.2 lo estoy probando»; la revisión de
+  formatos de impresión queda a su cargo.
+- Base verificada antes del cambio: `main` `e5cfaa1`, demo `6d000f0`, árboles
+  iguales y salud pública `ok`. La pestaña autenticada de Opera GX se revisó
+  sin registrar operaciones.
+- Rama `codex/pagos-tarjeta-recibo-nov10`: captura del cargo en la moneda del
+  remitente, suma exacta al total, pago versión 3 y migración 052 compatible
+  con pagos históricos. Contrato y límites en `docs/ENVIOS-API.md`.
+- Pruebas con escritura exclusivamente sintéticas y aisladas: API, PostgreSQL
+  local, Administración y Cobrador. Tipos y compilaciones de los tres paquetes
+  aprobados. Las pruebas omitidas no se consideran ejecutadas.
+- Siguiente paso: PR a `main` y PR a `codex/public-browser-demo`; Rardiel los
+  fusiona. Después comprobar despliegue y versión pública. No tocar el VPS ni
+  ejecutar `e2e-pruebas.mjs` contra datos compartidos.
+
+### Antecedentes del 10-10-2026 (históricos; no son el estado actual)
 
 ### Done so far
 
