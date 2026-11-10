@@ -79,18 +79,19 @@ proyecto separado de Hermes-BI.
 - Alcance actual autorizado: cargo adicional por tarjeta del punto 1.1.1 de Pagos.
   Rardiel indicó «Haz el punto 1.1, el 1.2 lo estoy probando»; la revisión de
   formatos de impresión queda a su cargo.
-- Base verificada antes del cambio: `main` `e5cfaa1`, demo `6d000f0`, árboles
-  iguales y salud pública `ok`. La pestaña autenticada de Opera GX se revisó
-  sin registrar operaciones.
-- Rama `codex/pagos-tarjeta-recibo-nov10`: captura del cargo en la moneda del
-  remitente, suma exacta al total, pago versión 3 y migración 052 compatible
-  con pagos históricos. Contrato y límites en `docs/ENVIOS-API.md`.
-- Pruebas con escritura exclusivamente sintéticas y aisladas: API, PostgreSQL
-  local, Administración y Cobrador. Tipos y compilaciones de los tres paquetes
-  aprobados. Las pruebas omitidas no se consideran ejecutadas.
-- Siguiente paso: PR a `main` y PR a `codex/public-browser-demo`; Rardiel los
-  fusiona. Después comprobar despliegue y versión pública. No tocar el VPS ni
-  ejecutar `e2e-pruebas.mjs` contra datos compartidos.
+- Cargo manual publicado mediante PR #118/#119: `main` `5002c2b`, demo
+  `6f5473c`, salud pública `ok`. Se conservaron pago v3 y migración 052.
+- Arreglo posterior en `codex/cargo-tarjeta-entrada-nov10`: el importe precargado
+  queda seleccionado al abrir, volver al campo o hacer el primer clic/toque.
+  Se puede escribir directamente sin borrar ceros; después conserva la edición
+  normal del cursor. Solo cambia el diálogo, sin fórmulas ni migraciones nuevas.
+- El fallo se reprodujo antes del cambio con escritura real, sin `fill()`.
+  Validación aislada: 38 pruebas aprobadas, 0 omitidas; incluye entrada táctil
+  simulada, decimales, borrado, cancelación, modificación y persistencia vía API
+  desde Administración y Cobrador. Tres tipos y dos compilaciones aprobados.
+- Siguiente paso: dos PR, a `main` y a `codex/public-browser-demo`, que fusiona
+  Rardiel; después comprobar Render y versión pública. Esta corrección de entrada
+  aún no está desplegada. No tocar el VPS ni ejecutar pruebas en datos compartidos.
 
 ### Antecedentes del 10-10-2026 (históricos; no son el estado actual)
 
