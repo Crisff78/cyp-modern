@@ -760,9 +760,13 @@ createRoot(document.getElementById("root")).render(<App />);`);
             assert.equal(await review.getByLabel("Forma de pago",{exact:true}).inputValue(),"cash");
             await review.getByLabel("Forma de pago",{exact:true}).selectOption(method === "card" ? "debit" : method);
             const chargeInput=chargeDialog.getByLabel("Cargo adicional (DOP)",{exact:true});
-            await chargeInput.fill("");
+            await chargeInput.click();
+            await page.keyboard.type(method === "credit" ? "3.50" : "1.25");
+            assert.equal(await chargeInput.inputValue(),method === "credit" ? "3.50" : "1.25","normal typing replaces the preset without clearing zeros");
+            await chargeInput.press("ControlOrMeta+A");
+            await chargeInput.press("Backspace");
             assert.equal(await chargeDialog.getByRole("button",{name:"Aceptar cargo",exact:true}).isDisabled(),true);
-            await chargeInput.fill(method === "credit" ? "3.50" : "1.25");
+            await page.keyboard.type(method === "credit" ? "3.50" : "1.25");
             const q=quoteRemittance(await store.read(),{sourceCurrency:"DOP",destinationCurrency:"DOP",amount:90000},now);
             assert((await chargeDialog.innerText()).includes(formatMoney(q.totalAmount,"DOP")));
             assert((await chargeDialog.innerText()).includes(formatMoney(q.totalAmount+(method === "credit" ? 350 : 125),"DOP")));
@@ -801,6 +805,8 @@ createRoot(document.getElementById("root")).render(<App />);`);
             await review.getByRole("button",{name:"Modificar cargo",exact:true}).click();
             const chargeDialog=page.getByRole("dialog",{name:"Cargo adicional por tarjeta",exact:true});
             assert.equal(await chargeDialog.getByLabel("Cargo adicional (DOP)",{exact:true}).inputValue(),method === "credit" ? "3.50" : "1.25");
+            await page.keyboard.type(method === "credit" ? "4.25" : "1.50");
+            assert.equal(await chargeDialog.getByLabel("Cargo adicional (DOP)",{exact:true}).inputValue(),method === "credit" ? "4.25" : "1.50","modifying a saved draft selects it for direct replacement");
             await chargeDialog.getByRole("button",{name:"Aceptar cargo",exact:true}).click();
             assert.equal(await review.getByLabel("Comprobé que el pago fue recibido",{exact:true}).isChecked(),false);
             await review.getByLabel("Comprobé que el pago fue recibido",{exact:true}).check();
@@ -836,9 +842,9 @@ createRoot(document.getElementById("root")).render(<App />);`);
           assert.equal(saved.payment?.bank, "BHD");
           assert.equal(saved.payment?.method, method === "credit" || method === "card" ? "card" : method);
           if (isCard) { assert(!JSON.stringify(await store.read()).includes("4242424242424242")); const archived = (await store.read()).remittances.cardArchives?.find(row=>row.transferId===saved.id); assert(archived); assert.deepEqual(cardVault.open(archived!,saved.id,saved.registeredBy),{pan:"4242424242424242"}); assert.equal(saved.payment?.last4,"4242"); }
-          if (isCard) { assert.equal(saved.payment?.version,3); assert.equal(saved.payment?.cardSurchargeBps,undefined); assert.equal(sent.payment.cardChargeAmount,method === "credit" ? 350 : 125); }
-          if (method === "credit") { assert.equal(saved.payment?.cardType,"credit"); assert.equal(saved.payment?.cardSurchargeAmount,350); assert(totalPaidForTransfer(saved)>saved.totalAmount); }
-          if (method === "card") { assert.equal(saved.payment?.cardType,"debit"); assert.equal(saved.payment?.cardSurchargeAmount,125); }
+          if (isCard) { assert.equal(saved.payment?.version,3); assert.equal(saved.payment?.cardSurchargeBps,undefined); assert.equal(sent.payment.cardChargeAmount,method === "credit" ? 425 : 150); }
+          if (method === "credit") { assert.equal(saved.payment?.cardType,"credit"); assert.equal(saved.payment?.cardSurchargeAmount,425); assert(totalPaidForTransfer(saved)>saved.totalAmount); }
+          if (method === "card") { assert.equal(saved.payment?.cardType,"debit"); assert.equal(saved.payment?.cardSurchargeAmount,150); }
           assert.equal((await store.read()).remittances.events.find((event) => event.transferId === saved.id && event.type === "sent")?.amount, 0);
           await workspace.getByRole("button", { name: saved.envioReference, exact: true }).click();
           const detail = page.getByRole("dialog", { name: `${saved.envioReference} · ${saved.reciboReference}`, exact: true });
