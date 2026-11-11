@@ -453,7 +453,7 @@ createRoot(document.getElementById("root")).render(<App />);`);
         await detail.getByRole("button", { name: "Imprimir comprobante", exact: true }).click();
         const receiptPopup = await receiptPopupPromise;
         await receiptPopup.waitForFunction(() => (window as any).__qaPrinted === true);
-        assert(Math.abs(await receiptPopup.locator("body").evaluate((element: HTMLElement) => element.getBoundingClientRect().width) - 70 * 96 / 25.4) < 1);
+        assert(Math.abs(await receiptPopup.locator("body").evaluate((element: HTMLElement) => element.getBoundingClientRect().width) - 63 * 96 / 25.4) < 1);
         assert.equal(await receiptPopup.locator("body").evaluate((element: HTMLElement) => element.scrollWidth <= element.clientWidth + 1), true);
         const printedRows = await receiptPopup.locator(".thermal-image-output img").evaluateAll((images: HTMLImageElement[]) => images.map(image => image.alt).join("\n"));
         assert.equal(printedRows.includes("Comisión"), false);

@@ -66,7 +66,7 @@ test("thermal and telephone receipts never print the generic app name 'Cobros y 
   const before = JSON.stringify(model);
   for (const paper of ["76", "80", "58"] as const) {
     const html = receiptHtml(model, { paper, compact: true });
-    assert(html.includes(`width:${paper === "80" ? 63 : paper === "58" ? 42 : 60}mm`));
+    assert(html.includes(`width:${paper === "80" ? 66 : paper === "58" ? 45 : 63}mm`));
     const plainHtml = receiptHtml(model, { paper, compact: true, output: "text" });
     assert(plainHtml.includes(`width:${paper === "80" ? 72 : paper === "58" ? 48 : 70}mm`));
     for (const text of ["Empresa de prueba", "Fictional office", "Tel.: 8095550100", "Fecha", "ENV00000001", "O&#39;Connor &lt;sender&gt;", "Destinatario", "8095550102", "DOP 990.00", "DOP 1,000.00", "DOP 10.00", "Registrado por", "Cajero", "Conserve este recibo"]) assert(html.includes(text), text);
@@ -76,6 +76,32 @@ test("thermal and telephone receipts never print the generic app name 'Cobros y 
   }
   assert.equal(JSON.stringify(model), before);
   assert(!receiptHtml(model, { paper: "auto", compact: false }).includes("width:70mm"));
+});
+test("credit card surcharge is summed into Cargo del envío and omitted as a separate line across all receipt types", () => {
+  const cardTransfer: Transfer = {
+    ...transfer,
+    amount: 2000,
+    commissionAmount: 200,
+    totalAmount: 2200,
+    receiveAmount: 2000,
+    payment: { version: 2, method: "card", cardType: "credit", tenderedAmount: 2420, changeAmount: 0, cardSurchargeBps: 1000, cardSurchargeAmount: 220, reference: "22222222222", last4: "4444", confirmedBy: "office", confirmedAt: "2026-10-21T16:00:00.000Z" },
+  };
+  for (const printed of [false, true]) {
+    const receipt = remittanceReceipt(cardTransfer, undefined, "Operador", "Administración", printed);
+    const amountRows = receipt.sections.find((s) => s.title === "Importes del envío")!.rows;
+    assert.deepEqual(amountRows.find(([label]) => label === "Cargo del envío"), ["Cargo del envío", "DOP 4.20"]);
+    assert.deepEqual(amountRows.find(([label]) => label === "Total pagado por el remitente"), ["Total pagado por el remitente", "DOP 24.20"]);
+    assert.equal(amountRows.some(([label]) => label === "Recargo tarjeta de crédito" || label === "Cargo adicional por tarjeta"), false);
+    for (const output of ["text", "graphics"] as const) {
+      for (const compact of [false, true]) {
+        const html = receiptHtml(receipt, { paper: "80", compact, output });
+        assert(html.includes("DOP 4.20"), `expected summed Cargo del envío in printed=${printed} output=${output} compact=${compact}`);
+        assert(html.includes("DOP 24.20"));
+        assert(!html.includes("Recargo tarjeta de crédito"));
+        assert(!html.includes("Cargo adicional por tarjeta"));
+      }
+    }
+  }
 });
 test("receipt confirmation rejects mismatched payment even when all other transfer fields match", () => {
   const expected = { sourceCurrency: "DOP", destinationCurrency: "DOP", amount: 90000, commissionBps: 1000, senderClientId: "sender", recipientClientId: "recipient", quote: transfer.quote,

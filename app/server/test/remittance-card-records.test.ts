@@ -88,8 +88,9 @@ test("USD and EUR credit surcharges stay in the sender's currency without changi
     assert.equal(saved.payment?.cardSurchargeAmount,275); assert.equal(totalPaidForTransfer(saved),11275);
     assert.equal(saved.receiveAmount,q.receiveAmount); assert.deepEqual(saved.calculation,q.calculation);
     assert.equal(saved.commissionAllocation?.managerAmount,q.commissionAllocation.managerAmount);
-    const row = remittanceReceipt(saved).sections.find(section=>section.title==="Importes del envío")!.rows.find(([label])=>label==="Recargo tarjeta de crédito");
-    assert.deepEqual(row,["Recargo tarjeta de crédito",`${sourceCurrency} 2.75`]);
+    const rows = remittanceReceipt(saved).sections.find(section=>section.title==="Importes del envío")!.rows;
+    assert.equal(rows.some(([label])=>label==="Recargo tarjeta de crédito"||label==="Cargo adicional por tarjeta"),false);
+    assert.deepEqual(rows.find(([label])=>label==="Cargo del envío"),["Cargo del envío",`${sourceCurrency} 12.75`]);
   }
   for (const cash of state.remittances.cashSessions) assert.equal(cashBalance(state,cash).expected,0);
 });
@@ -101,8 +102,8 @@ test("frozen card surcharge survives configuration changes, receipts, reports an
   assert.throws(() => createRemittance(state, admin, { ...bodyFor(state), quote: saved.quote }, [], at), (error: unknown) => (error as {code:string}).code === "QUOTE_CHANGED");
   for (const printed of [false, true]) {
     const receipt = remittanceReceipt(saved, undefined, "Synthetic", "Synthetic", printed), html = receiptHtml(receipt);
-    assert.match(html, /Tarjeta de crédito/); assert.match(html, /•••• 0042/); assert.match(html, /DOP 112\.75/); assert.match(html, /DOP 2\.75/);
-    assert.doesNotMatch(html, /María O&#39;Connor|cardholderName|cardSurchargeBps|cvv|2\.5%/i);
+    assert.match(html, /Tarjeta de crédito/); assert.match(html, /•••• 0042/); assert.match(html, /DOP 112\.75/); assert.match(html, /DOP 12\.75/);
+    assert.doesNotMatch(html, /Recargo tarjeta de crédito|Cargo adicional por tarjeta|María O&#39;Connor|cardholderName|cardSurchargeBps|cvv|2\.5%/i);
   }
   const filter = { from: businessDate(at), to: businessDate(at), grouping: "range" as const };
   const report = remittanceReports(state, admin, filter);

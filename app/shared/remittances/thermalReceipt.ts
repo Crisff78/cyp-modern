@@ -11,7 +11,7 @@ const regular: Font = { size: 2.8 }, bold: Font = { size: 2.8, bold: true };
 const fontCss = (font: Font) => `${font.bold ? "bold " : ""}${font.size}px Arial, Helvetica, sans-serif`;
 export async function thermalReceiptImages(document: Document, receipt: Receipt, widthMm: number, compact = false) {
   if (!Number.isFinite(widthMm) || widthMm < 40 || widthMm > 102) throw new Error("Tamaño de recibo no válido.");
-  const padLeft = 0.5, padRight = 1, innerWidth = widthMm - padLeft - padRight, centerX = padLeft + innerWidth / 2, rightX = widthMm - padRight;
+  const padLeft = 0.25, padRight = 0.35, innerWidth = widthMm - padLeft - padRight, centerX = padLeft + innerWidth / 2, rightX = widthMm - padRight;
   await document.fonts?.ready;
   const probe = document.createElement("canvas"), measure = probe.getContext("2d");
   if (!measure) throw new Error("El navegador no puede preparar la impresión gráfica.");
@@ -51,19 +51,18 @@ export async function thermalReceiptImages(document: Document, receipt: Receipt,
     output.append(image);
   };
   const text = (value: string, font: Font = regular, align: "left" | "center" | "right" = "left", extra = 0) => {
-    const lines = wrap(value, font), lineHeight = font.size * 1.45;
+    const lines = wrap(value, font), lineHeight = font.size * 1.18;
     for (let start = 0; start < lines.length; start += 10) {
-      const group = lines.slice(start, start + 10);
-      block(group.length * lineHeight + 1.2 + (start === 0 ? extra : 0), context => {
+      const group = lines.slice(start, start + 10), topPad = 0.15 + (start === 0 ? extra : 0);
+      block(topPad + group.length * lineHeight + 0.2, context => {
         context.font = fontCss(font); context.textAlign = align;
         const x = align === "center" ? centerX : align === "right" ? rightX : padLeft;
-        group.forEach((line, index) => context.fillText(line, x, 0.6 + (start === 0 ? extra : 0) + index * lineHeight));
+        group.forEach((line, index) => context.fillText(line, x, topPad + index * lineHeight));
       }, group.join("\n"));
     }
   };
-  const rule = () => block(2.4, context => { context.lineWidth = 0.2; context.beginPath(); context.moveTo(padLeft, 1.2); context.lineTo(rightX, 1.2); context.stroke(); }, "Separador");
+  const rule = () => block(1, context => { context.lineWidth = 0.2; context.beginPath(); context.moveTo(padLeft, 0.5); context.lineTo(rightX, 0.5); context.stroke(); }, "Separador");
 
-  block(6, () => {}, "Margen superior");
   if (!receipt.printed) { text(`Recibo ${receipt.reference}`, bold); text(receipt.date); }
   const logo = receipt.issuer.logoDataUrl;
   let hasHeader = !receipt.printed;
@@ -74,24 +73,44 @@ export async function thermalReceiptImages(document: Document, receipt: Receipt,
       image.onload = image.onerror = () => { clearTimeout(timer); resolve(); }; image.src = logo;
     });
     if (image.complete && image.naturalWidth > 0 && image.naturalHeight > 0) {
-      const scale = Math.min(Math.min(38, innerWidth) / image.naturalWidth, 16 / image.naturalHeight), width = image.naturalWidth * scale, height = image.naturalHeight * scale;
-      block(height + 2, context => context.drawImage(image, padLeft + (innerWidth - width) / 2, 1, width, height), "Logo de la empresa");
+      let sx = 0, sy = 0, sw = image.naturalWidth, sh = image.naturalHeight;
+      try {
+        const cropCanvas = document.createElement("canvas");
+        cropCanvas.width = sw; cropCanvas.height = sh;
+        const cropCtx = cropCanvas.getContext("2d");
+        if (cropCtx) {
+          cropCtx.drawImage(image, 0, 0);
+          const pixels = cropCtx.getImageData(0, 0, sw, sh).data;
+          const isInk = (offset: number) => pixels[offset + 3] >= 16 && (pixels[offset] < 248 || pixels[offset + 1] < 248 || pixels[offset + 2] < 248);
+          let top = sh, bottom = -1, left = sw, right = -1;
+          for (let y = 0; y < sh; y++) for (let x = 0; x < sw; x++) if (isInk((y * sw + x) * 4)) {
+            if (y < top) top = y;
+            if (y > bottom) bottom = y;
+            if (x < left) left = x;
+            if (x > right) right = x;
+          }
+          if (bottom >= top && right >= left) { sx = left; sy = top; sw = right - left + 1; sh = bottom - top + 1; }
+        }
+      } catch { /* fallback to natural image bounds */ }
+      const scale = Math.min(Math.min(38, innerWidth) / sw, (compact ? 9 : 11) / sh), width = sw * scale, height = sh * scale;
+      block(height + 0.5, context => context.drawImage(image, sx, sy, sw, sh, padLeft + (innerWidth - width) / 2, 0.25, width, height), "Logo de la empresa");
       hasHeader = true;
     }
   }
-  if (receipt.issuer.name) { text(receipt.issuer.name, { size: 3.6, bold: true }, "center", 0.8); hasHeader = true; }
-  for (const line of receiptIssuerLines(receipt.issuer, Boolean(receipt.printed))) { text(line, regular, "center"); hasHeader = true; }
+  if (receipt.issuer.name) { text(receipt.issuer.name, { size: 3.3, bold: true }, "center", 0.05); hasHeader = true; }
+  const issuerLines = receiptIssuerLines(receipt.issuer, Boolean(receipt.printed));
+  if (issuerLines.length) { text(issuerLines.join("\n"), regular, "center"); hasHeader = true; }
   if (hasHeader) rule();
   for (const section of receipt.sections) {
     if (!section.rows.length) continue;
-    if (section.title) text(section.title, {size: 3.1, bold: true}, "left", compact ? 1 : 1.8);
+    if (section.title) text(section.title, { size: 3.0, bold: true }, "left", 0.1);
     for (const [rawLabel, rawValue] of section.rows) {
       const label = `${String(rawLabel).normalize("NFC")}:`, value = String(rawValue).normalize("NFC");
-      const valueWidth = textWidth(value, regular), gap = 4;
+      const valueWidth = textWidth(value, regular), gap = 3;
       if (!/[\r\n]/.test(value) && textWidth(label, bold) + gap + valueWidth <= innerWidth) {
-        block(5.6, context => {
-          context.font = fontCss(bold); context.fillText(label, padLeft, 0.8);
-          context.font = fontCss(regular); context.textAlign = "right"; context.fillText(value, rightX, 0.8);
+        block(3.55, context => {
+          context.font = fontCss(bold); context.fillText(label, padLeft, 0.15);
+          context.font = fontCss(regular); context.textAlign = "right"; context.fillText(value, rightX, 0.15);
         }, `${label} ${value}`);
       } else {
         text(label, bold);
@@ -101,8 +120,7 @@ export async function thermalReceiptImages(document: Document, receipt: Receipt,
     }
     rule();
   }
-  text(receipt.footer, {size: 2.65});
-  block(3, () => {}, "Margen inferior");
+  if (receipt.footer.trim()) text(receipt.footer, { size: 2.65 }, "left", 0.05);
   await Promise.all(Array.from(output.querySelectorAll("img")).map(image => image.decode()));
   return output;
 }
