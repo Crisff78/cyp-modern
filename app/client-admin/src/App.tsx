@@ -4262,8 +4262,10 @@ function StationsLegacyView(): ReactNode {
 
 const SYSTEM_CONFIG_DEFAULTS: Record<string, string | number | boolean> = {
   "general.empresa": "Cobros y Pagos",
+  "general.eslogan": "",
   "general.direccion": "",
   "general.telefono": "",
+  "general.rnc": "",
   "general.correo": "admin@cyp.local",
   "general.fax": "",
   "general.licencia": "CYP-DEMO-2026-ADM001",
@@ -4312,7 +4314,7 @@ const SYSTEM_CONFIG_DEFAULTS: Record<string, string | number | boolean> = {
 };
 
 const CONFIG_TEXT_LIMITS: Record<string, number> = {
-  "general.empresa": 160, "general.direccion": 500, "general.telefono": 40,
+  "general.empresa": 160, "general.eslogan": 160, "general.direccion": 500, "general.telefono": 40, "general.rnc": 40,
   "general.correo": 200, "general.fax": 40, "general.licencia": 160, "general.moneda": 40,
   "soporte.nombre": 160, "soporte.telefono": 40, "soporte.whatsapp": 40, "soporte.correo": 200, "soporte.horario": 160,
   "cargos.servicioTm": 160, "cargos.conceptoTm": 160,
@@ -4331,6 +4333,8 @@ function validateSystemConfigInputs(config: Record<string, string | number | boo
   }
   validateGeneralPhone(String(config["general.telefono"] ?? ""), "Teléfono");
   validateGeneralPhone(String(config["general.fax"] ?? ""), "Fax");
+  const rnc = String(config["general.rnc"] ?? "").trim();
+  if (rnc && !/^(?=.*\d)[0-9 .-]+$/.test(rnc)) throw new Error("RNC debe contener dígitos y separadores válidos (como 1-32-53511-1), o dejarse vacío.");
   validateEmail(String(config["general.correo"] ?? ""));
   validateGeneralPhone(String(config["soporte.telefono"] ?? ""), "Teléfono de soporte");
   validateGeneralPhone(String(config["soporte.whatsapp"] ?? ""), "WhatsApp de soporte");
@@ -4482,13 +4486,17 @@ function LegacyCodifierView({ page, snapshot, onRefresh, onAccount }: Readonly<{
             <fieldset className="legacy-config-fieldset">
               <legend>General</legend>
               <label>Empresa:<input {...fld("general.empresa")} /></label>
+              <label>Eslogan:<input {...fld("general.eslogan")} placeholder="Opcional (se imprime en el encabezado del recibo)" /></label>
               <div className="company-logo-setting"><label>Logo de la empresa:<input type="file" accept="image/png,image/jpeg,image/webp" disabled={cfgLocked} onChange={(event) => { loadCompanyLogo(event.target.files?.[0]); event.target.value = ""; }} /></label><small>PNG, JPEG o WebP: máximo 24 KiB codificados, aproximadamente 18 KiB de archivo. Se guarda al confirmar la configuración.</small>{systemCfg.companyLogoDataUrl && <img src={String(systemCfg.companyLogoDataUrl)} alt="Vista previa del logo de la empresa" />}<button type="button" disabled={cfgLocked || !systemCfg.companyLogoDataUrl} onClick={() => setSystemCfg((current) => ({ ...current, companyLogoDataUrl: "" }))}>Quitar logo</button></div>
               <label>Dirección:<input {...fld("general.direccion")} /></label>
               <div className="legacy-config-row">
                 <label>Teléfono:<input {...fld("general.telefono")} /></label>
-                <label>Correo Electrónico:<input {...fld("general.correo")} /></label>
+                <label>RNC:<input {...fld("general.rnc")} placeholder="Ej.: 1-32-53511-1" /></label>
               </div>
-              <label className="short-field">Fax:<input {...fld("general.fax")} /></label>
+              <div className="legacy-config-row">
+                <label>Correo Electrónico:<input {...fld("general.correo")} /></label>
+                <label>Fax:<input {...fld("general.fax")} /></label>
+              </div>
               <label className="short-field">Licencia:<input {...fld("general.licencia")} /></label>
               <label className="short-field">Moneda por defecto:
                 <select {...fld("general.moneda")}>
@@ -9697,14 +9705,21 @@ function RecurringPayoutArchiveDialog({ actorId, row, onClose, onSaved }: Readon
 
 function CollectionReceiptPrintDialog({ receipts, onClose, title = "Imprimir Recibo de Cobro..." }: Readonly<{ receipts: readonly CollectionTicketModel[]; onClose: () => void; title?: string }>) {
   const [paper, setPaper] = useState<ReceiptPaper>("auto");
-  const [printConfig, setPrintConfig] = useState<{ company: string; address: string; phone: string; footer: string } | null>(null);
+  const [printConfig, setPrintConfig] = useState<{ company: string; slogan: string; address: string; phone: string; rnc: string; footer: string } | null>(null);
   const [configError, setConfigError] = useState("");
   const [loadAttempt, setLoadAttempt] = useState(0);
   useEffect(() => {
     let active = true; setConfigError("");
     api<{ config: Record<string, string | number | boolean> }>("/configuracion").then(({ config }) => {
       if (!config || typeof config !== "object" || Array.isArray(config)) throw new Error("No se pudo cargar la configuración de impresión.");
-      if (active) setPrintConfig({ company: String(config["general.empresa"] ?? "Cobros y Pagos"), address: String(config["general.direccion"] ?? ""), phone: String(config["general.telefono"] ?? ""), footer: String(config.receiptFooterNote ?? "") });
+      if (active) setPrintConfig({
+        company: String(config["general.empresa"] ?? "").trim() || "Cobros y Pagos",
+        slogan: String(config["general.eslogan"] ?? "").trim(),
+        address: String(config["general.direccion"] ?? "").trim(),
+        phone: String(config["general.telefono"] ?? "").trim(),
+        rnc: String(config["general.rnc"] ?? "").trim(),
+        footer: String(config.receiptFooterNote ?? ""),
+      });
     }).catch((failure) => { if (active) setConfigError(failure instanceof Error ? failure.message : "No se pudo cargar la configuración de impresión."); });
     return () => { active = false; };
   }, [loadAttempt]);
@@ -9717,10 +9732,11 @@ function CollectionReceiptPrintDialog({ receipts, onClose, title = "Imprimir Rec
         <div className="collection-ticket-preview-list">
           {receipts.map((receipt) => (
             <pre className="collection-ticket-preview" key={receipt.id}>{[
-              "COBROS Y PAGOS",
-              ...(printConfig?.company ? [printConfig.company] : []),
-              ...(printConfig?.address ? [`Dirección: ${printConfig.address}`] : []),
-              ...(printConfig?.phone ? [`Teléfono: ${printConfig.phone}`] : []),
+              printConfig?.company || "Cobros y Pagos",
+              ...(printConfig?.slogan ? [printConfig.slogan] : []),
+              ...(printConfig?.address ? [printConfig.address] : []),
+              ...(printConfig?.phone ? [`Tel.: ${printConfig.phone}`] : []),
+              ...(printConfig?.rnc ? [`RNC: ${printConfig.rnc}`] : []),
               "================================",
               ...(receipt.documentTitle ? [receipt.documentTitle, `Comprobante: ${receipt.receiptNumber}`] : [`Recibo: ${receipt.receiptNumber}`, `Ident: ${receipt.clientIdentification}`, `Cliente: ${receipt.clientName}`]),
               `Fecha: ${safeDateLabel(movementBusinessDate(receipt.date))}`,

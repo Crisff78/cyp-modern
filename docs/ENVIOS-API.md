@@ -579,32 +579,18 @@ rollos como imágenes con acentos dibujados en el navegador y requiere un contro
 Las pruebas de navegador/PDF comprueban distribución y dimensiones solicitadas; no acreditan
 legibilidad física en un modelo o controlador no probado.
 
-## Pagos: cargo manual por tarjeta (10-11-2026, punto 1.1.1)
+## Pagos con tarjeta y compatibilidad histórica (actualizado 11-11-2026)
 
-Al seleccionar crédito o débito en la confirmación del envío se abre **Cargo adicional
-por tarjeta**. Se muestra el total anterior, se introduce el cargo en la moneda del
-remitente y se revisa el total resultante antes de aceptarlo. El porcentaje central
-de crédito solo propone un importe inicial; el importe aceptado lo sustituye para
-ese pago. Débito empieza en cero. Cero es válido; negativos, fracciones de centavo y
-totales fuera del rango entero seguro se rechazan en interfaz, API y PostgreSQL.
+Al seleccionar **Tarjeta de crédito** o **Tarjeta de débito** en la confirmación del envío,
+se muestran directamente los campos de banco/proveedor, titular, número de 16 dígitos y
+referencia del comprobante, sin abrir ninguna ventana emergente para introducir un cargo
+adicional manual (reversión del punto `1.1.1` el 11-11-2026). Crédito utiliza únicamente
+el porcentaje configurado en `creditCardCommissionBps` (pago versión **2**); débito no
+aplica recargo (`0`, versión **2**). La API rechaza `payment.cardChargeAmount` en
+solicitudes nuevas, mientras que la migración **052** y el tipo `RemittancePayment`
+conservan legibilidad para registros históricos versión **3** ya almacenados.
 
-Cancelar deja la forma de pago anterior. **Modificar cargo** permite corregirlo antes
-de registrar; exige comprobar nuevamente el pago externo. Cambiar a efectivo,
-transferencia o depósito limpia el cargo de tarjeta. No se procesa ningún cobro bancario.
-
-La API admite `payment.cardChargeAmount` en centavos solo con crédito/débito, titular,
-últimos cuatro dígitos, referencia y confirmación externa. La migración **052** permite
-guardar el pago versión **3**, con `cardSurchargeAmount` y
-`tenderedAmount = totalAmount + cardSurchargeAmount`, sin un porcentaje inventado.
-`totalAmount`, el destinatario, el reparto de comisiones y el efectivo en caja
-conservan su cálculo. Los reportes y la devolución externa incluyen el cargo.
-La misma clave de idempotencia repite el resultado original; otro importe con esa
-clave se rechaza. Las versiones 1 y 2 siguen válidas y no se reescriben; los clientes
-que omiten el campo conservan el cálculo porcentual anterior.
-
-Aplicar la migración 052 antes de usar este código con PostgreSQL. El chequeo
-`cardRecordsReady` incluye la aceptación de pagos manuales de crédito y débito.
-
-Este cambio conserva los formatos de impresión existentes. El comprobante muestra
-el cargo adicional y el total guardado. La revisión del punto de impresión queda
-a cargo de Rardiel, por su indicación del 10-11-2026.
+En `Configuración General → General` (`system_config`), los datos de la empresa que emite
+los recibos son `general.empresa` (nombre de empresa), `general.eslogan` (opcional),
+`general.direccion`, `general.telefono` y `general.rnc` (opcional), congelados en
+`receiptIssuer` e impresos siempre arriba del todo en los recibos.
