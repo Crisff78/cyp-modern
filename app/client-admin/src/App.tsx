@@ -5103,6 +5103,7 @@ export default function App() {
               <ChevronsUpDown size={15} />
             </button>
             <nav aria-label="Navegación principal" data-keyboard-menu {...MENU_KEYS}>
+              <div className="nav-groups-scroll">
               {groupOrder.map((group) => {
                 const open = expandedGroups.includes(group) && !collapsed;
                 const groupItems = navigation.filter(
@@ -5201,6 +5202,7 @@ export default function App() {
                   </div>
                 );
               })}
+              </div>
               {/* Mayo, 26-10-2026: Soporte técnico is one more module of the panel, after the others (the support of
                   the provider; its contact is written in Configuración General → Soporte técnico, never in the code). */}
               <div className="nav-group nav-group-direct nav-group-support">
@@ -6289,7 +6291,7 @@ function SupportContact({ open }: Readonly<{ open: boolean }>) {
   useEffect(() => {
     if (!open) return;
     let active = true;
-    api<{ config: Record<string, unknown> }>("/configuracion")
+    api<{ config: Record<string, unknown> }>("/soporte-contacto")
       .then((data) => { if (active) { setFailed(false); setConfig(data.config && typeof data.config === "object" ? data.config : {}); } })
       .catch(() => { if (active) { setFailed(true); setConfig({}); } });
     api<{ mode?: string }>("/health").then((data) => { if (active) setDemo(data.mode === "demo"); }).catch(() => undefined);

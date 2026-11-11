@@ -4443,15 +4443,22 @@ table {
   border-top-color: var(--cyp-border, #e2e8f0);
 }
 .sidebar nav {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.sidebar .nav-groups-scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 2px 4px 14px 0;
+  padding: 2px 4px 8px 0;
 }
-.sidebar nav::-webkit-scrollbar {
+.sidebar .nav-groups-scroll::-webkit-scrollbar {
   width: 4px;
 }
-.sidebar nav::-webkit-scrollbar-thumb {
+.sidebar .nav-groups-scroll::-webkit-scrollbar-thumb {
   background: var(--cyp-surface-raised, #e2e8f0);
 }
 .nav-group {
@@ -11118,7 +11125,9 @@ table {
   .app-shell > .sidebar { width: 72px; min-width: 72px; max-width: 72px; padding: 18px 8px 0; }
   .app-shell > .main-shell { margin-left: 72px; width: calc(100% - 72px); }
   .app-shell .sidebar-brand { justify-content: center; padding: 0 0 16px; }
-  .app-shell .sidebar nav { padding-right: 0; }
+  .app-shell .sidebar nav,
+  .app-shell .sidebar .nav-groups-scroll,
+  .app-shell .sidebar .nav-group-support { padding-right: 0; }
   .app-shell .sidebar .nav-item { min-height: 44px; justify-content: center; padding: 10px 0; }
   .app-shell .sidebar .nav-group-trigger { min-height: 44px; justify-content: center; padding: 8px 0; }
   .app-shell .sidebar .nav-group-trigger > span,
@@ -11157,6 +11166,8 @@ table {
 .collections-table tbody tr.selected-row td:first-child { box-shadow: inset 3px 0 var(--cyp-info-text, #1e3a8a); }
 .sidebar .nav-group-trigger { color: var(--cyp-text, #334155); font-size: 11px; border: 1px solid var(--cyp-border, #d7e0ea); background: var(--cyp-surface-raised, #e5e7eb); }
 .sidebar .nav-group-trigger.active { color: var(--cyp-success-text, #047857); border-color: var(--cyp-success-text, #047857); background: var(--cyp-success-surface, #ecfdf5); }
+.sidebar .nav-group-support { flex-shrink: 0; margin-bottom: 0; padding: 6px 4px 4px 0; border-top: 1px solid var(--cyp-border, #e2e8f0); background: var(--cyp-surface, #ffffff); }
+.legacy-mdi-table tbody tr { scroll-margin-top: 38px; }
 .topbar-actions button.status-badge { cursor: pointer; }
 .topbar-actions button.status-badge:hover,
 .topbar-actions button.status-badge:focus-visible { outline: 2px solid var(--cyp-success-text, #047857); outline-offset: 2px; }

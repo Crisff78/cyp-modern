@@ -26,7 +26,7 @@ import { focusNextField } from "../keyboard";
 import { useAdjustablePanel } from "../useAdjustablePanel";
 import { currentOperationalWeek } from "../operationalWeek";
 import { remittanceReportDefinitions, remittanceReportDefinition, remittanceReportPath, remittanceReportSections, remittanceReportTitle, type RemittanceReportFilters, type RemittanceReportType } from "./reporting";
-import { filterCashSessions, previousOpenCashDate, remittanceCashNotice, remittanceOpeningCarry, type CashFilters } from "./cashNotice";
+import { defaultCashRange, filterCashSessions, historicalUnlinkedCarry, previousOpenCash, previousOpenCashDate, remittanceCashNotice, remittanceOpeningCarry, type CashFilters } from "./cashNotice";
 import { remittanceOperatorName } from "./operatorNames";
 import { PaymentFields, paymentDraftFor, paymentInput, previewPaymentCharge, type PaymentDraft } from "./PaymentFields";
 import { isPaymentTextDraft, paymentLabel, totalPaidForTransfer, type RemittancePaymentInput } from "./payment.mjs";
@@ -280,17 +280,18 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   const [discharged, setDischarged] = useState("");
   // Clear only the cash form that was saved; other unsaved movement drafts remain intact.
   const [completedCashMovement, setCompletedCashMovement] = useState<{ path: string; key: string }>();
-  // The boxes shown: the consulted date, operator and currency, applied with Buscar (Mayo, 26-10-2026).
-  const [cashFilters, setCashFilters] = useState<CashFilters>({ date: "", operatorId: "", currency: "" });
-  const [cashSearch, setCashSearch] = useState<CashFilters>({ date: "", operatorId: "", currency: "" });
+  // The boxes shown: the consulted date range, operator and currency, applied with Buscar (Mayo, 04-11-2026).
+  const [cashFilters, setCashFilters] = useState<CashFilters>({ from: "", to: "", operatorId: "", currency: "" });
+  const [cashSearch, setCashSearch] = useState<CashFilters>({ from: "", to: "", operatorId: "", currency: "" });
   const [cashFiltersShown, setCashFiltersShown] = useState(true);
-  // The date starts as the date of operation; then it is exactly what is written (a part being written is not replaced).
-  const businessDay = snapshot?.businessDate ?? "";
+  const cashRangeReady = useRef(false);
   useEffect(() => {
-    if (!businessDay) return;
-    setCashFilters((current) => current.date ? current : { ...current, date: businessDay });
-    setCashSearch((current) => current.date ? current : { ...current, date: businessDay });
-  }, [businessDay]);
+    if (!snapshot || cashRangeReady.current) return;
+    cashRangeReady.current = true;
+    const range = defaultCashRange(snapshot, cashFilters.operatorId, cashFilters.currency);
+    setCashFilters((current) => ({ ...current, ...range }));
+    setCashSearch((current) => ({ ...current, ...range }));
+  }, [snapshot, cashFilters.operatorId, cashFilters.currency]);
   const [moneyEntryErrors, setMoneyEntryErrors] = useState<Partial<Record<"amount" | "opening" | "counted" | "discharged", string>>>({});
   const [reportFilters, setReportFilters] = useState<RemittanceReportFilters>({ ...currentOperationalWeek(), grouping: "range", type: "amounts",
     groupBy: "managerCurrency" as CommissionReportGroupBy, operationStatus: "all" as CommissionReportStatus, managerId: "", currency: "" as Currency | "" });
@@ -388,9 +389,22 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   useEffect(() => {
     if (!cashShown || !cashRequest || cashRequest.id <= appliedCashRequest) return;
     appliedCashRequest = cashRequest.id;
-    setOpening((current) => ({ ...current, operatorId: cashRequest.operatorId, currency: cashRequest.currency }));
+    const amount = snapshot ? (
+      snapshot.cashSessions.find((cash) => cash.operatorId === cashRequest.operatorId && cash.currency === cashRequest.currency && cash.date === snapshot.businessDate)?.openingAmount
+      ?? previousOpenCash(snapshot, cashRequest.operatorId, cashRequest.currency)?.expected
+      ?? remittanceOpeningCarry(snapshot, cashRequest.operatorId, cashRequest.currency)?.amount
+    ) : undefined;
+    setOpening((current) => ({ ...current, operatorId: cashRequest.operatorId, currency: cashRequest.currency, ...(amount === undefined ? {} : { amount: centsDraft(amount) }) }));
+    if (snapshot) {
+      const filters: CashFilters = { ...defaultCashRange(snapshot, cashRequest.operatorId, cashRequest.currency), operatorId: cashRequest.operatorId, currency: cashRequest.currency };
+      cashRangeReady.current = true;
+      setCashFilters(filters); setCashSearch(filters);
+    } else {
+      setCashFilters((current) => ({ ...current, operatorId: cashRequest.operatorId, currency: cashRequest.currency }));
+      setCashSearch((current) => ({ ...current, operatorId: cashRequest.operatorId, currency: cashRequest.currency }));
+    }
     cashFocus.current = true;
-  }, [cashRequest, cashShown]);
+  }, [cashRequest, cashShown, snapshot]);
   useEffect(() => {
     if (!cashFocus.current || !snapshot || loading || confirmation || closing) return;
     cashFocus.current = false;
@@ -467,16 +481,30 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   const selectedOpenCash = selectedTodayCash?.status === "open" ? selectedTodayCash : undefined;
   // The opening is the close of the box before (Mayo, 26-10-2026): fixed, unless the account has the permission apart
   // «Cambiar el efectivo inicial de la caja de remesas»; then it starts with that close and can be written.
+  const previousOpenBox = snapshot ? previousOpenCash(snapshot, openingOperator, opening.currency) : undefined;
   const openingCarry = snapshot ? remittanceOpeningCarry(snapshot, openingOperator, opening.currency) : undefined;
-  const canEditOpening = can("remittances.cash.opening.edit") && (!openingCarry || openingCarry.amount === 0);
+  const canEditOpening = can("remittances.cash.opening.edit") && !previousOpenBox && (!openingCarry || openingCarry.amount === 0);
   useEffect(() => {
-    if (openingCarry) setOpening((current) => ({ ...current, amount: centsDraft(openingCarry.amount) }));
-  }, [openingOperator, opening.currency, openingCarry?.amount, openingCarry?.date]);
+    if (previousOpenBox) setOpening((current) => ({ ...current, amount: centsDraft(previousOpenBox.expected) }));
+    else if (openingCarry) setOpening((current) => ({ ...current, amount: centsDraft(openingCarry.amount) }));
+  }, [openingOperator, opening.currency, openingCarry?.amount, openingCarry?.date, previousOpenBox?.id, previousOpenBox?.expected]);
   const clearErrors = () => { setError(""); setOutputError(""); };
+  function openingDraftFor(operatorId: string, currency: Currency) {
+    if (!snapshot) return "0";
+    const todayBox = snapshot.cashSessions.find((cash) => cash.operatorId === operatorId && cash.currency === currency && cash.date === snapshot.businessDate);
+    if (todayBox) return centsDraft(todayBox.openingAmount);
+    const pending = previousOpenCash(snapshot, operatorId, currency);
+    if (pending) return centsDraft(pending.expected);
+    const carry = remittanceOpeningCarry(snapshot, operatorId, currency);
+    return carry ? centsDraft(carry.amount) : "0";
+  }
   function selectCashContext(operatorId: string, currency: Currency) {
-    setOpening({ operatorId, currency, amount: "0" });
-    // Keep the consulted box aligned with the operation selectors; historical searches remain read-only.
-    const filters = { date: snapshot?.businessDate ?? "", operatorId, currency };
+    setOpening({ operatorId, currency, amount: openingDraftFor(operatorId, currency) });
+    setMoneyEntryErrors((current) => ({ ...current, opening: undefined }));
+    // Keep the consulted range aligned with the operation selectors (at least the last 2 comparative dates).
+    const range = snapshot ? defaultCashRange(snapshot, operatorId, currency) : { from: "", to: "" };
+    const filters: CashFilters = { ...range, operatorId, currency };
+    if (snapshot) cashRangeReady.current = true;
     setCashFilters(filters); setCashSearch(filters);
     clearErrors(); setNotice("");
   }
@@ -661,8 +689,8 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   function prepareOpening(event: FormEvent) {
     event.preventDefault();
     if (!canOpenCash || selectedTodayCash) return;
-    // The box of today was already closed: the server keeps one per operator, currency and day (CASH_EXISTS).
-    if (snapshot && remittanceCashNotice(snapshot, openingOperator, opening.currency) === "closedToday") return;
+    // Today's box already closed (CASH_EXISTS) or an earlier box is still open (PREVIOUS_CASH_OPEN).
+    if (snapshot && ["closedToday", "previousOpen"].includes(remittanceCashNotice(snapshot, openingOperator, opening.currency))) return;
     try {
       // The opening of the box before is fixed; only the permission apart lets it be written (Mayo, 26-10-2026).
       const fixed = openingCarry && !canEditOpening;
@@ -798,6 +826,9 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   </div>;
   const openingCash = snapshot ? remittanceCashNotice(snapshot, openingOperator, opening.currency) : "ok";
   const shownCash = snapshot ? filterCashSessions(snapshot.cashSessions, cashSearch, snapshot.businessDate) : [];
+  const cashRangeLabel = cashSearch.from && cashSearch.to && cashSearch.from !== cashSearch.to
+    ? `del ${cashSearch.from} al ${cashSearch.to}`
+    : `del ${cashSearch.to || cashSearch.from || snapshot?.businessDate || ""}`;
   const cashActivityField = (cash: Cash, label: string, amount: number, kind: CashActivityKind | "all" = "all", total = false) => <div
     className={`remittance-cash-field${total ? " remittance-total" : ""}`} role="button" tabIndex={0}
     aria-label={`${label}: ${money(amount, cash.currency)}`} title="Doble clic para consultar el detalle"
@@ -907,21 +938,22 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
                 {snapshot.currencies.map((currency) => <option key={currency}>{currency}</option>)}
               </select></label>
               <label>Efectivo inicial<MoneyInput data-cash-opening-amount required
-                readOnly={!canOpenCash || Boolean(selectedTodayCash) || Boolean(openingCarry && !canEditOpening)}
-                title={selectedTodayCash ? "El efectivo inicial de esta caja ya está registrado." : openingCarry && !canEditOpening ? `Cierre del ${openingCarry.date}. Un cierre distinto de cero no se puede modificar. Si es cero, se requiere el permiso de apertura para cambiarlo.` : moneyInputMessage}
-                value={selectedTodayCash ? centsDraft(selectedTodayCash.openingAmount) : openingCarry && !canEditOpening ? centsDraft(openingCarry.amount) : opening.amount}
+                readOnly={!canOpenCash || Boolean(selectedTodayCash) || Boolean(previousOpenBox) || Boolean(openingCarry && !canEditOpening)}
+                title={selectedTodayCash ? "El efectivo inicial de esta caja ya está registrado." : previousOpenBox ? `Pendiente del cierre de la caja del ${previousOpenBox.date}. Ciérrala antes de abrir la de hoy.` : openingCarry && !canEditOpening ? `Cierre del ${openingCarry.date}. Un cierre distinto de cero no se puede modificar. Si es cero, se requiere el permiso de apertura para cambiarlo.` : moneyInputMessage}
+                value={selectedTodayCash ? centsDraft(selectedTodayCash.openingAmount) : previousOpenBox ? centsDraft(previousOpenBox.expected) : openingCarry && !canEditOpening ? centsDraft(openingCarry.amount) : opening.amount}
                 aria-invalid={Boolean(moneyEntryErrors.opening) || undefined}
                 onValueChange={(nextValue) => { if (!isMoneyDraft(nextValue)) { rejectMoney("opening"); return; } setMoneyEntryErrors((current) => ({ ...current, opening: undefined })); setOpening((current) => ({ ...current, amount: nextValue })); setError(""); }}
                 onInvalidEntry={() => rejectMoney("opening")} /></label>
               <p className="remittance-help remittance-opening-source">{selectedTodayCash
                 ? "El efectivo inicial de esta caja ya está registrado."
                 : !canOpenCash ? "El efectivo inicial se registra al abrir la caja."
+                : previousOpenBox ? `Depende del cierre pendiente del ${previousOpenBox.date} (saldo esperado: ${money(previousOpenBox.expected, opening.currency)}). Ciérrala con «Contar y cerrar» antes de abrir la de hoy.`
                 : openingCarry ? `Viene del cierre del ${openingCarry.date}${canEditOpening ? ". Tu cuenta puede cambiarlo." : "."}`
                 : "Primera caja de este operador en esta moneda: escribe el efectivo con que empieza."}</p>
             </fieldset>
             {openingCash === "previousOpen" && <p className="remittance-cash-warning" role="status">La caja de remesas en {opening.currency} del {previousOpenCashDate(snapshot, openingOperator, opening.currency)} de {operatorName(openingOperator)} sigue abierta. Ciérrala con «Contar y cerrar» antes de abrir la de hoy.</p>}
             {openingCash === "closedToday" && <p className="remittance-cash-warning" role="status">La caja de remesas de hoy en {opening.currency} de {operatorName(openingOperator)} ya se cerró. Hay una sola caja por operador, moneda y día: no se puede abrir otra hasta la jornada siguiente.</p>}
-            {canOpenCash && <button className="remittance-primary" disabled={working || uncertain || Boolean(selectedTodayCash)}>Revisar apertura</button>}
+            {canOpenCash && <button className="remittance-primary" disabled={working || uncertain || Boolean(selectedTodayCash) || openingCash === "previousOpen"}>Revisar apertura</button>}
           </form>
           {selectedOpenCash ? <>
             <p className="remittance-cash-target" role="status">Caja abierta de <strong>{operatorName(selectedOpenCash.operatorId)}</strong> en <strong>{selectedOpenCash.currency}</strong>. Las entregas y los retiros se registrarán en esta caja.</p>
@@ -939,21 +971,32 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
             <button type="button" onClick={() => setCashActivity({ id: selectedOpenCash.id, kind: "all" })}>Ver todos los movimientos</button>
           </> : openingCash === "missing" && <p className="remittance-help">Para registrar dinero adicional o retiros, primero hay que abrir la caja de hoy del operador y la moneda seleccionados.</p>}
         </section>}
-        {/* Mayo, 26-10-2026: the boxes of a date, an operator and a currency, found with Buscar. */}
-        <form className="remittance-panel remittance-cash-filters" aria-label="Buscar cajas" onSubmit={(event) => { event.preventDefault(); setCashSearch(cashFilters); }}>
+        {/* Mayo, 04-11-2026: search boxes by comparative date range, operator and currency with Buscar. */}
+        <form className="remittance-panel remittance-cash-filters" aria-label="Buscar cajas" onSubmit={(event) => {
+          event.preventDefault();
+          if (cashFilters.from && cashFilters.to && cashFilters.from > cashFilters.to) {
+            setError("La fecha inicial no puede ser posterior a la fecha final.");
+            return;
+          }
+          clearErrors();
+          setCashSearch(cashFilters);
+        }}>
           <FiltersToggle visible={cashFiltersShown} className="remittance-filters-toggle" onClick={() => setCashFiltersShown((shown) => !shown)} />
           {cashFiltersShown && <>
-            <label>Fecha<input type="date" required value={cashFilters.date} max={snapshot.businessDate} onChange={(event) => setCashFilters((current) => ({ ...current, date: event.target.value }))} /></label>
+            <label>Desde<input type="date" required value={cashFilters.from} max={snapshot.businessDate} onChange={(event) => setCashFilters((current) => ({ ...current, from: event.target.value }))} /></label>
+            <label>Hasta<input type="date" required value={cashFilters.to} max={snapshot.businessDate} onChange={(event) => setCashFilters((current) => ({ ...current, to: event.target.value }))} /></label>
             {isAdmin && <label>Operador<select value={cashFilters.operatorId} onChange={(event) => setCashFilters((current) => ({ ...current, operatorId: event.target.value }))}><option value="">Todos</option>{snapshot.operators.map((operator) => <option key={operator.id} value={operator.id}>{operator.name}</option>)}</select></label>}
             <label>Moneda<select value={cashFilters.currency} onChange={(event) => setCashFilters((current) => ({ ...current, currency: event.target.value as Currency | "" }))}><option value="">Todas</option>{snapshot.currencies.map((currency) => <option key={currency}>{currency}</option>)}</select></label>
             <button className="remittance-primary" type="submit">Buscar</button>
           </>}
         </form>
-        <div className="remittance-cash-grid" aria-label={`Cajas del ${cashSearch.date || snapshot.businessDate}`}>{shownCash.map((cash) => {
+        <div className="remittance-cash-grid" aria-label={`Cajas ${cashRangeLabel}`}>{shownCash.map((cash) => {
           const carriedFrom = cash.carriedFrom ? snapshot.cashSessions.find((row) => row.id === cash.carriedFrom) : undefined;
+          const unlinkedCarry = historicalUnlinkedCarry(snapshot.cashSessions, cash);
           return <article className="remittance-panel" key={cash.id}><h2>{cash.currency} · {operatorName(cash.operatorId)}</h2><p>{cash.date} · {cash.status === "open" ? "Abierta" : "Cerrada"}</p><dl className="remittance-summary">
             {cashActivityField(cash, "Saldo inicial", cash.openingAmount)}
             {carriedFrom && <div className="remittance-cash-source"><dt>Viene del cierre del</dt><dd>{carriedFrom.date}</dd></div>}
+            {unlinkedCarry && <div className="remittance-cash-source"><dt>Cierre anterior ({unlinkedCarry.date})</dt><dd>{money(unlinkedCarry.carry, cash.currency)}{unlinkedCarry.discharged ? ` (descargado ${money(unlinkedCarry.discharged, cash.currency)})` : " · sin descargo registrado (apertura previa a la regla automática)"}</dd></div>}
             {cashActivityField(cash, "Entregas adicionales", cash.added ?? 0, "addition")}
             {cashActivityField(cash, "Retiros durante el día", cash.withdrawn ?? 0, "withdrawal")}
             {cashActivityField(cash, "Ingresos por envíos", cash.sentTotal, "sent")}
@@ -968,7 +1011,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
             <button type="button" onClick={() => setCashActivity({ id: cash.id, kind: "all" })}>Ver todos los movimientos</button>
             {cash.canClose && can("remittances.cash.close") && <button type="button" onClick={() => { setClosing(cash); setCounted(""); setDischarged(""); clearErrors(); }}>Contar y cerrar</button>}
           </div></article>;
-        })}{!shownCash.length && <div className="remittance-empty">{snapshot.cashSessions.length ? `No hay cajas del ${cashSearch.date || snapshot.businessDate} con estos filtros.` : !canOpenCash ? "No hay cajas de envíos. Un administrador debe abrir la caja antes de operar." : isAdmin ? "No hay cajas de envíos. Abre la caja del operador antes de operar." : "No hay cajas de envíos. Abre tu caja antes de operar."}</div>}</div>
+        })}{!shownCash.length && <div className="remittance-empty">{snapshot.cashSessions.length ? `No hay cajas ${cashRangeLabel} con estos filtros.` : !canOpenCash ? "No hay cajas de envíos. Un administrador debe abrir la caja antes de operar." : isAdmin ? "No hay cajas de envíos. Abre la caja del operador antes de operar." : "No hay cajas de envíos. Abre tu caja antes de operar."}</div>}</div>
       </>}
       {view === "reportes" && <>
         <form className="remittance-panel" onSubmit={(event) => void loadReport(event)}><h2>Reportes de remesas</h2><fieldset disabled={working} className="remittance-form-grid"><label>Desde<input type="date" required value={reportFilters.from} onChange={(event) => updateReportFilter({ from: event.target.value })} /></label><label>Hasta<input type="date" required value={reportFilters.to} onChange={(event) => updateReportFilter({ to: event.target.value })} /></label><label>Presentación<select value={reportFilters.grouping} onChange={(event) => updateReportFilter({ grouping: event.target.value as "range" | "day" })}><option value="range">Resumido del rango</option><option value="day">Diario</option></select></label><label>Reporte<select value={reportFilters.type} onChange={(event) => updateReportFilter({ type: event.target.value as RemittanceReportType })}>{remittanceReportDefinitions.filter((definition) => !["allocations", "managerCommissions"].includes(definition.type) || can("remittances.commissions.view")).map((definition) => <option key={definition.type} value={definition.type}>{definition.label}</option>)}</select></label>
