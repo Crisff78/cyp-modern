@@ -331,7 +331,7 @@ export async function buildApp(config: Config) {
     const accessedUser = currentAccessUser(state, u);
     req.user = accessedUser;
     if (!isOperationalRole(u.role) && !hasRoleExceptions(accessedUser)) {
-      const ownSession = path === "/api/auth/me" || path === "/api/auth/logout" || path === `/api/usuarios/${u.id}/clave`;
+      const ownSession = path === "/api/auth/me" || path === "/api/auth/logout" || path === "/api/soporte-contacto" || path === `/api/usuarios/${u.id}/clave`;
       const remittanceOperator = u.role === "cashier" && hasRemittanceAccess(accessedUser) && (path.startsWith("/api/envios") || path === "/api/snapshot");
       if (!ownSession && !remittanceOperator && !(u.role === "supervisor" && req.method === "GET"))
         throw new DomainError("FORBIDDEN", "Este rol no tiene permiso para realizar esta operación.", 403);
@@ -1235,6 +1235,16 @@ export async function buildApp(config: Config) {
       return { ...movement, receiptToken: undefined };
     });
   }
+  const supportContactKeys = ["soporte.nombre", "soporte.telefono", "soporte.whatsapp", "soporte.correo", "soporte.horario"] as const;
+  app.get("/api/soporte-contacto", async () => {
+    const stored = (await config.store.read()).systemConfig ?? {};
+    const support: Record<string, string> = {};
+    for (const key of supportContactKeys) {
+      if (typeof stored[key] === "string") support[key] = stored[key];
+    }
+    return { config: support };
+  });
+  describe("get", "/api/soporte-contacto", "Datos de contacto de soporte técnico");
   app.get("/api/configuracion", async (req) => {
     assertAdminRead(user(req));
     return { config: (await config.store.read()).systemConfig ?? {} };

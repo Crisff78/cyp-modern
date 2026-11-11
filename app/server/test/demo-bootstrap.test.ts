@@ -179,5 +179,119 @@ test("the practice Cajero logs in with the demo credentials and works only from 
       access: { mode: "role", revision: 0, legacy: [1, 2], remittances: roleRemittancePermissions("cashier") } });
     assert.equal((await app.inject({ url: "/api/envios/snapshot", headers })).statusCode, 200);
     assert.equal((await app.inject({ url: "/api/clientes", headers })).statusCode, 403);
+    assert.equal((await app.inject({ url: "/api/configuracion", headers })).statusCode, 403);
+    const support = await app.inject({ url: "/api/soporte-contacto", headers });
+    assert.equal(support.statusCode, 200, support.body);
+    assert.deepEqual(support.json(), { config: {} });
   } finally { await app.close(); }
+});
+
+test("GET /api/soporte-contacto serves public support fields to every authenticated role without leaking private systemConfig", async () => {
+  const state = seed();
+  enrichCashierDemo(state, now);
+  state.systemConfig = {
+    ...state.systemConfig,
+    companyLogoDataUrl: "data:image/png;base64,PRIVATE",
+    receiptFooterNote: "Nota interna de prueba",
+    "general.empresa": "Empresa Privada QA",
+    "soporte.nombre": "Mesa Técnica QA",
+    "soporte.telefono": "809-555-0199",
+    "soporte.whatsapp": "829-555-0199",
+    "soporte.correo": "soporte-qa@example.invalid",
+    "soporte.horario": "Lun–Sáb 8:00–18:00",
+  };
+  const store = new MemoryStore(state);
+  const app = await buildApp({ store, demo: true, secret: "synthetic-support-contact-secret-at-least-32-chars", origins: [], collectorUrl: "http://localhost:5174" });
+  try {
+    assert.equal((await app.inject({ url: "/api/soporte-contacto" })).statusCode, 401);
+    const adminLogin = await app.inject({ method: "POST", url: "/api/auth/login", payload: { email: "admin", password: DEMO_PASSWORD } });
+    assert.equal(adminLogin.statusCode, 200, adminLogin.body);
+    const supPassword = "Ficticia-Segura-2026!";
+    const createdSup = await app.inject({
+      method: "POST",
+      url: "/api/usuarios",
+      headers: { authorization: `Bearer ${adminLogin.json().token}`, "idempotency-key": "qa-sup-support" },
+      payload: { role: "supervisor", name: "Supervisor QA", email: "supervisor-qa@example.invalid", password: supPassword },
+    });
+    assert.equal(createdSup.statusCode, 200, createdSup.body);
+    for (const [email, password] of [
+      ["admin", DEMO_PASSWORD],
+      ["supervisor-qa@example.invalid", supPassword],
+      [DEMO_CASHIER_EMAIL, DEMO_PASSWORD],
+      ["collector.demo", DEMO_PASSWORD],
+    ] as const) {
+      const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { email, password } });
+      assert.equal(login.statusCode, 200, `${email}: ${login.body}`);
+      const res = await app.inject({ url: "/api/soporte-contacto", headers: { authorization: `Bearer ${login.json().token}` } });
+      assert.equal(res.statusCode, 200, `${email}: ${res.body}`);
+      assert.deepEqual(res.json(), {
+        config: {
+          "soporte.nombre": "Mesa Técnica QA",
+          "soporte.telefono": "809-555-0199",
+          "soporte.whatsapp": "829-555-0199",
+          "soporte.correo": "soporte-qa@example.invalid",
+          "soporte.horario": "Lun–Sáb 8:00–18:00",
+        },
+      });
+    }
+  } finally { await app.close(); }
+});
+
+test("enrichPublicDemo carries over an existing closed EUR box into subsequent dates and skips dates blocked by an earlier open box", async () => {
+  const initial = existingFictionalState(0);
+  // Pre-existing closed EUR box on 2026-10-06 (before demo offsets -2/-1/0 of 2026-10-09 -> 07, 08, 09) with 425.00 EUR remaining.
+  initial.remittances.cashSessions.push({
+    id: "qa-admin-eur-oct06",
+    operatorId: "demo-admin",
+    currency: "EUR",
+    date: "2026-10-06",
+    openingAmount: 42500,
+    openedBy: "demo-admin",
+    openedAt: "2026-10-06T13:00:00.000Z",
+    status: "closed",
+    closedBy: "demo-admin",
+    closedAt: "2026-10-06T21:00:00.000Z",
+    countedAmount: 42500,
+  });
+  const store = new MemoryStore(initial);
+  try {
+    const manifest = await store.transaction((state) => enrichPublicDemo(state, now));
+    assert.deepEqual(manifest?.omittedRemittanceDates, [
+      { date: "2026-10-04", reason: "existing_cash_session" },
+      { date: "2026-10-05", reason: "existing_cash_session" },
+      { date: "2026-10-06", reason: "existing_cash_session" },
+    ]);
+    const saved = await store.read();
+    const oct07Eur = saved.remittances.cashSessions.find(
+      (cash) => cash.operatorId === "demo-admin" && cash.currency === "EUR" && cash.date === "2026-10-07",
+    );
+    assert.ok(oct07Eur, "2026-10-07 EUR box created");
+    assert.equal(oct07Eur.openingAmount, 42500, "carries 425.00 EUR instead of dropping to zero");
+    assert.equal(oct07Eur.carriedFrom, "qa-admin-eur-oct06");
+  } finally { await store.close(); }
+
+  // If an earlier open box exists on 2026-10-06, demo bootstrap omits remittance dates cleanly instead of inserting an unlinked 0 opening.
+  const withOpen = existingFictionalState(0);
+  withOpen.remittances.cashSessions.push({
+    id: "qa-admin-eur-open-oct06",
+    operatorId: "demo-admin",
+    currency: "EUR",
+    date: "2026-10-06",
+    openingAmount: 42500,
+    openedBy: "demo-admin",
+    openedAt: "2026-10-06T13:00:00.000Z",
+    status: "open",
+  });
+  const openStore = new MemoryStore(withOpen);
+  try {
+    const manifest = await openStore.transaction((state) => enrichPublicDemo(state, now));
+    assert.deepEqual(manifest?.omittedRemittanceDates, [
+      { date: "2026-10-04", reason: "existing_cash_session" },
+      { date: "2026-10-05", reason: "existing_cash_session" },
+      { date: "2026-10-06", reason: "existing_cash_session" },
+      { date: "2026-10-07", reason: "existing_open_cash" },
+      { date: "2026-10-08", reason: "existing_open_cash" },
+      { date: "2026-10-09", reason: "existing_open_cash" },
+    ]);
+  } finally { await openStore.close(); }
 });

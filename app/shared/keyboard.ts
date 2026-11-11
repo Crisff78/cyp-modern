@@ -356,7 +356,7 @@ function sideStep(event: KeyboardEvent, target: HTMLElement) {
 // Rardiel, 30-10-2026: the year is written from left to right (the browser fills it from the right: 2, 20 showed 0002,
 // 0020), with its two last digits (26 is 2026) or the four (2026). Its digits are kept here and the date is set whole.
 type DatePart = "day" | "month" | "year";
-type DatePlace = { part: number; typed: string; day?: string; month?: string };
+type DatePlace = { part: number; typed: string; day?: string; month?: string; year?: string };
 const datePlace = new WeakMap<HTMLInputElement, DatePlace>();
 // A date that has the keyboard and has not lost it: the browser may say again that it got it (after its value is set),
 // and that must not send it back to its first part.
@@ -364,6 +364,11 @@ const holdingDate = new WeakSet<HTMLInputElement>();
 let pointedPart: { field: HTMLInputElement; part: number } | null = null;
 const isDatePartsField = (target: EventTarget | null): target is HTMLInputElement =>
   target instanceof HTMLInputElement && target.type === "date" && !target.readOnly && !target.disabled;
+function rememberDateParts(field: HTMLInputElement, place: DatePlace): DatePlace {
+  const match = /^(\d{4,})-(\d{2})-(\d{2})$/.exec(field.value);
+  if (match) { place.year = match[1]; place.month = match[2]; place.day = match[3]; }
+  return place;
+}
 function dateFormat() {
   return new Intl.DateTimeFormat(navigator.language || "es-DO", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
@@ -374,47 +379,67 @@ function datePartOrder(): DatePart[] {
   } catch { return ["day", "month", "year"]; }
 }
 let measure: CanvasRenderingContext2D | null = null;
-/** The part of a date under the pointer, measured with the font of the field (the browser does not tell it). */
-function datePartAt(field: HTMLInputElement, clientX: number) {
+/** The part of a date under the pointer, measured with the font of the field. Clicking outside the 3 parts (on a "/" or
+ *  in the blank space to the right of the year) matches Chromium: keeps the current part if focused, or starts on part 0. */
+function datePartAt(field: HTMLInputElement, clientX: number, fallbackPart = 0) {
   try {
     const style = getComputedStyle(field);
     measure ??= document.createElement("canvas").getContext("2d");
-    if (!measure) return 0;
+    if (!measure) return fallbackPart;
     measure.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
-    const shown = field.value ? new Date(`${field.value}T12:00:00`) : new Date(2026, 9, 26);
-    let x = field.getBoundingClientRect().left + parseFloat(style.borderLeftWidth || "0") + parseFloat(style.paddingLeft || "0") + 1;
-    const ends: number[] = [];
-    for (const { type, value } of dateFormat().formatToParts(shown)) {
-      const width = measure.measureText(value).width;
-      if (type === "day" || type === "month" || type === "year") ends.push(x + width);
-      else if (ends.length) ends[ends.length - 1] += width / 2;
+    const shown = field.value ? new Date(`${field.value}T12:00:00`) : null;
+    const parts = shown && !Number.isNaN(shown.getTime())
+      ? dateFormat().formatToParts(shown)
+      : datePartOrder().flatMap((type, index) => [
+          ...(index ? [{ type: "literal", value: "/" }] : []),
+          { type, value: type === "year" ? "aaaa" : type === "month" ? "mm" : "dd" },
+        ]);
+    let x = field.getBoundingClientRect().left + parseFloat(style.borderLeftWidth || "0") + parseFloat(style.paddingLeft || "0");
+    const ranges: { start: number; end: number }[] = [];
+    for (const { type, value } of parts) {
+      const isField = type === "day" || type === "month" || type === "year";
+      const width = measure.measureText(value).width + 2;
+      if (isField) ranges.push({ start: x, end: x + width });
       x += width;
     }
-    const part = ends.findIndex((end) => clientX <= end);
-    return part < 0 ? 2 : part;
-  } catch { return 0; }
+    if (ranges.length !== 3) return fallbackPart;
+    for (let index = 0; index < 3; index++) {
+      if (clientX >= ranges[index].start - (index === 0 ? 12 : 0.5) && clientX <= ranges[index].end + 0.5) return index;
+    }
+    return fallbackPart;
+  } catch { return fallbackPart; }
 }
+const daysInMonth = (year: number, month: number) => new Date(Date.UTC(year, month, 0)).getUTCDate();
 /** A whole date that exists (29 February only in its years). */
 const realDate = (value: string) => { const date = new Date(`${value}T12:00:00Z`); return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value; };
-/** A digit of the year: two digits are 20xx, four are the year; one or three wait for the next. */
-function writeYear(event: KeyboardEvent, field: HTMLInputElement, place: DatePlace) {
-  const [, , month = place.month?.padStart(2, "0"), day = place.day?.padStart(2, "0")] = /^(\d{4,})-(\d{2})-(\d{2})$/.exec(field.value) ?? [];
-  // Without its day and month (an empty date whose year is chosen first) the browser writes it, as before.
+function commitDateValue(field: HTMLInputElement, value: string) {
   const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
-  if (!month || !day || !setValue) return;
-  event.preventDefault();
-  place.typed = place.typed.length >= 4 ? event.key : place.typed + event.key;
-  const year = place.typed.length === 2 ? 2000 + Number(place.typed) : place.typed.length === 4 ? Number(place.typed) : undefined;
-  const value = year === undefined ? "" : `${String(year).padStart(4, "0")}-${month}-${day}`;
-  if (!value || !realDate(value) || value === field.value) return;
+  if (!setValue || !realDate(value) || value === field.value) return;
   setValue.call(field, value);
   field.dispatchEvent(new Event("input", { bubbles: true }));
   field.dispatchEvent(new Event("change", { bubbles: true }));
 }
+/** A digit of the year: two digits are 20xx, four are the year; one or three wait for the next. */
+function writeYear(event: KeyboardEvent, field: HTMLInputElement, place: DatePlace) {
+  rememberDateParts(field, place);
+  const month = place.month?.padStart(2, "0");
+  const day = place.day?.padStart(2, "0");
+  // Without its day and month (an empty date whose year is chosen first) the browser writes it, as before.
+  if (!month || !day) return;
+  event.preventDefault();
+  place.typed = place.typed.length >= 4 ? event.key : place.typed + event.key;
+  const year = place.typed.length === 2 ? 2000 + Number(place.typed) : place.typed.length === 4 ? Number(place.typed) : undefined;
+  if (year === undefined || year < 1) return;
+  const clampedDay = String(Math.min(Number(day), daysInMonth(year, Number(month)))).padStart(2, "0");
+  const value = `${String(year).padStart(4, "0")}-${month}-${clampedDay}`;
+  place.year = String(year).padStart(4, "0");
+  place.day = clampedDay;
+  commitDateValue(field, value);
+}
 function followDateTyping(event: KeyboardEvent) {
   const field = event.target;
   if (!isDatePartsField(field) || event.ctrlKey || event.metaKey || event.altKey) return;
-  const place = datePlace.get(field) ?? { part: 0, typed: "" };
+  const place = rememberDateParts(field, datePlace.get(field) ?? { part: 0, typed: "" });
   datePlace.set(field, place);
   if (/^[0-9]$/.test(event.key)) {
     const kind = datePartOrder()[place.part];
@@ -422,13 +447,28 @@ function followDateTyping(event: KeyboardEvent) {
     place.typed += event.key;
     place[kind] = place.typed;
     const complete = place.typed.length >= 2 || Number(place.typed) > (kind === "day" ? 3 : 1);
-    if (complete) { place.part = Math.min(2, place.part + 1); place.typed = ""; }
+    if (complete) {
+      const completedMonth = kind === "month" ? Number(place.typed) : undefined;
+      place.part = Math.min(2, place.part + 1);
+      place.typed = "";
+      if (completedMonth && completedMonth >= 1 && completedMonth <= 12 && place.year && place.day) {
+        const maxDay = daysInMonth(Number(place.year), completedMonth);
+        if (Number(place.day) > maxDay) {
+          const nextDay = String(maxDay).padStart(2, "0");
+          const nextMonth = String(completedMonth).padStart(2, "0");
+          const nextYear = place.year;
+          queueMicrotask(() => {
+            if (!field.value) { place.day = nextDay; place.month = nextMonth; commitDateValue(field, `${nextYear}-${nextMonth}-${nextDay}`); }
+          });
+        }
+      }
+    }
   } else if (["Backspace", "Delete", "ArrowUp", "ArrowDown"].includes(event.key)) place.typed = "";
 }
 /** ← → inside a date: true when the browser moves to another of its parts (nothing else to do). */
 function moveInDate(event: KeyboardEvent, target: HTMLElement) {
   if (!isDatePartsField(target)) return false;
-  const place = datePlace.get(target) ?? { part: 0, typed: "" };
+  const place = rememberDateParts(target, datePlace.get(target) ?? { part: 0, typed: "" });
   datePlace.set(target, place);
   const next = place.part + (event.key === "ArrowRight" ? 1 : -1);
   if (next < 0 || next > 2) return false;
@@ -720,7 +760,7 @@ export function installKeyboard({ windows = true }: { windows?: boolean } = {}) 
     const target = event.target as Element;
     if (target.matches?.(FIELD) && !firstValue.has(target)) firstValue.set(target, valueOf(target));
     // A date reached starts on its first part, or on the one clicked.
-    if (isDatePartsField(target) && !holdingDate.has(target)) datePlace.set(target, { part: pointedPart?.field === target ? pointedPart.part : 0, typed: "" });
+    if (isDatePartsField(target) && !holdingDate.has(target)) datePlace.set(target, rememberDateParts(target, { part: pointedPart?.field === target ? pointedPart.part : 0, typed: "" }));
     if (isDatePartsField(target)) holdingDate.add(target);
     pointedPart = null;
     const window_ = target.closest?.(WINDOW);
@@ -737,8 +777,10 @@ export function installKeyboard({ windows = true }: { windows?: boolean } = {}) 
   // The part of a date that a click chooses: kept for the focus that follows, or taken at once when it already has it.
   document.addEventListener("pointerdown", (event) => {
     if (!isDatePartsField(event.target)) return;
-    const part = datePartAt(event.target, event.clientX);
-    if (document.activeElement === event.target) datePlace.set(event.target, { part, typed: "" });
+    const active = document.activeElement === event.target;
+    const currentPart = active ? (datePlace.get(event.target)?.part ?? 0) : 0;
+    const part = datePartAt(event.target, event.clientX, currentPart);
+    if (active) datePlace.set(event.target, rememberDateParts(event.target, { ...(datePlace.get(event.target) ?? { part, typed: "" }), part, typed: "" }));
     else pointedPart = { field: event.target, part };
   }, true);
   // A money field writes its own digits (no input event): a key typed in a field counts as typing in it.
