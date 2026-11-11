@@ -160,7 +160,7 @@ export function ReceiptView({
                 <span className="brand-word">
                   cyp<span>.</span>
                 </span>
-                <p>{receipt.companyName || "COBROS Y PAGOS"}</p>
+                {receipt.companyName && <p>{receipt.companyName}</p>}
                 {receipt.companySlogan && <small>{receipt.companySlogan}</small>}
                 {receipt.companyAddress && <small>{receipt.companyAddress}</small>}
                 {receipt.companyPhone && <small>{`Tel.: ${receipt.companyPhone}`}</small>}

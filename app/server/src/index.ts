@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { buildApp } from "./app.js";
-import { normalizeDemoCollectorLabel, seed, seedPublicDemo } from "./seed.js";
+import { normalizeDemoCollectorLabel, normalizeDemoCompanyConfig, seed, seedPublicDemo } from "./seed.js";
 import { enrichPublicDemo } from "./demo-scenarios.js";
 import { enrichCollectorDemo } from "./demo-collector-scenarios.js";
 import { enrichCashierDemo } from "./demo-cashier-scenarios.js";
@@ -49,6 +49,7 @@ async function openStore(): Promise<{
         await postgres.transaction((s) => {
           if (s.collectors.length === 0) Object.assign(s, demoInitial);
           normalizeDemoCollectorLabel(s, requestedDemo);
+          normalizeDemoCompanyConfig(s, requestedDemo);
           // Requires migration 035, which allows the cashier role in users and sessions.
           enrichCashierDemo(s);
           if (publicWeb) {
@@ -77,6 +78,7 @@ async function openStore(): Promise<{
   );
   await store.transaction((state) => {
     normalizeDemoCollectorLabel(state, requestedDemo);
+    normalizeDemoCompanyConfig(state, requestedDemo);
     enrichCashierDemo(state);
   });
   return {

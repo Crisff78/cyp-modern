@@ -146,12 +146,12 @@ test("API strictly rejects sensitive/forged fields before idempotency storage; a
   assert.equal(debit.json().payment.cardSurchargeAmount, 0); assert.equal((await store.read()).remittances.transfers.length, 2);
 
   assert.equal((await post("/api/configuracion", { config: { "general.rnc": "SIN-DIGITOS" } })).statusCode, 400);
-  const cfgPayload = { "general.empresa": "CREDIAHORA INVERSIONES S.R.L.", "general.eslogan": "Tu aliado en cada envío", "general.direccion": "Av. 27 de Febrero, #2131, Colinas Mall, Santiago", "general.telefono": "809-576-0222", "general.rnc": "1-32-53511-1" };
+  const cfgPayload = { "general.empresa": "INVERSIONES DEMO S.R.L.", "general.eslogan": "Tu aliado en cada envío", "general.direccion": "Av. 27 de Febrero #2131, Local 12, Santiago", "general.telefono": "809-555-0222", "general.rnc": "1-30-00100-1" };
   assert.equal((await post("/api/configuracion", { config: cfgPayload })).statusCode, 200);
   const snap = (await app.inject({ url: "/api/envios/snapshot", headers: { authorization } })).json();
-  assert.equal(snap.receiptIssuer.name, "CREDIAHORA INVERSIONES S.R.L.");
+  assert.equal(snap.receiptIssuer.name, "INVERSIONES DEMO S.R.L.");
   assert.equal(snap.receiptIssuer.slogan, "Tu aliado en cada envío");
-  assert.equal(snap.receiptIssuer.address, "Av. 27 de Febrero, #2131, Colinas Mall, Santiago");
-  assert.equal(snap.receiptIssuer.phone, "809-576-0222");
-  assert.equal(snap.receiptIssuer.rnc, "1-32-53511-1");
+  assert.equal(snap.receiptIssuer.address, "Av. 27 de Febrero #2131, Local 12, Santiago");
+  assert.equal(snap.receiptIssuer.phone, "809-555-0222");
+  assert.equal(snap.receiptIssuer.rnc, "1-30-00100-1");
 });
