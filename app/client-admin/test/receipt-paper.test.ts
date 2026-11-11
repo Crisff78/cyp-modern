@@ -10,7 +10,7 @@ test("two, three and four inch rolls keep readable type, zero extra @page margin
   assert.equal(defaultReceiptPrintOptions.paper, "80");
   assert.equal(defaultReceiptPrintOptions.output, "text");
   assert.match(receiptPaperLabels["80"], /3 pulgadas.*80 mm.*POS80/);
-  for(const [paper,width,graphicWidth,columns] of [["51",45,40,24],["58",48,42,26],["76",70,60,38],["80",72,63,40],["102",96,88,54]] as const) {
+  for(const [paper,width,graphicWidth,columns] of [["51",45,42,24],["58",48,45,26],["76",70,63,38],["80",72,66,40],["102",96,92,54]] as const) {
     const options = {paper,compact:false,output:"text" as const}, layout = receiptPrintLayout(options);
     assert.equal(layout.widthMm,width); assert.equal(layout.marginMm,0); assert.equal(layout.textColumns,columns); assert.equal(receiptTextColumns(paper),columns);
     assert.equal(thermalReceiptSize(paper)?.graphicWidthMm,graphicWidth);

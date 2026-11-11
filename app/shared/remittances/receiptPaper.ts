@@ -34,15 +34,15 @@ export function saveReceiptPrintOptions(options: ReceiptPrintOptions) {
 
 /**
  * Printable roll widths already exclude hardware edge margins (e.g. POS80-01 V6 USB reports 72.1 mm printable width on an 80 mm roll).
- * Plain text ("Solo texto") keeps widthMm/marginMm/textColumns unchanged; graphic mode ("Con diseño") uses graphicWidthMm so right-aligned
- * amounts and references stay well inside the physical printhead window (~68 mm from GDI x=0 on POS80-01 V6 USB) without clipping.
+ * Plain text ("Solo texto") keeps widthMm/marginMm/textColumns unchanged; graphic mode ("Con diseño") uses graphicWidthMm to maximize
+ * usable width right up to the physical printhead window (~67.4 mm from GDI x=0 on POS80-01 V6 USB) without clipping.
  */
 export function thermalReceiptSize(paper?: string) {
-  if (paper === "80") return {widthMm:72, graphicWidthMm:63, marginMm:0};
-  if (paper === "76") return {widthMm:70, graphicWidthMm:60, marginMm:0};
-  if (paper === "58") return {widthMm:48, graphicWidthMm:42, marginMm:0};
-  if (paper === "51") return {widthMm:45, graphicWidthMm:40, marginMm:0};
-  if (paper === "102") return {widthMm:96, graphicWidthMm:88, marginMm:0};
+  if (paper === "80") return {widthMm:72, graphicWidthMm:66, marginMm:0};
+  if (paper === "76") return {widthMm:70, graphicWidthMm:63, marginMm:0};
+  if (paper === "58") return {widthMm:48, graphicWidthMm:45, marginMm:0};
+  if (paper === "51") return {widthMm:45, graphicWidthMm:42, marginMm:0};
+  if (paper === "102") return {widthMm:96, graphicWidthMm:92, marginMm:0};
   return undefined;
 }
 
