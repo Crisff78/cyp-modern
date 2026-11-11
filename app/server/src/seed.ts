@@ -5,6 +5,26 @@ import {
   quoteRemittance, setDailyRate, setCommissionPolicy,
 } from "./remittances.js";
 
+export const DEMO_COMPANY_CONFIG = {
+  "general.empresa": "Inversiones Demo S.R.L.",
+  "general.eslogan": "Tu aliado en cobros, pagos y envíos",
+  "general.direccion": "Av. 27 de Febrero #2131, Local 12, Santiago",
+  "general.telefono": "809-555-0222",
+  "general.rnc": "1-30-00100-1",
+} as const;
+
+export function normalizeDemoCompanyConfig(state: State, demo: boolean) {
+  if (!demo) return;
+  const cfg = (state.systemConfig ??= {});
+  const str = (key: string) => (typeof cfg[key] === "string" ? (cfg[key] as string).trim() : "");
+  const unconfiguredName = !str("general.empresa") || /^cobros y pagos$/i.test(str("general.empresa"));
+  const noCompanyDetails = !str("general.eslogan") && !str("general.direccion") && !str("general.telefono") && !str("general.rnc");
+  const neverEditedHeader = !Object.hasOwn(cfg, "general.eslogan") && !Object.hasOwn(cfg, "general.rnc");
+  if (unconfiguredName && noCompanyDetails && neverEditedHeader) {
+    Object.assign(cfg, DEMO_COMPANY_CONFIG);
+  }
+}
+
 export function normalizeDemoCollectorLabel(state: State, demo: boolean) {
   if (!demo) return;
   // Compatibility labels from the original synthetic demo, never real account names.
@@ -128,6 +148,7 @@ export function seed(): State {
 
 export function seedPublicDemo(): State {
   const s = seed();
+  normalizeDemoCompanyConfig(s, true);
   s.clients.forEach((client, i) => {
     client.lat = 18.472 + i * 0.004;
     client.lng = -69.936 + i * 0.005;
