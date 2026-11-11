@@ -17,7 +17,6 @@ export type RemittancePaymentInput = {
     cardType?: CardType;
     cardholderName?: string;
     last4?: string;
-    cardChargeAmount?: number;
 };
 export type RemittancePayment = {
     version: 1 | 2 | 3;
@@ -49,6 +48,8 @@ export type ReceiptIssuer = {
     address: string;
     phone: string;
     email: string;
+    slogan?: string;
+    rnc?: string;
     footerNote: string;
     logoDataUrl?: string;
 };
@@ -57,10 +58,9 @@ export declare class PaymentValidationError extends Error {
     constructor(code: string, message: string);
 }
 /** Exact cents; the server supplies the authoritative total again when saving. */
-export declare function cardPaymentCharge(total: number, cardType?: CardType, creditCardCommissionBps?: number, cardChargeAmount?: number): {
-    cardSurchargeBps?: number; cardSurchargeAmount: number; totalAmount: number;
+export declare function cardPaymentCharge(total: number, cardType?: CardType, creditCardCommissionBps?: number): {
+    cardSurchargeBps: number; cardSurchargeAmount: number; totalAmount: number;
 };
-export declare const paymentRecordVersion: (input?: RemittancePaymentInput) => 1 | 2 | 3;
 export declare const totalPaidForTransfer: (transfer: {totalAmount: number; payment?: Pick<RemittancePayment, "cardSurchargeAmount">}) => number;
 export declare function paymentAmounts(total: number, input?: RemittancePaymentInput, creditCardCommissionBps?: number): {
     method: PaymentMethod;

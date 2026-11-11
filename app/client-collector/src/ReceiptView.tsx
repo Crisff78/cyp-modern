@@ -160,7 +160,11 @@ export function ReceiptView({
                 <span className="brand-word">
                   cyp<span>.</span>
                 </span>
-                <p>COBROS Y PAGOS</p>
+                <p>{receipt.companyName || "COBROS Y PAGOS"}</p>
+                {receipt.companySlogan && <small>{receipt.companySlogan}</small>}
+                {receipt.companyAddress && <small>{receipt.companyAddress}</small>}
+                {receipt.companyPhone && <small>{`Tel.: ${receipt.companyPhone}`}</small>}
+                {receipt.companyRnc && <small>{`RNC: ${receipt.companyRnc}`}</small>}
               </header>
               <span className="receipt-status">
                 <Check size={13} /> Operación registrada

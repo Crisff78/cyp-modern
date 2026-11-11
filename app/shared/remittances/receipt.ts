@@ -12,16 +12,40 @@ const status = { pending: "Pendiente de entrega", paid: "Pagado", cancelled: "Ca
 export const defaultReceiptFooter = "Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío.";
 export type Receipt = { reference: string; date: string; status: Transfer["status"]; issuer: ReceiptIssuer; sections: OutputSection[]; footer: string; printed?: boolean };
 
+const isUnconfiguredIssuer = (issuer?: ReceiptIssuer) => Boolean(
+  issuer && issuer.name.trim().toLowerCase() === "cobros y pagos" &&
+  ![issuer.slogan, issuer.address, issuer.phone, issuer.rnc, issuer.logoDataUrl].some((value) => value?.trim()),
+);
+
+/** Ordered company header lines below the company name: Eslogan (if set), Dirección, Teléfono, RNC (if set), and non-.local email on consultation view. */
+export function receiptIssuerLines(issuer: ReceiptIssuer, printed = false): string[] {
+  const slogan = issuer.slogan?.trim() ?? "";
+  const address = issuer.address?.trim() ?? "";
+  const rawPhone = issuer.phone?.trim() ?? "";
+  const phone = rawPhone ? (/^tel/i.test(rawPhone) ? rawPhone : `Tel.: ${rawPhone}`) : "";
+  const rawRnc = issuer.rnc?.trim() ?? "";
+  const rnc = rawRnc ? (/^rnc\b/i.test(rawRnc) ? rawRnc : `RNC: ${rawRnc}`) : "";
+  const email = !printed && issuer.email && !/\.local$/i.test(issuer.email.trim()) ? issuer.email.trim() : "";
+  return [slogan, address, phone, rnc, email].filter(Boolean);
+}
+
 /**
  * Explicit customer-facing allowlist. The manager's share and the exchange gain never enter the receipt.
- * printed: reorganized customer invoice (review of 10-11-2026) — omits internal Recibo/Estado/Operador,
- * keeps Fecha + Envío + Código de operación at top, minimal sender/recipient data, aligned amounts, and Registrado por at the bottom.
+ * printed: reorganized customer invoice — company header always at the very top (Nombre de empresa, Eslogan if set,
+ * Dirección, Teléfono, RNC if set), followed by Fecha + Envío + Código de operación, minimal sender/recipient data,
+ * aligned amounts, and Registrado por at the bottom.
  */
 export function remittanceReceipt(transfer: Transfer, fallback?: ReceiptIssuer, operator = "—", registeredBy = transfer.registeredBy === transfer.sendingUserId ? operator : "—", printed = false): Receipt {
-  const rawIssuer = transfer.receiptIssuer ?? fallback ?? { name: "Cobros y Pagos", address: "", phone: "", email: "", footerNote: defaultReceiptFooter };
+  const rawIssuer = (transfer.receiptIssuer && (!isUnconfiguredIssuer(transfer.receiptIssuer) || !fallback || isUnconfiguredIssuer(fallback)))
+    ? transfer.receiptIssuer
+    : (fallback ?? transfer.receiptIssuer ?? { name: "Cobros y Pagos", address: "", phone: "", email: "", footerNote: defaultReceiptFooter });
   const cleanEmail = rawIssuer.email && !/\.local$/i.test(rawIssuer.email.trim()) ? rawIssuer.email.trim() : "";
-  const cleanName = printed && rawIssuer.name.trim().toLowerCase() === "cobros y pagos" ? "" : rawIssuer.name;
-  const issuer: ReceiptIssuer = { ...rawIssuer, name: cleanName, email: cleanEmail };
+  const issuer: ReceiptIssuer = {
+    ...rawIssuer,
+    name: rawIssuer.name.trim() || "Cobros y Pagos",
+    email: cleanEmail,
+    footerNote: transfer.receiptIssuer?.footerNote || rawIssuer.footerNote || defaultReceiptFooter,
+  };
   const date = formatDate(transfer.createdAt);
   const party = (side: "sender" | "recipient", title: string): OutputSection => {
     const contact = transfer[`${side}Contact`];
@@ -112,7 +136,7 @@ export function receiptHtml(receipt: Receipt, options: import("./ReceiptPrintCon
   }
   const { issuer } = receipt;
   const logo = issuer.logoDataUrl && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(issuer.logoDataUrl) && issuer.logoDataUrl.length <= 24576 ? `<img alt="" src="${escapeHtml(issuer.logoDataUrl)}">` : "";
-  const issuerLines = [issuer.address, issuer.phone, issuer.email].filter(Boolean);
+  const issuerLines = receiptIssuerLines(issuer, Boolean(receipt.printed));
   const hasHeader = Boolean(logo || issuer.name || issuerLines.length);
   const headerHtml = hasHeader ? `<header>${logo}${issuer.name ? `<h1>${escapeHtml(issuer.name)}</h1>` : ""}${issuerLines.map((line) => `<p>${escapeHtml(line)}</p>`).join("")}</header>` : "";
   const refHtml = receipt.printed ? "" : `<div class="ref"><span>Recibo ${escapeHtml(receipt.reference)}</span><span>${escapeHtml(receipt.date)}</span></div>`;
