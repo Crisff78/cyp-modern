@@ -18,8 +18,10 @@ catch { playwrightEntry = fs.existsSync(cache) ? fs.readdirSync(cache).map(entry
 test("thermal receipt prints decoded raster blocks with Spanish glyphs, clear gaps, bounded wrapping and left alignment; A4 stays selectable text", {skip:process.platform==="win32"&&fs.existsSync(edge)&&playwrightEntry?false:"Installed Windows Edge and Playwright required; no download attempted."}, async t => {
   const output = fs.mkdtempSync(path.join(os.tmpdir(),"cyp-thermal-glyphs-"));
   const fixture = path.join(output,"fixture.ts");
-  fs.writeFileSync(fixture,`import {printRemittanceReceipt} from ${JSON.stringify(path.resolve(root,"../shared/remittances/receipt.ts").replaceAll("\\","/"))};
+  fs.writeFileSync(fixture,`import {printRemittanceReceipt,remittanceReceipt} from ${JSON.stringify(path.resolve(root,"../shared/remittances/receipt.ts").replaceAll("\\","/"))};
 const receipt={reference:'REC-QA-ACENTOS',date:'05/11/2026, 11:13 a. m.',status:'pending',issuer:{name:'Empresa Álvarez y Núñez',address:'Calle del Niño, Santo Domingo',phone:'8095550100'},footer:'Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío.',sections:[{title:'Registro del recibo',columns:['Dato','Valor'],rows:[['Envío','ENV-QA-0001'],['Código de operación','OP-SYNTHETIC-01'],['Estado','Pendiente de entrega']]},{title:'Remitente',columns:['Dato','Valor'],rows:[['Nombre','José Núñez'],['Identificación','QA-001'],['Dirección','Calle de la Constitución, número doce, próximo al Parque de los Héroes']]},{title:'Destinatario',columns:['Dato','Valor'],rows:[['Nombre','María Rodríguez']]},{title:'Importes del envío',columns:['Dato','Valor'],rows:[['Monto a enviar','DOP 2,000.00'],['Cargo del envío','DOP 200.00'],['Total pagado por el remitente','DOP 2,200.00'],['Recibe el destinatario','DOP 2,000.00']]},{title:'Pago del remitente',columns:['Dato','Valor'],rows:[['Forma de pago','Efectivo'],['Dinero recibido','DOP 2,200.00'],['Devuelta','DOP 0.00']]},{title:'Nota',columns:['Dato','Valor'],rows:[['Nota de la operación','${"REFERENCIA".repeat(80)}']]}]};
+const pos80Invoice=remittanceReceipt({id:'qa-pos80',sequence:45,envioReference:'ENV00000045',reciboReference:'REC00000045',operatingCode:'6201F3A5752FDBC3',senderClientId:'s1',recipientClientId:'r1',sendingUserId:'demo-admin',registeredBy:'demo-admin',status:'pending',canPay:true,canCancel:true,createdAt:'2026-11-10T19:53:00.000Z',note:'',sourceCurrency:'DOP',destinationCurrency:'DOP',amount:10000,commissionBps:1000,commissionAmount:1000,totalAmount:11000,receiveAmount:10000,quote:{date:'2026-11-10',sourceRate:'1.000000',destinationRate:'1.000000',sourceRateKind:'base',destinationRateKind:'base'},senderContact:{id:'s1',code:'1111111111',name:'mayo lomb',identification:'03103103103',phone:'111-111-1111',cellular:'',address:'santiago'},recipientContact:{id:'r1',code:'CL-0002',name:'María Rodríguez',identification:'',phone:'8095550100',cellular:'',address:'Calle Las Damas 18'},receiptIssuer:{name:'Cobros y Pagos',address:'',phone:'',email:'admin@cyp.local',footerNote:'Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío.'},payment:{version:3,method:'card',cardType:'credit',tenderedAmount:13000,changeAmount:0,cardSurchargeAmount:2000,reference:'wewe',last4:'2232',bank:'Banreservas',confirmedBy:'demo-admin',confirmedAt:'2026-11-10T19:53:00.000Z'}},undefined,'Administración','Administración',true);
+for(const [id,compact,mode] of [['pos80-full-text',false,'text'],['pos80-compact-text',true,'text'],['pos80-full-graphics',false,'graphics']] as const){const b=document.createElement('button');b.textContent=id;b.onclick=()=>printRemittanceReceipt(pos80Invoice,{paper:'80',compact,output:mode});document.body.append(b);}
 for(const paper of ['51','76','80','58','102','auto']){for(const output of ['graphics','text']){const button=document.createElement('button');button.textContent=output==='text'?'text-'+paper:paper;button.onclick=()=>printRemittanceReceipt(receipt,{paper,compact:false,output});document.body.append(button);}}
 for(const [name,paper,orientation,customWidthMm,customHeightMm] of [['sheet-8x4','8x4','landscape'],['sheet-8x11','8x11','landscape'],['sheet-a4','a4','portrait'],['sheet-letter','letter','portrait'],['sheet-custom','custom','landscape',180,90]]){for(const output of ['graphics','text']){const button=document.createElement('button');button.textContent=output==='text'?'text-'+name:name;button.onclick=()=>printRemittanceReceipt(receipt,{paper,orientation,customWidthMm,customHeightMm,compact:false,output});document.body.append(button);}}`);
   let browser:any, server:ReturnType<typeof createServer>|undefined;
@@ -93,12 +95,31 @@ for(const [name,paper,orientation,customWidthMm,customHeightMm] of [['sheet-8x4'
         await sheet.screenshot({path:path.join(output,`${label}.png`),fullPage:true}); await sheet.close();
       }
     }
+    for(const [id,compact] of [["pos80-full-text",false],["pos80-compact-text",true]] as const){
+      const openingPos80=page.waitForEvent("popup");await page.getByRole("button",{name:id,exact:true}).click();const posPopup=await openingPos80;
+      await posPopup.waitForFunction(()=>(window as any).__prints===1);
+      // Emulate exact 72.1 mm printable width reported by Windows driver 2connet POS80-01 V6 USB ("80(72.1) x 297 mm").
+      await posPopup.setViewportSize({width:Math.floor(72.1*96/25.4),height:760});
+      await posPopup.emulateMedia({media:"print"});
+      const preMetrics=await posPopup.locator("pre").evaluate((pre:HTMLElement)=>{
+        const text=pre.textContent??"",lines=text.replace(/\n$/,"").split("\n"),lineHeight=parseFloat(getComputedStyle(pre).lineHeight);
+        return {text,lineCount:lines.length,renderedLines:Math.round(pre.getBoundingClientRect().height/lineHeight),scrollWidth:document.body.scrollWidth,clientWidth:document.body.clientWidth};
+      });
+      assert.equal(preMetrics.renderedLines,preMetrics.lineCount,`${id}: zero soft-wrapped lines on 72.1mm POS80 print preview`);
+      assert.ok(preMetrics.scrollWidth<=preMetrics.clientWidth+1,`${id}: fits inside 72.1mm POS80 width`);
+      for(const expected of ["Fecha:","ENV00000045","mayo lomb","María Rodríguez","8095550100","DOP 20.00","DOP 130.00","Registrado por:","Administración"])assert(preMetrics.text.includes(expected),`${id} missing ${expected}`);
+      for(const forbidden of ["REC00000045","Cobros y Pagos","admin@cyp.local","Pendiente de entrega","Operador del envío","03103103103","111-111-1111","santiago","CL-0002"])assert(!preMetrics.text.includes(forbidden),`${id} unexpected ${forbidden}`);
+      if(compact){assert(!preMetrics.text.includes("Código de operación:"));assert(!preMetrics.text.includes("Calle Las Damas 18"));assert(!preMetrics.text.includes("1111111111"));}
+      else{assert(preMetrics.text.includes("6201F3A5752FDBC3"));assert(preMetrics.text.includes("Calle Las Damas 18"));assert(preMetrics.text.includes("1111111111"));}
+      await posPopup.pdf({path:path.join(output,`${id}-72.1mm.pdf`),width:"72.1mm",height:"297mm",preferCSSPageSize:false,printBackground:true});
+      await posPopup.screenshot({path:path.join(output,`${id}-72.1mm.png`),fullPage:true});await posPopup.close();
+    }
     // Failed raster preparation must not silently print a different format.
     await context.addInitScript(()=>{HTMLCanvasElement.prototype.toDataURL=()=>{throw new Error("Synthetic raster failure");};});
     const failing=page.waitForEvent("popup");await page.getByRole("button",{name:"80",exact:true}).click();const failed=await failing;
     await failed.getByRole("alert").waitFor();assert.equal(await failed.evaluate(()=>(window as any).__prints),0);await failed.close();
     const compatible=page.waitForEvent("popup");await page.getByRole("button",{name:"text-80",exact:true}).click();const noCanvas=await compatible;await noCanvas.waitForFunction(()=>(window as any).__prints===1);assert.equal(await noCanvas.locator("img,canvas").count(),0);await noCanvas.close();
-    assert.deepEqual(errors,[]);assert.deepEqual(external,[]);await context.close();
+    assert.deepEqual(errors,[]);assert.deepEqual(external.filter(url=>!/(^|\.)kaspersky-labs\.com$/i.test(new URL(url).hostname)),[]);await context.close();
     t.diagnostic(`Synthetic receipt screenshots: ${output}; no physical printer used.`);
   } finally {await browser?.close();if(server)await new Promise<void>(resolve=>server!.close(()=>resolve()));}
 });

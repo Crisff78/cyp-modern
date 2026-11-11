@@ -5,9 +5,9 @@ La 2connet **2C-POS80-01-V6 USB** usa rollo de **80 mm (3 pulgadas)** y resoluci
 ## Para probar
 
 1. Recargar CyP y abrir de nuevo el comprobante. Una ventana de impresión que ya estaba abierta conserva su versión anterior.
-2. Seleccionar **Térmico 3 pulgadas (80 mm)** en CyP y papel de **80 mm** en el diálogo nativo de impresión. Usar tamaño real / 100%.
-3. Elegir **Formato de impresión** según el controlador de Windows. **Solo texto (compatible con genérica)** es la opción inicial y utiliza caracteres, espacios y saltos de línea reales, sin imágenes. **Con diseño (impresora gráfica)** conserva líneas, acentos y formato mediante imágenes en papel térmico; puede usarse con el controlador oficial de la V6 USB, disponible en las [descargas del fabricante](https://www.2connet.com/es/descargas.php).
-4. Verificar en papel: «Código de operación», «Envío», «Identificación», «Dirección», nombres con tildes/ñ, separación de importes, devuelta y pie completo. Comprobar que los importes coincidan con el comprobante guardado.
+2. Seleccionar **Rollo térmico de 3 pulgadas (80 mm · POS80)** en CyP (ya viene preseleccionado por defecto y se recuerda en el navegador) y papel de **80 mm** en el diálogo nativo de impresión, a escala 100% y sin márgenes adicionales.
+3. Revisar la **Vista previa de impresión** integrada antes de pulsar **Imprimir** / **Imprimir comprobante**, y elegir **Formato de impresión** según el controlador de Windows. **Solo texto (compatible con genérica)** es la opción inicial y utiliza caracteres, espacios y saltos de línea reales, sin imágenes. **Con diseño (impresora gráfica)** conserva líneas, acentos y formato mediante imágenes en papel térmico; puede usarse con el controlador oficial de la V6 USB, disponible en las [descargas del fabricante](https://www.2connet.com/es/descargas.php).
+4. Verificar en papel el orden de la factura: encabezado de empresa (solo si hay datos reales configurados, sin `Cobros y Pagos` ni correos `.local`), «Fecha», «Envío» y «Código de operación» arriba; «Remitente» (Nombre y Código del cliente); «Destinatario» (Nombre, Teléfono y Dirección); «Importes del envío» con totales alineados a la derecha; «Pago del remitente»; «Registrado por» abajo y nota al pie. En modo **Recibo resumido para envío telefónico** se imprime la versión limitada de 3 pulgadas.
 
 ## Qué cambió
 
