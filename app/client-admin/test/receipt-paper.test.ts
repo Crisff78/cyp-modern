@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { defaultReceiptPrintOptions, receiptPrintLayout, receiptPaperLabels, type ReceiptPrintOptions } from "../../shared/remittances/receiptPaper";
+import { defaultReceiptPrintOptions, receiptPrintLayout, receiptPaperLabels, thermalReceiptSize, type ReceiptPrintOptions } from "../../shared/remittances/receiptPaper";
 import { receiptTextColumns } from "../../shared/remittances/receiptText";
 import { receiptHtml, type Receipt } from "../../shared/remittances/receipt";
 
@@ -10,12 +10,15 @@ test("two, three and four inch rolls keep readable type, zero extra @page margin
   assert.equal(defaultReceiptPrintOptions.paper, "80");
   assert.equal(defaultReceiptPrintOptions.output, "text");
   assert.match(receiptPaperLabels["80"], /3 pulgadas.*80 mm.*POS80/);
-  for(const [paper,width,columns] of [["51",45,24],["58",48,26],["76",70,38],["80",72,40],["102",96,54]] as const) {
+  for(const [paper,width,graphicWidth,columns] of [["51",45,40,24],["58",48,42,26],["76",70,60,38],["80",72,63,40],["102",96,88,54]] as const) {
     const options = {paper,compact:false,output:"text" as const}, layout = receiptPrintLayout(options);
     assert.equal(layout.widthMm,width); assert.equal(layout.marginMm,0); assert.equal(layout.textColumns,columns); assert.equal(receiptTextColumns(paper),columns);
+    assert.equal(thermalReceiptSize(paper)?.graphicWidthMm,graphicWidth);
     assert.equal(layout.thermal,true); assert.equal(layout.landscape,false);
     const html = receiptHtml(receipt,options);
     assert(html.includes(`max-width:${width}mm`)); assert(html.includes("margin:0mm")); assert(html.includes("white-space:pre-wrap")); assert(html.includes("DOP 1,000.00"));
+    const graphicHtml = receiptHtml(receipt,{paper,compact:false,output:"graphics"});
+    assert(graphicHtml.includes(`max-width:${graphicWidth}mm`));
   }
 });
 

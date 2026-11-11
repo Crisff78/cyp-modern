@@ -7,10 +7,11 @@ export { thermalReceiptSize } from "./receiptPaper";
 // Layout coordinates/font sizes are millimetres, mapped to pixels by the transform.
 const dotsPerMm = 8;
 type Font = { size: number; bold?: boolean };
-const regular: Font = { size: 3.1 }, bold: Font = { size: 3.1, bold: true };
+const regular: Font = { size: 2.8 }, bold: Font = { size: 2.8, bold: true };
 const fontCss = (font: Font) => `${font.bold ? "bold " : ""}${font.size}px Arial, Helvetica, sans-serif`;
 export async function thermalReceiptImages(document: Document, receipt: Receipt, widthMm: number, compact = false) {
   if (!Number.isFinite(widthMm) || widthMm < 40 || widthMm > 102) throw new Error("Tamaño de recibo no válido.");
+  const padLeft = 0.5, padRight = 1, innerWidth = widthMm - padLeft - padRight, centerX = padLeft + innerWidth / 2, rightX = widthMm - padRight;
   await document.fonts?.ready;
   const probe = document.createElement("canvas"), measure = probe.getContext("2d");
   if (!measure) throw new Error("El navegador no puede preparar la impresión gráfica.");
@@ -24,10 +25,10 @@ export async function thermalReceiptImages(document: Document, receipt: Receipt,
       let line = "";
       for (const word of paragraph.trim().split(/\s+/u)) {
         if (!word) continue;
-        if (textWidth(line ? `${line} ${word}` : word, font) <= widthMm - 0.5) { line = line ? `${line} ${word}` : word; continue; }
+        if (textWidth(line ? `${line} ${word}` : word, font) <= innerWidth) { line = line ? `${line} ${word}` : word; continue; }
         if (line) { lines.push(line); line = ""; }
         for (const character of Array.from(word)) {
-          if (line && textWidth(line + character, font) > widthMm - 0.5) { lines.push(line); line = ""; }
+          if (line && textWidth(line + character, font) > innerWidth) { lines.push(line); line = ""; }
           line += character;
         }
       }
@@ -55,13 +56,14 @@ export async function thermalReceiptImages(document: Document, receipt: Receipt,
       const group = lines.slice(start, start + 10);
       block(group.length * lineHeight + 1.2 + (start === 0 ? extra : 0), context => {
         context.font = fontCss(font); context.textAlign = align;
-        const x = align === "center" ? widthMm / 2 : align === "right" ? widthMm - 0.5 : 0;
+        const x = align === "center" ? centerX : align === "right" ? rightX : padLeft;
         group.forEach((line, index) => context.fillText(line, x, 0.6 + (start === 0 ? extra : 0) + index * lineHeight));
       }, group.join("\n"));
     }
   };
-  const rule = () => block(2.4, context => { context.lineWidth = 0.2; context.beginPath(); context.moveTo(0, 1.2); context.lineTo(widthMm, 1.2); context.stroke(); }, "Separador");
+  const rule = () => block(2.4, context => { context.lineWidth = 0.2; context.beginPath(); context.moveTo(padLeft, 1.2); context.lineTo(rightX, 1.2); context.stroke(); }, "Separador");
 
+  block(6, () => {}, "Margen superior");
   if (!receipt.printed) { text(`Recibo ${receipt.reference}`, bold); text(receipt.date); }
   const logo = receipt.issuer.logoDataUrl;
   let hasHeader = !receipt.printed;
@@ -72,24 +74,24 @@ export async function thermalReceiptImages(document: Document, receipt: Receipt,
       image.onload = image.onerror = () => { clearTimeout(timer); resolve(); }; image.src = logo;
     });
     if (image.complete && image.naturalWidth > 0 && image.naturalHeight > 0) {
-      const scale = Math.min(40 / image.naturalWidth, 18 / image.naturalHeight), width = image.naturalWidth * scale, height = image.naturalHeight * scale;
-      block(height + 2, context => context.drawImage(image, (widthMm - width) / 2, 1, width, height), "Logo de la empresa");
+      const scale = Math.min(Math.min(38, innerWidth) / image.naturalWidth, 16 / image.naturalHeight), width = image.naturalWidth * scale, height = image.naturalHeight * scale;
+      block(height + 2, context => context.drawImage(image, padLeft + (innerWidth - width) / 2, 1, width, height), "Logo de la empresa");
       hasHeader = true;
     }
   }
-  if (receipt.issuer.name) { text(receipt.issuer.name, { size: 4, bold: true }, "center", 1); hasHeader = true; }
+  if (receipt.issuer.name) { text(receipt.issuer.name, { size: 3.6, bold: true }, "center", 0.8); hasHeader = true; }
   for (const line of receiptIssuerLines(receipt.issuer, Boolean(receipt.printed))) { text(line, regular, "center"); hasHeader = true; }
   if (hasHeader) rule();
   for (const section of receipt.sections) {
     if (!section.rows.length) continue;
-    if (section.title) text(section.title, {size: 3.4, bold: true}, "left", compact ? 1 : 2);
+    if (section.title) text(section.title, {size: 3.1, bold: true}, "left", compact ? 1 : 1.8);
     for (const [rawLabel, rawValue] of section.rows) {
       const label = `${String(rawLabel).normalize("NFC")}:`, value = String(rawValue).normalize("NFC");
       const valueWidth = textWidth(value, regular), gap = 4;
-      if (!/[\r\n]/.test(value) && textWidth(label, bold) + gap + valueWidth <= widthMm - 0.5) {
-        block(6, context => {
-          context.font = fontCss(bold); context.fillText(label, 0, 0.8);
-          context.font = fontCss(regular); context.textAlign = "right"; context.fillText(value, widthMm - 0.5, 0.8);
+      if (!/[\r\n]/.test(value) && textWidth(label, bold) + gap + valueWidth <= innerWidth) {
+        block(5.6, context => {
+          context.font = fontCss(bold); context.fillText(label, padLeft, 0.8);
+          context.font = fontCss(regular); context.textAlign = "right"; context.fillText(value, rightX, 0.8);
         }, `${label} ${value}`);
       } else {
         text(label, bold);
@@ -99,7 +101,8 @@ export async function thermalReceiptImages(document: Document, receipt: Receipt,
     }
     rule();
   }
-  text(receipt.footer, {size: 2.9});
+  text(receipt.footer, {size: 2.65});
+  block(3, () => {}, "Margen inferior");
   await Promise.all(Array.from(output.querySelectorAll("img")).map(image => image.decode()));
   return output;
 }
