@@ -11225,20 +11225,45 @@ table {
 }
 .help-content > .support-gamera-link {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  flex-direction: row;
+  align-items: center;
+  gap: 14px;
   margin: 12px 0;
   padding: 14px 16px;
-  border: 2px solid #047857;
-  border-radius: 8px;
-  background: #047857;
+  border: 2px solid #f87171;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+  box-shadow: 0 6px 16px rgba(185, 28, 28, 0.35);
   color: #fff;
   text-decoration: none;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
-.help-content > .support-gamera-link:hover { background: #065f46; border-color: #065f46; }
-.help-content > .support-gamera-link:focus-visible { outline: 3px solid var(--cyp-info-text, #164c85); outline-offset: 3px; }
-.help-content > .support-gamera-link strong { font-size: 15px; color: inherit; }
-.support-gamera-link span { font-size: 13px; color: inherit; }
+.help-content > .support-gamera-link:hover {
+  background: linear-gradient(135deg, #b91c1c 0%, #991b1b 100%);
+  border-color: #fca5a5;
+  box-shadow: 0 8px 20px rgba(153, 27, 27, 0.45);
+}
+.help-content > .support-gamera-link:focus-visible { outline: 3px solid #fecaca; outline-offset: 3px; }
+.support-gamera-link > .support-gamera-icon {
+  flex: 0 0 42px;
+  width: 42px;
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #fff;
+  color: #b91c1c;
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.22);
+}
+.support-gamera-link > .support-gamera-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.help-content > .support-gamera-link strong { font-size: 15px; font-weight: 800; color: #fff; }
+.support-gamera-link .support-gamera-copy > span { font-size: 13px; font-weight: 600; color: #fee2e2; }
 .help-content .support-contact .support-contact-title {
   font-size: 14px;
   color: #064e3b;

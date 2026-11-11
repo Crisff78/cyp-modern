@@ -175,6 +175,16 @@ test("Mayo's review (26-10): Envíos, Caja de remesas, Tasas, escritorio, Soport
       await supportBtn.click();
       const adminDialog = page.getByRole("dialog", { name: "Soporte Técnico" });
       await adminDialog.getByText("809-555-0141").waitFor();
+      const gameraLink = adminDialog.locator(".support-gamera-link");
+      assert.equal(await gameraLink.isVisible(), true, "Gamera support banner visible");
+      const gameraIconBox = await gameraLink.locator(".support-gamera-icon svg").boundingBox();
+      assert(gameraIconBox && gameraIconBox.width >= 20 && gameraIconBox.height >= 20, `prominent indicator icon in Gamera link: ${JSON.stringify(gameraIconBox)}`);
+      const gameraVisual = await gameraLink.evaluate((el) => {
+        const style = getComputedStyle(el);
+        return { borderColor: style.borderColor, backgroundImage: style.backgroundImage, color: style.color };
+      });
+      assert.match(gameraVisual.backgroundImage, /rgb\(220,\s*38,\s*38\)/, `red gradient background: ${JSON.stringify(gameraVisual)}`);
+      assert.equal(gameraVisual.borderColor, "rgb(248, 113, 113)");
       await shot("4.2-soporte-tecnico");
       await page.keyboard.press("Escape");
 
@@ -510,11 +520,14 @@ test("Mayo's review (26-10): Envíos, Caja de remesas, Tasas, escritorio, Soport
       await shot("nov04-2.1.2-auditoria-historica");
     });
 
-    await t.test("3.1.1 and 3.1.2: active rates of every currency come first, then latest registered; sticky header never clips row 1", async () => {
+    await t.test("3.1.1 and 3.1.2: active rates of every currency come first, then latest registered; filter by Todas/Vigente/Sustituida/Anterior", async () => {
+      const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString().slice(0, 10);
       await store.transaction((draft) => {
         const actor = { id: "demo-admin", name: "Administración", role: "admin" as const };
+        const twoDaysAgoAt = new Date(Date.now() - 48 * 60 * 60 * 1000);
         const yesterdayAt1 = new Date(Date.now() - 25 * 60 * 60 * 1000);
         const yesterdayAt2 = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        setDailyRate(draft, actor, { currency: "USD", rate: "58.000000", purchaseRate: "58.000000", saleRate: "60.000000", date: twoDaysAgo }, twoDaysAgoAt);
         setDailyRate(draft, actor, { currency: "EUR", rate: "62.500000", purchaseRate: "62.500000", saleRate: "64.500000", date: yesterday }, yesterdayAt1);
         setDailyRate(draft, actor, { currency: "EUR", rate: "63.000000", purchaseRate: "63.000000", saleRate: "65.000000", date: yesterday }, yesterdayAt2);
       });
@@ -524,31 +537,57 @@ test("Mayo's review (26-10): Envíos, Caja de remesas, Tasas, escritorio, Soport
       await page.getByRole("button", { name: "Configuración de administración", exact: true }).click();
       await page.getByRole("button", { name: "Tasas de cambio", exact: true }).last().click();
       const grid = page.locator(".exchange-rates-grid");
-      await grid.locator("tbody tr").nth(3).waitFor();
-      // Top 2 rows are the Vigente foreign currencies (USD today, EUR yesterday — even above today's replaced USD row!),
-      // followed by Sustituida history ordered from most recent to oldest.
+      await grid.locator("tbody tr").nth(4).waitFor();
+      // Top 3 rows are the Vigente currencies (USD today, EUR yesterday, DOP), followed by Sustituida and Anterior ordered most recent first.
       const allRows = await grid.locator("tbody tr").allInnerTexts();
-      assert.equal(allRows.length, 5);
+      assert.equal(allRows.length, 6);
       assert.match(allRows[0]!, /Dólar Americano[\s\S]*Vigente[\s\S]*60\.000000[\s\S]*62\.000000/);
       assert.match(allRows[1]!, /Euro[\s\S]*Vigente[\s\S]*63\.000000[\s\S]*65\.000000/);
       assert.match(allRows[2]!, /Peso Dominicano[\s\S]*Vigente[\s\S]*1\.000000/);
       assert.match(allRows[3]!, /Dólar Americano[\s\S]*Sustituida[\s\S]*59\.000000[\s\S]*61\.000000/);
       assert.match(allRows[4]!, /Euro[\s\S]*Sustituida[\s\S]*62\.500000[\s\S]*64\.500000/);
+      assert.match(allRows[5]!, /Dólar Americano[\s\S]*Anterior[\s\S]*58\.000000[\s\S]*60\.000000/);
       const [headBox, firstRowBox] = await Promise.all([
         grid.locator("thead").boundingBox(),
         grid.locator("tbody tr").first().boundingBox(),
       ]);
       assert(headBox && firstRowBox && firstRowBox.y >= headBox.y + headBox.height - 1, `top row below sticky thead: ${JSON.stringify({ headBox, firstRowBox })}`);
       const usd = grid.locator("tbody tr").filter({ hasText: "Dólar Americano" });
-      await usd.nth(1).waitFor();
-      assert.equal(await usd.count(), 2, "the edited rate stays as its own row");
+      await usd.nth(2).waitFor();
+      assert.equal(await usd.count(), 3, "the edited and previous rates stay as their own rows");
       assert.match(await usd.nth(0).innerText(), /Vigente[\s\S]*60\.000000[\s\S]*62\.000000/);
       assert.match(await usd.nth(1).innerText(), /Sustituida[\s\S]*59\.000000[\s\S]*61\.000000/);
+      assert.match(await usd.nth(2).innerText(), /Anterior[\s\S]*58\.000000[\s\S]*60\.000000/);
       const edit = page.getByRole("button", { name: "Editar", exact: true });
       await usd.nth(1).click(); assert.equal(await edit.isDisabled(), true, "Editar off on the replaced rate");
       await usd.nth(1).dblclick(); assert.equal(await page.getByRole("dialog", { name: "Datos de la Tasa de Cambio..." }).count(), 0);
       await usd.nth(0).click(); assert.equal(await edit.isDisabled(), false, "Editar on the rate in use");
       assert.match(await page.locator(".exchange-rates-in-use").innerText(), /USD compra 60\.000000 · venta 62\.000000/);
+
+      // Filter by Todas, Vigente, Sustituida, Anterior, Moneda, and funnel toggle:
+      const win = page.locator('.mdi-window[aria-label="Tasas de Cambio"]');
+      const filterBar = win.getByRole("region", { name: "Filtrar tasas de cambio", exact: true });
+      await filterBar.getByRole("radio", { name: "Vigente", exact: true }).check();
+      assert.equal(await grid.locator("tbody tr").count(), 3);
+      assert.match(await win.locator(".legacy-footerbar").innerText(), /Registros: 3 de 6/);
+      await filterBar.getByRole("radio", { name: "Sustituida", exact: true }).check();
+      assert.equal(await grid.locator("tbody tr").count(), 2);
+      assert.match(await win.locator(".legacy-footerbar").innerText(), /Registros: 2 de 6/);
+      await filterBar.getByRole("radio", { name: "Anterior", exact: true }).check();
+      assert.equal(await grid.locator("tbody tr").count(), 1);
+      assert.match(await grid.locator("tbody tr").first().innerText(), /Anterior[\s\S]*58\.000000/);
+      await filterBar.getByRole("radio", { name: "Todas", exact: true }).check();
+      await filterBar.getByLabel("Moneda", { exact: true }).selectOption("USD");
+      assert.equal(await grid.locator("tbody tr").count(), 3);
+      await filterBar.getByLabel("Moneda", { exact: true }).selectOption("all");
+      assert.equal(await grid.locator("tbody tr").count(), 6);
+      assert.match(await win.locator(".legacy-footerbar").innerText(), /Registros: 6\b/);
+      const funnel = win.getByRole("button", { name: "Mostrar/Ocultar filtros", exact: true });
+      await funnel.click();
+      assert.equal(await filterBar.count(), 0, "funnel hides filter bar");
+      await funnel.click();
+      assert.equal(await filterBar.isVisible(), true, "funnel restores filter bar");
+
       await shot("3.1.1-tasas");
       await page.getByRole("button", { name: "Nuevo", exact: true }).click();
       const dialog = page.getByRole("dialog", { name: "Datos de la Tasa de Cambio...", exact: true });

@@ -551,6 +551,7 @@ const mdiWindowSize = (page: MdiPage): MdiWindowSize => {
   if (isMdiOperationPage(page) || isMdiMonitoringPage(page) || isReportPage(page)) return { width: 860, height: 520 };
   // Stations shows a list and the installation panel one over the other: it needs the height.
   if (page === "stations") return { width: 860, height: 580 };
+  if (page === "exchangeRates") return { width: 920, height: 560 };
   return { width: 720, height: 440 };
 };
 
@@ -5770,8 +5771,13 @@ export default function App() {
             <div className="help-content">
               <SupportContact open={helpOpen} />
               <a className="support-gamera-link" href="http://gamera.ddns.net:60032" target="_blank" rel="noopener noreferrer">
-                <strong>Comunicar dudas o problemas a Gamera</strong>
-                <span>Abrir el portal de soporte técnico ↗</span>
+                <span className="support-gamera-icon" aria-hidden="true">
+                  <CircleAlert size={24} strokeWidth={2.4} />
+                </span>
+                <span className="support-gamera-copy">
+                  <strong>Comunicar dudas o problemas a Gamera</strong>
+                  <span>Abrir el portal de soporte técnico ↗</span>
+                </span>
               </a>
               {/* Where each thing is: the same names as the menu, in the same order. */}
               {[
