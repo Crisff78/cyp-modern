@@ -307,7 +307,7 @@ export function buildReviewSeed(state: State, options: Options, now = new Date()
   for (const cash of state.remittances.cashSessions.filter((row) => operators.some((actor) => actor.id === row.operatorId) && row.date === yesterday))
     closeRemittanceCash(state, admin, cash.id, cashBalance(state, cash).expected, new Date(historical.getTime() + 180000));
   for (const actor of operators) for (const currency of ["DOP", "USD", "EUR"] as const)
-    openRemittanceCash(state, admin, { operatorId: actor.id, currency, openingAmount: currency === "DOP" ? 2000000 : 50000 }, operators, now);
+    openRemittanceCash(state, admin, { operatorId: actor.id, currency, openingAmount: remittanceOpeningCarry(state, actor.id, currency, today)?.amount ?? (currency === "DOP" ? 2000000 : 50000) }, operators, now);
   create(operators[0], 5, { sourceCurrency: "DOP", destinationCurrency: "DOP", amount: 100000 }, now);
   for (const currency of ["USD", "EUR"] as const) {
     let input: QuoteInput = { sourceCurrency: currency, destinationCurrency: "DOP", amount: 10000 };
