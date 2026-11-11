@@ -4261,7 +4261,7 @@ function StationsLegacyView(): ReactNode {
 }
 
 const SYSTEM_CONFIG_DEFAULTS: Record<string, string | number | boolean> = {
-  "general.empresa": "Cobros y Pagos",
+  "general.empresa": "",
   "general.eslogan": "",
   "general.direccion": "",
   "general.telefono": "",
@@ -4334,7 +4334,7 @@ function validateSystemConfigInputs(config: Record<string, string | number | boo
   validateGeneralPhone(String(config["general.telefono"] ?? ""), "Teléfono");
   validateGeneralPhone(String(config["general.fax"] ?? ""), "Fax");
   const rnc = String(config["general.rnc"] ?? "").trim();
-  if (rnc && !/^(?=.*\d)[0-9 .-]+$/.test(rnc)) throw new Error("RNC debe contener dígitos y separadores válidos (como 1-32-53511-1), o dejarse vacío.");
+  if (rnc && !/^(?=.*\d)[0-9 .-]+$/.test(rnc)) throw new Error("RNC debe contener dígitos y separadores válidos (como 1-30-00100-1), o dejarse vacío.");
   validateEmail(String(config["general.correo"] ?? ""));
   validateGeneralPhone(String(config["soporte.telefono"] ?? ""), "Teléfono de soporte");
   validateGeneralPhone(String(config["soporte.whatsapp"] ?? ""), "WhatsApp de soporte");
@@ -4389,6 +4389,15 @@ function LegacyCodifierView({ page, snapshot, onRefresh, onAccount }: Readonly<{
         if (!data.config || typeof data.config !== "object" || Array.isArray(data.config))
           throw new Error("El servidor no devolvió una configuración válida. Vuelve a cargarla.");
         const merged = { ...SYSTEM_CONFIG_DEFAULTS, ...data.config };
+        if (
+          /^cobros y pagos$/i.test(String(merged["general.empresa"] ?? "").trim()) &&
+          !String(merged["general.eslogan"] ?? "").trim() &&
+          !String(merged["general.direccion"] ?? "").trim() &&
+          !String(merged["general.telefono"] ?? "").trim() &&
+          !String(merged["general.rnc"] ?? "").trim()
+        ) {
+          merged["general.empresa"] = "";
+        }
         setSystemCfg(merged);
         setSavedCfg(merged);
         setCfgLoadState("ready");
@@ -4485,13 +4494,14 @@ function LegacyCodifierView({ page, snapshot, onRefresh, onAccount }: Readonly<{
           {configTab === "General" && (
             <fieldset className="legacy-config-fieldset">
               <legend>General</legend>
-              <label>Empresa:<input {...fld("general.empresa")} /></label>
-              <label>Eslogan:<input {...fld("general.eslogan")} placeholder="Opcional (se imprime en el encabezado del recibo)" /></label>
+              <p className="support-config-hint">Datos de la empresa que usa la aplicación (se imprimen arriba del todo en los recibos al pulsar Aceptar):</p>
+              <label>Empresa:<input {...fld("general.empresa")} placeholder="Nombre comercial o razón social de la empresa" /></label>
+              <label>Eslogan:<input {...fld("general.eslogan")} placeholder="Opcional (se imprime debajo del nombre)" /></label>
               <div className="company-logo-setting"><label>Logo de la empresa:<input type="file" accept="image/png,image/jpeg,image/webp" disabled={cfgLocked} onChange={(event) => { loadCompanyLogo(event.target.files?.[0]); event.target.value = ""; }} /></label><small>PNG, JPEG o WebP: máximo 24 KiB codificados, aproximadamente 18 KiB de archivo. Se guarda al confirmar la configuración.</small>{systemCfg.companyLogoDataUrl && <img src={String(systemCfg.companyLogoDataUrl)} alt="Vista previa del logo de la empresa" />}<button type="button" disabled={cfgLocked || !systemCfg.companyLogoDataUrl} onClick={() => setSystemCfg((current) => ({ ...current, companyLogoDataUrl: "" }))}>Quitar logo</button></div>
-              <label>Dirección:<input {...fld("general.direccion")} /></label>
+              <label>Dirección:<input {...fld("general.direccion")} placeholder="Calle, número, plaza o sector y ciudad" /></label>
               <div className="legacy-config-row">
-                <label>Teléfono:<input {...fld("general.telefono")} /></label>
-                <label>RNC:<input {...fld("general.rnc")} placeholder="Ej.: 1-32-53511-1" /></label>
+                <label>Teléfono:<input {...fld("general.telefono")} placeholder="Ej.: 809-555-0222" /></label>
+                <label>RNC:<input {...fld("general.rnc")} placeholder="Opcional (ej.: 1-30-00100-1)" /></label>
               </div>
               <div className="legacy-config-row">
                 <label>Correo Electrónico:<input {...fld("general.correo")} /></label>
@@ -9712,8 +9722,9 @@ function CollectionReceiptPrintDialog({ receipts, onClose, title = "Imprimir Rec
     let active = true; setConfigError("");
     api<{ config: Record<string, string | number | boolean> }>("/configuracion").then(({ config }) => {
       if (!config || typeof config !== "object" || Array.isArray(config)) throw new Error("No se pudo cargar la configuración de impresión.");
+      const rawCompany = String(config["general.empresa"] ?? "").trim();
       if (active) setPrintConfig({
-        company: String(config["general.empresa"] ?? "").trim() || "Cobros y Pagos",
+        company: /^cobros y pagos$/i.test(rawCompany) ? "" : rawCompany,
         slogan: String(config["general.eslogan"] ?? "").trim(),
         address: String(config["general.direccion"] ?? "").trim(),
         phone: String(config["general.telefono"] ?? "").trim(),
@@ -9724,6 +9735,13 @@ function CollectionReceiptPrintDialog({ receipts, onClose, title = "Imprimir Rec
     return () => { active = false; };
   }, [loadAttempt]);
   const printedAt = new Date().toLocaleString("es-DO", { dateStyle: "short", timeStyle: "medium", timeZone: "America/Santo_Domingo" });
+  const companyHeaderLines = [
+    ...(printConfig?.company ? [printConfig.company] : []),
+    ...(printConfig?.slogan ? [printConfig.slogan] : []),
+    ...(printConfig?.address ? [printConfig.address] : []),
+    ...(printConfig?.phone ? [`Tel.: ${printConfig.phone}`] : []),
+    ...(printConfig?.rnc ? [`RNC: ${printConfig.rnc}`] : []),
+  ];
   return (
     <LegacyDialog title={title} onClose={onClose} className="collection-flow-dialog collection-ticket-dialog" overlayClassName={"collection-receipt-suboverlay collection-ticket-print-overlay cyp-print-paper-" + paper}>
       <div className="collection-ticket-print-content">
@@ -9732,12 +9750,7 @@ function CollectionReceiptPrintDialog({ receipts, onClose, title = "Imprimir Rec
         <div className="collection-ticket-preview-list">
           {receipts.map((receipt) => (
             <pre className="collection-ticket-preview" key={receipt.id}>{[
-              printConfig?.company || "Cobros y Pagos",
-              ...(printConfig?.slogan ? [printConfig.slogan] : []),
-              ...(printConfig?.address ? [printConfig.address] : []),
-              ...(printConfig?.phone ? [`Tel.: ${printConfig.phone}`] : []),
-              ...(printConfig?.rnc ? [`RNC: ${printConfig.rnc}`] : []),
-              "================================",
+              ...(companyHeaderLines.length ? [...companyHeaderLines, "================================"] : []),
               ...(receipt.documentTitle ? [receipt.documentTitle, `Comprobante: ${receipt.receiptNumber}`] : [`Recibo: ${receipt.receiptNumber}`, `Ident: ${receipt.clientIdentification}`, `Cliente: ${receipt.clientName}`]),
               `Fecha: ${safeDateLabel(movementBusinessDate(receipt.date))}`,
               `Moneda: ${receipt.currency}`,

@@ -5,7 +5,7 @@ import { enrichPublicDemo } from "../src/demo-scenarios.js";
 import { enrichCollectorDemo } from "../src/demo-collector-scenarios.js";
 import { DEMO_CASHIER_EMAIL, enrichCashierDemo } from "../src/demo-cashier-scenarios.js";
 import { DEMO_PASSWORD } from "../src/demo-credentials.js";
-import { normalizeDemoCollectorLabel, seed, seedPublicDemo } from "../src/seed.js";
+import { DEMO_COMPANY_CONFIG, normalizeDemoCollectorLabel, normalizeDemoCompanyConfig, seed, seedPublicDemo } from "../src/seed.js";
 import { MemoryStore } from "../src/store.js";
 import { emptyState, verifyPassword, type State } from "../src/domain.js";
 import { roleRemittancePermissions } from "../../shared/access.mjs";
@@ -294,4 +294,39 @@ test("enrichPublicDemo carries over an existing closed EUR box into subsequent d
       { date: "2026-10-09", reason: "existing_open_cash" },
     ]);
   } finally { await openStore.close(); }
+});
+
+test("normalizeDemoCompanyConfig populates demo company header once on unconfigured demo state without overwriting admin edits", () => {
+  const realState = seed();
+  normalizeDemoCompanyConfig(realState, false);
+  assert.equal(realState.systemConfig, undefined, "real mode never invents demo company fields");
+
+  const existingDemo = seed();
+  existingDemo.systemConfig = {
+    "general.empresa": "Cobros y Pagos",
+    "general.direccion": "",
+    "general.telefono": "",
+    companyLogoDataUrl: "data:image/png;base64,iVBORw0KGgo=",
+    receiptFooterNote: "Pie previo conservado",
+  };
+  normalizeDemoCompanyConfig(existingDemo, true);
+  assert.equal(existingDemo.systemConfig["general.empresa"], DEMO_COMPANY_CONFIG["general.empresa"]);
+  assert.equal(existingDemo.systemConfig["general.eslogan"], DEMO_COMPANY_CONFIG["general.eslogan"]);
+  assert.equal(existingDemo.systemConfig["general.direccion"], DEMO_COMPANY_CONFIG["general.direccion"]);
+  assert.equal(existingDemo.systemConfig["general.telefono"], DEMO_COMPANY_CONFIG["general.telefono"]);
+  assert.equal(existingDemo.systemConfig["general.rnc"], DEMO_COMPANY_CONFIG["general.rnc"]);
+  assert.equal(existingDemo.systemConfig.receiptFooterNote, "Pie previo conservado");
+
+  // Once the administrator edits and saves (even clearing optional slogan/RNC or leaving fields blank), demo normalization never overwrites it.
+  existingDemo.systemConfig = {
+    "general.empresa": "",
+    "general.eslogan": "",
+    "general.direccion": "",
+    "general.telefono": "",
+    "general.rnc": "",
+  };
+  normalizeDemoCompanyConfig(existingDemo, true);
+  assert.equal(existingDemo.systemConfig["general.empresa"], "");
+  assert.equal(existingDemo.systemConfig["general.eslogan"], "");
+  assert.equal(existingDemo.systemConfig["general.rnc"], "");
 });

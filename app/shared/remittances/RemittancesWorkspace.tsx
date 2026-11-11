@@ -458,8 +458,9 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
     const onChanged = (event: Event) => { if ((event as CustomEvent<{ source?: string }>).detail?.source !== instanceId) void refresh({ background: true }); };
     window.addEventListener("cyp-exchange-rates-updated", onRates);
     window.addEventListener("cyp-remittance-commissions-updated", onPolicy);
+    window.addEventListener("cyp-company-logo-updated", onPolicy);
     window.addEventListener(REMITTANCES_CHANGED_EVENT, onChanged);
-    return () => { window.removeEventListener("cyp-exchange-rates-updated", onRates); window.removeEventListener("cyp-remittance-commissions-updated", onPolicy); window.removeEventListener(REMITTANCES_CHANGED_EVENT, onChanged); };
+    return () => { window.removeEventListener("cyp-exchange-rates-updated", onRates); window.removeEventListener("cyp-remittance-commissions-updated", onPolicy); window.removeEventListener("cyp-company-logo-updated", onPolicy); window.removeEventListener(REMITTANCES_CHANGED_EVENT, onChanged); };
   }, [refreshRates, refresh, instanceId]);
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => { if (uncertain || busy) { event.preventDefault(); event.returnValue = ""; } };

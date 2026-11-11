@@ -117,8 +117,9 @@ export type CreateRemittanceInput = Omit<QuoteInput, "amountMode"> & {
 
 export function remittanceReceiptIssuer(state: State): ReceiptIssuer {
   const field = (key: string) => typeof state.systemConfig?.[key] === "string" ? (state.systemConfig[key] as string).trim() : "";
+  const rawName = field("general.empresa"), name = /^cobros y pagos$/i.test(rawName) ? "" : rawName;
   const logo = field("companyLogoDataUrl"), slogan = field("general.eslogan"), rnc = field("general.rnc");
-  return { name: field("general.empresa") || "Cobros y Pagos", address: field("general.direccion"), phone: field("general.telefono"), email: field("general.correo"),
+  return { name, address: field("general.direccion"), phone: field("general.telefono"), email: field("general.correo"),
     ...(slogan ? { slogan } : {}), ...(rnc ? { rnc } : {}),
     footerNote: field("receiptFooterNote") || "Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío.",
     ...(/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(logo) && logo.length <= 24576 ? { logoDataUrl: logo } : {}) };

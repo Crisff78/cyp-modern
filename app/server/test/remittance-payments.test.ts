@@ -71,11 +71,11 @@ test("company identity/footer are frozen without leaking system configuration se
   assert.equal(t.receiptIssuer?.slogan, undefined); assert.equal(t.receiptIssuer?.rnc, undefined);
   assert.equal(JSON.stringify(t.receiptIssuer).includes("PRIVATE-NOT-ON-RECEIPT"), false);
 
-  state.systemConfig = { ...state.systemConfig, "general.empresa": "Crediahora Inversiones S.R.L.", "general.eslogan": "Tu aliado en cada envío", "general.rnc": "1-32-53511-1" };
+  state.systemConfig = { ...state.systemConfig, "general.empresa": "Inversiones Demo S.R.L.", "general.eslogan": "Tu aliado en cada envío", "general.rnc": "1-30-00100-1" };
   const withExtras = send(state);
-  assert.equal(withExtras.receiptIssuer?.name, "Crediahora Inversiones S.R.L.");
+  assert.equal(withExtras.receiptIssuer?.name, "Inversiones Demo S.R.L.");
   assert.equal(withExtras.receiptIssuer?.slogan, "Tu aliado en cada envío");
-  assert.equal(withExtras.receiptIssuer?.rnc, "1-32-53511-1");
+  assert.equal(withExtras.receiptIssuer?.rnc, "1-30-00100-1");
 });
 
 test("buy source/sell destination through DOP, carry forward rates, reverse quote; only pesos are one to one", () => {
