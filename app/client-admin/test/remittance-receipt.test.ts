@@ -33,14 +33,29 @@ test("bank receipt shows its method/reference, no cash change and no card creden
   assert.ok(html.includes("No registrada en esta operación histórica")); assert.equal(html.includes("Dinero recibido"), false);
 });
 
-test("thermal and telephone receipts retain references, frozen names, amounts, payment and footer without changing the source", () => {
-  const model = remittanceReceipt(transfer, undefined, "Operador", "Operador", true);
+test("thermal and telephone receipts retain reorganized invoice fields, right-aligned totals, Registrado por at bottom and omit crossed-out fields", () => {
+  const demoIssuerTransfer: Transfer = { ...transfer, senderContact: { ...transfer.senderContact!, identification: "ID-SENDER-999" }, receiptIssuer: { name: "Cobros y Pagos", address: "", phone: "", email: "admin@cyp.local", footerNote: transfer.receiptIssuer!.footerNote } };
+  const demoModel = remittanceReceipt(demoIssuerTransfer, undefined, "Operador Interno", "Cajero Ventanilla", true);
+  const fullHtml = receiptHtml(demoModel, { paper: "80", compact: false, output: "text" });
+  for (const text of ["Fecha:", "ENV00000001", "OP-QA-123", "O&#39;Connor &lt;sender&gt;", "CL1", "Destinatario", "8095550102", "Fictional destination", "DOP 990.00", "DOP 1,000.00", "DOP 10.00", "Registrado por:", "Cajero Ventanilla", "Conserve este recibo"]) {
+    assert(fullHtml.includes(text), `missing ${text}`);
+  }
+  for (const forbidden of ["REC00000001", "Cobros y Pagos", "admin@cyp.local", "Pendiente de entrega", "Operador del envío", "Operador Interno", "Identificación", "ID-SENDER-999", "8095550101", "Fictional &amp; Co", "CL2"]) {
+    assert(!fullHtml.includes(forbidden), `unexpected ${forbidden}`);
+  }
+  assert(fullHtml.indexOf("Fecha:") < fullHtml.indexOf("Remitente"), "Fecha goes at the top of the invoice");
+  assert(fullHtml.indexOf("Pago del remitente") < fullHtml.indexOf("Registrado por:"), "Registrado por goes at the bottom before the footer");
+  assert(fullHtml.indexOf("Registrado por:") < fullHtml.indexOf("Conserve este recibo"), "Footer remains last");
+
+  const model = remittanceReceipt({ ...transfer, senderContact: { ...transfer.senderContact!, identification: "ID-SENDER-999" } }, undefined, "Operador", "Cajero", true);
   const before = JSON.stringify(model);
   for (const paper of ["76", "80", "58"] as const) {
     const html = receiptHtml(model, { paper, compact: true });
     assert(html.includes(`width:${paper === "80" ? 72 : paper === "58" ? 48 : 70}mm`));
-    for (const text of ["REC00000001", "ENV00000001", "O&#39;Connor &lt;sender&gt;", "Destinatario", "8095550101", "DOP 990.00", "DOP 1,000.00", "DOP 10.00", "Conserve este recibo"]) assert(html.includes(text), text);
-    for (const text of ["Fictional &amp; Co", "Código de operación", "Comisión del gestor", "Prueba &amp; validación"]) assert(!html.includes(text), text);
+    for (const text of ["Empresa de prueba", "Fecha", "ENV00000001", "O&#39;Connor &lt;sender&gt;", "Destinatario", "8095550102", "DOP 990.00", "DOP 1,000.00", "DOP 10.00", "Registrado por", "Cajero", "Conserve este recibo"]) assert(html.includes(text), text);
+    for (const text of ["REC00000001", "Pendiente de entrega", "Operador del envío", "Fictional &amp; Co", "Fictional destination", "Código de operación", "CL1", "CL2", "Identificación", "ID-SENDER-999", "8095550101", "Comisión del gestor", "Prueba &amp; validación"]) assert(!html.includes(text), text);
+    const body = html.slice(html.indexOf("<body>"));
+    assert(body.indexOf("Empresa de prueba") < body.indexOf("ENV00000001"), "configured company header goes at the very top");
   }
   assert.equal(JSON.stringify(model), before);
   assert(!receiptHtml(model, { paper: "auto", compact: false }).includes("width:70mm"));

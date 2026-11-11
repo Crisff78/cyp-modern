@@ -16,6 +16,8 @@ test("text-only receipt uses actual separators and bounded hard lines, preserves
     for(const line of text.split("\n"))assert(Array.from(line).length<=columns);
     assert.match(text,/Nombre: {2,}José Núñez/);assert(text.includes("María Rodríguez"));assert(text.includes("Dirección:"));
     assert(text.includes("DOP 2,200.00"));assert(text.includes("DOP 100.00"));
+    const wrappedAmountLine = text.split("\n").find((line) => line.includes("DOP 2,200.00"))!;
+    assert.equal(Array.from(wrappedAmountLine).length, columns, "single-line wrapped amounts align flush-right to the receipt width");
     assert(text.replace(/\s/g,"").includes("REFERENCIA".repeat(30)));
     assert(text.includes("-".repeat(columns)));assert(text.endsWith("\n"));
   }

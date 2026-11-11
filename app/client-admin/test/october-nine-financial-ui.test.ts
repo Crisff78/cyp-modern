@@ -28,6 +28,7 @@ test("October financial screens use central rates, currency-separated settlement
   const actor = { id: "demo-admin", name: "Administración", role: "admin" as const };
   await store.transaction((state) => {
     state.clients[0].identification = "QA-DOC-ORIGIN"; state.clients[0].phone = "8090000101";
+    const destClient = state.clients.find((c) => c.id === "cli-5"); if (destClient) destClient.phone = "8090000505";
     state.systemConfig = { ...state.systemConfig, receiptFooterNote: "Pie ficticio para comprobar impresión" };
     state.settlements.push({ id: "qa-multicurrency-close", collectorId: "col-1", date, status: "closed", closedAt: now.toISOString(), collected: 10000, deposited: 10000, officeDelivered: 0, paidToClients: 0, difference: 0,
       totalsByCurrency: { DOP: { collected: 10000, deposited: 10000, officeDelivered: 0, paidToClients: 0, difference: 0 }, USD: { collected: 1000, deposited: 1000, officeDelivered: 0, paidToClients: 0, difference: 0 }, EUR: { collected: 500, deposited: 500, officeDelivered: 0, paidToClients: 0, difference: 0 } } });
@@ -158,7 +159,7 @@ remittancesApi('/snapshot').then(snapshot=>createRoot(document.getElementById('r
       await page.getByLabel("Buscar", { exact: true }).fill("QA-DOC-ORIGIN");
       const row = page.locator(".remittance-transfer-table tbody tr").filter({ hasText: "REC" }); await row.waitFor(); await row.dblclick();
       const detail = page.getByRole("dialog"); const popupReady = context.waitForEvent("page"); await detail.getByRole("button", { name: "Imprimir comprobante", exact: true }).click(); const popup = await popupReady; await popup.waitForLoadState();
-      const receiptText = await popup.locator("body").innerText(); assert.ok(receiptText.includes("DOP 105.00")); assert.ok(receiptText.includes("8090000101")); assert.ok(receiptText.includes("Pie ficticio para comprobar impresión")); assert.ok(!/Comisión|gestor/i.test(receiptText)); await popup.close();
+      const receiptText = await popup.locator("body").innerText(); assert.ok(receiptText.includes("DOP 105.00")); assert.ok(receiptText.includes("8090000505")); assert.ok(!receiptText.includes("8090000101")); assert.ok(receiptText.includes("Pie ficticio para comprobar impresión")); assert.ok(!/Comisión|gestor/i.test(receiptText)); await popup.close();
       await page.screenshot({ path: path.join(output, "remittance-detail.png"), fullPage: true });
     });
     assert.deepEqual(errors, []);
