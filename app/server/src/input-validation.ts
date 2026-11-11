@@ -28,6 +28,10 @@ const generalPhone = singleLine(40).refine((value) => {
   if (value === "") return true;
   return phoneFormat.test(value) && /\d/.test(value);
 }, "Escribe un teléfono con dígitos, separadores y extensión opcional de hasta 6 dígitos, o deja el campo vacío.");
+const generalRnc = singleLine(40).refine((value) => {
+  if (value === "") return true;
+  return /^(?=.*\d)[0-9 .-]+$/.test(value);
+}, "Escribe un RNC válido o deja el campo vacío.");
 
 export const machineCounter = singleLine(100).refine((value) => {
   if (value === "") return true;
@@ -70,8 +74,9 @@ const configNumber = (min: number, max: number, empty = false, integer = false, 
 const knownConfigFields: Record<string, z.ZodType> = {
   receiptFooterNote: freeText(2000),
   companyLogoDataUrl: z.string().max(24576).refine((value) => value === "" || /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(value), "Usa una imagen PNG, JPEG o WebP en base64 de hasta 24 KiB, o deja el campo vacío."),
-  "general.empresa": configText(160), "general.direccion": configText(500),
+  "general.empresa": configText(160), "general.eslogan": configText(160), "general.direccion": configText(500),
   "general.telefono": configText(40).refine((value) => generalPhone.safeParse(value).success, "Escribe un teléfono válido o deja el campo vacío."),
+  "general.rnc": configText(40).refine((value) => generalRnc.safeParse(value).success, "Escribe un RNC válido o deja el campo vacío."),
   "general.fax": configText(40).refine((value) => generalPhone.safeParse(value).success, "Escribe un teléfono válido o deja el campo vacío."),
   "general.correo": configText(200).refine((value) => optionalEmail.safeParse(value).success, "Escribe un correo válido o deja el campo vacío."),
   "general.licencia": configText(160), "general.moneda": configText(40),

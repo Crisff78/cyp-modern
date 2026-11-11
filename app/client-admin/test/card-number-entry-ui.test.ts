@@ -101,7 +101,8 @@ return <main><form onSubmit={e=>e.preventDefault()}>{open&&<PaymentFields total=
         await page.getByRole("button",{name:"Restaurar",exact:true}).click();assert.equal(await number.inputValue(),"");
         await number.fill(pan);await number.evaluate((input:HTMLInputElement)=>{(window as any).methodNumber=input;});
         await page.getByLabel("Forma de pago",{exact:true}).selectOption("debit");
-        await page.getByRole("dialog",{name:"Cargo adicional por tarjeta",exact:true}).getByRole("button",{name:"Aceptar cargo",exact:true}).click();
+        assert.equal(await page.getByRole("dialog",{name:"Cargo adicional por tarjeta",exact:true}).count(),0,"selecting debit card never opens a manual card charge dialog");
+        assert.equal(await page.getByRole("button",{name:"Modificar cargo",exact:true}).count(),0);
         assert.equal(await page.evaluate(()=>(window as any).methodNumber.value),"","switching card type destroys the former full number");
         assert.equal(await number.inputValue(),""); assert.equal(await holder.inputValue(),"");
         assert.equal(await page.getByLabel("CVV",{exact:true}).count(),0);
@@ -118,7 +119,7 @@ return <main><form onSubmit={e=>e.preventDefault()}>{open&&<PaymentFields total=
         assert.equal(debit.cvv,undefined); assert.equal(debit.expiry,undefined); assert(!JSON.stringify(debit).includes(pan));
         await number.evaluate((input:HTMLInputElement)=>{(window as any).methodNumber=input;});
         await page.getByLabel("Forma de pago",{exact:true}).selectOption("credit");
-        await page.getByRole("dialog",{name:"Cargo adicional por tarjeta",exact:true}).getByRole("button",{name:"Aceptar cargo",exact:true}).click();
+        assert.equal(await page.getByRole("dialog",{name:"Cargo adicional por tarjeta",exact:true}).count(),0,"selecting credit card never opens a manual card charge dialog");
         assert.equal(await page.evaluate(()=>(window as any).methodNumber.value),"");
         assert.equal(await number.inputValue(),""); assert.equal(await holder.inputValue(),"");
         await number.fill(pan); await number.evaluate((input:HTMLInputElement)=>{(window as any).methodNumber=input;});

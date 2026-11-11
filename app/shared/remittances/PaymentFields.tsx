@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { MoneyInput } from "../MoneyInput";
 import { restrictPaste } from "./fieldInput";
 import { decimalCents, formatMoney } from "./output";
@@ -6,15 +5,14 @@ import { isMoneyDraft, MONEY_INPUT_MESSAGE } from "./moneyInput";
 import { cardPaymentCharge, isCardholderNameDraft, isPaymentTextDraft, paymentAmounts, type CardType, type PaymentMethod, type RemittancePaymentInput } from "./payment.mjs";
 import { CardNumberInput } from "./CardNumberInput";
 import { CARD_NUMBER_MESSAGE } from "./cardNumberEntry";
-import { CardChargeDialog } from "./CardChargeDialog";
 import type { Currency } from "./types";
 
 type PaymentField = "tendered" | "reference" | "bank" | "cardholderName" | "last4";
 const paymentBanks = ["Banreservas", "Banco Popular", "BHD", "Scotiabank", "Banco Santa Cruz", "APAP", "Asociación Cibao", "Banesco", "Banco Promerica"];
-export type PaymentDraft = { method: PaymentMethod; cardType?: CardType; cardChargeAmount?: number; cardholderName: string; last4: string; tendered: string; reference: string; bank: string; verified: boolean; entryErrors?: Partial<Record<PaymentField, string>> };
+export type PaymentDraft = { method: PaymentMethod; cardType?: CardType; cardholderName: string; last4: string; tendered: string; reference: string; bank: string; verified: boolean; entryErrors?: Partial<Record<PaymentField, string>> };
 const decimal = (cents: number) => `${BigInt(cents) / 100n}.${String(BigInt(cents) % 100n).padStart(2, "0")}`;
 export function paymentDraftFor(total: number, input?: RemittancePaymentInput): PaymentDraft {
-  return { method: input?.method ?? "cash", cardType: input?.cardType, ...(input?.cardChargeAmount === undefined ? {} : {cardChargeAmount:input.cardChargeAmount}), cardholderName: input?.cardholderName ?? "", last4: input?.last4 ?? "", tendered: decimal(input?.tenderedAmount ?? total), reference: input?.reference ?? "", bank: input?.bank ?? "", verified: input?.verified === true };
+  return { method: input?.method ?? "cash", cardType: input?.cardType, cardholderName: input?.cardholderName ?? "", last4: input?.last4 ?? "", tendered: decimal(input?.tenderedAmount ?? total), reference: input?.reference ?? "", bank: input?.bank ?? "", verified: input?.verified === true };
 }
 export function paymentInput(total: number, draft: PaymentDraft, creditCardCommissionBps = 0): RemittancePaymentInput {
   const cardDetails = draft.method === "card" && draft.cardType !== undefined;
@@ -28,21 +26,20 @@ export function paymentInput(total: number, draft: PaymentDraft, creditCardCommi
   const input: RemittancePaymentInput = draft.method === "cash"
     ? { method: "cash", tenderedAmount: decimalCents(draft.tendered, true) }
     : { method: draft.method, reference: draft.reference.trim(), ...(draft.bank.trim() ? { bank: draft.bank.trim() } : {}), verified: draft.verified,
-      ...(draft.method === "card" ? { ...(draft.cardType ? { cardType: draft.cardType } : {}), ...(draft.cardChargeAmount === undefined ? {} : {cardChargeAmount:draft.cardChargeAmount}), ...(cardDetails ? { cardholderName: draft.cardholderName.trim(), last4: draft.last4 } : {}) } : {}) };
+      ...(draft.method === "card" ? { ...(draft.cardType ? { cardType: draft.cardType } : {}), ...(cardDetails ? { cardholderName: draft.cardholderName.trim(), last4: draft.last4 } : {}) } : {}) };
   paymentAmounts(total, input, creditCardCommissionBps);
   return input;
 }
 
 /** An overflowing/incomplete preview must not crash the window; saving still validates strictly. */
 export function previewPaymentCharge(total: number, value: PaymentDraft, bps = 0) {
-  try { return cardPaymentCharge(total, value.method === "card" ? value.cardType : undefined, bps, value.method === "card" ? value.cardChargeAmount : undefined); }
+  try { return cardPaymentCharge(total, value.method === "card" ? value.cardType : undefined, bps); }
   catch { return undefined; }
 }
 export function PaymentFields({ total, currency, creditCardCommissionBps = 0, value, onChange, locked = false, cardStorage }: {
   cardStorage?: import("./cardArchive.mjs").CardStorageInfo;
   total: number; currency: Currency; creditCardCommissionBps?: number; value: PaymentDraft; onChange: (value: PaymentDraft) => void; locked?: boolean;
 }) {
-  const [chargeEditor, setChargeEditor] = useState<{ cardType: CardType; initialAmount: number; changingMethod: boolean } | null>(null);
   const textMessage = "Usa hasta 160 caracteres en una sola línea, sin caracteres de control ni marcas invisibles.";
   const reject = (field: PaymentField, message: string) => onChange({ ...value, entryErrors: { ...value.entryErrors, [field]: message } });
   const update = (field: PaymentField, next: string) => onChange({ ...value, [field]: next, entryErrors: { ...value.entryErrors, [field]: undefined } });
@@ -57,18 +54,13 @@ export function PaymentFields({ total, currency, creditCardCommissionBps = 0, va
   const fieldError = Object.values(value.entryErrors ?? {}).find(Boolean);
   let change: number | undefined;
   try { change = paymentAmounts(total, paymentInput(total, value, creditCardCommissionBps), creditCardCommissionBps).changeAmount; } catch { /* Shown on Accept; the draft can be incomplete. */ }
-  return <><fieldset className="remittance-payment" disabled={locked}>
+  return <fieldset className="remittance-payment" disabled={locked}>
     <legend>Forma de pago</legend>
     <p className="remittance-payment-total">Total a pagar: <strong>{charge ? formatMoney(charge.totalAmount, currency) : "Revisa el recargo"}</strong></p>
-    {cardDetails && <p>{value.cardChargeAmount === undefined ? "Recargo por tarjeta" : "Cargo adicional por tarjeta"}: <strong>{charge ? formatMoney(charge.cardSurchargeAmount, currency) : "Fuera del rango permitido"}</strong>{" "}
-      <button type="button" onClick={() => setChargeEditor({cardType:value.cardType!,initialAmount:charge?.cardSurchargeAmount ?? 0,changingMethod:false})}>Modificar cargo</button></p>}
+    {value.method === "card" && value.cardType === "credit" && <p>Recargo por tarjeta de crédito: <strong>{charge ? formatMoney(charge.cardSurchargeAmount, currency) : "Fuera del rango permitido"}</strong></p>}
     <label>Forma de pago<select aria-label="Forma de pago" value={choice} onChange={(event) => {
       const next = event.target.value;
-      if (next === "credit" || next === "debit") {
-        let initialAmount = 0;
-        try { initialAmount = cardPaymentCharge(total,next,creditCardCommissionBps).cardSurchargeAmount; } catch { /* Let the operator enter a bounded amount. */ }
-        setChargeEditor({cardType:next,initialAmount,changingMethod:true});
-      } else onChange({ ...value, method: next as PaymentMethod, cardType: undefined, cardChargeAmount: undefined, cardholderName: "", last4: "", reference: "", bank: "", verified: false, entryErrors: {} });
+      onChange({ ...value, method: next === "credit" || next === "debit" ? "card" : next as PaymentMethod, cardType: next === "credit" || next === "debit" ? next : undefined, cardholderName: "", last4: "", reference: "", bank: "", verified: false, entryErrors: {} });
     }}>
       <option value="cash">Efectivo</option><option value="credit">Tarjeta de crédito</option><option value="debit">Tarjeta de débito</option><option value="transfer">Transferencia</option><option value="deposit">Depósito</option>
       {choice === "card" && <option value="card">Tarjeta (registro anterior)</option>}
@@ -91,9 +83,5 @@ export function PaymentFields({ total, currency, creditCardCommissionBps = 0, va
     </>}
     {!charge && <p role="alert" className="remittance-error">El total con recargo excede el importe permitido. Vuelve al formulario y revisa el monto.</p>}
     {fieldError && <p role="alert" className="remittance-error">{fieldError}</p>}
-  </fieldset>{chargeEditor && <CardChargeDialog total={total} currency={currency} cardType={chargeEditor.cardType} initialAmount={chargeEditor.initialAmount} locked={locked}
-    onClose={() => setChargeEditor(null)} onAccept={amount => {
-      onChange({...value, ...(chargeEditor.changingMethod ? {cardholderName:"",last4:"",reference:"",bank:"",entryErrors:{}} : {}), method:"card",cardType:chargeEditor.cardType,cardChargeAmount:amount,verified:false});
-      setChargeEditor(null);
-    }} />}</>;
+  </fieldset>;
 }

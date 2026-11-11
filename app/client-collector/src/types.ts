@@ -160,6 +160,11 @@ export type Receipt = {
   createdAt: string;
   type: string;
   currency?: "DOP" | "USD" | "EUR";
+  companyName?: string;
+  companySlogan?: string;
+  companyAddress?: string;
+  companyPhone?: string;
+  companyRnc?: string;
   footerNote?: string;
   bankName?: string;
   reference?: string;

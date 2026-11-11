@@ -1,4 +1,4 @@
-import type { Receipt } from "./receipt";
+import { receiptIssuerLines, type Receipt } from "./receipt";
 import { receiptPrintLayout, type ReceiptPrintOptions } from "./receiptPaper";
 
 /** Literal spaces/newlines survive text-only drivers; accents remain Unicode, never transliterated. */
@@ -24,11 +24,13 @@ export function receiptText(receipt: Receipt, columns: number) {
   };
   const lines: string[] = [], add = (value: string) => lines.push(...wrap(value,columns)), rule = () => lines.push("-".repeat(columns));
   const center = (value: string) => { for (const line of wrap(value, columns)) lines.push(" ".repeat(Math.max(0, Math.floor((columns - length(line)) / 2))) + line); };
-  const issuerLines = [receipt.issuer.name, receipt.issuer.address, receipt.issuer.phone, receipt.issuer.email].filter((line): line is string => Boolean(line && clean(line).trim()));
+  const issuerLines = [receipt.issuer.name, ...receiptIssuerLines(receipt.issuer, Boolean(receipt.printed))].filter((line): line is string => Boolean(line && clean(line).trim()));
+  let headerClosed = false;
   if (receipt.printed) {
     if (issuerLines.length) {
       for (const line of issuerLines) center(line);
-      lines.push("");
+      lines.push("=".repeat(columns));
+      headerClosed = true;
     }
   } else {
     add(`Recibo: ${receipt.reference}`);add(`Fecha: ${receipt.date}`);lines.push("");
@@ -36,7 +38,8 @@ export function receiptText(receipt: Receipt, columns: number) {
   }
   for(const section of receipt.sections){
     if (!section.rows.length) continue;
-    if (lines.length) rule();
+    if (lines.length && !headerClosed) rule();
+    headerClosed = false;
     if (section.title) { add(section.title); lines.push(""); }
     for(const [rawLabel,rawValue] of section.rows){
       const label=`${clean(rawLabel)}:`,value=clean(rawValue);
