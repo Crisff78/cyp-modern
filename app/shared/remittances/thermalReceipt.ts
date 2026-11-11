@@ -1,4 +1,4 @@
-import type { Receipt } from "./receipt";
+import { receiptIssuerLines, type Receipt } from "./receipt";
 export { thermalReceiptSize } from "./receiptPaper";
 
 // Draw glyphs in the browser, not with the printer's resident fonts/code page.
@@ -78,7 +78,7 @@ export async function thermalReceiptImages(document: Document, receipt: Receipt,
     }
   }
   if (receipt.issuer.name) { text(receipt.issuer.name, { size: 4, bold: true }, "center", 1); hasHeader = true; }
-  for (const line of [receipt.issuer.address, receipt.issuer.phone, receipt.issuer.email]) if (line) { text(line, regular, "center"); hasHeader = true; }
+  for (const line of receiptIssuerLines(receipt.issuer, Boolean(receipt.printed))) { text(line, regular, "center"); hasHeader = true; }
   if (hasHeader) rule();
   for (const section of receipt.sections) {
     if (!section.rows.length) continue;

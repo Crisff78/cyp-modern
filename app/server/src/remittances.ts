@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { assertAdmin, businessDate, DomainError, type State, type User } from "./domain.js";
 import { effectiveAccess, hasRemittancePermission, hasRemittanceAccess, hasRoleExceptions } from "../../shared/access.mjs";
-import { cashReceivedForTransfer, isPaymentTextDraft, paymentAmounts, paymentRecordVersion, totalPaidForTransfer, PaymentValidationError, type ReceiptIssuer, type RemittancePayment, type RemittancePaymentInput, type RemittanceRefund, type RemittanceRefundInput } from "../../shared/remittances/payment.mjs";
+import { cashReceivedForTransfer, isPaymentTextDraft, paymentAmounts, totalPaidForTransfer, PaymentValidationError, type ReceiptIssuer, type RemittancePayment, type RemittancePaymentInput, type RemittanceRefund, type RemittanceRefundInput } from "../../shared/remittances/payment.mjs";
 import { appliedRate, type RateKind } from "../../shared/remittances/appliedRate.mjs";
 
 export const currencies = ["DOP", "USD", "EUR"] as const;
@@ -117,8 +117,9 @@ export type CreateRemittanceInput = Omit<QuoteInput, "amountMode"> & {
 
 export function remittanceReceiptIssuer(state: State): ReceiptIssuer {
   const field = (key: string) => typeof state.systemConfig?.[key] === "string" ? (state.systemConfig[key] as string).trim() : "";
-  const logo = field("companyLogoDataUrl");
+  const logo = field("companyLogoDataUrl"), slogan = field("general.eslogan"), rnc = field("general.rnc");
   return { name: field("general.empresa") || "Cobros y Pagos", address: field("general.direccion"), phone: field("general.telefono"), email: field("general.correo"),
+    ...(slogan ? { slogan } : {}), ...(rnc ? { rnc } : {}),
     footerNote: field("receiptFooterNote") || "Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío.",
     ...(/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(logo) && logo.length <= 24576 ? { logoDataUrl: logo } : {}) };
 }
@@ -621,7 +622,7 @@ export function createRemittance(state: State, user: User, input: CreateRemittan
   let received;
   try { received = paymentAmounts(calculated.totalAmount, input.payment, calculated.quote.creditCardCommissionBps ?? 0); }
   catch (error) { if (error instanceof PaymentValidationError) return fail(error.code, error.message); throw error; }
-  const payment: RemittancePayment = { ...received, version: paymentRecordVersion(input.payment), confirmedBy: user.id, confirmedAt: now.toISOString() };
+  const payment: RemittancePayment = { ...received, version: received.cardType ? 2 : 1, confirmedBy: user.id, confirmedAt: now.toISOString() };
   const cash = currentCash(state, sendingUser.id, input.sourceCurrency, now);
   assertCashMovement(state, cash, "sent", cashReceivedForTransfer(calculated.totalAmount, payment));
   const recipientContact = contactSnapshot(state, input.recipientClientId);

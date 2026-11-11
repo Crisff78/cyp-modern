@@ -42,7 +42,7 @@ export function QuoteDetails({ quote, showConversion = false, showInternalDetail
           <div><dt>Principal</dt><dd>{money(quote.amount, quote.sourceCurrency)}</dd></div>
           <div><dt>Cargo servicio</dt><dd>{money(quote.commissionAmount, quote.sourceCurrency)}</dd></div>
           <div><dt>Equivalente de la comisión en DOP</dt><dd>{commissionDopAmount(quote) === undefined ? "No disponible" : money(commissionDopAmount(quote)!, "DOP")}</dd></div>
-          {cardSurchargeAmount > 0 && <div><dt>Cargo adicional por tarjeta</dt><dd>{money(cardSurchargeAmount, quote.sourceCurrency)}</dd></div>}
+          {cardSurchargeAmount > 0 && <div><dt>Recargo tarjeta de crédito</dt><dd>{money(cardSurchargeAmount, quote.sourceCurrency)}</dd></div>}
           <div className="remittance-total"><dt>Total que paga el remitente</dt><dd>{money(Number(BigInt(quote.totalAmount) + BigInt(cardSurchargeAmount)), quote.sourceCurrency)}{totalAsked !== undefined && <small role="status"> Pediste {money(totalAsked, quote.sourceCurrency)}: es el total más cercano que no lo pasa.</small>}</dd></div>
         </dl>
       </section>

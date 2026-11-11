@@ -1459,6 +1459,12 @@ export async function buildApp(config: Config) {
         (m) => m.receiptToken === token && !m.receiptRevoked && !m.cancelledAt,
       );
     if (!m) throw new DomainError("NOT_FOUND", "Recibo no disponible.", 404);
+    const cfgField = (key: string) => typeof s.systemConfig?.[key] === "string" ? (s.systemConfig[key] as string).trim() : "";
+    const companyName = cfgField("general.empresa") || "Cobros y Pagos";
+    const companySlogan = cfgField("general.eslogan");
+    const companyAddress = cfgField("general.direccion");
+    const companyPhone = cfgField("general.telefono");
+    const companyRnc = cfgField("general.rnc");
     return {
       id: m.id,
       clientName: s.clients.find((c) => c.id === m.clientId)?.name ?? "Cliente",
@@ -1472,6 +1478,11 @@ export async function buildApp(config: Config) {
       businessDate: businessDate(new Date(m.createdAt)),
       createdAt: m.createdAt,
       type: m.type,
+      companyName,
+      ...(companySlogan ? { companySlogan } : {}),
+      ...(companyAddress ? { companyAddress } : {}),
+      ...(companyPhone ? { companyPhone } : {}),
+      ...(companyRnc ? { companyRnc } : {}),
       footerNote: typeof s.systemConfig?.receiptFooterNote === "string" ? s.systemConfig.receiptFooterNote : "",
     };
   };
@@ -1501,7 +1512,14 @@ export async function buildApp(config: Config) {
           .match(new RegExp(`.{1,${cols}}`, "g"))
           ?.join("\n") ?? "";
       const symbol = r.currency === "DOP" ? "RD$" : r.currency;
-      const body = `COBROS Y PAGOS\nRecibo operacional\n${"-".repeat(cols)}\n${clean(r.clientName)}\n${clean(r.concept)}\n${symbol} ${(r.amount / 100).toFixed(2)}\n${clean(r.collectorName)}\n${r.businessDate}\n${clean(r.id)}\nNo es comprobante fiscal\n${r.footerNote.split(/\r?\n/).map(clean).filter(Boolean).join("\n")}\n\n\n`;
+      const headerLines = [
+        clean(r.companyName || "COBROS Y PAGOS"),
+        ...(r.companySlogan ? [clean(r.companySlogan)] : []),
+        ...(r.companyAddress ? [clean(r.companyAddress)] : []),
+        ...(r.companyPhone ? [clean(`Tel.: ${r.companyPhone}`)] : []),
+        ...(r.companyRnc ? [clean(`RNC: ${r.companyRnc}`)] : []),
+      ].filter(Boolean);
+      const body = `${headerLines.join("\n")}\nRecibo operacional\n${"-".repeat(cols)}\n${clean(r.clientName)}\n${clean(r.concept)}\n${symbol} ${(r.amount / 100).toFixed(2)}\n${clean(r.collectorName)}\n${r.businessDate}\n${clean(r.id)}\nNo es comprobante fiscal\n${r.footerNote.split(/\r?\n/).map(clean).filter(Boolean).join("\n")}\n\n\n`;
       return reply
         .header(
           "Content-Disposition",

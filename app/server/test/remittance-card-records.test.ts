@@ -129,7 +129,7 @@ test("API strictly rejects sensitive/forged fields before idempotency storage; a
   assert.equal((await post("/api/envios/politica-comisiones", { creditCardCommissionBps: 0 })).statusCode, 200);
   assert.equal((await post("/api/envios/politica-comisiones", { creditCardCommissionBps: 250 })).statusCode, 200);
   const state = await store.read(), body = bodyFor(state, now), before = JSON.stringify(state);
-  for (const extra of [{ cardNumber: "4111111111111111" }, { cvv: "123" }, { expiry: "12/29" }, { cardSurchargeAmount: 0 }, {version:2}]) {
+  for (const extra of [{ cardNumber: "4111111111111111" }, { cvv: "123" }, { expiry: "12/29" }, { cardSurchargeAmount: 0 }, { cardChargeAmount: 0 }, {version:2}]) {
     const invalid = await post("/api/envios", { ...body, payment: { ...credit, ...extra } });
     assert.equal(invalid.statusCode, 400, invalid.body);
     assert.doesNotMatch(invalid.body, /4111111111111111|12\/29/);
@@ -144,4 +144,14 @@ test("API strictly rejects sensitive/forged fields before idempotency storage; a
   assert.equal(debit.statusCode, 200, debit.body); assert.deepEqual(debitReplay.json(), debit.json());
   assert.equal(debit.json().payment.last4, credit.last4); assert.equal(debit.json().payment.cardholderName, credit.cardholderName);
   assert.equal(debit.json().payment.cardSurchargeAmount, 0); assert.equal((await store.read()).remittances.transfers.length, 2);
+
+  assert.equal((await post("/api/configuracion", { config: { "general.rnc": "SIN-DIGITOS" } })).statusCode, 400);
+  const cfgPayload = { "general.empresa": "CREDIAHORA INVERSIONES S.R.L.", "general.eslogan": "Tu aliado en cada envío", "general.direccion": "Av. 27 de Febrero, #2131, Colinas Mall, Santiago", "general.telefono": "809-576-0222", "general.rnc": "1-32-53511-1" };
+  assert.equal((await post("/api/configuracion", { config: cfgPayload })).statusCode, 200);
+  const snap = (await app.inject({ url: "/api/envios/snapshot", headers: { authorization } })).json();
+  assert.equal(snap.receiptIssuer.name, "CREDIAHORA INVERSIONES S.R.L.");
+  assert.equal(snap.receiptIssuer.slogan, "Tu aliado en cada envío");
+  assert.equal(snap.receiptIssuer.address, "Av. 27 de Febrero, #2131, Colinas Mall, Santiago");
+  assert.equal(snap.receiptIssuer.phone, "809-576-0222");
+  assert.equal(snap.receiptIssuer.rnc, "1-32-53511-1");
 });
