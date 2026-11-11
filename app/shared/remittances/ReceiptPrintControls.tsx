@@ -1,5 +1,5 @@
 import { receiptPaperLabels, receiptPrintLayout, thermalReceiptSize, type ReceiptPaper, type ReceiptPrintOptions } from "./receiptPaper";
-import { receiptSections, type Receipt } from "./receipt";
+import { receiptIssuerLines, receiptSections, type Receipt } from "./receipt";
 import { receiptText } from "./receiptText";
 export type { ReceiptPrintOptions } from "./receiptPaper";
 
@@ -25,9 +25,10 @@ function ReceiptPrintPreview({ receipt, options }: { receipt: Receipt; options: 
   }
   const { issuer } = receipt;
   const validLogo = issuer.logoDataUrl && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(issuer.logoDataUrl) && issuer.logoDataUrl.length <= 24576 ? issuer.logoDataUrl : "";
-  const issuerLines = [issuer.address, issuer.phone, issuer.email].filter(Boolean);
+  const issuerLines = receiptIssuerLines(issuer, Boolean(receipt.printed));
   const hasHeader = Boolean(validLogo || issuer.name || issuerLines.length);
-  const previewWidthPx = layout.widthMm ? Math.round(layout.widthMm * 96 / 25.4) : 520;
+  const graphicWidthMm = thermal ? thermal.graphicWidthMm : layout.widthMm;
+  const previewWidthPx = graphicWidthMm ? Math.round(graphicWidthMm * 96 / 25.4) : 520;
   return <div className="remittance-print-preview-stage">
     <div className="remittance-print-preview-caption"><strong>Vista previa de impresión</strong><span>{badge}</span></div>
     <div className="remittance-print-preview-scroll">

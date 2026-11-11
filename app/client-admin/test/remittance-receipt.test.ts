@@ -66,7 +66,9 @@ test("thermal and telephone receipts never print the generic app name 'Cobros y 
   const before = JSON.stringify(model);
   for (const paper of ["76", "80", "58"] as const) {
     const html = receiptHtml(model, { paper, compact: true });
-    assert(html.includes(`width:${paper === "80" ? 72 : paper === "58" ? 48 : 70}mm`));
+    assert(html.includes(`width:${paper === "80" ? 63 : paper === "58" ? 42 : 60}mm`));
+    const plainHtml = receiptHtml(model, { paper, compact: true, output: "text" });
+    assert(plainHtml.includes(`width:${paper === "80" ? 72 : paper === "58" ? 48 : 70}mm`));
     for (const text of ["Empresa de prueba", "Fictional office", "Tel.: 8095550100", "Fecha", "ENV00000001", "O&#39;Connor &lt;sender&gt;", "Destinatario", "8095550102", "DOP 990.00", "DOP 1,000.00", "DOP 10.00", "Registrado por", "Cajero", "Conserve este recibo"]) assert(html.includes(text), text);
     for (const text of ["REC00000001", "RNC:", "office@example.test", "Pendiente de entrega", "Operador del envío", "Fictional &amp; Co", "Fictional destination", "Código de operación", "CL1", "CL2", "Identificación", "ID-SENDER-999", "8095550101", "Comisión del gestor", "Prueba &amp; validación"]) assert(!html.includes(text), text);
     const body = html.slice(html.indexOf("<body>"));
