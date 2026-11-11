@@ -55,12 +55,12 @@ for(const [name,paper,orientation,customWidthMm,customHeightMm] of [['sheet-8x4'
       const images=popup.locator("main.thermal-image-output img");assert(await images.count()>20);
       const result=await popup.evaluate(()=>({runs:(window as any).__runs,images:Array.from(document.querySelectorAll<HTMLImageElement>("main img")).map(image=>({alt:image.alt,src:image.src.slice(0,22),width:image.naturalWidth,heightMm:image.getBoundingClientRect().height*25.4/96,left:image.getBoundingClientRect().left})),bodyLeft:document.body.getBoundingClientRect().left}));
       assert.equal(result.bodyLeft,0);
-      assert.equal(result.images[0]?.alt,"Margen superior","thermal graphic receipts leave top tear-bar clearance");
-      for(const image of result.images){assert.equal(image.src,"data:image/png;base64,");assert.equal(image.width,(paper==="80"?63:paper==="58"?42:paper==="51"?40:paper==="102"?88:60)*8);assert.equal(image.left,0);assert(image.heightMm>0&&image.heightMm<60);}
-      for(const run of result.runs){assert(run.left>=0.45,JSON.stringify(run));assert(run.right<=run.widthMm-0.95,JSON.stringify(run));}
+      assert(!result.images.some((img:any)=>img.alt==="Margen superior"||img.alt==="Margen inferior"),"thermal graphic receipts omit blank top/bottom spacer blocks");
+      for(const image of result.images){assert.equal(image.src,"data:image/png;base64,");assert.equal(image.width,(paper==="80"?66:paper==="58"?45:paper==="51"?42:paper==="102"?92:63)*8);assert.equal(image.left,0);assert(image.heightMm>0&&image.heightMm<60);}
+      for(const run of result.runs){assert(run.left>=0.2,JSON.stringify(run));assert(run.right<=run.widthMm-0.3,JSON.stringify(run));}
       const text=result.runs.map((run:any)=>run.text).join("\n");for(const expected of ["Envío:","Código de operación:","José Núñez","María Rodríguez","Identificación:","Dirección:","DOP 2,200.00"])assert(text.includes(expected),expected);
       const blocks=new Map<number,any[]>();for(const run of result.runs){const group=blocks.get(run.block)??[];group.push(run);blocks.set(run.block,group);}
-      for(const group of blocks.values())if(group.length===2&&group[0].text.endsWith(":"))assert(group[1].left-group[0].right>=3.9,"label/value gap is preserved in the bitmap");
+      for(const group of blocks.values())if(group.length===2&&group[0].text.endsWith(":"))assert(group[1].left-group[0].right>=2.9,"label/value gap is preserved in the bitmap");
       assert.equal(await popup.locator("dl,dt,dd").count(),0,"the printer receives images rather than device-encoded labels");
       await popup.emulateMedia({media:"print"});assert.equal(await popup.locator(".thermal-print-help").isVisible(),false);
       await popup.screenshot({path:path.join(output,`receipt-${paper}mm.png`),fullPage:true});await popup.close();
@@ -109,8 +109,8 @@ for(const [name,paper,orientation,customWidthMm,customHeightMm] of [['sheet-8x4'
       });
       assert.equal(preMetrics.renderedLines,preMetrics.lineCount,`${id}: zero soft-wrapped lines on 72.1mm POS80 print preview`);
       assert.ok(preMetrics.scrollWidth<=preMetrics.clientWidth+1,`${id}: fits inside 72.1mm POS80 width`);
-      for(const expected of ["INVERSIONES DEMO S.R.L.","Tu aliado en cobros, pagos y envíos","Av. 27 de Febrero","Tel.: 809-555-0222","RNC: 1-30-00100-1","========================================","Fecha:","ENV00000048","mayo lomb","María Rodríguez","8095550100","DOP 500.00","DOP 50.00","Recargo tarjeta de crédito:","DOP 44.00","DOP 594.00","Registrado por:","Administración"])assert(preMetrics.text.includes(expected),`${id} missing ${expected}`);
-      for(const forbidden of ["REC00000048","Cobros y Pagos","admin@cyp.local","Cargo adicional por tarjeta","Pendiente de entrega","Operador del envío","03103103103","111-111-1111","CL-0002"])assert(!preMetrics.text.includes(forbidden),`${id} unexpected ${forbidden}`);
+      for(const expected of ["INVERSIONES DEMO S.R.L.","Tu aliado en cobros, pagos y envíos","Av. 27 de Febrero","Tel.: 809-555-0222","RNC: 1-30-00100-1","========================================","Fecha:","ENV00000048","mayo lomb","María Rodríguez","8095550100","DOP 500.00","Cargo del envío:","DOP 94.00","DOP 594.00","Registrado por:","Administración"])assert(preMetrics.text.includes(expected),`${id} missing ${expected}`);
+      for(const forbidden of ["REC00000048","Cobros y Pagos","admin@cyp.local","Recargo tarjeta de crédito","Cargo adicional por tarjeta","DOP 44.00","Pendiente de entrega","Operador del envío","03103103103","111-111-1111","CL-0002"])assert(!preMetrics.text.includes(forbidden),`${id} unexpected ${forbidden}`);
       assert(preMetrics.text.indexOf("INVERSIONES DEMO S.R.L.")<preMetrics.text.indexOf("Fecha:"),`${id}: company header must appear at the very top`);
       if(compact){assert(!preMetrics.text.includes("Código de operación:"));assert(!preMetrics.text.includes("Calle Las Damas 18"));assert(!preMetrics.text.includes("1111111111"));}
       else{assert(preMetrics.text.includes("AD0B35A22F305CA2"));assert(preMetrics.text.includes("Calle Las Damas 18"));assert(preMetrics.text.includes("1111111111"));}
@@ -125,12 +125,16 @@ for(const [name,paper,orientation,customWidthMm,customHeightMm] of [['sheet-8x4'
       runs:(window as any).__runs,
       alts:Array.from(document.querySelectorAll<HTMLImageElement>("main.thermal-image-output img")).map(img=>img.alt),
       widths:Array.from(document.querySelectorAll<HTMLImageElement>("main.thermal-image-output img")).map(img=>img.naturalWidth),
+      totalHeightMm:document.querySelector("main.thermal-image-output")!.getBoundingClientRect().height*25.4/96,
     }));
-    assert.equal(graphicCheck.alts[0],"Margen superior");
-    assert.equal(graphicCheck.alts[1],"Logo de la empresa");
-    assert.equal(graphicCheck.alts.at(-1),"Margen inferior");
-    for(const w of graphicCheck.widths)assert.equal(w,63*8,"POS80 graphic canvas stays at 63mm (504 dots), well inside ~68mm printhead limit");
-    for(const run of graphicCheck.runs){assert(run.left>=0.45,JSON.stringify(run));assert(run.right<=62.05,`right edge clipped risk: ${JSON.stringify(run)}`);}
+    assert.equal(graphicCheck.alts[0],"Logo de la empresa");
+    assert(!graphicCheck.alts.includes("Margen superior")&&!graphicCheck.alts.includes("Margen inferior"),"no blank top/bottom spacer blocks");
+    assert(graphicCheck.totalHeightMm<130,`compact thermal graphic receipt avoids vertical whitespace bloat (${graphicCheck.totalHeightMm}mm)`);
+    for(const w of graphicCheck.widths)assert.equal(w,66*8,"POS80 graphic canvas uses 66mm (528 dots), maximizing width inside ~67.4mm printhead limit");
+    for(const run of graphicCheck.runs){assert(run.left>=0.2,JSON.stringify(run));assert(run.right<=65.7,`right edge clipped risk: ${JSON.stringify(run)}`);}
+    const posGraphicText=graphicCheck.runs.map((r:any)=>r.text).join("\n");
+    assert(posGraphicText.includes("Cargo del envío:")&&posGraphicText.includes("DOP 94.00"),"graphic receipt merges credit card surcharge into Cargo del envío");
+    assert(!posGraphicText.includes("Recargo tarjeta de crédito")&&!posGraphicText.includes("Cargo adicional por tarjeta"));
     await posGraphic.screenshot({path:path.join(output,"pos80-full-graphics-72.1mm.png"),fullPage:true});await posGraphic.close();
     // Failed raster preparation must not silently print a different format.
     await context.addInitScript(()=>{HTMLCanvasElement.prototype.toDataURL=()=>{throw new Error("Synthetic raster failure");};});
