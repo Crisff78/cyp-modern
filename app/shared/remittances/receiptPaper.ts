@@ -1,18 +1,47 @@
 export const receiptPaperLabels = {
-  auto: "Automático · papel elegido en la impresora", "51": "Rollo de 2 pulgadas (51 mm)", "58": "Rollo de 58 mm",
-  "76": "Rollo de 3 pulgadas (76 mm)", "80": "Rollo de 80 mm", "102": "Rollo de 4 pulgadas (102 mm)",
+  auto: "Automático · papel elegido en la impresora", "51": "Rollo de 2 pulgadas (51 mm)", "58": "Rollo térmico de 58 mm",
+  "76": "Rollo de 76 mm (impacto / matricial)", "80": "Rollo térmico de 3 pulgadas (80 mm · POS80)", "102": "Rollo de 4 pulgadas (102 mm)",
   letter: "Carta (8½ × 11 pulgadas)", a4: "A4", "8x4": "Hoja de 8 × 4 pulgadas", "8x11": "Hoja de 8 × 11 pulgadas", custom: "Medidas personalizadas",
 } as const;
 export type ReceiptPaper = keyof typeof receiptPaperLabels;
 export type ReceiptPrintOptions = { paper: ReceiptPaper; compact: boolean; output?: "graphics" | "text";
   orientation?: "auto" | "portrait" | "landscape"; customWidthMm?: number | ""; customHeightMm?: number | "" };
 
+const RECEIPT_PRINT_STORAGE_KEY = "cyp.remittances.receiptPrintOptions";
+export const defaultReceiptPrintOptions: ReceiptPrintOptions = { paper: "80", compact: false, output: "text" };
+
+export function readSavedReceiptPrintOptions(): ReceiptPrintOptions {
+  try {
+    const raw = typeof localStorage === "undefined" ? null : localStorage.getItem(RECEIPT_PRINT_STORAGE_KEY);
+    if (!raw) return defaultReceiptPrintOptions;
+    const parsed = JSON.parse(raw) as Partial<ReceiptPrintOptions>;
+    const paper = typeof parsed.paper === "string" && Object.hasOwn(receiptPaperLabels, parsed.paper) ? parsed.paper as ReceiptPaper : defaultReceiptPrintOptions.paper;
+    const output = parsed.output === "graphics" || parsed.output === "text" ? parsed.output : defaultReceiptPrintOptions.output;
+    const orientation = parsed.orientation === "auto" || parsed.orientation === "portrait" || parsed.orientation === "landscape" ? parsed.orientation : undefined;
+    const customWidthMm = typeof parsed.customWidthMm === "number" && Number.isFinite(parsed.customWidthMm) && parsed.customWidthMm >= 50 && parsed.customWidthMm <= 320 ? parsed.customWidthMm : undefined;
+    const customHeightMm = typeof parsed.customHeightMm === "number" && Number.isFinite(parsed.customHeightMm) && parsed.customHeightMm >= 50 && parsed.customHeightMm <= 600 ? parsed.customHeightMm : undefined;
+    return { paper, compact: Boolean(parsed.compact), output, ...(orientation ? { orientation } : {}), ...(customWidthMm ? { customWidthMm } : {}), ...(customHeightMm ? { customHeightMm } : {}) };
+  } catch {
+    return defaultReceiptPrintOptions;
+  }
+}
+
+export function saveReceiptPrintOptions(options: ReceiptPrintOptions) {
+  try {
+    if (typeof localStorage !== "undefined") localStorage.setItem(RECEIPT_PRINT_STORAGE_KEY, JSON.stringify(options));
+  } catch { /* ignore storage quota / private mode */ }
+}
+
+/**
+ * Printable roll widths already exclude hardware edge margins (e.g. POS80-01 V6 USB reports 72.1 mm printable width on an 80 mm roll).
+ * Using marginMm: 0 avoids subtracting @page margins twice inside the driver's printable box, preventing line wraps in print preview.
+ */
 export function thermalReceiptSize(paper?: string) {
-  if (paper === "80") return {widthMm:72, marginMm:4};
-  if (paper === "76") return {widthMm:70, marginMm:3};
-  if (paper === "58") return {widthMm:48, marginMm:5};
-  if (paper === "51") return {widthMm:45, marginMm:3};
-  if (paper === "102") return {widthMm:96, marginMm:3};
+  if (paper === "80") return {widthMm:72, marginMm:0};
+  if (paper === "76") return {widthMm:70, marginMm:0};
+  if (paper === "58") return {widthMm:48, marginMm:0};
+  if (paper === "51") return {widthMm:45, marginMm:0};
+  if (paper === "102") return {widthMm:96, marginMm:0};
   return undefined;
 }
 

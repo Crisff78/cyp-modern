@@ -23,18 +23,33 @@ export function receiptText(receipt: Receipt, columns: number) {
     return result;
   };
   const lines: string[] = [], add = (value: string) => lines.push(...wrap(value,columns)), rule = () => lines.push("-".repeat(columns));
-  add(`Recibo: ${receipt.reference}`);add(`Fecha: ${receipt.date}`);lines.push("");
-  add(receipt.issuer.name);
-  for(const line of [receipt.issuer.address,receipt.issuer.phone,receipt.issuer.email]) if(line)add(line);
+  const center = (value: string) => { for (const line of wrap(value, columns)) lines.push(" ".repeat(Math.max(0, Math.floor((columns - length(line)) / 2))) + line); };
+  const issuerLines = [receipt.issuer.name, receipt.issuer.address, receipt.issuer.phone, receipt.issuer.email].filter((line): line is string => Boolean(line && clean(line).trim()));
+  if (receipt.printed) {
+    if (issuerLines.length) {
+      for (const line of issuerLines) center(line);
+      lines.push("");
+    }
+  } else {
+    add(`Recibo: ${receipt.reference}`);add(`Fecha: ${receipt.date}`);lines.push("");
+    for (const line of issuerLines) add(line);
+  }
   for(const section of receipt.sections){
-    rule();add(section.title);lines.push("");
+    if (!section.rows.length) continue;
+    if (lines.length) rule();
+    if (section.title) { add(section.title); lines.push(""); }
     for(const [rawLabel,rawValue] of section.rows){
       const label=`${clean(rawLabel)}:`,value=clean(rawValue);
       if(!/[\r\n]/.test(label+value)&&length(label)+2+length(value)<=columns)
         lines.push(label+" ".repeat(columns-length(label)-length(value))+value);
-      else {add(label);for(const line of wrap(value,columns-2))lines.push(`  ${line}`);}
+      else {
+        add(label);
+        const wrapped = wrap(value, columns - 2);
+        if (wrapped.length === 1 && wrapped[0]) lines.push(" ".repeat(Math.max(2, columns - length(wrapped[0]))) + wrapped[0]);
+        else for (const line of wrapped) lines.push(`  ${line}`);
+      }
     }
-    lines.push("");
+    if (section.title) lines.push("");
   }
   rule();add(receipt.footer);
   return lines.join("\n")+"\n";

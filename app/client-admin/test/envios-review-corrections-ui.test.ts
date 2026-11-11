@@ -261,18 +261,23 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
       await detail.getByRole("heading", { name: "Registro del recibo", exact: true }).waitFor();
       return { reference, detail };
     };
-    await t.test("Cajero in Entregas de dinero: the detail and the printed receipt of another operator's transfer name that operator", async () => {
+    await t.test("Cajero in Entregas de dinero: the detail names both operator and registrar, while the printed customer invoice puts Registrado por at the bottom without Operador del envío", async () => {
       pending = await adminTransfer(9_000, "EUR");
       const { context, page } = await open(cashierToken);
       try {
         const { detail } = await receiptDetail(page);
         const summary = await detail.locator("section").filter({ has: page.getByRole("heading", { name: "Registro del recibo", exact: true }) }).innerText();
         assert.match(summary, /Operador del envío\s+Administración/); assert.match(summary, /Registrado por\s+Administración/);
+        const preview = await detail.getByLabel("Vista previa del recibo para imprimir", { exact: true }).textContent();
+        assert.ok(preview && /Registrado por:\s+Administración/.test(preview));
+        assert.equal(preview?.includes("Operador del envío"), false);
         const popupReady = context.waitForEvent("page");
         await detail.getByRole("button", { name: "Imprimir comprobante", exact: true }).click();
         const popup = await popupReady; await popup.waitForLoadState();
         const printed = await popup.locator("body").innerText(); await popup.close();
-        assert.match(printed, /Operador del envío:?\s+Administración/); assert.match(printed, /Registrado por:?\s+Administración/);
+        assert.match(printed, /Registrado por:?\s+Administración/);
+        assert.equal(printed.includes("Operador del envío"), false, "the printed invoice omits Operador del envío");
+        assert.ok(printed.indexOf("Pago del remitente") < printed.indexOf("Registrado por"), "Registrado por is placed at the bottom");
         assert.equal(printed.includes("demo-admin"), false, "the receipt never carries an internal id");
       } finally { await context.close(); }
     });

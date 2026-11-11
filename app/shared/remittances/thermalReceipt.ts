@@ -49,20 +49,22 @@ export async function thermalReceiptImages(document: Document, receipt: Receipt,
     image.src = canvas.toDataURL("image/png");
     output.append(image);
   };
-  const text = (value: string, font: Font = regular, align: "left" | "center" = "left", extra = 0) => {
+  const text = (value: string, font: Font = regular, align: "left" | "center" | "right" = "left", extra = 0) => {
     const lines = wrap(value, font), lineHeight = font.size * 1.45;
     for (let start = 0; start < lines.length; start += 10) {
       const group = lines.slice(start, start + 10);
       block(group.length * lineHeight + 1.2 + (start === 0 ? extra : 0), context => {
         context.font = fontCss(font); context.textAlign = align;
-        group.forEach((line, index) => context.fillText(line, align === "center" ? widthMm / 2 : 0, 0.6 + (start === 0 ? extra : 0) + index * lineHeight));
+        const x = align === "center" ? widthMm / 2 : align === "right" ? widthMm - 0.5 : 0;
+        group.forEach((line, index) => context.fillText(line, x, 0.6 + (start === 0 ? extra : 0) + index * lineHeight));
       }, group.join("\n"));
     }
   };
   const rule = () => block(2.4, context => { context.lineWidth = 0.2; context.beginPath(); context.moveTo(0, 1.2); context.lineTo(widthMm, 1.2); context.stroke(); }, "Separador");
 
-  text(`Recibo ${receipt.reference}`, bold); text(receipt.date);
+  if (!receipt.printed) { text(`Recibo ${receipt.reference}`, bold); text(receipt.date); }
   const logo = receipt.issuer.logoDataUrl;
+  let hasHeader = !receipt.printed;
   if (logo && logo.length <= 24576 && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(logo)) {
     const image = document.createElement("img");
     await new Promise<void>(resolve => {
@@ -72,13 +74,15 @@ export async function thermalReceiptImages(document: Document, receipt: Receipt,
     if (image.complete && image.naturalWidth > 0 && image.naturalHeight > 0) {
       const scale = Math.min(40 / image.naturalWidth, 18 / image.naturalHeight), width = image.naturalWidth * scale, height = image.naturalHeight * scale;
       block(height + 2, context => context.drawImage(image, (widthMm - width) / 2, 1, width, height), "Logo de la empresa");
+      hasHeader = true;
     }
   }
-  text(receipt.issuer.name, { size: 4, bold: true }, "center", 1);
-  for (const line of [receipt.issuer.address, receipt.issuer.phone, receipt.issuer.email]) if (line) text(line, regular, "center");
-  rule();
+  if (receipt.issuer.name) { text(receipt.issuer.name, { size: 4, bold: true }, "center", 1); hasHeader = true; }
+  for (const line of [receipt.issuer.address, receipt.issuer.phone, receipt.issuer.email]) if (line) { text(line, regular, "center"); hasHeader = true; }
+  if (hasHeader) rule();
   for (const section of receipt.sections) {
-    text(section.title, {size: 3.4, bold: true}, "left", compact ? 1 : 2);
+    if (!section.rows.length) continue;
+    if (section.title) text(section.title, {size: 3.4, bold: true}, "left", compact ? 1 : 2);
     for (const [rawLabel, rawValue] of section.rows) {
       const label = `${String(rawLabel).normalize("NFC")}:`, value = String(rawValue).normalize("NFC");
       const valueWidth = textWidth(value, regular), gap = 4;
@@ -87,7 +91,11 @@ export async function thermalReceiptImages(document: Document, receipt: Receipt,
           context.font = fontCss(bold); context.fillText(label, 0, 0.8);
           context.font = fontCss(regular); context.textAlign = "right"; context.fillText(value, widthMm - 0.5, 0.8);
         }, `${label} ${value}`);
-      } else { text(label, bold); text(value); }
+      } else {
+        text(label, bold);
+        const wrapped = wrap(value, regular);
+        text(value, regular, wrapped.length === 1 ? "right" : "left");
+      }
     }
     rule();
   }
