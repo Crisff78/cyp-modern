@@ -57,7 +57,7 @@ function checkRequest(actor: User, method: string, route: string): boolean {
   // Own-session endpoints remain available so a revoked user can log out.
   if (!hasPermission(actor, 1) && actor.access?.mode === "custom")
     throw new DomainError("ACCESS_REVOKED", "Tu acceso cambió. Solicita a Administración que revise tus permisos.", 403);
-  if (path === "snapshot") return true;
+  if (path === "snapshot" || (path === "soporte-contacto" && method === "GET")) return true;
   if (/^recibos\/[^/]+\/revocar$/.test(path)) {
     if (![323, 373, 333, 383].some((id) => hasPermission(actor, id))) requirePermission(actor, 323);
     return true;

@@ -175,16 +175,25 @@ function fillTransfers(fixture: State, existing: State, baseDate: string, now: D
     : [];
   for (let offset = -5; offset <= 0; offset++) {
     const date = dateAt(baseDate, offset);
-    if (existing.remittances.cashSessions.some((cash) => cash.operatorId === admin.id && cash.date === date)) {
+    if (existing.remittances.cashSessions.some((cash) => cash.operatorId === admin.id && cash.date >= date)) {
       omitted.push({ date, reason: "existing_cash_session" }); continue;
     }
-    if (offset === 0 && existing.remittances.cashSessions.some((cash) => cash.operatorId === admin.id && cash.status === "open")) {
+    if (existing.remittances.cashSessions.some((cash) => cash.operatorId === admin.id && cash.date <= date && cash.status === "open")) {
       omitted.push({ date, reason: "existing_open_cash" }); continue;
     }
     // Work on another private draft so incompatible user-entered rates can skip
     // only this date, without leaving partially constructed cash sessions.
     const draft = structuredClone(fixture);
     const borrowedRates = new Set<string>();
+    const borrowedCash = new Set(existing.remittances.cashSessions.map((cash) => cash.id));
+    const borrowedEvents = new Set(existing.remittances.events.map((event) => event.id));
+    const borrowedMovements = new Set((existing.remittances.cashMovements ?? []).map((movement) => movement.id));
+    draft.remittances.cashSessions.unshift(...structuredClone(existing.remittances.cashSessions));
+    draft.remittances.events.unshift(...structuredClone(existing.remittances.events));
+    draft.remittances.cashMovements = [
+      ...structuredClone(existing.remittances.cashMovements ?? []),
+      ...(draft.remittances.cashMovements ?? []),
+    ];
     for (const currency of ["USD", "EUR"] as const) {
       const saved = existing.remittances.rates.find((rate) => rate.currency === currency && rate.date === date);
       if (saved) { draft.remittances.rates.push(structuredClone(saved)); borrowedRates.add(saved.id); }
@@ -216,6 +225,9 @@ function fillTransfers(fixture: State, existing: State, baseDate: string, now: D
       if (offset < 0) for (const cash of draft.remittances.cashSessions.filter((row) => row.date === date))
         closeRemittanceCash(draft, admin, cash.id, cashBalance(draft, cash).expected, at(date, 17));
       draft.remittances.rates = draft.remittances.rates.filter((rate) => !borrowedRates.has(rate.id));
+      draft.remittances.cashSessions = draft.remittances.cashSessions.filter((cash) => !borrowedCash.has(cash.id));
+      draft.remittances.events = draft.remittances.events.filter((event) => !borrowedEvents.has(event.id));
+      draft.remittances.cashMovements = (draft.remittances.cashMovements ?? []).filter((movement) => !borrowedMovements.has(movement.id));
       fixture.remittances = draft.remittances;
     } catch (error) {
       if (error instanceof DomainError && ["MONEY_RANGE", "AMOUNT_TOO_SMALL", "INSUFFICIENT_CASH", "INVALID_RATE"].includes(error.code)) {

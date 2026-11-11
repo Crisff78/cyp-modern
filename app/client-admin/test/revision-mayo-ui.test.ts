@@ -12,6 +12,7 @@ import { seed } from "../../server/src/seed.js";
 import { MemoryStore } from "../../server/src/store.js";
 import { DEMO_PASSWORD } from "../../server/src/demo-credentials.js";
 import { businessDate } from "../../server/src/domain.js";
+import { setDailyRate } from "../../server/src/remittances.js";
 import { formatMoney } from "../../shared/remittances/output";
 
 // The review of Mayo (26-10-2026), point by point, in the actual App with a synthetic MemoryStore API.
@@ -51,6 +52,10 @@ test("Mayo's review (26-10): Envíos, Caja de remesas, Tasas, escritorio, Soport
   });
   let browser: any, server: ReturnType<typeof createServer> | undefined;
   const pageErrors: string[] = [];
+  const pageRequests: URL[] = [];
+  const reviewShots = path.join(os.tmpdir(), "cyp-nov04-capturas");
+  fs.rmSync(reviewShots, { recursive: true, force: true });
+  fs.mkdirSync(reviewShots, { recursive: true });
   try {
     const module = (name: string) => JSON.stringify(path.join(adminRoot, "src", name).replaceAll("\\", "/"));
     const fixture = path.join(output, "fixture.tsx");
@@ -59,6 +64,7 @@ test("Mayo's review (26-10): Envíos, Caja de remesas, Tasas, escritorio, Soport
       import(pathToFileURL(localRequire.resolve("vite")).href), import(pathToFileURL(localRequire.resolve("@vitejs/plugin-react")).href), import(pathToFileURL(localRequire.resolve("@tailwindcss/vite")).href), import(pathToFileURL(playwrightEntry!).href),
     ]);
     await build({ root: adminRoot, configFile: false, envFile: false, publicDir: false, cacheDir: path.join(output, "cache"), resolve: { dedupe: ["react", "react-dom"] }, plugins: [react(), tailwind()], define: { "process.env.NODE_ENV": JSON.stringify("production"), "import.meta.env.VITE_COLLECTOR_URL": JSON.stringify("/collector/") }, logLevel: "error", build: { outDir: path.join(output, "dist"), emptyOutDir: false, cssCodeSplit: false, sourcemap: false, rollupOptions: { output: { inlineDynamicImports: true } }, lib: { entry: fixture, formats: ["es"], fileName: () => "fixture.js", cssFileName: "fixture" } } });
+    let scenarioBucket = 1;
     server = createServer(async (request, response) => {
       try {
         const url = new URL(request.url ?? "/", "http://127.0.0.1");
@@ -66,10 +72,10 @@ test("Mayo's review (26-10): Envíos, Caja de remesas, Tasas, escritorio, Soport
           if (url.pathname === "/api/clientes/pagina") pageRequests.push(url);
           const chunks: Buffer[] = []; for await (const chunk of request) chunks.push(Buffer.from(chunk));
           const body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : undefined;
-          const result = await app.inject({ method: request.method as "GET" | "POST", url: request.url!, headers: request.headers, ...(body ? { payload: body } : {}) });
+          const result = await app.inject({ method: request.method as "GET" | "POST", url: request.url!, remoteAddress: `127.0.1.${scenarioBucket}`, headers: request.headers, ...(body ? { payload: body } : {}) });
           response.writeHead(result.statusCode, { "Content-Type": "application/json; charset=utf-8" }); response.end(result.body); return;
         }
-        if (url.pathname === "/") { response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }); response.end('<!doctype html><html lang="es"><meta charset="utf-8"><link rel="stylesheet" href="/fixture.css"><div id="root"></div><script type="module" src="/fixture.js"></script></html>'); return; }
+        if (url.pathname === "/") { scenarioBucket = Math.min(250, scenarioBucket + 1); response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }); response.end('<!doctype html><html lang="es"><meta charset="utf-8"><link rel="stylesheet" href="/fixture.css"><div id="root"></div><script type="module" src="/fixture.js"></script></html>'); return; }
         if (["/fixture.js", "/fixture.css"].includes(url.pathname)) { response.writeHead(200, { "Content-Type": url.pathname.endsWith(".js") ? "text/javascript" : "text/css" }); response.end(fs.readFileSync(path.join(output, "dist", url.pathname.slice(1)))); return; }
         response.writeHead(404); response.end();
       } catch { response.writeHead(500); response.end('{"error":{"message":"Synthetic fixture failure"}}'); }
@@ -93,7 +99,11 @@ test("Mayo's review (26-10): Envíos, Caja de remesas, Tasas, escritorio, Soport
       await option.click();
       const frame = page.getByRole("dialog", { name: window, exact: true }); await frame.waitFor(); return frame;
     };
-    const shot = (name: string) => page.screenshot({ path: path.join(output, `${name}.png`) });
+    const shot = async (name: string) => {
+      const target = path.join(output, `${name}.png`);
+      await page.screenshot({ path: target });
+      fs.copyFileSync(target, path.join(reviewShots, `${name}.png`));
+    };
 
     // A second session (the cashier) in the same page server.
     const cashierPage = async () => {
@@ -137,15 +147,49 @@ test("Mayo's review (26-10): Envíos, Caja de remesas, Tasas, escritorio, Soport
       return region;
     };
 
-    await t.test("4.2: Soporte técnico is a module of the panel on the left, after the others", async () => {
+    await t.test("4.2: Soporte técnico is a module of the panel on the left, after the others, stays visible when groups expand, and loads for non-admin roles", async () => {
+      await post("/api/configuracion", {
+        config: {
+          "soporte.nombre": "Mesa Técnica CyP",
+          "soporte.telefono": "809-555-0141",
+          "soporte.whatsapp": "829-555-0141",
+          "soporte.correo": "soporte-cyp@example.invalid",
+          "soporte.horario": "Lun–Sáb 8:00–18:00",
+        },
+      });
       await reset();
-      const modules = await page.locator('nav[aria-label="Navegación principal"] .nav-group-trigger').evaluateAll((items: HTMLElement[]) => items.map((item) => item.getAttribute("aria-label") ?? item.textContent?.trim()));
+      const nav = page.locator('nav[aria-label="Navegación principal"]');
+      const modules = await nav.locator(".nav-group-trigger").evaluateAll((items: HTMLElement[]) => items.map((item) => item.getAttribute("aria-label") ?? item.textContent?.trim()));
       assert.equal(modules.at(-1), "Soporte Técnico", modules.join(" | "));
       assert.equal(await page.locator(".sidebar-bottom").getByRole("button", { name: "Soporte Técnico" }).count(), 0, "only one Soporte Técnico");
-      await page.locator('nav[aria-label="Navegación principal"]').getByRole("button", { name: "Soporte Técnico", exact: true }).click();
-      await page.getByRole("dialog", { name: "Soporte Técnico" }).waitFor();
+      // Expand multiple sections at 1366x768: Soporte Técnico stays sticky and 100% visible in the left module panel.
+      for (const section of ["COBROS", "PAGOS", "REMESAS", "CUADRES Y REPORTES"]) {
+        const trigger = nav.getByRole("button", { name: section, exact: true });
+        if ((await trigger.getAttribute("aria-expanded")) !== "true") await trigger.click();
+      }
+      const supportBtn = nav.getByRole("button", { name: "Soporte Técnico", exact: true });
+      const [supportBox, bottomBox] = await Promise.all([supportBtn.boundingBox(), page.locator(".sidebar-bottom").boundingBox()]);
+      assert(supportBox && bottomBox, "Soporte Técnico and sidebar footer are rendered");
+      assert.ok(supportBox.y >= 0 && supportBox.y + supportBox.height <= bottomBox.y + 1, `Soporte Técnico visible above footer: ${JSON.stringify({ supportBox, bottomBox })}`);
+      await shot("nov04-4.1-soporte-panel-izquierdo");
+      await supportBtn.click();
+      const adminDialog = page.getByRole("dialog", { name: "Soporte Técnico" });
+      await adminDialog.getByText("809-555-0141").waitFor();
       await shot("4.2-soporte-tecnico");
       await page.keyboard.press("Escape");
+
+      // Non-admin role (Cajero) opens Soporte Técnico from the left panel and reads support contact without 403.
+      const { other, tab } = await cashierPage();
+      try {
+        await tab.goto(origin);
+        await tab.getByRole("button", { name: "Abrir cuenta", exact: true }).waitFor();
+        await tab.locator('nav[aria-label="Navegación principal"]').getByRole("button", { name: "Soporte Técnico", exact: true }).click();
+        const cashierDialog = tab.getByRole("dialog", { name: "Soporte Técnico" });
+        await cashierDialog.getByText("Mesa Técnica CyP").waitFor();
+        assert.match(await cashierDialog.innerText(), /809-555-0141[\s\S]*soporte-cyp@example\.invalid/);
+        const cashierShot = path.join(reviewShots, "nov04-4.1-soporte-cajero.png");
+        await tab.screenshot({ path: cashierShot });
+      } finally { await other.close(); }
     });
 
     // Rardiel, 30-10-2026: the logo of the company leaves the escritorio (Gamera's showed there); the portada of CyP goes to the
@@ -202,15 +246,32 @@ test("Mayo's review (26-10): Envíos, Caja de remesas, Tasas, escritorio, Soport
       assert.equal(await top(), 0, "the form is at its top after a change");
     });
 
-    await t.test("2.1.1–2.1.3: Caja de remesas finds boxes by date, operator and currency; entrega adicional and descargo", async () => {
+    await t.test("2.1.1–2.1.3: Caja de remesas finds boxes by comparative date range, operator and currency; entrega adicional and descargo", async () => {
       const caja = await openCaja(page);
       const search = caja.getByRole("form", { name: "Buscar cajas" });
-      for (const label of ["Fecha", "Operador", "Moneda"]) await field(search, label).waitFor();
-      assert.equal(await search.getByLabel("Fecha", { exact: true }).inputValue(), today);
-      // Today: only the box of Administración opened above.
-      assert.equal(await caja.locator(".remittance-cash-grid article").count(), 1);
+      for (const label of ["Desde", "Hasta", "Operador", "Moneda"]) await field(search, label).waitFor();
+      assert.equal(await search.getByLabel("Desde", { exact: true }).inputValue(), yesterday);
+      assert.equal(await search.getByLabel("Hasta", { exact: true }).inputValue(), today);
+      // All filter controls fit cleanly on the search bar at 1366x768, and bring the last 2 comparative dates immediately.
+      const [fromBox, toBox, btnBox] = await Promise.all([
+        search.getByLabel("Desde", { exact: true }).boundingBox(),
+        search.getByLabel("Hasta", { exact: true }).boundingBox(),
+        search.getByRole("button", { name: "Buscar", exact: true }).boundingBox(),
+      ]);
+      assert(fromBox && toBox && btnBox && Math.abs(fromBox.y - toBox.y) <= 6 && Math.abs(fromBox.y - btnBox.y) <= 8, `range controls and Buscar aligned on one row: ${JSON.stringify({ fromBox, toBox, btnBox })}`);
+      assert.equal(await caja.locator(".remittance-cash-grid article").count(), 2, "brings both today and yesterday comparative dates by default");
+      const comparativeDates = await caja.locator(".remittance-cash-grid article > p").allTextContents();
+      assert.match(comparativeDates[0] ?? "", new RegExp(`^${today}`));
+      assert.match(comparativeDates[1] ?? "", new RegExp(`^${yesterday}`));
+      await shot("nov04-2.1.1-rango-comparativo");
+      // Invalid range (Desde > Hasta) rejects cleanly with a clear Spanish message.
+      await search.getByLabel("Desde", { exact: true }).fill(today);
+      await search.getByLabel("Hasta", { exact: true }).fill(yesterday);
+      await search.getByRole("button", { name: "Buscar", exact: true }).click();
+      await caja.getByText("La fecha inicial no puede ser posterior a la fecha final.").waitFor();
       // Yesterday and the cashier: the box closed with its descargo and what passes to today.
-      await search.getByLabel("Fecha", { exact: true }).fill(yesterday);
+      await search.getByLabel("Desde", { exact: true }).fill(yesterday);
+      await search.getByLabel("Hasta", { exact: true }).fill(yesterday);
       await field(search, "Operador").selectOption({ label: "Cajero de Mayo" });
       await search.getByRole("button", { name: "Buscar", exact: true }).click();
       const old = caja.locator(".remittance-cash-grid article");
@@ -223,7 +284,8 @@ test("Mayo's review (26-10): Envíos, Caja de remesas, Tasas, escritorio, Soport
       await search.getByRole("button", { name: "Buscar", exact: true }).click();
       await caja.getByText(`No hay cajas del ${yesterday} con estos filtros.`).waitFor();
       // Today again, Administración: an entrega adicional of 250.00 is accumulated and expected.
-      await search.getByLabel("Fecha", { exact: true }).fill(today);
+      await search.getByLabel("Desde", { exact: true }).fill(today);
+      await search.getByLabel("Hasta", { exact: true }).fill(today);
       await field(search, "Operador").selectOption("demo-admin");
       await field(search, "Moneda").selectOption("DOP");
       await search.getByRole("button", { name: "Buscar", exact: true }).click();
@@ -368,16 +430,116 @@ test("Mayo's review (26-10): Envíos, Caja de remesas, Tasas, escritorio, Soport
       } finally { await other.close(); }
     });
 
-    await t.test("3.1.1 and 3.1.2: editing a rate saves a new row; the replaced one cannot be edited; Nuevo brings the rate in use", async () => {
+    await t.test("2.1.2 (04-11 CASO ADMIN 101026 EUR): unclosed 2026-10-10 EUR never shows 0.00 opening; closing carries 100%; pre-rule zero box shows audit note", async () => {
+      const adminCaso = await post("/api/usuarios", { role: "admin", name: "Admin Caso EUR", email: "admin-caso-eur@example.invalid", password: "Ficticia-Segura-2026!" }) as { id: string };
+      const histOp = await post("/api/usuarios", { role: "admin", name: "Admin Histórico EUR", email: "admin-hist-eur@example.invalid", password: "Ficticia-Segura-2026!" }) as { id: string };
+      await store.transaction((draft) => {
+        draft.remittances.cashSessions.push(
+          {
+            id: "caso-admin-101026-eur",
+            operatorId: adminCaso.id,
+            currency: "EUR",
+            date: "2026-10-10",
+            openingAmount: 85000,
+            openedBy: "demo-admin",
+            openedAt: "2026-10-10T13:00:00.000Z",
+            status: "open",
+          },
+          {
+            id: "hist-101026-closed",
+            operatorId: histOp.id,
+            currency: "EUR",
+            date: "2026-10-10",
+            openingAmount: 42000,
+            openedBy: "demo-admin",
+            openedAt: "2026-10-10T13:00:00.000Z",
+            status: "closed",
+            closedBy: "demo-admin",
+            closedAt: "2026-10-10T21:00:00.000Z",
+            countedAmount: 42000,
+          },
+          {
+            id: "hist-111026-zero",
+            operatorId: histOp.id,
+            currency: "EUR",
+            date: "2026-10-11",
+            openingAmount: 0,
+            openedBy: "demo-admin",
+            openedAt: "2026-10-11T13:00:00.000Z",
+            status: "closed",
+            closedBy: "demo-admin",
+            closedAt: "2026-10-11T21:00:00.000Z",
+            countedAmount: 0,
+          },
+        );
+      });
+      const caja = await openCaja(page);
+      const controls = caja.getByRole("region", { name: "Operar caja de remesas", exact: true });
+      const openingForm = controls.getByRole("form", { name: "Abrir caja", exact: true });
+      await field(openingForm, "Operador").selectOption(adminCaso.id);
+      await field(openingForm, "Moneda").selectOption("EUR");
+      const initialInput = openingForm.getByLabel("Efectivo inicial", { exact: true });
+      assert.equal(await initialInput.inputValue(), "850.00", "shows pending 2026-10-10 expected balance, never 0.00");
+      assert.equal(await initialInput.getAttribute("readonly"), "");
+      assert.equal(await openingForm.getByRole("button", { name: "Revisar apertura", exact: true }).isDisabled(), true);
+      assert.match(await openingForm.locator(".remittance-opening-source").innerText(), /Depende del cierre pendiente del 2026-10-10 \(saldo esperado: EUR 850\.00\)\./);
+      // Close the pending 2026-10-10 EUR box without discharge: today's opening immediately locks to EUR 850.00.
+      const pendingCard = caja.locator(".remittance-cash-grid article").filter({ hasText: "2026-10-10 · Abierta" });
+      await pendingCard.getByRole("button", { name: "Contar y cerrar", exact: true }).click();
+      const closeDialog = page.getByRole("dialog", { name: "Contar caja EUR" });
+      const counted = closeDialog.getByLabel("Efectivo contado", { exact: true });
+      await counted.click(); await counted.pressSequentially("850");
+      await closeDialog.getByRole("button", { name: "Revisar cierre", exact: true }).click();
+      await page.getByRole("dialog", { name: "Confirmar cierre de caja" }).getByRole("button", { name: "Confirmar", exact: true }).click();
+      await caja.locator(".remittance-cash-grid article").filter({ hasText: "2026-10-10 · Cerrada" }).waitFor();
+      assert.equal(await initialInput.inputValue(), "850.00", "locked carry from 2026-10-10 close");
+      assert.equal(await initialInput.getAttribute("readonly"), "");
+      assert.equal(await openingForm.getByRole("button", { name: "Revisar apertura", exact: true }).isDisabled(), false);
+      assert.match(await openingForm.locator(".remittance-opening-source").innerText(), /Viene del cierre del 2026-10-10\./);
+      await shot("nov04-2.1.2-caso-admin-eur");
+
+      // Pre-rule historical unlinked 0.00 opening displays an explicit audit explanation without altering ledger rows.
+      await field(openingForm, "Operador").selectOption(histOp.id);
+      const search = caja.getByRole("form", { name: "Buscar cajas" });
+      await search.getByLabel("Desde", { exact: true }).fill("2026-10-10");
+      await search.getByLabel("Hasta", { exact: true }).fill("2026-10-11");
+      await search.getByRole("button", { name: "Buscar", exact: true }).click();
+      const zeroCard = caja.locator(".remittance-cash-grid article").filter({ hasText: "2026-10-11 · Cerrada" });
+      await zeroCard.waitFor();
+      assert.match(await zeroCard.innerText(), /Cierre anterior \(2026-10-10\)[\s\S]*EUR 420\.00 · sin descargo registrado \(apertura previa a la regla automática\)/);
+      await shot("nov04-2.1.2-auditoria-historica");
+    });
+
+    await t.test("3.1.1 and 3.1.2: active rates of every currency come first, then latest registered; sticky header never clips row 1", async () => {
+      await store.transaction((draft) => {
+        const actor = { id: "demo-admin", name: "Administración", role: "admin" as const };
+        const yesterdayAt1 = new Date(Date.now() - 25 * 60 * 60 * 1000);
+        const yesterdayAt2 = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        setDailyRate(draft, actor, { currency: "EUR", rate: "62.500000", purchaseRate: "62.500000", saleRate: "64.500000", date: yesterday }, yesterdayAt1);
+        setDailyRate(draft, actor, { currency: "EUR", rate: "63.000000", purchaseRate: "63.000000", saleRate: "65.000000", date: yesterday }, yesterdayAt2);
+      });
       await post("/api/envios/tasas", { currency: "USD", rate: "59.000000", purchaseRate: "59.000000", saleRate: "61.000000", date: today });
       await post("/api/envios/tasas", { currency: "USD", rate: "60.000000", purchaseRate: "60.000000", saleRate: "62.000000", date: today });
       await reset();
       await page.getByRole("button", { name: "Configuración de administración", exact: true }).click();
       await page.getByRole("button", { name: "Tasas de cambio", exact: true }).last().click();
       const grid = page.locator(".exchange-rates-grid");
-      await grid.locator("tbody tr").first().waitFor();
+      await grid.locator("tbody tr").nth(3).waitFor();
+      // Top 2 rows are the Vigente foreign currencies (USD today, EUR yesterday — even above today's replaced USD row!),
+      // followed by Sustituida history ordered from most recent to oldest.
+      const allRows = await grid.locator("tbody tr").allInnerTexts();
+      assert.equal(allRows.length, 5);
+      assert.match(allRows[0]!, /Dólar Americano[\s\S]*Vigente[\s\S]*60\.000000[\s\S]*62\.000000/);
+      assert.match(allRows[1]!, /Euro[\s\S]*Vigente[\s\S]*63\.000000[\s\S]*65\.000000/);
+      assert.match(allRows[2]!, /Peso Dominicano[\s\S]*Vigente[\s\S]*1\.000000/);
+      assert.match(allRows[3]!, /Dólar Americano[\s\S]*Sustituida[\s\S]*59\.000000[\s\S]*61\.000000/);
+      assert.match(allRows[4]!, /Euro[\s\S]*Sustituida[\s\S]*62\.500000[\s\S]*64\.500000/);
+      const [headBox, firstRowBox] = await Promise.all([
+        grid.locator("thead").boundingBox(),
+        grid.locator("tbody tr").first().boundingBox(),
+      ]);
+      assert(headBox && firstRowBox && firstRowBox.y >= headBox.y + headBox.height - 1, `top row below sticky thead: ${JSON.stringify({ headBox, firstRowBox })}`);
       const usd = grid.locator("tbody tr").filter({ hasText: "Dólar Americano" });
-      // The history comes after the first rows: wait for both rows of the dollar before counting them.
       await usd.nth(1).waitFor();
       assert.equal(await usd.count(), 2, "the edited rate stays as its own row");
       assert.match(await usd.nth(0).innerText(), /Vigente[\s\S]*60\.000000[\s\S]*62\.000000/);
@@ -398,24 +560,26 @@ test("Mayo's review (26-10): Envíos, Caja de remesas, Tasas, escritorio, Soport
     await t.test("5.1: in a date, ← → go through day, month and year, and each part is written; from its ends they go on", async () => {
       const caja = await openCaja(page);
       const search = caja.getByRole("form", { name: "Buscar cajas" });
-      const date = search.getByLabel("Fecha", { exact: true });
+      const date = search.getByLabel("Desde", { exact: true });
+      const until = search.getByLabel("Hasta", { exact: true });
       await date.fill("2026-10-20");
       await search.getByRole("button", { name: "Mostrar/Ocultar filtros", exact: true }).focus();
       await page.keyboard.press("ArrowRight");
-      assert.equal(await date.evaluate((element: HTMLElement) => element === document.activeElement), true, "→ reaches the date");
+      assert.equal(await date.evaluate((element: HTMLElement) => element === document.activeElement), true, "→ reaches Desde");
       await page.keyboard.press("ArrowRight"); await page.keyboard.type("09");
       assert.equal(await date.inputValue(), "2026-09-20", "→ chose the month and 09 was written in it");
       // 09 moved on to the year by itself: ← ← go back to the day.
       await page.keyboard.press("ArrowLeft"); await page.keyboard.press("ArrowLeft"); await page.keyboard.type("05");
       assert.equal(await date.inputValue(), "2026-09-05", "← ← chose the day");
-      // 05 moved on to the month by itself; → goes to the year and the next → leaves for Operador.
+      // 05 moved on to the month by itself; → goes to the year and the next → leaves for Hasta, then Operador.
       await page.keyboard.press("ArrowRight"); await page.keyboard.type("2025");
       assert.equal(await date.inputValue(), "2025-09-05", "the year written");
       await page.keyboard.press("ArrowRight");
-      assert.equal(await field(search, "Operador").evaluate((element: HTMLElement) => element === document.activeElement), true, "→ from the year goes on");
-      // A click on the year chooses it.
+      assert.equal(await until.evaluate((element: HTMLElement) => element === document.activeElement), true, "→ from Desde year goes to Hasta");
+      await page.keyboard.press("ArrowLeft"); // Back to Desde year
+      // A click on the year text (around x + 62px) chooses it.
       const box = (await date.boundingBox())!;
-      await page.mouse.click(box.x + box.width * 0.42, box.y + box.height / 2);
+      await page.mouse.click(box.x + 62, box.y + box.height / 2);
       await page.keyboard.type("2024");
       assert.equal(await date.inputValue(), "2024-09-05", "the year clicked is written");
       await page.keyboard.press("ArrowLeft"); await page.keyboard.press("ArrowLeft"); await page.keyboard.press("ArrowLeft");
@@ -423,12 +587,13 @@ test("Mayo's review (26-10): Envíos, Caja de remesas, Tasas, escritorio, Soport
       await shot("5.1-fecha-por-partes");
     });
 
-    // Rardiel, 30-10-2026: the year is written from left to right (the browser showed 0002, 0020…), with its two last digits
-    // (26 is 2026) or the four; in every date of the system, the empty ones too.
-    await t.test("5.1: the year is written from left to right: 26 is 2026 and 2026 too, never 0002 or 0020", async () => {
+    // Rardiel, 30-10-2026 & Mayo 04-11-2026: the year is written from left to right (26 is 2026), clicking blank space on the right
+    // of a date filter keeps Day selected instead of hijacking Year, Backspace on Year + 25 writes 2025, end-of-month dates clamp
+    // cleanly, and filter dates across modules (e.g. Cargos) edit by parts without opening the calendar.
+    await t.test("5.1: left-to-right year, blank-space click, Backspace on year, end-of-month clamping and module filter dates", async () => {
       const caja = await openCaja(page);
       const search = caja.getByRole("form", { name: "Buscar cajas" });
-      const date = search.getByLabel("Fecha", { exact: true });
+      const date = search.getByLabel("Desde", { exact: true });
       const toggle = search.getByRole("button", { name: "Mostrar/Ocultar filtros", exact: true });
       const seen: string[] = [];
       const write = async (keys: string) => { for (const key of keys) { await page.keyboard.press(key); seen.push(await date.inputValue()); } };
@@ -438,7 +603,6 @@ test("Mayo's review (26-10): Envíos, Caja de remesas, Tasas, escritorio, Soport
       assert.deepEqual(seen, ["2026-10-20", "2025-10-20"], "one digit waits; two are 20xx");
       await write("2024");
       assert.equal(await date.inputValue(), "2024-10-20", `the four digits: ${seen.join(", ")}`);
-      // 2, 5 then 2, 0 make 2520 (the same year typed on); 2, 4 start again: 2024. Never 0002, 0020 or 0202.
       assert.deepEqual(seen, ["2026-10-20", "2025-10-20", "2025-10-20", "2520-10-20", "2520-10-20", "2024-10-20"]);
       // An empty date: day and month as always, then the year with its two digits.
       await date.fill("");
@@ -447,10 +611,44 @@ test("Mayo's review (26-10): Envíos, Caja de remesas, Tasas, escritorio, Soport
       assert.equal(await date.inputValue(), "", "no year yet");
       await write("26");
       assert.equal(await date.inputValue(), "2026-11-09", "26 is 2026");
-      // The year stays chosen: ← goes back to the month.
       await page.keyboard.press("ArrowLeft"); await page.keyboard.type("12");
       assert.equal(await date.inputValue(), "2026-12-09");
+
+      // Clicking blank space to the right of Year (dx = 100) when unfocused focuses Day (not Year!).
+      await toggle.focus();
+      await date.fill("2026-11-10");
+      const box = (await date.boundingBox())!;
+      await page.mouse.click(box.x + 100, box.y + box.height / 2);
+      await page.keyboard.type("05");
+      assert.equal(await date.inputValue(), "2026-11-05", "blank-space click writes Day 05, not Year 2005");
+      await page.keyboard.type("0925");
+      assert.equal(await date.inputValue(), "2025-09-05", "continues through Month 09 and Year 25 -> 2025");
+
+      // Clicking Year + Backspace + typing 25 writes 2025, never 0025.
+      await page.mouse.click(box.x + 62, box.y + box.height / 2);
+      await page.keyboard.press("Backspace");
+      await page.keyboard.type("26");
+      assert.equal(await date.inputValue(), "2026-09-05", "Backspace on Year + 26 -> 2026");
+
+      // End-of-month clamping: 2026-10-31 -> Month 09 -> 2026-09-30 (never wiped invalid).
+      await date.fill("2026-10-31");
+      await page.mouse.click(box.x + 34, box.y + box.height / 2);
+      await page.keyboard.type("09");
+      assert.equal(await date.inputValue(), "2026-09-30", "31 October clamps to 30 September");
       await shot("5.1-anio-de-izquierda-a-derecha");
+
+      // Module filter dates (Cargos at 1440x900) edit Day/Month/Year directly by click and arrows without calendar popup.
+      await page.setViewportSize({ width: 1440, height: 900 });
+      const cargos = await openNav("Cargos", "Cargos");
+      const fromFilter = cargos.getByLabel("Fecha Inicial:", { exact: true });
+      await fromFilter.waitFor();
+      await fromFilter.fill("2026-11-10");
+      const fBox = (await fromFilter.boundingBox())!;
+      await page.mouse.click(fBox.x + 12, fBox.y + fBox.height / 2);
+      await page.keyboard.type("041126");
+      assert.equal(await fromFilter.inputValue(), "2026-11-04");
+      await shot("nov04-5.1-filtros-cargos-1440");
+      await page.setViewportSize({ width: 1366, height: 768 });
     });
 
     await t.test("whole-field double clicks show the right cash detail from labels, amounts and empty space; filtering and refresh keep exact scope", async () => {

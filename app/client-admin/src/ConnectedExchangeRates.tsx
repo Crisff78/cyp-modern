@@ -15,6 +15,8 @@ type RateDraft = { currency: Currency; rate: string; purchaseRate: string; saleR
 // one stays, with Editar disabled. Only the row in use for each currency (the latest) can be edited.
 type RateRow = Rate & { rowId: string; status: "current" | "replaced" | "previous" };
 const rateStatus = { current: "Vigente", replaced: "Sustituida", previous: "Anterior" } as const;
+const currentCurrencyOrder: Record<Currency, number> = { USD: 0, EUR: 1, DOP: 2 };
+// Mayo, 04-11-2026: list the current rate of each currency first, followed by the latest registered historical rows.
 export function rateRows(rates: readonly Rate[], history: readonly RateChange[]): RateRow[] {
   const recorded = new Set(history.map((change) => change.id));
   // Rates saved before the history existed (or for an account that does not see it) keep their own row.
@@ -22,10 +24,15 @@ export function rateRows(rates: readonly Rate[], history: readonly RateChange[])
     ...history.map(({ id, createdAt, actorId, ...change }) => ({ ...change, id, changeId: id, updatedAt: createdAt, updatedBy: actorId, rowId: id }))]
     .sort((a, b) => b.date.localeCompare(a.date) || (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "") || a.currency.localeCompare(b.currency) || b.rowId.localeCompare(a.rowId));
   const seen = new Set<string>();
-  return rows.map((row, index) => {
-    const status = !seen.has(row.currency) ? "current" : rows.slice(0, index).some((other) => other.currency === row.currency && other.date === row.date) ? "replaced" : "previous";
+  return rows.map((row, index): RateRow => {
+    const status: RateRow["status"] = !seen.has(row.currency) ? "current" : rows.slice(0, index).some((other) => other.currency === row.currency && other.date === row.date) ? "replaced" : "previous";
     seen.add(row.currency);
     return { ...row, status };
+  }).sort((a, b) => {
+    const currentDiff = (a.status === "current" ? 0 : 1) - (b.status === "current" ? 0 : 1);
+    if (currentDiff) return currentDiff;
+    if (a.status === "current") return currentCurrencyOrder[a.currency] - currentCurrencyOrder[b.currency];
+    return b.date.localeCompare(a.date) || (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "") || currentCurrencyOrder[a.currency] - currentCurrencyOrder[b.currency] || b.rowId.localeCompare(a.rowId);
   });
 }
 const names: Record<Currency, string> = { DOP: "Peso Dominicano", USD: "Dólar Americano", EUR: "Euro" };
