@@ -169,9 +169,7 @@ test("A4 and Carta printed receipts adapt all customer receipt data into the ful
           "64,000.00",
           "Forma pago del remitente: TC",
           "Registrado por: Administración",
-          "Es importante que revise su recibo para asegurar que el número de teléfono esté correcto!",
-          "Nota: Conserve este recibo.",
-          "PARA RECLAMACIONES FAVOR COMUNICARSE A 809-555-0222",
+          "Nota: Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío.",
         ]) {
           assert(html.includes(required), `missing "${required}" in paper=${paper} output=${output} compact=${compact}`);
         }
@@ -193,6 +191,8 @@ test("A4 and Carta printed receipts adapt all customer receipt data into the ful
           "Recargo tarjeta de crédito",
           "4444",
           "999999",
+          "Es importante que revise su recibo",
+          "PARA RECLAMACIONES FAVOR COMUNICARSE",
         ]) {
           assert(!html.includes(forbidden), `unexpected "${forbidden}" in paper=${paper} output=${output} compact=${compact}`);
         }
@@ -206,14 +206,12 @@ test("A4 and Carta printed receipts adapt all customer receipt data into the ful
         assert(html.indexOf("Total pagado por el remitente: USD 1,134.00") < html.indexOf("RECIBE EN DOP:"));
         assert(html.indexOf("64,000.00") < html.indexOf("Forma pago del remitente: TC"));
         assert(html.indexOf("Forma pago del remitente: TC") < html.indexOf("Registrado por: Administración"));
-        assert(html.indexOf("Registrado por: Administración") < html.indexOf("Es importante que revise su recibo"));
-        assert(html.indexOf("Es importante que revise su recibo") < html.indexOf("Nota: Conserve este recibo."));
-        assert(html.indexOf("Nota: Conserve este recibo.") < html.indexOf("PARA RECLAMACIONES FAVOR COMUNICARSE A 809-555-0222"));
+        assert(html.indexOf("Registrado por: Administración") < html.indexOf("Nota: Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío."));
       }
     }
   }
 
-  // Fallback when company phone is empty and cancellation banner when transfer is cancelled.
+  // Unconfigured app name is omitted and cancellation banner is included when transfer is cancelled.
   const cancelledNoPhone = remittanceReceipt({
     ...sheetTransfer,
     status: "cancelled",
@@ -225,7 +223,8 @@ test("A4 and Carta printed receipts adapt all customer receipt data into the ful
   assert(!cancelledHtml.includes("Cobros y Pagos"));
   assert(cancelledHtml.includes("CANCELADO:"));
   assert(cancelledHtml.includes("Error en teléfono"));
-  assert(cancelledHtml.includes("PARA RECLAMACIONES FAVOR COMUNICARSE CON LA OFICINA"));
+  assert(cancelledHtml.includes("Nota: Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío."));
+  assert(!cancelledHtml.includes("PARA RECLAMACIONES FAVOR COMUNICARSE"));
 
   // Thermal 80mm continues rendering the POS80 customer receipt with logo, RECIBO DE ENVIO and signature line.
   const thermalHtml = receiptHtml(model, { paper: "80", compact: false, output: "graphics" });

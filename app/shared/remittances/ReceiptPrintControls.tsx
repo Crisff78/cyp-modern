@@ -66,9 +66,7 @@ function ReceiptPrintPreview({ receipt, options }: { receipt: Receipt; options: 
             {!compact && <div className="remittance-sheet-voucher-signature"><span>Recibido por: </span><span className="remittance-sheet-voucher-signature-line" aria-hidden="true" /></div>}
             <div>Registrado por: {v.registeredBy}</div>
           </div>
-          <div className="remittance-sheet-voucher-notice">{v.warningLine}</div>
           {v.footerNote && <div className="remittance-sheet-voucher-note">Nota: {v.footerNote}</div>}
-          <div className="remittance-sheet-voucher-claims">{v.claimsLine}</div>
         </div>
       </div>
     </div>;
