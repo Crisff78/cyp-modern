@@ -101,21 +101,65 @@ export async function thermalReceiptImages(document: Document, receipt: Receipt,
   const issuerLines = receiptIssuerLines(receipt.issuer, Boolean(receipt.printed));
   if (issuerLines.length) { text(issuerLines.join("\n"), regular, "center"); hasHeader = true; }
   if (hasHeader) rule();
+  const spaceGap = Math.max(0.9, textWidth(" ", regular));
+  const wrapAfterFirst = (paragraph: string, maxFirst: number): { first: string; rest: string[] } => {
+    const words = paragraph.trim().split(/\s+/u).filter(Boolean);
+    if (!words.length) return { first: "", rest: [] };
+    let first = "";
+    let idx = 0;
+    if (maxFirst >= 6) {
+      while (idx < words.length) {
+        const candidate = first ? `${first} ${words[idx]}` : words[idx];
+        if (textWidth(candidate, regular) <= maxFirst) { first = candidate; idx++; continue; }
+        if (!first && textWidth(words[idx], regular) > innerWidth && maxFirst >= 12) {
+          for (const character of Array.from(words[idx])) {
+            if (first && textWidth(first + character, regular) > maxFirst) break;
+            first += character;
+          }
+          const remainder = Array.from(words[idx]).slice(Array.from(first).length).join("");
+          if (remainder) words[idx] = remainder; else idx++;
+        }
+        break;
+      }
+    }
+    const remaining = words.slice(idx).join(" ");
+    return { first, rest: remaining ? wrap(remaining, regular) : [] };
+  };
   for (const section of receipt.sections) {
     if (!section.rows.length) continue;
     if (section.title) text(section.title, { size: 3.0, bold: true }, "left", 0.1);
     for (const [rawLabel, rawValue] of section.rows) {
       const label = `${String(rawLabel).normalize("NFC")}:`, value = String(rawValue).normalize("NFC");
-      const valueWidth = textWidth(value, regular), gap = 3;
-      if (!/[\r\n]/.test(value) && textWidth(label, bold) + gap + valueWidth <= innerWidth) {
+      const labelWidth = textWidth(label, bold), valueX = padLeft + labelWidth + spaceGap;
+      if (!/[\r\n]/.test(value) && labelWidth <= innerWidth && valueX - padLeft + textWidth(value, regular) <= innerWidth) {
         block(3.55, context => {
           context.font = fontCss(bold); context.fillText(label, padLeft, 0.15);
-          context.font = fontCss(regular); context.textAlign = "right"; context.fillText(value, rightX, 0.15);
+          if (value) { context.font = fontCss(regular); context.fillText(value, valueX, 0.15); }
         }, `${label} ${value}`);
-      } else {
+      } else if (labelWidth > innerWidth) {
         text(label, bold);
-        const wrapped = wrap(value, regular);
-        text(value, regular, wrapped.length === 1 ? "right" : "left");
+        text(value, regular, "left");
+      } else {
+        const paragraphs = value.replace(/\r\n?/g, "\n").split("\n");
+        const { first, rest } = wrapAfterFirst(paragraphs[0] ?? "", innerWidth - (valueX - padLeft));
+        const extraLines = [...rest];
+        for (const paragraph of paragraphs.slice(1)) extraLines.push(...wrap(paragraph, regular));
+        const totalLines = 1 + extraLines.length, lineHeight = regular.size * 1.18;
+        for (let start = 0; start < totalLines; start += 10) {
+          const end = Math.min(totalLines, start + 10), count = end - start;
+          block(0.15 + count * lineHeight + 0.2, context => {
+            for (let offset = 0; offset < count; offset++) {
+              const lineIndex = start + offset, y = 0.15 + offset * lineHeight;
+              if (lineIndex === 0) {
+                context.font = fontCss(bold); context.fillText(label, padLeft, y);
+                if (first) { context.font = fontCss(regular); context.fillText(first, valueX, y); }
+              } else {
+                const lineText = extraLines[lineIndex - 1];
+                if (lineText) { context.font = fontCss(regular); context.fillText(lineText, padLeft, y); }
+              }
+            }
+          }, start === 0 ? [first ? `${label} ${first}` : label, ...extraLines.slice(0, count - 1)].join("\n") : extraLines.slice(start - 1, end - 1).join("\n"));
+        }
       }
     }
     rule();

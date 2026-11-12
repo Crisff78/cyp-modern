@@ -44,7 +44,7 @@ function ReceiptPrintPreview({ receipt, options }: { receipt: Receipt; options: 
         {sections.map((section, sectionIndex) => <div key={`${section.title}-${sectionIndex}`} className={`remittance-preview-block${section.title ? "" : " is-meta"}`}>
           {section.title && <div className="remittance-preview-title">{section.title}</div>}
           {section.rows.map(([label, val], rowIndex) => <div key={`${String(label)}-${rowIndex}`} className="remittance-preview-row">
-            <span className="remittance-preview-label">{label}:</span>
+            <span className="remittance-preview-label">{label}:</span>{" "}
             <span className="remittance-preview-value">{val}</span>
           </div>)}
         </div>)}
