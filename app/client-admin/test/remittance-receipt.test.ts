@@ -118,7 +118,7 @@ test("credit card surcharge is summed into Cargo del envío on consultation view
     }
   }
 });
-test("A4 and Carta printed receipts use the standard RECIBO DE ENVIO layout with company logo, dashed header and Nota footer", () => {
+test("A4 and Carta printed receipts use the standard RECIBO DE ENVIO layout with company logo, dashed block dividers and Nota footer without adding lines to POS80", () => {
   const configuredIssuer = {
     name: "Inversiones Demo S.R.L.",
     slogan: "Tu aliado en cobros, pagos y envíos",
@@ -134,14 +134,19 @@ test("A4 and Carta printed receipts use the standard RECIBO DE ENVIO layout with
     const graphicHtml = receiptHtml(model, { paper, compact: false, output: "graphics" });
     assert(graphicHtml.includes(paper === "a4" ? "size:210mm 297mm" : "size:215.9mm 279.4mm"));
     assert(graphicHtml.includes("<img"));
-    assert(graphicHtml.includes("border-bottom:1px dashed #000"));
+    assert(graphicHtml.includes(".receipt-sheet-divided{border-bottom:1px dashed #000"));
+    assert.equal((graphicHtml.match(/receipt-sheet-divided"/g) ?? []).length, 5, `expected 5 dashed field-block dividers (below Cód. Operación, Código del Cliente, Dirección, Recibe el destinatario and Forma pago) on ${paper}`);
     for (const required of ["Inversiones Demo S.R.L.", "Tu aliado en cobros, pagos y envíos", "Av. 27 de Febrero #2131, Local 12, Santiago", "Tel. 809-555-0222 / RNC: 1-30-00100-1", "RECIBO DE ENVIO", "Fecha: ", "Envío: ", "ENV00000001", "Cód. Operación: ", "Remitente: ", "Código del Cliente: ", "Destinatario: ", "Teléfono: ", "Dirección: ", "Importes del envío", "Monto a enviar: ", "Total pagado por el remitente: ", "Recibe el destinatario: ", "Forma pago del remitente: ", "TC", "Recibido por: ", "Registrado por: ", "Administración", "<strong>Nota:</strong> Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío."]) {
       assert(graphicHtml.includes(required), `missing "${required}" in paper=${paper}`);
     }
+    const textHtml = receiptHtml(model, { paper, compact: false, output: "text" });
+    assert.equal((textHtml.match(/-{72}/g) ?? []).length, 6, `expected 1 header dashed line + 5 field-block dashed lines in ${paper} text mode`);
     for (const forbidden of ["Envío #:", "DESTINATARIO:", "MONTO A ENVIAR:", "RECIBE EN ", "PARA RECLAMACIONES FAVOR COMUNICARSE", "Es importante que revise su recibo"]) {
       assert(!graphicHtml.includes(forbidden), `unexpected "${forbidden}" in paper=${paper}`);
     }
   }
+  const pos80Html = receiptHtml(model, { paper: "80", compact: false, output: "graphics" });
+  assert(!pos80Html.includes("receipt-sheet-divided"), "POS80 thermal receipt keeps zero internal divider lines");
 });
 test("receipt confirmation rejects mismatched payment even when all other transfer fields match", () => {
   const expected = { sourceCurrency: "DOP", destinationCurrency: "DOP", amount: 90000, commissionBps: 1000, senderClientId: "sender", recipientClientId: "recipient", quote: transfer.quote,

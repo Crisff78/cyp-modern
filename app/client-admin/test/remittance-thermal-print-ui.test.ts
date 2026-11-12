@@ -152,6 +152,9 @@ for(const [name,paper,orientation,customWidthMm,customHeightMm] of [['sheet-8x4'
       await sheetPopup.emulateMedia({media:"print"});
       assert.equal(await sheetPopup.locator("header img").count(),1,`${id}: company logo rendered in header`);
       assert.equal(await sheetPopup.locator("main.thermal-image-output img").count(),0,`${id}: selectable text body`);
+      assert.equal(await sheetPopup.locator("section.receipt-sheet-divided").count(),5,`${id}: 5 dashed divider lines below field blocks`);
+      const dividedStyles=await sheetPopup.locator("section.receipt-sheet-divided").evaluateAll((nodes:Element[])=>nodes.map(node=>getComputedStyle(node).borderBottomStyle));
+      assert.deepEqual(dividedStyles,["dashed","dashed","dashed","dashed","dashed"]);
       const bodyText=await sheetPopup.locator("body").innerText();
       for(const expected of ["INVERSIONES DEMO S.R.L.","Tu aliado en cobros, pagos y envíos","Av. 27 de Febrero #2131, Local 12, Santiago","Tel. 809-555-0222 / RNC: 1-30-00100-1","RECIBO DE ENVIO","Fecha: 11/11/26 09:15 a.m.","Envío: ENV00000048","Cód. Operación: AD0B35A22F305CA2","Remitente: mayo lomb","Código del Cliente: 1111111111","Destinatario: María Rodríguez","Teléfono: 8095550100","Dirección: Calle Las Damas 18","Importes del envío","Monto a enviar: DOP 500.00","Total pagado por el remitente: DOP 594.00","Recibe el destinatario: DOP 500.00","Forma pago del remitente: TC","Recibido por:","Registrado por: Administración","Nota: Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío."])assert(bodyText.includes(expected),`${id} missing ${expected}`);
       const pdf=await sheetPopup.pdf({path:path.join(output,`${id}.pdf`),preferCSSPageSize:true,printBackground:true});
