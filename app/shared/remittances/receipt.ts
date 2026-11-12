@@ -10,6 +10,14 @@ import { receiptPrintLayout } from "./receiptPaper";
 
 const status = { pending: "Pendiente de entrega", paid: "Pagado", cancelled: "Cancelado" };
 export const defaultReceiptFooter = "Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío.";
+export const printedReceiptHeading = "RECIBO DE ENVIO";
+export const signatureLineToken = "____________________________";
+export const isSignatureRow = (label: unknown, value: unknown) => String(label) === "Recibido por" && String(value) === signatureLineToken;
+export const isPrintedHighlightRow = (label: unknown) => {
+  const key = String(label);
+  return key === "Envío" || key === "Remitente" || key === "Destinatario" || key === "Recibe el destinatario";
+};
+export const cleanReceiptFooterNote = (footer: string) => footer.trim().replace(/^nota:\s*/i, "");
 export type Receipt = { reference: string; date: string; status: Transfer["status"]; issuer: ReceiptIssuer; sections: OutputSection[]; footer: string; printed?: boolean };
 
 export const isGenericAppIssuerName = (name?: string) => !name?.trim() || /^cobros y pagos$/i.test(name.trim());
@@ -20,23 +28,57 @@ const isUnconfiguredIssuer = (issuer?: ReceiptIssuer) => Boolean(
   ![issuer.slogan, issuer.address, issuer.phone, issuer.rnc].some((value) => value?.trim()),
 );
 
-/** Ordered company header lines below the company name: Eslogan (if set), Dirección, Teléfono, RNC (if set), and non-.local email on consultation view. */
+export function formatPrintedDate(value?: string): string {
+  if (!value) return "—";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "—";
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Santo_Domingo",
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  }).formatToParts(parsed);
+  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? "";
+  const period = /^p/i.test(get("dayPeriod")) ? "p.m." : "a.m.";
+  return `${get("day")}/${get("month")}/${get("year")} ${get("hour")}:${get("minute")} ${period}`;
+}
+
+export function printedPaymentMethod(payment?: Transfer["payment"]): string {
+  if (!payment) return "No registrada";
+  if (payment.method === "card") {
+    if (payment.cardType === "credit") return "TC";
+    if (payment.cardType === "debit") return "TD";
+    return "Tarjeta";
+  }
+  return paymentLabel(payment);
+}
+
+/** Ordered company header lines below the company name: Eslogan (if set), Dirección, Tel. + RNC combined on printed receipts, and non-.local email on consultation view. */
 export function receiptIssuerLines(issuer: ReceiptIssuer, printed = false): string[] {
   const slogan = issuer.slogan?.trim() ?? "";
   const address = issuer.address?.trim() ?? "";
   const rawPhone = issuer.phone?.trim() ?? "";
-  const phone = rawPhone ? (/^tel/i.test(rawPhone) ? rawPhone : `Tel.: ${rawPhone}`) : "";
   const rawRnc = issuer.rnc?.trim() ?? "";
+  if (printed) {
+    const phone = rawPhone ? (/^tel/i.test(rawPhone) ? rawPhone.replace(/^tel\.?:\s*/i, "Tel. ") : `Tel. ${rawPhone}`) : "";
+    const rnc = rawRnc ? (/^rnc\b/i.test(rawRnc) ? rawRnc : `RNC: ${rawRnc}`) : "";
+    const phoneAndRnc = [phone, rnc].filter(Boolean).join(" / ");
+    return [slogan, address, phoneAndRnc].filter(Boolean);
+  }
+  const phone = rawPhone ? (/^tel/i.test(rawPhone) ? rawPhone : `Tel.: ${rawPhone}`) : "";
   const rnc = rawRnc ? (/^rnc\b/i.test(rawRnc) ? rawRnc : `RNC: ${rawRnc}`) : "";
-  const email = !printed && issuer.email && !/\.local$/i.test(issuer.email.trim()) ? issuer.email.trim() : "";
+  const email = issuer.email && !/\.local$/i.test(issuer.email.trim()) ? issuer.email.trim() : "";
   return [slogan, address, phone, rnc, email].filter(Boolean);
 }
 
 /**
  * Explicit customer-facing allowlist. The manager's share and the exchange gain never enter the receipt.
- * printed: reorganized customer invoice — company header always at the very top (Nombre de empresa, Eslogan if set,
- * Dirección, Teléfono, RNC if set), followed by Fecha + Envío + Código de operación, minimal sender/recipient data,
- * aligned amounts, and Registrado por at the bottom. Never prints the app's own generic name ("Cobros y Pagos").
+ * printed: customer invoice layout — company header at the very top with dashed separator and RECIBO DE ENVIO,
+ * followed by Fecha / Envío / Cód. Operación, Remitente, Destinatario, Importes del envío, Forma pago del remitente,
+ * Recibido por signature line, Registrado por and Nota footer without internal divider lines.
  */
 export function remittanceReceipt(transfer: Transfer, fallback?: ReceiptIssuer, operator = "—", registeredBy = transfer.registeredBy === transfer.sendingUserId ? operator : "—", printed = false): Receipt {
   const rawIssuer = (transfer.receiptIssuer && (!isUnconfiguredIssuer(transfer.receiptIssuer) || !fallback || isUnconfiguredIssuer(fallback)))
@@ -51,13 +93,13 @@ export function remittanceReceipt(transfer: Transfer, fallback?: ReceiptIssuer, 
     ...(logoDataUrl ? { logoDataUrl } : {}),
     footerNote: transfer.receiptIssuer?.footerNote || rawIssuer.footerNote || defaultReceiptFooter,
   };
-  const date = formatDate(transfer.createdAt);
+  const date = printed ? formatPrintedDate(transfer.createdAt) : formatDate(transfer.createdAt);
   const party = (side: "sender" | "recipient", title: string): OutputSection => {
     const contact = transfer[`${side}Contact`];
     if (printed) {
       return side === "sender"
-        ? { title, columns: ["Dato", "Valor"], rows: [["Nombre", contact?.name ?? "Contacto histórico no registrado"], ["Código del cliente", contact?.code || "No registrado"]] }
-        : { title, columns: ["Dato", "Valor"], rows: [["Nombre", contact?.name ?? "Contacto histórico no registrado"], ["Teléfono", contact?.phone || contact?.cellular || "No registrado"], ["Dirección", contact?.address || "No registrada"]] };
+        ? { title: "", columns: ["Dato", "Valor"], rows: [["Remitente", contact?.name ?? "Contacto histórico no registrado"], ["Código del Cliente", contact?.code || "No registrado"]] }
+        : { title: "", columns: ["Dato", "Valor"], rows: [["Destinatario", contact?.name ?? "Contacto histórico no registrado"], ["Teléfono", contact?.phone || contact?.cellular || "No registrado"], ["Dirección", contact?.address || "No registrada"]] };
     }
     return { title, columns: ["Dato", "Valor"], rows: [["Nombre", contact?.name ?? "Contacto histórico no registrado"],
       ["Código del cliente", contact?.code || "No registrado"], ["Identificación", contact?.identification || "No registrada"], ["Teléfono", contact?.phone || contact?.cellular || "No registrado"],
@@ -80,7 +122,6 @@ export function remittanceReceipt(transfer: Transfer, fallback?: ReceiptIssuer, 
   const shippingCharge = Number(BigInt(transfer.commissionAmount) + BigInt(payment?.cardSurchargeAmount ?? 0));
   const amounts: (string | number)[][] = printed ? [
     ["Monto a enviar", formatMoney(transfer.amount, transfer.sourceCurrency)],
-    ["Cargo del envío", formatMoney(shippingCharge, transfer.sourceCurrency)],
     ["Total pagado por el remitente", formatMoney(totalPaidForTransfer(transfer), transfer.sourceCurrency)],
     ...(delivery ? [["Cargo de entrega", formatMoney(delivery.deliveryCommissionAmount, transfer.destinationCurrency)]] : []),
     ["Recibe el destinatario", formatMoney(payoutOf(transfer), transfer.destinationCurrency)],
@@ -102,13 +143,12 @@ export function remittanceReceipt(transfer: Transfer, fallback?: ReceiptIssuer, 
     : [["Forma de pago", "No registrada en esta operación histórica"]];
   return { reference: transfer.reciboReference, date, status: transfer.status, issuer, footer: issuer.footerNote || defaultReceiptFooter, printed,
     sections: printed ? [
-      { title: "", columns: ["Dato", "Valor"], rows: [["Fecha", date], ["Envío", transfer.envioReference], ["Código de operación", transfer.operatingCode]] },
+      { title: "", columns: ["Dato", "Valor"], rows: [["Fecha", date], ["Envío", transfer.envioReference], ["Cód. Operación", transfer.operatingCode]] },
       party("sender", "Remitente"), party("recipient", "Destinatario"),
       { title: "Importes del envío", columns: ["Dato", "Valor"], rows: amounts },
-      { title: "Pago del remitente", columns: ["Dato", "Valor"], rows: paymentRows },
-      ...(transfer.paidAt ? [{ title: "Entrega al destinatario", columns: ["Dato", "Valor"], rows: [["Fecha de entrega", formatDate(transfer.paidAt)]] }] : []),
-      ...(transfer.cancelledAt ? [{ title: "Cancelación", columns: ["Dato", "Valor"], rows: [["Fecha", formatDate(transfer.cancelledAt)], ["Motivo", transfer.cancelReason || "—"], ...(transfer.refund ? [["Referencia de devolución", transfer.refund.reference]] : [])] }] : []),
-      ...(transfer.note ? [{ title: "Nota", columns: ["Dato", "Valor"], rows: [["Nota de la operación", transfer.note]] }] : []),
+      { title: "", columns: ["Dato", "Valor"], rows: [["Forma pago del remitente", printedPaymentMethod(payment)]] },
+      ...(transfer.cancelledAt ? [{ title: "Cancelación", columns: ["Dato", "Valor"], rows: [["Fecha", formatPrintedDate(transfer.cancelledAt)], ["Motivo", transfer.cancelReason || "—"], ...(transfer.refund ? [["Referencia de devolución", transfer.refund.reference]] : [])] }] : []),
+      { title: "", columns: ["Dato", "Valor"], rows: [["Recibido por", signatureLineToken]] },
       { title: "", columns: ["Dato", "Valor"], rows: [["Registrado por", registeredBy]] },
     ] : [
       { title: "Registro del recibo", columns: ["Dato", "Valor"], rows: [["Envío", transfer.envioReference], ["Código de operación", transfer.operatingCode], ["Estado", status[transfer.status]], ["Operador del envío", operator], ["Registrado por", registeredBy]] },
@@ -124,7 +164,7 @@ export function remittanceReceipt(transfer: Transfer, fallback?: ReceiptIssuer, 
 
 export function receiptSections(receipt: Receipt, compact: boolean) {
   return compact ? receipt.sections.filter((section) => section.title !== "Nota" && !section.title.startsWith("Tasas aplicadas")).map((section) => ({ ...section,
-    rows: section.title === "" ? section.rows.filter(([label]) => label === "Fecha" || label === "Envío" || label === "Registrado por")
+    rows: section.title === "" ? section.rows.filter(([label]) => label === "Fecha" || label === "Envío" || label === "Remitente" || label === "Destinatario" || label === "Teléfono" || label === "Forma pago del remitente" || label === "Registrado por")
       : section.title === "Registro del recibo" ? section.rows.filter(([label]) => label === "Envío" || label === "Estado")
       : section.title === "Remitente" || section.title === "Destinatario" ? section.rows.filter(([label]) => label === "Nombre" || label === "Teléfono") : section.rows,
   })).filter((section) => section.rows.length > 0) : receipt.sections;
@@ -139,19 +179,25 @@ export function receiptHtml(receipt: Receipt, options: import("./ReceiptPrintCon
     return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${escapeHtml(docTitle)}</title><style>@page{size:${layout.pageSize};margin:${layout.marginMm}mm}*{box-sizing:border-box}html{margin:0;padding:0;background:#e2e8f0}body{margin:0;padding:0;width:100%;color:#000;background:#fff;${layout.widthMm === undefined ? "" : `max-width:${layout.widthMm}mm;`}}@media screen{body{box-shadow:0 2px 10px rgba(15,23,42,.12)}}@media print{html,body{background:#fff;box-shadow:none}}pre{font:${fontSize}px/1.45 "Courier New",Courier,monospace;letter-spacing:0;white-space:pre-wrap;margin:0;padding:0;tab-size:2}</style></head><body><pre aria-label="Recibo en formato de texto">${escapeHtml(receiptText({...receipt,sections},columns))}</pre></body></html>`;
   }
   const { issuer } = receipt;
+  const isPrinted = Boolean(receipt.printed);
   const graphicWidthMm = thermal ? thermal.graphicWidthMm : layout.widthMm;
   const logo = issuer.logoDataUrl && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(issuer.logoDataUrl) && issuer.logoDataUrl.length <= 24576 ? `<img alt="" src="${escapeHtml(issuer.logoDataUrl)}">` : "";
-  const issuerLines = receiptIssuerLines(issuer, Boolean(receipt.printed));
+  const issuerLines = receiptIssuerLines(issuer, isPrinted);
   const hasHeader = Boolean(logo || issuer.name || issuerLines.length);
   const headerHtml = hasHeader ? `<header>${logo}${issuer.name ? `<h1>${escapeHtml(issuer.name)}</h1>` : ""}${issuerLines.map((line) => `<p>${escapeHtml(line)}</p>`).join("")}</header>` : "";
-  const refHtml = receipt.printed ? "" : `<div class="ref"><span>Recibo ${escapeHtml(receipt.reference)}</span><span>${escapeHtml(receipt.date)}</span></div>`;
+  const refHtml = isPrinted ? `<div class="receipt-doc-title">${escapeHtml(printedReceiptHeading)}</div>` : `<div class="ref"><span>Recibo ${escapeHtml(receipt.reference)}</span><span>${escapeHtml(receipt.date)}</span></div>`;
+  const cleanFooter = cleanReceiptFooterNote(receipt.footer);
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${escapeHtml(docTitle)}</title><style>
-    @page{size:${layout.pageSize};margin:${layout.marginMm}mm}*{box-sizing:border-box}html{margin:0;padding:0;background:#e2e8f0}body{font:12.5px/1.25 Arial,sans-serif;color:#000;background:#fff;margin:0;padding:0;width:100%;${graphicWidthMm === undefined ? "max-width:100%;" : `max-width:${graphicWidthMm}mm;`}}@media screen{body{box-shadow:0 2px 10px rgba(15,23,42,.12)}}header{text-align:center;border-bottom:1.5px solid #31534e;padding:4px 0}header img{max-width:120px;max-height:48px;display:block;margin:0 auto 2px}h1{font-size:16px;margin:2px 0}h2{font-size:13px;margin:4px 0 2px;border-bottom:1px solid #bbb;padding-bottom:2px;break-after:avoid}p{margin:1px 0;white-space:pre-wrap;overflow-wrap:anywhere}.ref{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;padding:4px 0;font-weight:bold;overflow-wrap:anywhere}section{break-inside:auto}.receipt-meta-block{padding:2px 0;border-bottom:1px solid #bbb}.receipt-meta-block:last-child{border-bottom:0;border-top:1px solid #bbb;margin-top:3px}dl{margin:2px 0}dl>div{padding:1.5px 0;border-bottom:1px solid #eee;break-inside:avoid;text-align:left;overflow-wrap:anywhere}.receipt-meta-block dl{margin:1px 0}.receipt-meta-block dl>div:last-child{border-bottom:0}dt{display:inline;font-weight:700}dd{display:inline;margin:0;text-align:left;overflow-wrap:anywhere;white-space:pre-wrap}footer{border-top:1.5px solid #31534e;margin-top:4px;padding-top:4px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px}
-    ${thermal ? `body{font-size:11px;line-height:1.2}header{padding:2px 0}h1{font-size:13.5px;margin:1px 0}h2{font-size:11.5px;margin:2px 0 1px;padding-bottom:1px}.ref{flex-direction:column;gap:1px;padding:2px 0}header img{max-width:36mm;max-height:11mm}dl{margin:1px 0}dl>div{padding:1px 0}footer{margin-top:3px;padding-top:3px;font-size:10px}` : ""}
+    @page{size:${layout.pageSize};margin:${layout.marginMm}mm}*{box-sizing:border-box}html{margin:0;padding:0;background:#e2e8f0}body{font:12.5px/1.28 Arial,sans-serif;color:#000;background:#fff;margin:0;padding:0;width:100%;${graphicWidthMm === undefined ? "max-width:100%;" : `max-width:${graphicWidthMm}mm;`}}@media screen{body{box-shadow:0 2px 10px rgba(15,23,42,.12)}}header{text-align:center;border-bottom:${isPrinted ? "1px dashed #000" : "1.5px solid #31534e"};padding:4px 0}header img{max-width:120px;max-height:48px;display:block;margin:0 auto 2px}h1{font-size:15px;margin:2px 0}.receipt-doc-title{text-align:center;font-weight:700;font-size:13.5px;margin:4px 0 2px}h2{font-size:${isPrinted ? "12.5px" : "13px"};font-weight:${isPrinted ? "400" : "700"};margin:${isPrinted ? "0" : "4px 0 2px"};border-bottom:${isPrinted ? "0" : "1px solid #bbb"};padding-bottom:${isPrinted ? "0" : "2px"};break-after:avoid}p{margin:1px 0;white-space:pre-wrap;overflow-wrap:anywhere}.ref{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;padding:4px 0;font-weight:bold;overflow-wrap:anywhere}section{break-inside:auto}${isPrinted ? "section+section{margin-top:8px}" : ".receipt-meta-block{padding:2px 0;border-bottom:1px solid #bbb}.receipt-meta-block:last-child{border-bottom:0;border-top:1px solid #bbb;margin-top:3px}"}dl{margin:${isPrinted ? "0" : "2px 0"}}dl>div{padding:${isPrinted ? "1px 0" : "1.5px 0"};border-bottom:${isPrinted ? "0" : "1px solid #eee"};break-inside:avoid;text-align:left;overflow-wrap:anywhere}dt{display:inline;font-weight:${isPrinted ? "400" : "700"}}dd{display:inline;margin:0;text-align:left;overflow-wrap:anywhere;white-space:pre-wrap}.receipt-row-highlight dt,.receipt-row-highlight dd{font-weight:700}.receipt-row-envio dt,.receipt-row-envio dd{font-size:1.06em}.receipt-signature-row{padding-top:6px}.receipt-signature-line{display:inline-block;width:62%;min-width:96px;border-bottom:1px solid #000;height:0.85em;vertical-align:baseline}footer{border-top:${isPrinted ? "0" : "1.5px solid #31534e"};margin-top:${isPrinted ? "1px" : "4px"};padding-top:${isPrinted ? "0" : "4px"};white-space:pre-wrap;overflow-wrap:anywhere;font-size:${isPrinted ? "12px" : "11px"}}
+    ${thermal ? `body{font-size:11px;line-height:1.22}header{padding:2px 0}h1{font-size:13px;margin:1px 0}.receipt-doc-title{font-size:12px;margin:2px 0 1px}h2{font-size:${isPrinted ? "11px" : "11.5px"};margin:${isPrinted ? "0" : "2px 0 1px"}}.ref{flex-direction:column;gap:1px;padding:2px 0}header img{max-width:36mm;max-height:11mm}${isPrinted ? "section+section{margin-top:6px}" : ""}footer{font-size:${isPrinted ? "11px" : "10px"}}` : ""}
     ${layout.landscape && (layout.widthMm ?? 200) >= 180 ? ".receipt-sections{columns:2;column-gap:8mm}" : ""}
-    ${options.compact ? "header{padding:2px 0}section h2{margin:2px 0 1px}dl{margin:1px 0}dl>div{padding:1px 0}footer{margin-top:3px;padding-top:3px}" : ""}
+    ${options.compact ? "header{padding:2px 0}section+section{margin-top:4px}" : ""}
     @media print{html,body{background:#fff;box-shadow:none}.thermal-print-help{display:none!important}}.thermal-image-output{margin:0;padding:0;width:100%}
-    </style></head><body>${refHtml}${headerHtml}<main class="receipt-sections">${sections.filter((s) => s.rows.length > 0).map((section) => `<section${section.title ? "" : ' class="receipt-meta-block"'}>${section.title ? `<h2>${escapeHtml(section.title)}</h2>` : ""}<dl>${section.rows.map(([label, value]) => `<div><dt>${escapeHtml(label)}: </dt><dd>${escapeHtml(value)}</dd></div>`).join("")}</dl></section>`).join("")}</main>${receipt.footer.trim() ? `<footer>${escapeHtml(receipt.footer)}</footer>` : ""}</body></html>`;
+    </style></head><body>${isPrinted ? `${headerHtml}${refHtml}` : `${refHtml}${headerHtml}`}<main class="receipt-sections">${sections.filter((s) => s.rows.length > 0).map((section) => `<section${section.title ? "" : ' class="receipt-meta-block"'}>${section.title ? `<h2>${escapeHtml(section.title)}</h2>` : ""}<dl>${section.rows.map(([label, value]) => {
+      if (isSignatureRow(label, value)) return `<div class="receipt-signature-row"><dt>${escapeHtml(label)}: </dt><dd><span class="receipt-signature-line" aria-hidden="true"></span></dd></div>`;
+      const rowClass = isPrinted && isPrintedHighlightRow(label) ? ` class="receipt-row-highlight${label === "Envío" ? " receipt-row-envio" : ""}"` : "";
+      return `<div${rowClass}><dt>${escapeHtml(label)}: </dt><dd>${escapeHtml(value)}</dd></div>`;
+    }).join("")}</dl></section>`).join("")}</main>${cleanFooter ? `<footer>${isPrinted ? `<strong>Nota:</strong> ${escapeHtml(cleanFooter)}` : escapeHtml(receipt.footer)}</footer>` : ""}</body></html>`;
 }
 export function printRemittanceReceipt(receipt: Receipt, options?: import("./ReceiptPrintControls").ReceiptPrintOptions) {
   const thermal = thermalReceiptSize(options?.paper);
