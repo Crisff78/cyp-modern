@@ -119,7 +119,7 @@ test("credit card surcharge is summed into Cargo del envío on consultation view
   }
 });
 
-test("A4 and Carta printed receipts render the full-sheet voucher layout in graphics and text modes without altering thermal rolls", () => {
+test("A4 and Carta printed receipts adapt all customer receipt data into the full-sheet voucher layout without altering thermal rolls", () => {
   const sheetTransfer: Transfer = {
     ...transfer,
     envioReference: "ENV00000064",
@@ -154,48 +154,61 @@ test("A4 and Carta printed receipts render the full-sheet voucher layout in grap
         if (output === "graphics") assert(html.includes("Inversiones Demo S.R.L."));
         else assert(html.includes("I N V E R S I O N E S   D E M O   S . R . L ."));
         for (const required of [
+          "Tu aliado en cobros, pagos y envíos",
+          "Av. 27 de Febrero #2131, Local 12, Santiago",
+          "Tel. 809-555-0222 / RNC: 1-30-00100-1",
+          "RECIBO DE ENVIO",
           "Envío #: ENV00000064",
           "Fecha  : 01-09-2026 |11:58:10",
-          "Colmado La Esquina",
+          "Remitente: O&#39;Connor &lt;sender&gt;",
+          "DESTINATARIO: Colmado La Esquina",
           "TELÉFONO: 8095550100",
-          "MONTO: USD 1,000.00",
+          "MONTO A ENVIAR: USD 1,000.00",
+          "Total pagado por el remitente: USD 1,134.00",
           "RECIBE EN DOP:",
           "64,000.00",
+          "Forma pago del remitente: TC",
+          "Registrado por: Administración",
           "Es importante que revise su recibo para asegurar que el número de teléfono esté correcto!",
+          "Nota: Conserve este recibo.",
           "PARA RECLAMACIONES FAVOR COMUNICARSE A 809-555-0222",
         ]) {
           assert(html.includes(required), `missing "${required}" in paper=${paper} output=${output} compact=${compact}`);
         }
+        if (!compact) {
+          for (const detail of ["Cód. Operación: OP-QA-123", "Código del Cliente: CL1", "DIRECCIÓN: Calle El Conde 24", "Recibido por:"]) {
+            assert(html.includes(detail), `missing "${detail}" in full mode paper=${paper} output=${output}`);
+          }
+        } else {
+          for (const omitted of ["Cód. Operación:", "Código del Cliente:", "DIRECCIÓN:", "Recibido por:"]) {
+            assert(!html.includes(omitted), `unexpected "${omitted}" in compact mode paper=${paper} output=${output}`);
+          }
+        }
         for (const forbidden of [
           "<img",
-          "RECIBO DE ENVIO",
-          "Tu aliado en cobros",
-          "Av. 27 de Febrero",
-          "1-30-00100-1",
-          "RNC:",
-          "OP-QA-123",
-          "O&#39;Connor",
-          "Remitente",
-          "Código del Cliente",
-          "Calle El Conde 24",
-          "Total pagado por el remitente",
+          "admin@cyp.local",
+          "REC00000001",
+          "Operador Interno",
           "Cargo del envío",
-          "Forma pago del remitente",
-          "Recibido por",
-          "Registrado por",
-          "Conserve este recibo",
+          "Recargo tarjeta de crédito",
           "4444",
           "999999",
         ]) {
           assert(!html.includes(forbidden), `unexpected "${forbidden}" in paper=${paper} output=${output} compact=${compact}`);
         }
+        assert(html.indexOf("RECIBO DE ENVIO") < html.indexOf("Envío #: ENV00000064"));
         assert(html.indexOf("Envío #: ENV00000064") < html.indexOf("Fecha  : 01-09-2026 |11:58:10"));
-        assert(html.indexOf("Fecha  : 01-09-2026 |11:58:10") < html.indexOf("Colmado La Esquina"));
-        assert(html.indexOf("Colmado La Esquina") < html.indexOf("TELÉFONO: 8095550100"));
-        assert(html.indexOf("TELÉFONO: 8095550100") < html.indexOf("MONTO: USD 1,000.00"));
-        assert(html.indexOf("MONTO: USD 1,000.00") < html.indexOf("RECIBE EN DOP:"));
-        assert(html.indexOf("64,000.00") < html.indexOf("Es importante que revise su recibo"));
-        assert(html.indexOf("Es importante que revise su recibo") < html.indexOf("PARA RECLAMACIONES FAVOR COMUNICARSE A 809-555-0222"));
+        assert(html.indexOf("Fecha  : 01-09-2026 |11:58:10") < html.indexOf("Remitente:"));
+        assert(html.indexOf("Remitente:") < html.indexOf("DESTINATARIO: Colmado La Esquina"));
+        assert(html.indexOf("DESTINATARIO: Colmado La Esquina") < html.indexOf("TELÉFONO: 8095550100"));
+        assert(html.indexOf("TELÉFONO: 8095550100") < html.indexOf("MONTO A ENVIAR: USD 1,000.00"));
+        assert(html.indexOf("MONTO A ENVIAR: USD 1,000.00") < html.indexOf("Total pagado por el remitente: USD 1,134.00"));
+        assert(html.indexOf("Total pagado por el remitente: USD 1,134.00") < html.indexOf("RECIBE EN DOP:"));
+        assert(html.indexOf("64,000.00") < html.indexOf("Forma pago del remitente: TC"));
+        assert(html.indexOf("Forma pago del remitente: TC") < html.indexOf("Registrado por: Administración"));
+        assert(html.indexOf("Registrado por: Administración") < html.indexOf("Es importante que revise su recibo"));
+        assert(html.indexOf("Es importante que revise su recibo") < html.indexOf("Nota: Conserve este recibo."));
+        assert(html.indexOf("Nota: Conserve este recibo.") < html.indexOf("PARA RECLAMACIONES FAVOR COMUNICARSE A 809-555-0222"));
       }
     }
   }
