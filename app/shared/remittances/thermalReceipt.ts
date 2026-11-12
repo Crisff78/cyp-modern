@@ -1,4 +1,4 @@
-import { receiptIssuerLines, type Receipt } from "./receipt";
+import { cleanReceiptFooterNote, isPrintedHighlightRow, isSignatureRow, printedReceiptHeading, receiptIssuerLines, type Receipt } from "./receipt";
 export { thermalReceiptSize } from "./receiptPaper";
 
 // Draw glyphs in the browser, not with the printer's resident fonts/code page.
@@ -62,10 +62,20 @@ export async function thermalReceiptImages(document: Document, receipt: Receipt,
     }
   };
   const rule = () => block(1, context => { context.lineWidth = 0.2; context.beginPath(); context.moveTo(padLeft, 0.5); context.lineTo(rightX, 0.5); context.stroke(); }, "Separador");
+  const dashedRule = () => block(1.4, context => {
+    context.lineWidth = 0.22;
+    context.setLineDash([0.9, 0.65]);
+    context.beginPath();
+    context.moveTo(padLeft, 0.7);
+    context.lineTo(rightX, 0.7);
+    context.stroke();
+    context.setLineDash([]);
+  }, "Separador punteado");
 
-  if (!receipt.printed) { text(`Recibo ${receipt.reference}`, bold); text(receipt.date); }
+  const isPrinted = Boolean(receipt.printed);
+  if (!isPrinted) { text(`Recibo ${receipt.reference}`, bold); text(receipt.date); }
   const logo = receipt.issuer.logoDataUrl;
-  let hasHeader = !receipt.printed;
+  let hasHeader = !isPrinted;
   if (logo && logo.length <= 24576 && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(logo)) {
     const image = document.createElement("img");
     await new Promise<void>(resolve => {
@@ -97,12 +107,17 @@ export async function thermalReceiptImages(document: Document, receipt: Receipt,
       hasHeader = true;
     }
   }
-  if (receipt.issuer.name) { text(receipt.issuer.name, { size: 3.3, bold: true }, "center", 0.05); hasHeader = true; }
-  const issuerLines = receiptIssuerLines(receipt.issuer, Boolean(receipt.printed));
+  if (receipt.issuer.name) { text(receipt.issuer.name, { size: isPrinted ? 3.2 : 3.3, bold: true }, "center", 0.05); hasHeader = true; }
+  const issuerLines = receiptIssuerLines(receipt.issuer, isPrinted);
   if (issuerLines.length) { text(issuerLines.join("\n"), regular, "center"); hasHeader = true; }
-  if (hasHeader) rule();
+  if (isPrinted) {
+    if (hasHeader) dashedRule();
+    text(printedReceiptHeading, { size: 3.15, bold: true }, "center", 0.15);
+  } else if (hasHeader) {
+    rule();
+  }
   const spaceGap = Math.max(0.9, textWidth(" ", regular));
-  const wrapAfterFirst = (paragraph: string, maxFirst: number): { first: string; rest: string[] } => {
+  const wrapAfterFirst = (paragraph: string, maxFirst: number, font: Font = regular): { first: string; rest: string[] } => {
     const words = paragraph.trim().split(/\s+/u).filter(Boolean);
     if (!words.length) return { first: "", rest: [] };
     let first = "";
@@ -110,10 +125,10 @@ export async function thermalReceiptImages(document: Document, receipt: Receipt,
     if (maxFirst >= 6) {
       while (idx < words.length) {
         const candidate = first ? `${first} ${words[idx]}` : words[idx];
-        if (textWidth(candidate, regular) <= maxFirst) { first = candidate; idx++; continue; }
-        if (!first && textWidth(words[idx], regular) > innerWidth && maxFirst >= 12) {
+        if (textWidth(candidate, font) <= maxFirst) { first = candidate; idx++; continue; }
+        if (!first && textWidth(words[idx], font) > innerWidth && maxFirst >= 12) {
           for (const character of Array.from(words[idx])) {
-            if (first && textWidth(first + character, regular) > maxFirst) break;
+            if (first && textWidth(first + character, font) > maxFirst) break;
             first += character;
           }
           const remainder = Array.from(words[idx]).slice(Array.from(first).length).join("");
@@ -123,48 +138,87 @@ export async function thermalReceiptImages(document: Document, receipt: Receipt,
       }
     }
     const remaining = words.slice(idx).join(" ");
-    return { first, rest: remaining ? wrap(remaining, regular) : [] };
+    return { first, rest: remaining ? wrap(remaining, font) : [] };
   };
-  for (const section of receipt.sections) {
-    if (!section.rows.length) continue;
-    if (section.title) text(section.title, { size: 3.0, bold: true }, "left", 0.1);
-    for (const [rawLabel, rawValue] of section.rows) {
-      const label = `${String(rawLabel).normalize("NFC")}:`, value = String(rawValue).normalize("NFC");
-      const labelWidth = textWidth(label, bold), valueX = padLeft + labelWidth + spaceGap;
-      if (!/[\r\n]/.test(value) && labelWidth <= innerWidth && valueX - padLeft + textWidth(value, regular) <= innerWidth) {
-        block(3.55, context => {
-          context.font = fontCss(bold); context.fillText(label, padLeft, 0.15);
-          if (value) { context.font = fontCss(regular); context.fillText(value, valueX, 0.15); }
-        }, `${label} ${value}`);
-      } else if (labelWidth > innerWidth) {
-        text(label, bold);
-        text(value, regular, "left");
-      } else {
-        const paragraphs = value.replace(/\r\n?/g, "\n").split("\n");
-        const { first, rest } = wrapAfterFirst(paragraphs[0] ?? "", innerWidth - (valueX - padLeft));
-        const extraLines = [...rest];
-        for (const paragraph of paragraphs.slice(1)) extraLines.push(...wrap(paragraph, regular));
-        const totalLines = 1 + extraLines.length, lineHeight = regular.size * 1.18;
-        for (let start = 0; start < totalLines; start += 10) {
-          const end = Math.min(totalLines, start + 10), count = end - start;
-          block(0.15 + count * lineHeight + 0.2, context => {
-            for (let offset = 0; offset < count; offset++) {
-              const lineIndex = start + offset, y = 0.15 + offset * lineHeight;
-              if (lineIndex === 0) {
-                context.font = fontCss(bold); context.fillText(label, padLeft, y);
-                if (first) { context.font = fontCss(regular); context.fillText(first, valueX, y); }
-              } else {
-                const lineText = extraLines[lineIndex - 1];
-                if (lineText) { context.font = fontCss(regular); context.fillText(lineText, padLeft, y); }
-              }
+  const renderLabeledText = (labelText: string, valueText: string, labelFont: Font, valueFont: Font, topExtra = 0) => {
+    const rowGap = Math.max(0.9, textWidth(" ", valueFont));
+    const labelWidth = textWidth(labelText, labelFont), valueX = padLeft + labelWidth + rowGap;
+    const baseHeight = valueFont.size > regular.size ? 3.85 : 3.55;
+    if (!/[\r\n]/.test(valueText) && labelWidth <= innerWidth && valueX - padLeft + textWidth(valueText, valueFont) <= innerWidth) {
+      block(topExtra + baseHeight, context => {
+        const y = 0.15 + topExtra;
+        context.font = fontCss(labelFont); context.fillText(labelText, padLeft, y);
+        if (valueText) { context.font = fontCss(valueFont); context.fillText(valueText, valueX, y); }
+      }, `${labelText} ${valueText}`);
+    } else if (labelWidth > innerWidth) {
+      text(labelText, labelFont, "left", topExtra);
+      text(valueText, valueFont, "left");
+    } else {
+      const paragraphs = valueText.replace(/\r\n?/g, "\n").split("\n");
+      const { first, rest } = wrapAfterFirst(paragraphs[0] ?? "", innerWidth - (valueX - padLeft), valueFont);
+      const extraLines = [...rest];
+      for (const paragraph of paragraphs.slice(1)) extraLines.push(...wrap(paragraph, valueFont));
+      const totalLines = 1 + extraLines.length, lineHeight = valueFont.size * 1.18;
+      for (let start = 0; start < totalLines; start += 10) {
+        const end = Math.min(totalLines, start + 10), count = end - start, chunkExtra = start === 0 ? topExtra : 0;
+        block(0.15 + chunkExtra + count * lineHeight + 0.2, context => {
+          for (let offset = 0; offset < count; offset++) {
+            const lineIndex = start + offset, y = 0.15 + chunkExtra + offset * lineHeight;
+            if (lineIndex === 0) {
+              context.font = fontCss(labelFont); context.fillText(labelText, padLeft, y);
+              if (first) { context.font = fontCss(valueFont); context.fillText(first, valueX, y); }
+            } else {
+              const lineText = extraLines[lineIndex - 1];
+              if (lineText) { context.font = fontCss(valueFont); context.fillText(lineText, padLeft, y); }
             }
-          }, start === 0 ? [first ? `${label} ${first}` : label, ...extraLines.slice(0, count - 1)].join("\n") : extraLines.slice(start - 1, end - 1).join("\n"));
-        }
+          }
+        }, start === 0 ? [first ? `${labelText} ${first}` : labelText, ...extraLines.slice(0, count - 1)].join("\n") : extraLines.slice(start - 1, end - 1).join("\n"));
       }
     }
-    rule();
+  };
+  let renderedSections = 0;
+  for (const section of receipt.sections) {
+    if (!section.rows.length) continue;
+    const hasSignature = section.rows.some(([l, v]) => isSignatureRow(l, v));
+    let pendingTop = isPrinted ? (renderedSections === 0 ? 0.15 : hasSignature ? 3.2 : 2.1) : 0;
+    renderedSections++;
+    if (section.title) {
+      text(section.title, isPrinted ? regular : { size: 3.0, bold: true }, "left", isPrinted ? pendingTop : 0.1);
+      pendingTop = 0;
+    }
+    for (const [rawLabel, rawValue] of section.rows) {
+      const topExtra = pendingTop;
+      pendingTop = 0;
+      if (isSignatureRow(rawLabel, rawValue)) {
+        const sigLabel = `${String(rawLabel).normalize("NFC")}:`, topY = 0.15 + topExtra;
+        const sigLabelWidth = textWidth(sigLabel, regular), lineStartX = padLeft + sigLabelWidth + spaceGap, lineEndX = Math.max(lineStartX + 12, rightX - 3.5);
+        block(topY + 3.45, context => {
+          context.font = fontCss(regular);
+          context.fillText(sigLabel, padLeft, topY);
+          context.lineWidth = 0.22;
+          const lineY = topY + regular.size * 0.98;
+          context.beginPath();
+          context.moveTo(lineStartX, lineY);
+          context.lineTo(lineEndX, lineY);
+          context.stroke();
+        }, `${sigLabel} ________________________`);
+        continue;
+      }
+      const label = `${String(rawLabel).normalize("NFC")}:`, value = String(rawValue).normalize("NFC");
+      const highlight = isPrinted && isPrintedHighlightRow(rawLabel);
+      const rowSize = isPrinted && String(rawLabel) === "Envío" ? 3.1 : regular.size;
+      const labelFont: Font = isPrinted ? { size: rowSize, bold: highlight } : bold;
+      const valueFont: Font = isPrinted ? { size: rowSize, bold: highlight } : regular;
+      renderLabeledText(label, value, labelFont, valueFont, topExtra);
+    }
+    if (!isPrinted) rule();
   }
-  if (receipt.footer.trim()) text(receipt.footer, { size: 2.65 }, "left", 0.05);
+  if (isPrinted) {
+    const cleanFooter = cleanReceiptFooterNote(receipt.footer);
+    if (cleanFooter) renderLabeledText("Nota:", cleanFooter, bold, regular, 0);
+  } else if (receipt.footer.trim()) {
+    text(receipt.footer, { size: 2.65 }, "left", 0.05);
+  }
   await Promise.all(Array.from(output.querySelectorAll("img")).map(image => image.decode()));
   return output;
 }

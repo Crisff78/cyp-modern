@@ -159,7 +159,7 @@ remittancesApi('/snapshot').then(snapshot=>createRoot(document.getElementById('r
       await page.getByLabel("Buscar", { exact: true }).fill("QA-DOC-ORIGIN");
       const row = page.locator(".remittance-transfer-table tbody tr").filter({ hasText: "REC" }); await row.waitFor(); await row.dblclick();
       const detail = page.getByRole("dialog"); const popupReady = context.waitForEvent("page"); await detail.getByRole("button", { name: "Imprimir comprobante", exact: true }).click(); const popup = await popupReady; await popup.waitForLoadState();
-      const receiptText = await popup.locator("body").innerText(); assert.ok(receiptText.includes("DOP 105.00")); assert.ok(receiptText.includes("8090000505")); assert.ok(!receiptText.includes("8090000101")); assert.ok(receiptText.includes("Pie ficticio para comprobar impresión")); assert.ok(!/Comisión|gestor/i.test(receiptText)); await popup.close();
+      const receiptText = await popup.locator("body").innerText(); assert.ok(receiptText.includes("DOP 105.00")); assert.ok(receiptText.includes("8090000505")); assert.ok(!receiptText.includes("8090000101")); assert.ok(receiptText.replace(/\s+/g, " ").includes("Nota: Pie ficticio para comprobar impresión")); assert.ok(!/Comisión|gestor/i.test(receiptText)); await popup.close();
       await page.screenshot({ path: path.join(output, "remittance-detail.png"), fullPage: true });
     });
     assert.deepEqual(errors, []);

@@ -1,5 +1,5 @@
 import { receiptPaperLabels, receiptPrintLayout, thermalReceiptSize, type ReceiptPaper, type ReceiptPrintOptions } from "./receiptPaper";
-import { receiptIssuerLines, receiptSections, type Receipt } from "./receipt";
+import { cleanReceiptFooterNote, isPrintedHighlightRow, isSignatureRow, printedReceiptHeading, receiptIssuerLines, receiptSections, type Receipt } from "./receipt";
 import { receiptText } from "./receiptText";
 export type { ReceiptPrintOptions } from "./receiptPaper";
 
@@ -24,31 +24,43 @@ function ReceiptPrintPreview({ receipt, options }: { receipt: Receipt; options: 
     </div>;
   }
   const { issuer } = receipt;
+  const isPrinted = Boolean(receipt.printed);
   const validLogo = issuer.logoDataUrl && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(issuer.logoDataUrl) && issuer.logoDataUrl.length <= 24576 ? issuer.logoDataUrl : "";
-  const issuerLines = receiptIssuerLines(issuer, Boolean(receipt.printed));
+  const issuerLines = receiptIssuerLines(issuer, isPrinted);
   const hasHeader = Boolean(validLogo || issuer.name || issuerLines.length);
   const graphicWidthMm = thermal ? thermal.graphicWidthMm : layout.widthMm;
   const previewWidthPx = graphicWidthMm ? Math.round(graphicWidthMm * 96 / 25.4) : 520;
+  const cleanFooter = cleanReceiptFooterNote(receipt.footer);
   return <div className="remittance-print-preview-stage">
     <div className="remittance-print-preview-caption"><strong>Vista previa de impresión</strong><span>{badge}</span></div>
     <div className="remittance-print-preview-scroll">
-      <div className={`remittance-print-preview-sheet remittance-print-preview-graphic${thermal ? " is-thermal" : ""}${options.compact ? " is-compact" : ""}`}
+      <div className={`remittance-print-preview-sheet remittance-print-preview-graphic${thermal ? " is-thermal" : ""}${options.compact ? " is-compact" : ""}${isPrinted ? " is-printed" : ""}`}
         style={{ width: `${previewWidthPx}px`, maxWidth: "100%" }}
         aria-label="Vista previa del recibo para imprimir">
-        {!receipt.printed && <div className="remittance-preview-ref"><span>Recibo {receipt.reference}</span><span>{receipt.date}</span></div>}
+        {!isPrinted && <div className="remittance-preview-ref"><span>Recibo {receipt.reference}</span><span>{receipt.date}</span></div>}
         {hasHeader && <div className="remittance-preview-header">
           {validLogo && <img alt="" src={validLogo} />}
           {issuer.name && <div className="remittance-preview-company">{issuer.name}</div>}
           {issuerLines.map((line, index) => <div key={index} className="remittance-preview-company-line">{line}</div>)}
         </div>}
+        {isPrinted && <div className="remittance-preview-doc-title">{printedReceiptHeading}</div>}
         {sections.map((section, sectionIndex) => <div key={`${section.title}-${sectionIndex}`} className={`remittance-preview-block${section.title ? "" : " is-meta"}`}>
           {section.title && <div className="remittance-preview-title">{section.title}</div>}
-          {section.rows.map(([label, val], rowIndex) => <div key={`${String(label)}-${rowIndex}`} className="remittance-preview-row">
-            <span className="remittance-preview-label">{label}:</span>{" "}
-            <span className="remittance-preview-value">{val}</span>
-          </div>)}
+          {section.rows.map(([label, val], rowIndex) => {
+            if (isSignatureRow(label, val)) {
+              return <div key={`${String(label)}-${rowIndex}`} className="remittance-preview-row is-signature">
+                <span className="remittance-preview-label">{label}:</span>{" "}
+                <span className="remittance-preview-signature-line" aria-hidden="true" />
+              </div>;
+            }
+            const highlight = isPrinted && isPrintedHighlightRow(label);
+            return <div key={`${String(label)}-${rowIndex}`} className={`remittance-preview-row${highlight ? " is-highlight" : ""}${label === "Envío" ? " is-envio" : ""}`}>
+              <span className="remittance-preview-label">{label}:</span>{" "}
+              <span className="remittance-preview-value">{val}</span>
+            </div>;
+          })}
         </div>)}
-        <div className="remittance-preview-footer">{receipt.footer}</div>
+        {cleanFooter && <div className="remittance-preview-footer">{isPrinted ? <><strong>Nota:</strong> {cleanFooter}</> : receipt.footer}</div>}
       </div>
     </div>
   </div>;

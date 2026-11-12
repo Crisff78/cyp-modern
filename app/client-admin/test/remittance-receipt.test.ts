@@ -33,34 +33,38 @@ test("bank receipt shows its method/reference, no cash change and no card creden
   assert.ok(html.includes("No registrada en esta operación histórica")); assert.equal(html.includes("Dinero recibido"), false);
 });
 
-test("thermal and telephone receipts never print the generic app name 'Cobros y Pagos' and always place configured company header at the very top (including slogan and RNC when present)", () => {
+test("thermal and telephone receipts never print the generic app name 'Cobros y Pagos' and render the exact customer receipt format", () => {
   const demoIssuerTransfer: Transfer = { ...transfer, senderContact: { ...transfer.senderContact!, identification: "ID-SENDER-999" }, receiptIssuer: { name: "Cobros y Pagos", address: "", phone: "", email: "admin@cyp.local", logoDataUrl: "data:image/png;base64,iVBORw0KGgo=", footerNote: transfer.receiptIssuer!.footerNote } };
   const demoModel = remittanceReceipt(demoIssuerTransfer, undefined, "Operador Interno", "Cajero Ventanilla", true);
   assert.equal(demoModel.issuer.name, "", "generic app name is never treated as the company name");
   const fullHtml = receiptHtml(demoModel, { paper: "80", compact: false, output: "text" });
-  for (const text of ["Fecha:", "ENV00000001", "OP-QA-123", "O&#39;Connor &lt;sender&gt;", "CL1", "Destinatario", "8095550102", "Fictional destination", "DOP 990.00", "DOP 1,000.00", "DOP 10.00", "Registrado por:", "Cajero Ventanilla", "Conserve este recibo"]) {
+  for (const text of ["RECIBO DE ENVIO", "Fecha: 21/10/26 12:00 p.m.", "Envío: ENV00000001", "Cód. Operación: OP-QA-123", "Remitente: O&#39;Connor &lt;sender&gt;", "Código del Cliente: CL1", "Destinatario: Destinatario", "Teléfono: 8095550102", "Dirección: Fictional destination", "Importes del envío", "Monto a enviar: DOP 900.00", "DOP 990.00", "Recibe el destinatario: DOP 900.00", "Forma pago del remitente: Efectivo", "Recibido por: ________________________", "Registrado por: Cajero Ventanilla", "Nota: Conserve este recibo."]) {
     assert(fullHtml.includes(text), `missing ${text}`);
   }
-  for (const forbidden of ["Cobros y Pagos", "REC00000001", "admin@cyp.local", "RNC:", "Tel.:", "Pendiente de entrega", "Operador del envío", "Operador Interno", "Identificación", "ID-SENDER-999", "8095550101", "Fictional &amp; Co", "CL2"]) {
+  for (const forbidden of ["Cobros y Pagos", "REC00000001", "admin@cyp.local", "RNC:", "Tel.", "Pendiente de entrega", "Operador del envío", "Operador Interno", "Identificación", "ID-SENDER-999", "8095550101", "Fictional &amp; Co", "CL2", "Cargo del envío", "Dinero recibido", "Devuelta", "Nombre:", "----------------------------------------"]) {
     assert(!fullHtml.includes(forbidden), `unexpected ${forbidden}`);
   }
-  assert(fullHtml.indexOf("Fecha:") < fullHtml.indexOf("Remitente"), "Fecha goes at the top of the invoice body");
-  assert(fullHtml.indexOf("Pago del remitente") < fullHtml.indexOf("Registrado por:"), "Registrado por goes at the bottom before the footer");
-  assert(fullHtml.indexOf("Registrado por:") < fullHtml.indexOf("Conserve este recibo"), "Footer remains last");
+  assert(fullHtml.indexOf("RECIBO DE ENVIO") < fullHtml.indexOf("Fecha:"), "RECIBO DE ENVIO heading precedes Fecha");
+  assert(fullHtml.indexOf("Fecha:") < fullHtml.indexOf("Remitente:"), "Fecha goes at the top of the invoice body");
+  assert(fullHtml.indexOf("Forma pago del remitente:") < fullHtml.indexOf("Recibido por:"), "Recibido por signature line precedes Registrado por");
+  assert(fullHtml.indexOf("Recibido por:") < fullHtml.indexOf("Registrado por:"), "Registrado por goes at the bottom before Nota");
+  assert(fullHtml.indexOf("Registrado por:") < fullHtml.indexOf("Nota: Conserve este recibo"), "Nota footer remains last");
 
-  // Reprinting an earlier transfer saved with unconfigured default issuer (even with a logo) picks up newly configured company details, including optional slogan and RNC.
+  // Reprinting an earlier transfer saved with unconfigured default issuer (even with a logo) picks up newly configured company details, combining Tel. and RNC on one line.
   const configuredIssuer = { name: "Inversiones Demo S.R.L.", slogan: "Servicios confiables al instante", address: "Av. 27 de Febrero, #2131, Local 12, Santiago", phone: "809-555-0222", rnc: "1-30-00100-1", email: "admin@cyp.local", footerNote: transfer.receiptIssuer!.footerNote };
   const upgraded = remittanceReceipt(demoIssuerTransfer, configuredIssuer, "Operador Interno", "Cajero Ventanilla", true);
   assert.equal(upgraded.issuer.logoDataUrl, demoIssuerTransfer.receiptIssuer!.logoDataUrl);
   const upgradedHtml = receiptHtml(upgraded, { paper: "80", compact: false, output: "text" });
-  for (const text of ["Inversiones Demo S.R.L.", "Servicios confiables al instante", "Av. 27 de Febrero", "Tel.: 809-555-0222", "RNC: 1-30-00100-1"]) {
+  for (const text of ["Inversiones Demo S.R.L.", "Servicios confiables al instante", "Av. 27 de Febrero", "Tel. 809-555-0222 / RNC: 1-30-00100-1", "----------------------------------------", "RECIBO DE ENVIO"]) {
     assert(upgradedHtml.includes(text), `missing configured header ${text}`);
   }
+  assert.equal((upgradedHtml.match(/-{40}/g) ?? []).length, 1, "only the dashed header line is drawn; internal divider lines are removed");
   assert(!upgradedHtml.includes("Cobros y Pagos"));
   assert(upgradedHtml.indexOf("Inversiones Demo S.R.L.") < upgradedHtml.indexOf("Servicios confiables al instante"));
   assert(upgradedHtml.indexOf("Servicios confiables al instante") < upgradedHtml.indexOf("Av. 27 de Febrero"));
-  assert(upgradedHtml.indexOf("Tel.: 809-555-0222") < upgradedHtml.indexOf("RNC: 1-30-00100-1"));
-  assert(upgradedHtml.indexOf("RNC: 1-30-00100-1") < upgradedHtml.indexOf("Fecha:"));
+  assert(upgradedHtml.indexOf("Tel. 809-555-0222 / RNC: 1-30-00100-1") < upgradedHtml.indexOf("----------------------------------------"));
+  assert(upgradedHtml.indexOf("----------------------------------------") < upgradedHtml.indexOf("RECIBO DE ENVIO"));
+  assert(upgradedHtml.indexOf("RECIBO DE ENVIO") < upgradedHtml.indexOf("Fecha:"));
 
   const model = remittanceReceipt({ ...transfer, senderContact: { ...transfer.senderContact!, identification: "ID-SENDER-999" } }, undefined, "Operador", "Cajero", true);
   const before = JSON.stringify(model);
@@ -69,15 +73,16 @@ test("thermal and telephone receipts never print the generic app name 'Cobros y 
     assert(html.includes(`width:${paper === "80" ? 66 : paper === "58" ? 45 : 63}mm`));
     const plainHtml = receiptHtml(model, { paper, compact: true, output: "text" });
     assert(plainHtml.includes(`width:${paper === "80" ? 72 : paper === "58" ? 48 : 70}mm`));
-    for (const text of ["Empresa de prueba", "Fictional office", "Tel.: 8095550100", "Fecha", "ENV00000001", "O&#39;Connor &lt;sender&gt;", "Destinatario", "8095550102", "DOP 990.00", "DOP 1,000.00", "DOP 10.00", "Registrado por", "Cajero", "Conserve este recibo"]) assert(html.includes(text), text);
-    for (const text of ["REC00000001", "RNC:", "office@example.test", "Pendiente de entrega", "Operador del envío", "Fictional &amp; Co", "Fictional destination", "Código de operación", "CL1", "CL2", "Identificación", "ID-SENDER-999", "8095550101", "Comisión del gestor", "Prueba &amp; validación"]) assert(!html.includes(text), text);
+    for (const text of ["Empresa de prueba", "Fictional office", "Tel. 8095550100", "RECIBO DE ENVIO", "Fecha", "ENV00000001", "Remitente", "O&#39;Connor &lt;sender&gt;", "Destinatario", "8095550102", "DOP 990.00", "Forma pago del remitente", "Efectivo", "Registrado por", "Cajero", "<strong>Nota:</strong>", "Conserve este recibo"]) assert(html.includes(text), text);
+    for (const text of ["REC00000001", "RNC:", "office@example.test", "Pendiente de entrega", "Operador del envío", "Fictional &amp; Co", "Fictional destination", "Cód. Operación", "CL1", "CL2", "Identificación", "ID-SENDER-999", "8095550101", "Comisión del gestor", "Prueba &amp; validación", "Recibido por", "Cargo del envío"]) assert(!html.includes(text), text);
     const body = html.slice(html.indexOf("<body>"));
-    assert(body.indexOf("Empresa de prueba") < body.indexOf("ENV00000001"), "configured company header goes at the very top");
+    assert(body.indexOf("Empresa de prueba") < body.indexOf("RECIBO DE ENVIO"), "configured company header goes at the very top");
+    assert(body.indexOf("RECIBO DE ENVIO") < body.indexOf("ENV00000001"), "RECIBO DE ENVIO sits right below the header");
   }
   assert.equal(JSON.stringify(model), before);
   assert(!receiptHtml(model, { paper: "auto", compact: false }).includes("width:70mm"));
 });
-test("credit card surcharge is summed into Cargo del envío and omitted as a separate line across all receipt types", () => {
+test("credit card surcharge is summed into Cargo del envío on consultation view and reflected in Total pagado with TC payment code on printed receipts", () => {
   const cardTransfer: Transfer = {
     ...transfer,
     amount: 2000,
@@ -86,19 +91,29 @@ test("credit card surcharge is summed into Cargo del envío and omitted as a sep
     receiveAmount: 2000,
     payment: { version: 2, method: "card", cardType: "credit", tenderedAmount: 2420, changeAmount: 0, cardSurchargeBps: 1000, cardSurchargeAmount: 220, reference: "22222222222", last4: "4444", confirmedBy: "office", confirmedAt: "2026-10-21T16:00:00.000Z" },
   };
-  for (const printed of [false, true]) {
-    const receipt = remittanceReceipt(cardTransfer, undefined, "Operador", "Administración", printed);
-    const amountRows = receipt.sections.find((s) => s.title === "Importes del envío")!.rows;
-    assert.deepEqual(amountRows.find(([label]) => label === "Cargo del envío"), ["Cargo del envío", "DOP 4.20"]);
-    assert.deepEqual(amountRows.find(([label]) => label === "Total pagado por el remitente"), ["Total pagado por el remitente", "DOP 24.20"]);
-    assert.equal(amountRows.some(([label]) => label === "Recargo tarjeta de crédito" || label === "Cargo adicional por tarjeta"), false);
-    for (const output of ["text", "graphics"] as const) {
-      for (const compact of [false, true]) {
-        const html = receiptHtml(receipt, { paper: "80", compact, output });
-        assert(html.includes("DOP 4.20"), `expected summed Cargo del envío in printed=${printed} output=${output} compact=${compact}`);
-        assert(html.includes("DOP 24.20"));
-        assert(!html.includes("Recargo tarjeta de crédito"));
-        assert(!html.includes("Cargo adicional por tarjeta"));
+  const screenReceipt = remittanceReceipt(cardTransfer, undefined, "Operador", "Administración", false);
+  const screenAmounts = screenReceipt.sections.find((s) => s.title === "Importes del envío")!.rows;
+  assert.deepEqual(screenAmounts.find(([label]) => label === "Cargo del envío"), ["Cargo del envío", "DOP 4.20"]);
+  assert.deepEqual(screenAmounts.find(([label]) => label === "Total pagado por el remitente"), ["Total pagado por el remitente", "DOP 24.20"]);
+  assert.equal(screenAmounts.some(([label]) => label === "Recargo tarjeta de crédito" || label === "Cargo adicional por tarjeta"), false);
+
+  const printedReceipt = remittanceReceipt(cardTransfer, undefined, "Operador", "Administración", true);
+  const printedAmounts = printedReceipt.sections.find((s) => s.title === "Importes del envío")!.rows;
+  assert.deepEqual(printedAmounts, [
+    ["Monto a enviar", "DOP 20.00"],
+    ["Total pagado por el remitente", "DOP 24.20"],
+    ["Recibe el destinatario", "DOP 20.00"],
+  ]);
+  for (const output of ["text", "graphics"] as const) {
+    for (const compact of [false, true]) {
+      const html = receiptHtml(printedReceipt, { paper: "80", compact, output });
+      assert(html.includes("DOP 20.00"));
+      assert(html.includes("DOP 24.20"));
+      assert(html.includes("Forma pago del remitente"));
+      assert(/\bTC\b/.test(html), `expected TC payment code in output=${output} compact=${compact}`);
+      if (!compact) assert(html.includes("Recibido por"));
+      for (const forbidden of ["Cargo del envío", "Recargo tarjeta de crédito", "Cargo adicional por tarjeta", "4444", "22222222222"]) {
+        assert(!html.includes(forbidden), `unexpected ${forbidden} in output=${output} compact=${compact}`);
       }
     }
   }
