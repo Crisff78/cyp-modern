@@ -15,7 +15,8 @@ export function receiptText(receipt: Receipt, columns: number) {
       for (const word of paragraph.trim().split(/\s+/u)) {
         if (!word) continue;
         if (length(line ? `${line} ${word}` : word) <= width) {line = line ? `${line} ${word}` : word;continue;}
-        if (line) {result.push(line);line="";}
+        if (line && (length(word) <= width || length(line) + 1 >= width)) {result.push(line);line="";}
+        else if (line) line += " ";
         for (const character of Array.from(word)) {if(length(line)===width){result.push(line);line="";}line+=character;}
       }
       result.push(line);
@@ -42,14 +43,17 @@ export function receiptText(receipt: Receipt, columns: number) {
     headerClosed = false;
     if (section.title) { add(section.title); lines.push(""); }
     for(const [rawLabel,rawValue] of section.rows){
-      const label=`${clean(rawLabel)}:`,value=clean(rawValue);
-      if(!/[\r\n]/.test(label+value)&&length(label)+2+length(value)<=columns)
-        lines.push(label+" ".repeat(columns-length(label)-length(value))+value);
-      else {
+      const label=`${clean(rawLabel)}:`,value=clean(rawValue).trim();
+      if(!value) add(label);
+      else if(!/[\r\n]/.test(`${label} ${value}`)&&length(label)+1+length(value)<=columns)
+        lines.push(`${label} ${value}`);
+      else if(/^[A-Z]{3} -?[0-9][0-9.,]*$/u.test(value)&&length(value)<=columns){
         add(label);
-        const wrapped = wrap(value, columns - 2);
-        if (wrapped.length === 1 && wrapped[0]) lines.push(" ".repeat(Math.max(2, columns - length(wrapped[0]))) + wrapped[0]);
-        else for (const line of wrapped) lines.push(`  ${line}`);
+        add(value);
+      } else {
+        const [first="",...rest]=value.split("\n");
+        add(first?`${label} ${first}`:label);
+        for(const paragraph of rest) add(paragraph);
       }
     }
     if (section.title) lines.push("");
