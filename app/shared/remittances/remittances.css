@@ -315,9 +315,9 @@ dialog.remittances-dialog { position: fixed; inset: 0; margin: auto; }
 .remittance-preview-block { padding: 2px 0; border-bottom: 1px solid #cbd5e1; }
 .remittance-preview-block.is-meta { padding: 1.5px 0; }
 .remittance-preview-title { font-weight: 700; font-size: 11px; margin-bottom: 1px; }
-.remittance-preview-row { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; padding: 0.5px 0; }
-.remittance-preview-label { color: #1e293b; font-weight: 600; }
-.remittance-preview-value { text-align: right; font-weight: 500; overflow-wrap: anywhere; }
+.remittance-preview-row { padding: 0.5px 0; text-align: left; overflow-wrap: anywhere; }
+.remittance-preview-label { color: #000; font-weight: 700; }
+.remittance-preview-value { text-align: left; font-weight: 400; white-space: pre-wrap; overflow-wrap: anywhere; }
 .remittance-preview-footer { padding-top: 3px; font-size: 10px; line-height: 1.18; white-space: pre-wrap; overflow-wrap: anywhere; }
 @container (max-width: 600px) { .remittance-receipt-sections, .remittance-payment-cash, .remittance-print-controls-grid { grid-template-columns: 1fr; } }
 
