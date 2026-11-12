@@ -331,6 +331,18 @@ dialog.remittances-dialog { position: fixed; inset: 0; margin: auto; }
 .remittance-preview-signature-line { display: inline-block; width: 62%; min-width: 90px; border-bottom: 1px solid #000; height: 0.85em; vertical-align: baseline; }
 .remittance-preview-footer { padding-top: 3px; font-size: 10px; line-height: 1.18; white-space: pre-wrap; overflow-wrap: anywhere; }
 .remittance-print-preview-graphic.is-printed .remittance-preview-footer { padding-top: 1px; font-size: inherit; }
+.remittance-print-preview-text.is-sheet-voucher { font-weight: 700; font-family: "Consolas", "Courier New", Courier, monospace; }
+.remittance-print-preview-sheet-voucher { font: 700 12.5px/1.38 "Consolas", "Courier New", Courier, monospace; padding: 10px 14px; }
+.remittance-sheet-voucher-header { text-align: center; border-bottom: 1.5px solid #000; padding: 2px 0 8px; margin-bottom: 5px; }
+.remittance-sheet-voucher-company { font-size: 16px; line-height: 1.2; text-transform: uppercase; letter-spacing: 0.24em; padding-left: 0.24em; overflow-wrap: anywhere; }
+.remittance-sheet-voucher-meta { white-space: pre-wrap; overflow-wrap: anywhere; }
+.remittance-sheet-voucher-recipient { text-align: center; border-bottom: 1.5px solid #000; padding: 10px 0 5px; margin-bottom: 5px; overflow-wrap: anywhere; }
+.remittance-sheet-voucher-recipient-name { margin-bottom: 6px; }
+.remittance-sheet-voucher-amounts { margin-bottom: 10px; overflow-wrap: anywhere; }
+.remittance-sheet-voucher-monto { text-align: center; margin-bottom: 4px; }
+.remittance-sheet-voucher-cancelled { margin-top: 6px; white-space: pre-wrap; }
+.remittance-sheet-voucher-notice { margin: 10px 0 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.remittance-sheet-voucher-claims { white-space: pre-wrap; overflow-wrap: anywhere; }
 @container (max-width: 600px) { .remittance-receipt-sections, .remittance-payment-cash, .remittance-print-controls-grid { grid-template-columns: 1fr; } }
 
 /* Modeless receipt window (detail of a send or receipt). */
