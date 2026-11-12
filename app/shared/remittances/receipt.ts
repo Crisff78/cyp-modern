@@ -22,14 +22,25 @@ export const isSheetVoucherPaper = (paper?: string) => paper === "a4" || paper =
 export const sheetVoucherWarningText = "Es importante que revise su recibo para asegurar que el número de teléfono esté correcto!";
 export type SheetReceiptVoucher = {
   companyTitle: string;
+  issuerLines: string[];
+  docHeading: string;
   envioReference: string;
   voucherDateTime: string;
+  operatingCode: string;
+  senderName: string;
+  senderCode: string;
   recipientName: string;
   recipientPhone: string;
+  recipientAddress: string;
   sentAmount: string;
+  totalPaidAmount: string;
+  deliveryFeeAmount?: string;
   destinationCurrency: string;
   payoutAmountNumber: string;
+  paymentMethod: string;
+  registeredBy: string;
   warningLine: string;
+  footerNote: string;
   claimsLine: string;
   cancelledNote?: string;
 };
@@ -188,20 +199,32 @@ export function remittanceReceipt(transfer: Transfer, fallback?: ReceiptIssuer, 
     ...(payment.method === "cash" ? [["Dinero recibido", formatMoney(payment.tenderedAmount, transfer.sourceCurrency)], ["Devuelta", formatMoney(payment.changeAmount, transfer.sourceCurrency)]]
       : [["Referencia del comprobante", payment.reference ?? "—"], ...(payment.last4 ? [["Tarjeta", `•••• ${payment.last4}`]] : []), ...(payment.bank ? [["Banco o proveedor", payment.bank]] : [])])]
     : [["Forma de pago", "No registrada en esta operación histórica"]];
+  const footer = issuer.footerNote || defaultReceiptFooter;
   const sheetVoucher: SheetReceiptVoucher | undefined = printed ? {
     companyTitle: issuer.name,
+    issuerLines: receiptIssuerLines(issuer, true),
+    docHeading: printedReceiptHeading,
     envioReference: transfer.envioReference,
     voucherDateTime: formatSheetVoucherDateTime(transfer.createdAt),
+    operatingCode: transfer.operatingCode,
+    senderName: transfer.senderContact?.name ?? "Contacto histórico no registrado",
+    senderCode: transfer.senderContact?.code || "No registrado",
     recipientName: transfer.recipientContact?.name ?? "Contacto histórico no registrado",
     recipientPhone: transfer.recipientContact?.phone || transfer.recipientContact?.cellular || "No registrado",
+    recipientAddress: transfer.recipientContact?.address || "No registrada",
     sentAmount: formatMoney(transfer.amount, transfer.sourceCurrency),
+    totalPaidAmount: formatMoney(totalPaidForTransfer(transfer), transfer.sourceCurrency),
+    ...(delivery ? { deliveryFeeAmount: formatMoney(delivery.deliveryCommissionAmount, transfer.destinationCurrency) } : {}),
     destinationCurrency: transfer.destinationCurrency,
     payoutAmountNumber: formatAmountNumber(payoutOf(transfer)),
+    paymentMethod: printedPaymentMethod(payment),
+    registeredBy,
     warningLine: sheetVoucherWarningText,
+    footerNote: cleanReceiptFooterNote(footer),
     claimsLine: sheetVoucherClaimsLine(issuer),
-    ...(transfer.cancelledAt ? { cancelledNote: `CANCELADO: ${formatPrintedDate(transfer.cancelledAt)} · Motivo: ${transfer.cancelReason || "—"}` } : {}),
+    ...(transfer.cancelledAt ? { cancelledNote: `CANCELADO: ${formatPrintedDate(transfer.cancelledAt)} · Motivo: ${transfer.cancelReason || "—"}${transfer.refund ? ` · Referencia de devolución: ${transfer.refund.reference}` : ""}` } : {}),
   } : undefined;
-  return { reference: transfer.reciboReference, date, status: transfer.status, issuer, footer: issuer.footerNote || defaultReceiptFooter, printed, ...(sheetVoucher ? { sheetVoucher } : {}),
+  return { reference: transfer.reciboReference, date, status: transfer.status, issuer, footer, printed, ...(sheetVoucher ? { sheetVoucher } : {}),
     sections: printed ? [
       { title: "", columns: ["Dato", "Valor"], rows: [["Fecha", date], ["Envío", transfer.envioReference], ["Cód. Operación", transfer.operatingCode]] },
       party("sender", "Remitente"), party("recipient", "Destinatario"),
@@ -237,28 +260,38 @@ export function receiptHtml(receipt: Receipt, options: import("./ReceiptPrintCon
   const docTitle = String(receipt.printed ? (receipt.sheetVoucher?.envioReference ?? sections[0]?.rows.find(([label]) => label === "Envío")?.[1] ?? receipt.reference) : receipt.reference);
   if (options.output === "text") {
     const columns = receiptTextColumns(options.paper, options), narrowThermal = options.paper === "51" || options.paper === "58", fontSize = narrowThermal ? 9.5 : thermal ? 10 : 12;
-    const preFont = sheetVoucherMode ? `700 ${fontSize}px/1.45 "Consolas","Courier New",Courier,monospace` : `${fontSize}px/1.45 "Courier New",Courier,monospace`;
-    return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${escapeHtml(docTitle)}</title><style>@page{size:${layout.pageSize};margin:${layout.marginMm}mm}*{box-sizing:border-box}html{margin:0;padding:0;background:#e2e8f0}body{margin:0;padding:0;width:100%;color:#000;background:#fff;${layout.widthMm === undefined ? "" : `max-width:${layout.widthMm}mm;`}}@media screen{body{box-shadow:0 2px 10px rgba(15,23,42,.12)}}@media print{html,body{background:#fff;box-shadow:none}}pre{font:${preFont};letter-spacing:0;white-space:pre-wrap;margin:0;padding:0;tab-size:2}</style></head><body><pre aria-label="Recibo en formato de texto">${escapeHtml(receiptText({...receipt,sections},columns,sheetVoucherMode))}</pre></body></html>`;
+    const preFont = sheetVoucherMode ? `700 ${fontSize}px/1.42 "Consolas","Courier New",Courier,monospace` : `${fontSize}px/1.45 "Courier New",Courier,monospace`;
+    return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${escapeHtml(docTitle)}</title><style>@page{size:${layout.pageSize};margin:${layout.marginMm}mm}*{box-sizing:border-box}html{margin:0;padding:0;background:#e2e8f0}body{margin:0;padding:0;width:100%;color:#000;background:#fff;${layout.widthMm === undefined ? "" : `max-width:${layout.widthMm}mm;`}}@media screen{body{box-shadow:0 2px 10px rgba(15,23,42,.12)}}@media print{html,body{background:#fff;box-shadow:none}}pre{font:${preFont};letter-spacing:0;white-space:pre-wrap;margin:0;padding:0;tab-size:2}</style></head><body><pre aria-label="Recibo en formato de texto">${escapeHtml(receiptText({...receipt,sections},columns,sheetVoucherMode,Boolean(options.compact)))}</pre></body></html>`;
   }
   if (sheetVoucherMode && receipt.sheetVoucher) {
     const v = receipt.sheetVoucher;
+    const compact = Boolean(options.compact);
     const graphicWidthMm = layout.widthMm;
     const titleHtml = v.companyTitle ? `<h1 class="sheet-voucher-company">${escapeHtml(v.companyTitle)}</h1>` : "";
+    const issuerLinesHtml = v.issuerLines.map((line) => `<p class="sheet-voucher-issuer-line">${escapeHtml(line)}</p>`).join("");
     return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${escapeHtml(docTitle)}</title><style>
-      @page{size:${layout.pageSize};margin:${layout.marginMm}mm}*{box-sizing:border-box}html{margin:0;padding:0;background:#e2e8f0}body{font:700 18px/1.38 "Consolas","Courier New",Courier,monospace;color:#000;background:#fff;margin:0;padding:4px 0 0;width:100%;${graphicWidthMm === undefined ? "max-width:100%;" : `max-width:${graphicWidthMm}mm;`}}@media screen{body{box-shadow:0 2px 10px rgba(15,23,42,.12);padding:12px 16px}}@media print{html,body{background:#fff;box-shadow:none;padding:4px 0 0}}
-      .sheet-voucher-header{border-bottom:1.5px solid #000;padding:2px 0 14px;margin-bottom:6px;text-align:center}
-      .sheet-voucher-company{margin:0;font-size:26px;line-height:1.2;font-weight:700;text-transform:uppercase;letter-spacing:0.28em;padding-left:0.28em;overflow-wrap:anywhere}
-      .sheet-voucher-meta{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
-      .sheet-voucher-recipient{text-align:center;border-bottom:1.5px solid #000;padding:16px 0 6px;margin-bottom:6px;overflow-wrap:anywhere}
-      .sheet-voucher-recipient-name{margin:0 0 12px}
-      .sheet-voucher-recipient-phone{margin:0}
-      .sheet-voucher-amounts{margin:0 0 18px;overflow-wrap:anywhere}
+      @page{size:${layout.pageSize};margin:${layout.marginMm}mm}*{box-sizing:border-box}html{margin:0;padding:0;background:#e2e8f0}body{font:700 15.5px/1.36 "Consolas","Courier New",Courier,monospace;color:#000;background:#fff;margin:0;padding:2px 0 0;width:100%;${graphicWidthMm === undefined ? "max-width:100%;" : `max-width:${graphicWidthMm}mm;`}}@media screen{body{box-shadow:0 2px 10px rgba(15,23,42,.12);padding:12px 16px}}@media print{html,body{background:#fff;box-shadow:none;padding:2px 0 0}}
+      .sheet-voucher-header{border-bottom:1.5px solid #000;padding:2px 0 10px;margin-bottom:8px;text-align:center}
+      .sheet-voucher-company{margin:0 0 4px;font-size:24px;line-height:1.2;font-weight:700;text-transform:uppercase;letter-spacing:0.26em;padding-left:0.26em;overflow-wrap:anywhere}
+      .sheet-voucher-issuer-line{margin:2px 0;font-size:14px;line-height:1.28;white-space:pre-wrap;overflow-wrap:anywhere}
+      .sheet-voucher-doc-title{margin:6px 0 0;font-size:16px;line-height:1.25;letter-spacing:0.08em;padding-left:0.08em}
+      .sheet-voucher-meta,.sheet-voucher-sender{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+      .sheet-voucher-sender{margin-top:8px}
+      .sheet-voucher-recipient{text-align:center;border-bottom:1.5px solid #000;padding:12px 0 8px;margin-bottom:8px;overflow-wrap:anywhere}
+      .sheet-voucher-recipient-line{margin:0}
+      .sheet-voucher-recipient-line+.sheet-voucher-recipient-line{margin-top:6px}
+      .sheet-voucher-amounts{margin:0;overflow-wrap:anywhere}
       .sheet-voucher-monto{text-align:center;margin:0 0 6px}
-      .sheet-voucher-payout{margin:0;white-space:pre-wrap}
-      .sheet-voucher-cancelled{margin:10px 0 0;white-space:pre-wrap}
-      .sheet-voucher-notice{margin:18px 0 16px;white-space:pre-wrap;overflow-wrap:anywhere}
-      .sheet-voucher-claims{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
-    </style></head><body><main class="sheet-voucher"><header class="sheet-voucher-header">${titleHtml}</header><div class="sheet-voucher-meta"><div>Envío #: ${escapeHtml(v.envioReference)}</div><div>Fecha  : ${escapeHtml(v.voucherDateTime)}</div></div><section class="sheet-voucher-recipient"><div class="sheet-voucher-recipient-name">${escapeHtml(v.recipientName)}</div><div class="sheet-voucher-recipient-phone">TELÉFONO: ${escapeHtml(v.recipientPhone)}</div></section><section class="sheet-voucher-amounts"><div class="sheet-voucher-monto">MONTO: ${escapeHtml(v.sentAmount)}</div><div class="sheet-voucher-payout"><div>RECIBE EN ${escapeHtml(v.destinationCurrency)}:</div><div>${escapeHtml(v.payoutAmountNumber)}</div></div>${v.cancelledNote ? `<div class="sheet-voucher-cancelled">${escapeHtml(v.cancelledNote)}</div>` : ""}</section><p class="sheet-voucher-notice">${escapeHtml(v.warningLine)}</p><p class="sheet-voucher-claims">${escapeHtml(v.claimsLine)}</p></main></body></html>`;
+      .sheet-voucher-payout{margin:4px 0 0;white-space:pre-wrap}
+      .sheet-voucher-payment{margin:8px 0 0;white-space:pre-wrap}
+      .sheet-voucher-cancelled{margin:8px 0 0;white-space:pre-wrap}
+      .sheet-voucher-signoff{margin:12px 0 0;overflow-wrap:anywhere}
+      .sheet-voucher-signature{margin:0 0 6px}
+      .sheet-voucher-signature-line{display:inline-block;width:54%;min-width:180px;border-bottom:1.5px solid #000;height:0.85em;vertical-align:baseline}
+      .sheet-voucher-footer{margin:14px 0 0}
+      .sheet-voucher-notice,.sheet-voucher-note,.sheet-voucher-claims{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+      .sheet-voucher-note,.sheet-voucher-claims{margin-top:10px}
+    </style></head><body><main class="sheet-voucher"><header class="sheet-voucher-header">${titleHtml}${issuerLinesHtml}<div class="sheet-voucher-doc-title">${escapeHtml(v.docHeading)}</div></header><div class="sheet-voucher-meta"><div>Envío #: ${escapeHtml(v.envioReference)}</div><div>Fecha  : ${escapeHtml(v.voucherDateTime)}</div>${compact ? "" : `<div>Cód. Operación: ${escapeHtml(v.operatingCode)}</div>`}</div><div class="sheet-voucher-sender"><div>Remitente: ${escapeHtml(v.senderName)}</div>${compact ? "" : `<div>Código del Cliente: ${escapeHtml(v.senderCode)}</div>`}</div><section class="sheet-voucher-recipient"><div class="sheet-voucher-recipient-line">DESTINATARIO: ${escapeHtml(v.recipientName)}</div><div class="sheet-voucher-recipient-line">TELÉFONO: ${escapeHtml(v.recipientPhone)}</div>${compact ? "" : `<div class="sheet-voucher-recipient-line">DIRECCIÓN: ${escapeHtml(v.recipientAddress)}</div>`}</section><section class="sheet-voucher-amounts"><div class="sheet-voucher-monto">MONTO A ENVIAR: ${escapeHtml(v.sentAmount)}</div><div>Total pagado por el remitente: ${escapeHtml(v.totalPaidAmount)}</div>${v.deliveryFeeAmount ? `<div>Cargo de entrega: ${escapeHtml(v.deliveryFeeAmount)}</div>` : ""}<div class="sheet-voucher-payout"><div>RECIBE EN ${escapeHtml(v.destinationCurrency)}:</div><div>${escapeHtml(v.payoutAmountNumber)}</div></div><div class="sheet-voucher-payment">Forma pago del remitente: ${escapeHtml(v.paymentMethod)}</div>${v.cancelledNote ? `<div class="sheet-voucher-cancelled">${escapeHtml(v.cancelledNote)}</div>` : ""}</section><section class="sheet-voucher-signoff">${compact ? "" : `<div class="sheet-voucher-signature"><span>Recibido por: </span><span class="sheet-voucher-signature-line" aria-hidden="true"></span></div>`}<div>Registrado por: ${escapeHtml(v.registeredBy)}</div></section><footer class="sheet-voucher-footer"><p class="sheet-voucher-notice">${escapeHtml(v.warningLine)}</p>${v.footerNote ? `<p class="sheet-voucher-note">Nota: ${escapeHtml(v.footerNote)}</p>` : ""}<p class="sheet-voucher-claims">${escapeHtml(v.claimsLine)}</p></footer></main></body></html>`;
   }
   const { issuer } = receipt;
   const isPrinted = Boolean(receipt.printed);
