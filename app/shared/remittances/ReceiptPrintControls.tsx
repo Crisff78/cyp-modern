@@ -1,5 +1,5 @@
 import { receiptPaperLabels, receiptPrintLayout, thermalReceiptSize, type ReceiptPaper, type ReceiptPrintOptions } from "./receiptPaper";
-import { cleanReceiptFooterNote, isPrintedHighlightRow, isSignatureRow, printedReceiptHeading, receiptIssuerLines, receiptSections, type Receipt } from "./receipt";
+import { cleanReceiptFooterNote, isPrintedHighlightRow, isPrintedSignoffSection, isSheetDashedPaper, isSignatureRow, printedReceiptHeading, receiptIssuerLines, receiptSections, type Receipt } from "./receipt";
 import { receiptText } from "./receiptText";
 export type { ReceiptPrintOptions } from "./receiptPaper";
 
@@ -12,9 +12,10 @@ function ReceiptPrintPreview({ receipt, options }: { receipt: Receipt; options: 
 
   const sections = receiptSections(receipt, options.compact);
   const thermal = thermalReceiptSize(options.paper);
+  const sheetDividers = Boolean(receipt.printed && isSheetDashedPaper(options.paper));
   const badge = `${receiptPaperLabels[options.paper]}${options.compact ? " · Envío telefónico" : ""}`;
   if ((options.output ?? "graphics") === "text") {
-    const formatted = receiptText({ ...receipt, sections }, layout.textColumns);
+    const formatted = receiptText({ ...receipt, sections }, layout.textColumns, sheetDividers);
     return <div className="remittance-print-preview-stage">
       <div className="remittance-print-preview-caption"><strong>Vista previa de impresión</strong><span>{badge} · {layout.textColumns} col.</span></div>
       <div className="remittance-print-preview-scroll">
@@ -44,7 +45,7 @@ function ReceiptPrintPreview({ receipt, options }: { receipt: Receipt; options: 
           {issuerLines.map((line, index) => <div key={index} className="remittance-preview-company-line">{line}</div>)}
         </div>}
         {isPrinted && <div className="remittance-preview-doc-title">{printedReceiptHeading}</div>}
-        {sections.map((section, sectionIndex) => <div key={`${section.title}-${sectionIndex}`} className={`remittance-preview-block${section.title ? "" : " is-meta"}`}>
+        {sections.map((section, sectionIndex) => <div key={`${section.title}-${sectionIndex}`} className={`remittance-preview-block${section.title ? "" : " is-meta"}${sheetDividers && !isPrintedSignoffSection(section) ? " is-sheet-divided" : ""}`}>
           {section.title && <div className="remittance-preview-title">{section.title}</div>}
           {section.rows.map(([label, val], rowIndex) => {
             if (isSignatureRow(label, val)) {
