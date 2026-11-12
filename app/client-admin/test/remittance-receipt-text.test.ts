@@ -14,10 +14,12 @@ test("text-only receipt uses actual separators and bounded hard lines, preserves
   for(const paper of ["80","76","58","auto"]){
     const columns=receiptTextColumns(paper),text=receiptText(receipt,columns);
     for(const line of text.split("\n"))assert(Array.from(line).length<=columns);
-    assert.match(text,/Nombre: {2,}José Núñez/);assert(text.includes("María Rodríguez"));assert(text.includes("Dirección:"));
-    assert(text.includes("DOP 2,200.00"));assert(text.includes("DOP 100.00"));
+    assert(text.includes("Nombre: José Núñez"));assert(!/Nombre: {2,}/.test(text));
+    assert(text.includes("Nombre: María Rodríguez"));assert(text.includes("Dirección:"));
+    assert(text.includes("DOP 2,200.00"));assert(text.includes("Devuelta: DOP 100.00"));
     const wrappedAmountLine = text.split("\n").find((line) => line.includes("DOP 2,200.00"))!;
-    assert.equal(Array.from(wrappedAmountLine).length, columns, "single-line wrapped amounts align flush-right to the receipt width");
+    if (columns >= 43) assert.equal(wrappedAmountLine, "Total pagado por el remitente: DOP 2,200.00");
+    else assert.equal(wrappedAmountLine, "DOP 2,200.00", "wrapped amounts stay left-aligned without right-padding spaces");
     assert(text.replace(/\s/g,"").includes("REFERENCIA".repeat(30)));
     assert(text.includes("-".repeat(columns)));assert(text.endsWith("\n"));
   }
