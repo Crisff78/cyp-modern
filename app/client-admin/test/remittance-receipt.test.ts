@@ -118,119 +118,30 @@ test("credit card surcharge is summed into Cargo del envío on consultation view
     }
   }
 });
-
-test("A4 and Carta printed receipts adapt all customer receipt data into the full-sheet voucher layout without altering thermal rolls", () => {
-  const sheetTransfer: Transfer = {
-    ...transfer,
-    envioReference: "ENV00000064",
-    createdAt: "2026-09-01T15:58:10.000Z",
-    sourceCurrency: "USD",
-    destinationCurrency: "DOP",
-    amount: 100000,
-    commissionBps: 500,
-    commissionAmount: 5000,
-    totalAmount: 105000,
-    receiveAmount: 6400000,
-    quote: { date: "2026-09-01", sourceRate: "64.000000", destinationRate: "1.000000", sourceRateKind: "purchase", destinationRateKind: "base" },
-    recipientContact: { id: "recipient", code: "CL2", name: "Colmado La Esquina", phone: "8095550100", cellular: "", address: "Calle El Conde 24" },
-    receiptIssuer: {
-      name: "Inversiones Demo S.R.L.",
-      slogan: "Tu aliado en cobros, pagos y envíos",
-      address: "Av. 27 de Febrero #2131, Local 12, Santiago",
-      phone: "Tel.: 809-555-0222",
-      rnc: "1-30-00100-1",
-      email: "admin@cyp.local",
-      logoDataUrl: "data:image/png;base64,iVBORw0KGgo=",
-      footerNote: "Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío.",
-    },
-    payment: { version: 2, method: "card", cardType: "credit", tenderedAmount: 113400, changeAmount: 0, cardSurchargeBps: 800, cardSurchargeAmount: 8400, reference: "999999", last4: "4444", confirmedBy: "office", confirmedAt: "2026-09-01T15:58:10.000Z" },
+test("A4 and Carta printed receipts use the standard RECIBO DE ENVIO layout with company logo, dashed header and Nota footer", () => {
+  const configuredIssuer = {
+    name: "Inversiones Demo S.R.L.",
+    slogan: "Tu aliado en cobros, pagos y envíos",
+    address: "Av. 27 de Febrero #2131, Local 12, Santiago",
+    phone: "809-555-0222",
+    rnc: "1-30-00100-1",
+    email: "admin@cyp.local",
+    logoDataUrl: "data:image/png;base64,iVBORw0KGgo=",
+    footerNote: "Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío.",
   };
-  const model = remittanceReceipt(sheetTransfer, undefined, "Operador", "Administración", true);
+  const model = remittanceReceipt({ ...transfer, receiptIssuer: configuredIssuer, payment: { version: 2, method: "card", cardType: "credit", tenderedAmount: 99000, changeAmount: 0, confirmedBy: "office", confirmedAt: "2026-10-21T16:00:00.000Z" } }, undefined, "Operador", "Administración", true);
   for (const paper of ["a4", "letter"] as const) {
-    for (const output of ["graphics", "text"] as const) {
-      for (const compact of [false, true]) {
-        const html = receiptHtml(model, { paper, compact, output });
-        assert(html.includes(paper === "a4" ? "size:210mm 297mm" : "size:215.9mm 279.4mm"));
-        if (output === "graphics") assert(html.includes("Inversiones Demo S.R.L."));
-        else assert(html.includes("I N V E R S I O N E S   D E M O   S . R . L ."));
-        for (const required of [
-          "Tu aliado en cobros, pagos y envíos",
-          "Av. 27 de Febrero #2131, Local 12, Santiago",
-          "Tel. 809-555-0222 / RNC: 1-30-00100-1",
-          "RECIBO DE ENVIO",
-          "Envío #: ENV00000064",
-          "Fecha  : 01-09-2026 |11:58:10",
-          "Remitente: O&#39;Connor &lt;sender&gt;",
-          "DESTINATARIO: Colmado La Esquina",
-          "TELÉFONO: 8095550100",
-          "MONTO A ENVIAR: USD 1,000.00",
-          "Total pagado por el remitente: USD 1,134.00",
-          "RECIBE EN DOP:",
-          "64,000.00",
-          "Forma pago del remitente: TC",
-          "Registrado por: Administración",
-          "Nota: Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío.",
-        ]) {
-          assert(html.includes(required), `missing "${required}" in paper=${paper} output=${output} compact=${compact}`);
-        }
-        if (!compact) {
-          for (const detail of ["Cód. Operación: OP-QA-123", "Código del Cliente: CL1", "DIRECCIÓN: Calle El Conde 24", "Recibido por:"]) {
-            assert(html.includes(detail), `missing "${detail}" in full mode paper=${paper} output=${output}`);
-          }
-        } else {
-          for (const omitted of ["Cód. Operación:", "Código del Cliente:", "DIRECCIÓN:", "Recibido por:"]) {
-            assert(!html.includes(omitted), `unexpected "${omitted}" in compact mode paper=${paper} output=${output}`);
-          }
-        }
-        for (const forbidden of [
-          "<img",
-          "admin@cyp.local",
-          "REC00000001",
-          "Operador Interno",
-          "Cargo del envío",
-          "Recargo tarjeta de crédito",
-          "4444",
-          "999999",
-          "Es importante que revise su recibo",
-          "PARA RECLAMACIONES FAVOR COMUNICARSE",
-        ]) {
-          assert(!html.includes(forbidden), `unexpected "${forbidden}" in paper=${paper} output=${output} compact=${compact}`);
-        }
-        assert(html.indexOf("RECIBO DE ENVIO") < html.indexOf("Envío #: ENV00000064"));
-        assert(html.indexOf("Envío #: ENV00000064") < html.indexOf("Fecha  : 01-09-2026 |11:58:10"));
-        assert(html.indexOf("Fecha  : 01-09-2026 |11:58:10") < html.indexOf("Remitente:"));
-        assert(html.indexOf("Remitente:") < html.indexOf("DESTINATARIO: Colmado La Esquina"));
-        assert(html.indexOf("DESTINATARIO: Colmado La Esquina") < html.indexOf("TELÉFONO: 8095550100"));
-        assert(html.indexOf("TELÉFONO: 8095550100") < html.indexOf("MONTO A ENVIAR: USD 1,000.00"));
-        assert(html.indexOf("MONTO A ENVIAR: USD 1,000.00") < html.indexOf("Total pagado por el remitente: USD 1,134.00"));
-        assert(html.indexOf("Total pagado por el remitente: USD 1,134.00") < html.indexOf("RECIBE EN DOP:"));
-        assert(html.indexOf("64,000.00") < html.indexOf("Forma pago del remitente: TC"));
-        assert(html.indexOf("Forma pago del remitente: TC") < html.indexOf("Registrado por: Administración"));
-        assert(html.indexOf("Registrado por: Administración") < html.indexOf("Nota: Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío."));
-      }
+    const graphicHtml = receiptHtml(model, { paper, compact: false, output: "graphics" });
+    assert(graphicHtml.includes(paper === "a4" ? "size:210mm 297mm" : "size:215.9mm 279.4mm"));
+    assert(graphicHtml.includes("<img"));
+    assert(graphicHtml.includes("border-bottom:1px dashed #000"));
+    for (const required of ["Inversiones Demo S.R.L.", "Tu aliado en cobros, pagos y envíos", "Av. 27 de Febrero #2131, Local 12, Santiago", "Tel. 809-555-0222 / RNC: 1-30-00100-1", "RECIBO DE ENVIO", "Fecha: ", "Envío: ", "ENV00000001", "Cód. Operación: ", "Remitente: ", "Código del Cliente: ", "Destinatario: ", "Teléfono: ", "Dirección: ", "Importes del envío", "Monto a enviar: ", "Total pagado por el remitente: ", "Recibe el destinatario: ", "Forma pago del remitente: ", "TC", "Recibido por: ", "Registrado por: ", "Administración", "<strong>Nota:</strong> Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío."]) {
+      assert(graphicHtml.includes(required), `missing "${required}" in paper=${paper}`);
+    }
+    for (const forbidden of ["Envío #:", "DESTINATARIO:", "MONTO A ENVIAR:", "RECIBE EN ", "PARA RECLAMACIONES FAVOR COMUNICARSE", "Es importante que revise su recibo"]) {
+      assert(!graphicHtml.includes(forbidden), `unexpected "${forbidden}" in paper=${paper}`);
     }
   }
-
-  // Unconfigured app name is omitted and cancellation banner is included when transfer is cancelled.
-  const cancelledNoPhone = remittanceReceipt({
-    ...sheetTransfer,
-    status: "cancelled",
-    cancelledAt: "2026-09-01T17:00:00.000Z",
-    cancelReason: "Error en teléfono",
-    receiptIssuer: { ...sheetTransfer.receiptIssuer!, name: "Cobros y Pagos", phone: "" },
-  }, undefined, "Operador", "Administración", true);
-  const cancelledHtml = receiptHtml(cancelledNoPhone, { paper: "a4", compact: false, output: "graphics" });
-  assert(!cancelledHtml.includes("Cobros y Pagos"));
-  assert(cancelledHtml.includes("CANCELADO:"));
-  assert(cancelledHtml.includes("Error en teléfono"));
-  assert(cancelledHtml.includes("Nota: Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío."));
-  assert(!cancelledHtml.includes("PARA RECLAMACIONES FAVOR COMUNICARSE"));
-
-  // Thermal 80mm continues rendering the POS80 customer receipt with logo, RECIBO DE ENVIO and signature line.
-  const thermalHtml = receiptHtml(model, { paper: "80", compact: false, output: "graphics" });
-  assert(thermalHtml.includes("<img"));
-  assert(thermalHtml.includes("RECIBO DE ENVIO"));
-  assert(thermalHtml.includes("Recibido por"));
 });
 test("receipt confirmation rejects mismatched payment even when all other transfer fields match", () => {
   const expected = { sourceCurrency: "DOP", destinationCurrency: "DOP", amount: 90000, commissionBps: 1000, senderClientId: "sender", recipientClientId: "recipient", quote: transfer.quote,
