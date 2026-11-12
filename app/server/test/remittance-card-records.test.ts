@@ -102,7 +102,13 @@ test("frozen card surcharge survives configuration changes, receipts, reports an
   assert.throws(() => createRemittance(state, admin, { ...bodyFor(state), quote: saved.quote }, [], at), (error: unknown) => (error as {code:string}).code === "QUOTE_CHANGED");
   for (const printed of [false, true]) {
     const receipt = remittanceReceipt(saved, undefined, "Synthetic", "Synthetic", printed), html = receiptHtml(receipt);
-    assert.match(html, /Tarjeta de crédito/); assert.match(html, /•••• 0042/); assert.match(html, /DOP 112\.75/); assert.match(html, /DOP 12\.75/);
+    assert.match(html, /DOP 112\.75/);
+    if (printed) {
+      assert.match(html, /RECIBO DE ENVIO/); assert.match(html, /Forma pago del remitente/); assert.match(html, /\bTC\b/);
+      assert.doesNotMatch(html, /•••• 0042|Cargo del envío/);
+    } else {
+      assert.match(html, /Tarjeta de crédito/); assert.match(html, /•••• 0042/); assert.match(html, /DOP 12\.75/);
+    }
     assert.doesNotMatch(html, /Recargo tarjeta de crédito|Cargo adicional por tarjeta|María O&#39;Connor|cardholderName|cardSurchargeBps|cvv|2\.5%/i);
   }
   const filter = { from: businessDate(at), to: businessDate(at), grouping: "range" as const };
