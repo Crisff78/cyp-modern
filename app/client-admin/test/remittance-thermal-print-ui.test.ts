@@ -43,7 +43,7 @@ for(const [name,paper,orientation,customWidthMm,customHeightMm] of [['sheet-8x4'
       CanvasRenderingContext2D.prototype.fillText=function(value:string,x:number,y:number,maxWidth?:number){
         if(!ids.has(this.canvas))ids.set(this.canvas,++count);
         const width=this.measureText(value).width,left=this.textAlign==="right"?x-width:this.textAlign==="center"?x-width/2:x;
-        state.__runs.push({text:value,left,right:left+width,widthMm:this.canvas.width/8,block:ids.get(this.canvas)});
+        state.__runs.push({text:value,left,right:left+width,y,widthMm:this.canvas.width/8,block:ids.get(this.canvas)});
         if(maxWidth===undefined)return original.call(this,value,x,y);return original.call(this,value,x,y,maxWidth);
       };
     });
@@ -60,7 +60,7 @@ for(const [name,paper,orientation,customWidthMm,customHeightMm] of [['sheet-8x4'
       for(const run of result.runs){assert(run.left>=0.2,JSON.stringify(run));assert(run.right<=run.widthMm-0.3,JSON.stringify(run));}
       const text=result.runs.map((run:any)=>run.text).join("\n");for(const expected of ["Envío:","Código de operación:","José Núñez","María Rodríguez","Identificación:","Dirección:","DOP 2,200.00"])assert(text.includes(expected),expected);
       const blocks=new Map<number,any[]>();for(const run of result.runs){const group=blocks.get(run.block)??[];group.push(run);blocks.set(run.block,group);}
-      for(const group of blocks.values())if(group.length===2&&group[0].text.endsWith(":"))assert(group[1].left-group[0].right>=2.9,"label/value gap is preserved in the bitmap");
+      for(const group of blocks.values())if(group.length>=2&&group[0].text.endsWith(":")&&group[0].y===group[1].y){const gapMm=group[1].left-group[0].right;assert(gapMm>=0.7&&gapMm<=1.5,`value must sit immediately next to field label (${gapMm}mm): ${JSON.stringify(group)}`);}
       assert.equal(await popup.locator("dl,dt,dd").count(),0,"the printer receives images rather than device-encoded labels");
       await popup.emulateMedia({media:"print"});assert.equal(await popup.locator(".thermal-print-help").isVisible(),false);
       await popup.screenshot({path:path.join(output,`receipt-${paper}mm.png`),fullPage:true});await popup.close();
@@ -132,6 +132,10 @@ for(const [name,paper,orientation,customWidthMm,customHeightMm] of [['sheet-8x4'
     assert(graphicCheck.totalHeightMm<130,`compact thermal graphic receipt avoids vertical whitespace bloat (${graphicCheck.totalHeightMm}mm)`);
     for(const w of graphicCheck.widths)assert.equal(w,66*8,"POS80 graphic canvas uses 66mm (528 dots), maximizing width inside ~67.4mm printhead limit");
     for(const run of graphicCheck.runs){assert(run.left>=0.2,JSON.stringify(run));assert(run.right<=65.7,`right edge clipped risk: ${JSON.stringify(run)}`);}
+    const posGraphicBlocks=new Map<number,any[]>();for(const run of graphicCheck.runs){const group=posGraphicBlocks.get(run.block)??[];group.push(run);posGraphicBlocks.set(run.block,group);}
+    let inlinePairs=0;
+    for(const group of posGraphicBlocks.values())if(group.length>=2&&group[0].text.endsWith(":")&&group[0].y===group[1].y){inlinePairs++;const gapMm=group[1].left-group[0].right;assert(gapMm>=0.7&&gapMm<=1.5,`POS80 graphic value detached from label (${gapMm}mm): ${JSON.stringify(group)}`);}
+    assert(inlinePairs>=15,`expected all POS80 invoice rows to render value immediately after label, got ${inlinePairs}`);
     const posGraphicText=graphicCheck.runs.map((r:any)=>r.text).join("\n");
     assert(posGraphicText.includes("Cargo del envío:")&&posGraphicText.includes("DOP 94.00"),"graphic receipt merges credit card surcharge into Cargo del envío");
     assert(!posGraphicText.includes("Recargo tarjeta de crédito")&&!posGraphicText.includes("Cargo adicional por tarjeta"));
