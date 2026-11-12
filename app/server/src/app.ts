@@ -1609,7 +1609,7 @@ export async function buildApp(config: Config) {
   registerRemittanceRoutes(app, config.store, user, mutate, describe, config.demo ? [
     { id: "demo-admin", name: "Administración", role: "admin" },
     { id: "demo-collector", name: "Cobrador", role: "collector", collectorId: "col-1" },
-  ] : [{ id: "configured-admin", name: "Administración", role: "admin" }], config.cardVault);
+  ] : [{ id: "configured-admin", name: "Administración", role: "admin" }], config.cardVault, config.demo);
   app.get("/api/openapi.json", () => ({
     openapi: "3.1.0",
     info: {
