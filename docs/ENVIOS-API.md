@@ -594,3 +594,22 @@ En `Configuración General → General` (`system_config`), los datos de la empre
 los recibos son `general.empresa` (nombre de empresa), `general.eslogan` (opcional),
 `general.direccion`, `general.telefono` y `general.rnc` (opcional), congelados en
 `receiptIssuer` e impresos siempre arriba del todo en los recibos.
+
+## Reabrir la caja de hoy para pruebas (solo demo)
+
+En **Cuadres Diarios → Caja de remesas**, un administrador con los permisos de consulta,
+apertura y cierre puede seleccionar operador y moneda y usar **Reabrir para pruebas**.
+La confirmación continúa la misma caja de hoy: conserva apertura, movimientos y cierres
+anteriores, sin crear otra caja ni cambiar importes. Se puede volver a contar y cerrar.
+
+`POST /api/envios/cajas/:id/reabrir-prueba` recibe `{}` y requiere autenticación e
+`Idempotency-Key`. La ruta solo se registra con `demo=true`; el snapshot anuncia
+`cash.canReopen` únicamente para administradores en la demo. Se bloquea si la caja es de
+otro día, está abierta, tiene una caja posterior dependiente o se descargó efectivo al
+encargado al cerrar. No se repone automáticamente dinero que ya salió.
+
+La migración **053** conserva el libro inmutable y añade el evento `reopened`, con actor,
+fecha y motivo. La proyección de PostgreSQL reconstruye el estado por los eventos de
+cierre y reapertura. Un trigger mantiene un cierre por ciclo y el orden cronológico;
+la caja sigue siendo única por operador, moneda y día. El modo configurado conserva
+el cierre definitivo de la jornada.

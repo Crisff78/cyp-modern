@@ -416,6 +416,27 @@ test("Mayo's review (26-10): Envíos, Caja de remesas, Tasas, escritorio, Soport
       const reloadedControls = reloaded.getByRole("region", { name: "Operar caja de remesas", exact: true });
       await field(reloadedControls.getByRole("form", { name: "Abrir caja", exact: true }), "Moneda").selectOption("EUR");
       assert.match(await reloadedControls.getByLabel("Saldo de la caja seleccionada", { exact: true }).innerText(), /Efectivo esperado\s+EUR 200\.00/);
+      // Continuar las pruebas de hoy conserva la caja, sus retiros y sus cierres anteriores.
+      await post(`/api/envios/cajas/${adminEuro.id}/cerrar`, { countedAmount: 20000 });
+      await reloaded.getByRole("button", { name: "Actualizar", exact: true }).click();
+      const reopen = reloadedControls.getByRole("button", { name: "Reabrir para pruebas", exact: true });
+      await reopen.click();
+      let reopenDialog = page.getByRole("dialog", { name: "Reabrir caja para pruebas", exact: true });
+      assert.match(await reopenDialog.innerText(), /EUR 200\.00/);
+      await reopenDialog.getByRole("button", { name: "Volver", exact: true }).click();
+      assert.equal((await store.read()).remittances.cashSessions.find(cash => cash.id === adminEuro.id)?.status, "closed");
+      await reopen.click();
+      reopenDialog = page.getByRole("dialog", { name: "Reabrir caja para pruebas", exact: true });
+      await reopenDialog.getByRole("button", { name: "Confirmar", exact: true }).click();
+      await reloadedControls.getByLabel("Dinero adicional recibido (EUR)", { exact: true }).waitFor();
+      await reloadedControls.getByLabel("Dinero retirado (EUR)", { exact: true }).waitFor();
+      assert.match(await reloadedControls.getByLabel("Saldo de la caja seleccionada", { exact: true }).innerText(), /Efectivo esperado\s+EUR 200\.00/);
+      assert.equal((await store.read()).remittances.events.filter(event => event.cashSessionId === adminEuro.id && event.type === "reopened").length, 1);
+      await shot("caja-eur-reabierta-para-pruebas");
+      // El descargo anterior de DOP impide reabrir: no se repone dinero ficticio.
+      await field(reloadedControls.getByRole("form", { name: "Abrir caja", exact: true }), "Moneda").selectOption("DOP");
+      assert.equal(await reloadedControls.getByRole("button", { name: "Reabrir para pruebas", exact: true }).count(), 0);
+      assert.match(await reloadedControls.innerText(), /se descargó dinero al encargado/);
     });
 
     await t.test("2.1.4: the cashier opens the day with the close before, and cannot change it", async () => {
@@ -521,12 +542,12 @@ test("Mayo's review (26-10): Envíos, Caja de remesas, Tasas, escritorio, Soport
     });
 
     await t.test("3.1.1 and 3.1.2: active rates of every currency come first, then latest registered; filter by Todas/Vigente/Sustituida/Anterior", async () => {
-      const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const twoDaysAgo = businessDate(new Date(Date.now() - 48 * 60 * 60 * 1000));
       await store.transaction((draft) => {
         const actor = { id: "demo-admin", name: "Administración", role: "admin" as const };
-        const twoDaysAgoAt = new Date(Date.now() - 48 * 60 * 60 * 1000);
-        const yesterdayAt1 = new Date(Date.now() - 25 * 60 * 60 * 1000);
-        const yesterdayAt2 = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const twoDaysAgoAt = new Date(`${twoDaysAgo}T16:00:00Z`);
+        const yesterdayAt1 = new Date(`${yesterday}T16:00:00Z`);
+        const yesterdayAt2 = new Date(`${yesterday}T17:00:00Z`);
         setDailyRate(draft, actor, { currency: "USD", rate: "58.000000", purchaseRate: "58.000000", saleRate: "60.000000", date: twoDaysAgo }, twoDaysAgoAt);
         setDailyRate(draft, actor, { currency: "EUR", rate: "62.500000", purchaseRate: "62.500000", saleRate: "64.500000", date: yesterday }, yesterdayAt1);
         setDailyRate(draft, actor, { currency: "EUR", rate: "63.000000", purchaseRate: "63.000000", saleRate: "65.000000", date: yesterday }, yesterdayAt2);

@@ -1,7 +1,7 @@
 import type { Cash, Currency, RemittanceSnapshot } from "./types";
 
-// closedToday: the box of today was already closed. The server keeps one box per operator, currency and day
-// (CASH_EXISTS), so it cannot be opened again until the next business day.
+// closedToday: una sola caja por operador, moneda y día. La excepción administrativa
+// de la demo reabre esa misma caja; nunca crea otra apertura ni borra su historial.
 export type RemittanceCashNotice = "ok" | "missing" | "previousOpen" | "closedToday";
 type CashView = Pick<RemittanceSnapshot, "businessDate"> & { cashSessions: readonly Pick<Cash, "operatorId" | "currency" | "date" | "status">[] };
 

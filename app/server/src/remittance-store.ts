@@ -50,6 +50,10 @@ export async function readRemittances(client: pg.PoolClient): Promise<Remittance
     operator_id AS "operatorId",currency,amount,actor_id AS "actorId",created_at AS "createdAt",reason,refund_confirmation AS refund
     FROM remittance_events ORDER BY created_at,id`)).rows.map((row) => clean<RemittanceEvent>(row));
   for (const event of events) {
+    if (event.type === "reopened") {
+      const cash = cashSessions.find((c) => c.id === event.cashSessionId);
+      if (cash) { cash.status = "open"; delete cash.closedAt; delete cash.closedBy; delete cash.countedAmount; }
+    }
     if (event.type === "closed") {
       const cash = cashSessions.find((c) => c.id === event.cashSessionId);
       if (cash) Object.assign(cash, { status: "closed", closedAt: event.createdAt, closedBy: event.actorId, countedAmount: event.amount });

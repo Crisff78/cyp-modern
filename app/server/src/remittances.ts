@@ -84,7 +84,7 @@ export type CashMovement = {
   amount: number; note?: string; actorId: string; createdAt: string;
 };
 export type RemittanceEvent = {
-  id: string; type: "opened" | "sent" | "paid" | "cancelled" | "closed";
+  id: string; type: "opened" | "sent" | "paid" | "cancelled" | "closed" | "reopened";
   transferId?: string; cashSessionId: string; operatorId: string; currency: Currency;
   amount: number; actorId: string; createdAt: string; reason?: string;
   refund?: RemittanceRefund;
@@ -497,9 +497,12 @@ function assertCashMovement(state: State, cash: CashSession, type: "sent" | "pai
   safeMoney(BigInt(balance.expected) + (type === "sent" ? BigInt(amount) : -BigInt(amount)));
 }
 function addEvent(state: State, user: User, cash: CashSession, type: RemittanceEvent["type"], amount: number, now: Date, transferId?: string, reason?: string, refund?: RemittanceRefund) {
+  // Los cierres y reaperturas deben conservar su orden aun dentro del mismo milisegundo.
+  const last = type === "closed" ? state.remittances.events.filter(event => event.cashSessionId === cash.id)
+    .reduce((max, event) => Math.max(max, Date.parse(event.createdAt)), 0) : 0;
   state.remittances.events.push({
     id: randomUUID(), type, cashSessionId: cash.id, operatorId: cash.operatorId, currency: cash.currency,
-    amount, actorId: user.id, createdAt: now.toISOString(), ...(transferId ? { transferId } : {}), ...(reason ? { reason } : {}), ...(refund ? { refund } : {}),
+    amount, actorId: user.id, createdAt: new Date(Math.max(now.getTime(), last ? last + 1 : 0)).toISOString(), ...(transferId ? { transferId } : {}), ...(reason ? { reason } : {}), ...(refund ? { refund } : {}),
   });
 }
 function currentCash(state: State, operatorId: string, currency: Currency, now: Date) {
