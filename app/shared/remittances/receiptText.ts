@@ -1,8 +1,8 @@
-import { cleanReceiptFooterNote, isSignatureRow, printedReceiptHeading, receiptIssuerLines, type Receipt } from "./receipt";
+import { cleanReceiptFooterNote, isPrintedSignoffSection, isSignatureRow, printedReceiptHeading, receiptIssuerLines, type Receipt } from "./receipt";
 import { receiptPrintLayout, type ReceiptPrintOptions } from "./receiptPaper";
 
 /** Literal spaces/newlines survive text-only drivers; accents remain Unicode, never transliterated. */
-export function receiptText(receipt: Receipt, columns: number) {
+export function receiptText(receipt: Receipt, columns: number, dividePrintedBlocks = false) {
   if (!Number.isInteger(columns) || columns < 20 || columns > 100) throw new Error("Ancho de texto no válido.");
   const clean = (value: unknown) => String(value).normalize("NFC").replace(/\r\n?/g,"\n")
     .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]/g,"")
@@ -37,10 +37,11 @@ export function receiptText(receipt: Receipt, columns: number) {
     for (const line of issuerLines) add(line);
   }
   let renderedSections = 0;
+  let prevWasDivided = false;
   for(const section of receipt.sections){
     if (!section.rows.length) continue;
     if (receipt.printed) {
-      if (renderedSections > 0) lines.push("");
+      if (renderedSections > 0 && !prevWasDivided) lines.push("");
       renderedSections++;
       if (section.title) add(section.title);
     } else {
@@ -66,7 +67,13 @@ export function receiptText(receipt: Receipt, columns: number) {
         for(const paragraph of rest) add(paragraph);
       }
     }
-    if (!receipt.printed && section.title) lines.push("");
+    if (receipt.printed && dividePrintedBlocks && !isPrintedSignoffSection(section)) {
+      rule();
+      prevWasDivided = true;
+    } else {
+      prevWasDivided = false;
+      if (!receipt.printed && section.title) lines.push("");
+    }
   }
   if (receipt.printed) {
     const cleanFooter = cleanReceiptFooterNote(receipt.footer);
