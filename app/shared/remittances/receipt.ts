@@ -19,7 +19,6 @@ export const isPrintedHighlightRow = (label: unknown) => {
 };
 export const cleanReceiptFooterNote = (footer: string) => footer.trim().replace(/^nota:\s*/i, "");
 export const isSheetVoucherPaper = (paper?: string) => paper === "a4" || paper === "letter";
-export const sheetVoucherWarningText = "Es importante que revise su recibo para asegurar que el número de teléfono esté correcto!";
 export type SheetReceiptVoucher = {
   companyTitle: string;
   issuerLines: string[];
@@ -39,9 +38,7 @@ export type SheetReceiptVoucher = {
   payoutAmountNumber: string;
   paymentMethod: string;
   registeredBy: string;
-  warningLine: string;
   footerNote: string;
-  claimsLine: string;
   cancelledNote?: string;
 };
 export type Receipt = { reference: string; date: string; status: Transfer["status"]; issuer: ReceiptIssuer; sections: OutputSection[]; footer: string; printed?: boolean; sheetVoucher?: SheetReceiptVoucher };
@@ -95,13 +92,6 @@ export function formatAmountNumber(cents: number): string {
   const absolute = exact < 0n ? -exact : exact;
   const whole = new Intl.NumberFormat("es-DO", { maximumFractionDigits: 0 }).format(absolute / 100n);
   return `${exact < 0n ? "-" : ""}${whole}.${String(absolute % 100n).padStart(2, "0")}`;
-}
-
-export function sheetVoucherClaimsLine(issuer: ReceiptIssuer): string {
-  const cleanPhone = (issuer.phone ?? "").trim().replace(/^tel\.?:\s*/i, "").trim();
-  return cleanPhone
-    ? `PARA RECLAMACIONES FAVOR COMUNICARSE A ${cleanPhone}`
-    : "PARA RECLAMACIONES FAVOR COMUNICARSE CON LA OFICINA";
 }
 
 export function printedPaymentMethod(payment?: Transfer["payment"]): string {
@@ -219,9 +209,7 @@ export function remittanceReceipt(transfer: Transfer, fallback?: ReceiptIssuer, 
     payoutAmountNumber: formatAmountNumber(payoutOf(transfer)),
     paymentMethod: printedPaymentMethod(payment),
     registeredBy,
-    warningLine: sheetVoucherWarningText,
     footerNote: cleanReceiptFooterNote(footer),
-    claimsLine: sheetVoucherClaimsLine(issuer),
     ...(transfer.cancelledAt ? { cancelledNote: `CANCELADO: ${formatPrintedDate(transfer.cancelledAt)} · Motivo: ${transfer.cancelReason || "—"}${transfer.refund ? ` · Referencia de devolución: ${transfer.refund.reference}` : ""}` } : {}),
   } : undefined;
   return { reference: transfer.reciboReference, date, status: transfer.status, issuer, footer, printed, ...(sheetVoucher ? { sheetVoucher } : {}),
@@ -288,10 +276,9 @@ export function receiptHtml(receipt: Receipt, options: import("./ReceiptPrintCon
       .sheet-voucher-signoff{margin:12px 0 0;overflow-wrap:anywhere}
       .sheet-voucher-signature{margin:0 0 6px}
       .sheet-voucher-signature-line{display:inline-block;width:54%;min-width:180px;border-bottom:1.5px solid #000;height:0.85em;vertical-align:baseline}
-      .sheet-voucher-footer{margin:14px 0 0}
-      .sheet-voucher-notice,.sheet-voucher-note,.sheet-voucher-claims{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
-      .sheet-voucher-note,.sheet-voucher-claims{margin-top:10px}
-    </style></head><body><main class="sheet-voucher"><header class="sheet-voucher-header">${titleHtml}${issuerLinesHtml}<div class="sheet-voucher-doc-title">${escapeHtml(v.docHeading)}</div></header><div class="sheet-voucher-meta"><div>Envío #: ${escapeHtml(v.envioReference)}</div><div>Fecha  : ${escapeHtml(v.voucherDateTime)}</div>${compact ? "" : `<div>Cód. Operación: ${escapeHtml(v.operatingCode)}</div>`}</div><div class="sheet-voucher-sender"><div>Remitente: ${escapeHtml(v.senderName)}</div>${compact ? "" : `<div>Código del Cliente: ${escapeHtml(v.senderCode)}</div>`}</div><section class="sheet-voucher-recipient"><div class="sheet-voucher-recipient-line">DESTINATARIO: ${escapeHtml(v.recipientName)}</div><div class="sheet-voucher-recipient-line">TELÉFONO: ${escapeHtml(v.recipientPhone)}</div>${compact ? "" : `<div class="sheet-voucher-recipient-line">DIRECCIÓN: ${escapeHtml(v.recipientAddress)}</div>`}</section><section class="sheet-voucher-amounts"><div class="sheet-voucher-monto">MONTO A ENVIAR: ${escapeHtml(v.sentAmount)}</div><div>Total pagado por el remitente: ${escapeHtml(v.totalPaidAmount)}</div>${v.deliveryFeeAmount ? `<div>Cargo de entrega: ${escapeHtml(v.deliveryFeeAmount)}</div>` : ""}<div class="sheet-voucher-payout"><div>RECIBE EN ${escapeHtml(v.destinationCurrency)}:</div><div>${escapeHtml(v.payoutAmountNumber)}</div></div><div class="sheet-voucher-payment">Forma pago del remitente: ${escapeHtml(v.paymentMethod)}</div>${v.cancelledNote ? `<div class="sheet-voucher-cancelled">${escapeHtml(v.cancelledNote)}</div>` : ""}</section><section class="sheet-voucher-signoff">${compact ? "" : `<div class="sheet-voucher-signature"><span>Recibido por: </span><span class="sheet-voucher-signature-line" aria-hidden="true"></span></div>`}<div>Registrado por: ${escapeHtml(v.registeredBy)}</div></section><footer class="sheet-voucher-footer"><p class="sheet-voucher-notice">${escapeHtml(v.warningLine)}</p>${v.footerNote ? `<p class="sheet-voucher-note">Nota: ${escapeHtml(v.footerNote)}</p>` : ""}<p class="sheet-voucher-claims">${escapeHtml(v.claimsLine)}</p></footer></main></body></html>`;
+      .sheet-voucher-footer{margin:10px 0 0}
+      .sheet-voucher-note{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+    </style></head><body><main class="sheet-voucher"><header class="sheet-voucher-header">${titleHtml}${issuerLinesHtml}<div class="sheet-voucher-doc-title">${escapeHtml(v.docHeading)}</div></header><div class="sheet-voucher-meta"><div>Envío #: ${escapeHtml(v.envioReference)}</div><div>Fecha  : ${escapeHtml(v.voucherDateTime)}</div>${compact ? "" : `<div>Cód. Operación: ${escapeHtml(v.operatingCode)}</div>`}</div><div class="sheet-voucher-sender"><div>Remitente: ${escapeHtml(v.senderName)}</div>${compact ? "" : `<div>Código del Cliente: ${escapeHtml(v.senderCode)}</div>`}</div><section class="sheet-voucher-recipient"><div class="sheet-voucher-recipient-line">DESTINATARIO: ${escapeHtml(v.recipientName)}</div><div class="sheet-voucher-recipient-line">TELÉFONO: ${escapeHtml(v.recipientPhone)}</div>${compact ? "" : `<div class="sheet-voucher-recipient-line">DIRECCIÓN: ${escapeHtml(v.recipientAddress)}</div>`}</section><section class="sheet-voucher-amounts"><div class="sheet-voucher-monto">MONTO A ENVIAR: ${escapeHtml(v.sentAmount)}</div><div>Total pagado por el remitente: ${escapeHtml(v.totalPaidAmount)}</div>${v.deliveryFeeAmount ? `<div>Cargo de entrega: ${escapeHtml(v.deliveryFeeAmount)}</div>` : ""}<div class="sheet-voucher-payout"><div>RECIBE EN ${escapeHtml(v.destinationCurrency)}:</div><div>${escapeHtml(v.payoutAmountNumber)}</div></div><div class="sheet-voucher-payment">Forma pago del remitente: ${escapeHtml(v.paymentMethod)}</div>${v.cancelledNote ? `<div class="sheet-voucher-cancelled">${escapeHtml(v.cancelledNote)}</div>` : ""}</section><section class="sheet-voucher-signoff">${compact ? "" : `<div class="sheet-voucher-signature"><span>Recibido por: </span><span class="sheet-voucher-signature-line" aria-hidden="true"></span></div>`}<div>Registrado por: ${escapeHtml(v.registeredBy)}</div></section>${v.footerNote ? `<footer class="sheet-voucher-footer"><p class="sheet-voucher-note">Nota: ${escapeHtml(v.footerNote)}</p></footer>` : ""}</main></body></html>`;
   }
   const { issuer } = receipt;
   const isPrinted = Boolean(receipt.printed);

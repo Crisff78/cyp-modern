@@ -347,8 +347,7 @@ dialog.remittances-dialog { position: fixed; inset: 0; margin: auto; }
 .remittance-sheet-voucher-signoff { margin-top: 8px; overflow-wrap: anywhere; }
 .remittance-sheet-voucher-signature { margin-bottom: 4px; }
 .remittance-sheet-voucher-signature-line { display: inline-block; width: 54%; min-width: 120px; border-bottom: 1.5px solid #000; height: 0.85em; vertical-align: baseline; }
-.remittance-sheet-voucher-notice { margin: 10px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-.remittance-sheet-voucher-note, .remittance-sheet-voucher-claims { margin-top: 7px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.remittance-sheet-voucher-note { margin: 8px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 @container (max-width: 600px) { .remittance-receipt-sections, .remittance-payment-cash, .remittance-print-controls-grid { grid-template-columns: 1fr; } }
 
 /* Modeless receipt window (detail of a send or receipt). */
