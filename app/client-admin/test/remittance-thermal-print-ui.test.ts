@@ -109,11 +109,13 @@ for(const [name,paper,orientation,customWidthMm,customHeightMm] of [['sheet-8x4'
       });
       assert.equal(preMetrics.renderedLines,preMetrics.lineCount,`${id}: zero soft-wrapped lines on 72.1mm POS80 print preview`);
       assert.ok(preMetrics.scrollWidth<=preMetrics.clientWidth+1,`${id}: fits inside 72.1mm POS80 width`);
-      for(const expected of ["INVERSIONES DEMO S.R.L.","Tu aliado en cobros, pagos y envíos","Av. 27 de Febrero","Tel.: 809-555-0222","RNC: 1-30-00100-1","========================================","Fecha:","ENV00000048","mayo lomb","María Rodríguez","8095550100","DOP 500.00","Cargo del envío:","DOP 94.00","DOP 594.00","Registrado por:","Administración"])assert(preMetrics.text.includes(expected),`${id} missing ${expected}`);
-      for(const forbidden of ["REC00000048","Cobros y Pagos","admin@cyp.local","Recargo tarjeta de crédito","Cargo adicional por tarjeta","DOP 44.00","Pendiente de entrega","Operador del envío","03103103103","111-111-1111","CL-0002"])assert(!preMetrics.text.includes(forbidden),`${id} unexpected ${forbidden}`);
-      assert(preMetrics.text.indexOf("INVERSIONES DEMO S.R.L.")<preMetrics.text.indexOf("Fecha:"),`${id}: company header must appear at the very top`);
-      if(compact){assert(!preMetrics.text.includes("Código de operación:"));assert(!preMetrics.text.includes("Calle Las Damas 18"));assert(!preMetrics.text.includes("1111111111"));}
-      else{assert(preMetrics.text.includes("AD0B35A22F305CA2"));assert(preMetrics.text.includes("Calle Las Damas 18"));assert(preMetrics.text.includes("1111111111"));}
+      for(const expected of ["INVERSIONES DEMO S.R.L.","Tu aliado en cobros, pagos y envíos","Av. 27 de Febrero","Tel. 809-555-0222 / RNC: 1-30-00100-1","----------------------------------------","RECIBO DE ENVIO","Fecha: 11/11/26 09:15 a.m.","Envío: ENV00000048","Remitente: mayo lomb","Destinatario: María Rodríguez","Teléfono: 8095550100","Importes del envío","Monto a enviar: DOP 500.00","DOP 594.00","Recibe el destinatario: DOP 500.00","Forma pago del remitente: TC","Registrado por: Administración","Nota: Conserve este recibo."])assert(preMetrics.text.includes(expected),`${id} missing ${expected}`);
+      assert.equal((preMetrics.text.match(/-{40}/g)??[]).length,1,`${id}: only the header dashed line is drawn`);
+      for(const forbidden of ["REC00000048","Cobros y Pagos","admin@cyp.local","Cargo del envío","Recargo tarjeta de crédito","Cargo adicional por tarjeta","DOP 44.00","DOP 94.00","8888","658565","Banreservas","Pendiente de entrega","Operador del envío","03103103103","111-111-1111","CL-0002","========================================"])assert(!preMetrics.text.includes(forbidden),`${id} unexpected ${forbidden}`);
+      assert(preMetrics.text.indexOf("INVERSIONES DEMO S.R.L.")<preMetrics.text.indexOf("RECIBO DE ENVIO"),`${id}: company header must appear at the very top`);
+      assert(preMetrics.text.indexOf("RECIBO DE ENVIO")<preMetrics.text.indexOf("Fecha:"),`${id}: RECIBO DE ENVIO precedes Fecha`);
+      if(compact){assert(!preMetrics.text.includes("Cód. Operación:"));assert(!preMetrics.text.includes("Calle Las Damas 18"));assert(!preMetrics.text.includes("1111111111"));assert(!preMetrics.text.includes("Recibido por:"));}
+      else{assert(preMetrics.text.includes("Cód. Operación: AD0B35A22F305CA2"));assert(preMetrics.text.includes("Dirección: Calle Las Damas 18"));assert(preMetrics.text.includes("Código del Cliente: 1111111111"));assert(preMetrics.text.includes("Recibido por: ________________________"));}
       await posPopup.pdf({path:path.join(output,`${id}-72.1mm.pdf`),width:"72.1mm",height:"297mm",preferCSSPageSize:false,printBackground:true});
       await posPopup.screenshot({path:path.join(output,`${id}-72.1mm.png`),fullPage:true});await posPopup.close();
     }
@@ -128,17 +130,19 @@ for(const [name,paper,orientation,customWidthMm,customHeightMm] of [['sheet-8x4'
       totalHeightMm:document.querySelector("main.thermal-image-output")!.getBoundingClientRect().height*25.4/96,
     }));
     assert.equal(graphicCheck.alts[0],"Logo de la empresa");
+    assert(graphicCheck.alts.includes("Separador punteado"),"dashed separator line right below company header");
+    assert(!graphicCheck.alts.includes("Separador"),"internal horizontal divider lines are removed on printed receipts");
     assert(!graphicCheck.alts.includes("Margen superior")&&!graphicCheck.alts.includes("Margen inferior"),"no blank top/bottom spacer blocks");
     assert(graphicCheck.totalHeightMm<130,`compact thermal graphic receipt avoids vertical whitespace bloat (${graphicCheck.totalHeightMm}mm)`);
     for(const w of graphicCheck.widths)assert.equal(w,66*8,"POS80 graphic canvas uses 66mm (528 dots), maximizing width inside ~67.4mm printhead limit");
     for(const run of graphicCheck.runs){assert(run.left>=0.2,JSON.stringify(run));assert(run.right<=65.7,`right edge clipped risk: ${JSON.stringify(run)}`);}
     const posGraphicBlocks=new Map<number,any[]>();for(const run of graphicCheck.runs){const group=posGraphicBlocks.get(run.block)??[];group.push(run);posGraphicBlocks.set(run.block,group);}
     let inlinePairs=0;
-    for(const group of posGraphicBlocks.values())if(group.length>=2&&group[0].text.endsWith(":")&&group[0].y===group[1].y){inlinePairs++;const gapMm=group[1].left-group[0].right;assert(gapMm>=0.7&&gapMm<=1.5,`POS80 graphic value detached from label (${gapMm}mm): ${JSON.stringify(group)}`);}
-    assert(inlinePairs>=15,`expected all POS80 invoice rows to render value immediately after label, got ${inlinePairs}`);
+    for(const group of posGraphicBlocks.values())if(group.length>=2&&group[0].text.endsWith(":")&&group[0].y===group[1].y){inlinePairs++;const gapMm=group[1].left-group[0].right;assert(gapMm>=0.7&&gapMm<=1.6,`POS80 graphic value detached from label (${gapMm}mm): ${JSON.stringify(group)}`);}
+    assert(inlinePairs>=13,`expected all POS80 invoice rows to render value immediately after label, got ${inlinePairs}`);
     const posGraphicText=graphicCheck.runs.map((r:any)=>r.text).join("\n");
-    assert(posGraphicText.includes("Cargo del envío:")&&posGraphicText.includes("DOP 94.00"),"graphic receipt merges credit card surcharge into Cargo del envío");
-    assert(!posGraphicText.includes("Recargo tarjeta de crédito")&&!posGraphicText.includes("Cargo adicional por tarjeta"));
+    for(const expected of ["Tel. 809-555-0222 / RNC: 1-30-00100-1","RECIBO DE ENVIO","Cód. Operación:","Remitente:","Código del Cliente:","Destinatario:","Importes del envío","Total pagado por el remitente:","DOP 594.00","Recibe el destinatario:","Forma pago del remitente:","TC","Recibido por:","Registrado por:","Nota:"])assert(posGraphicText.includes(expected),`graphic receipt missing ${expected}`);
+    for(const forbidden of ["Cargo del envío","Recargo tarjeta de crédito","Cargo adicional por tarjeta","8888","658565","Banreservas"])assert(!posGraphicText.includes(forbidden),`graphic receipt unexpected ${forbidden}`);
     await posGraphic.screenshot({path:path.join(output,"pos80-full-graphics-72.1mm.png"),fullPage:true});await posGraphic.close();
     // Failed raster preparation must not silently print a different format.
     await context.addInitScript(()=>{HTMLCanvasElement.prototype.toDataURL=()=>{throw new Error("Synthetic raster failure");};});
