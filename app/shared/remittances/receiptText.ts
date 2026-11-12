@@ -75,14 +75,10 @@ export function receiptText(receipt: Receipt, columns: number, sheetVoucherMode 
       lines.push(sigPrefix + "_".repeat(Math.max(8, Math.min(44, columns - length(sigPrefix) - 2))));
     }
     add(`Registrado por: ${v.registeredBy}`);
-    lines.push("");
-    add(v.warningLine);
     if (v.footerNote) {
       lines.push("");
       add(`Nota: ${v.footerNote}`);
     }
-    lines.push("");
-    add(v.claimsLine);
     return lines.join("\n") + "\n";
   }
   const issuerLines = [receipt.issuer.name, ...receiptIssuerLines(receipt.issuer, Boolean(receipt.printed))].filter((line): line is string => Boolean(line && clean(line).trim()));
