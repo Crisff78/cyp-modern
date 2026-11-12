@@ -18,7 +18,22 @@ export const isPrintedHighlightRow = (label: unknown) => {
   return key === "Envío" || key === "Remitente" || key === "Destinatario" || key === "Recibe el destinatario";
 };
 export const cleanReceiptFooterNote = (footer: string) => footer.trim().replace(/^nota:\s*/i, "");
-export type Receipt = { reference: string; date: string; status: Transfer["status"]; issuer: ReceiptIssuer; sections: OutputSection[]; footer: string; printed?: boolean };
+export const isSheetVoucherPaper = (paper?: string) => paper === "a4" || paper === "letter";
+export const sheetVoucherWarningText = "Es importante que revise su recibo para asegurar que el número de teléfono esté correcto!";
+export type SheetReceiptVoucher = {
+  companyTitle: string;
+  envioReference: string;
+  voucherDateTime: string;
+  recipientName: string;
+  recipientPhone: string;
+  sentAmount: string;
+  destinationCurrency: string;
+  payoutAmountNumber: string;
+  warningLine: string;
+  claimsLine: string;
+  cancelledNote?: string;
+};
+export type Receipt = { reference: string; date: string; status: Transfer["status"]; issuer: ReceiptIssuer; sections: OutputSection[]; footer: string; printed?: boolean; sheetVoucher?: SheetReceiptVoucher };
 
 export const isGenericAppIssuerName = (name?: string) => !name?.trim() || /^cobros y pagos$/i.test(name.trim());
 export const receiptCompanyName = (issuer: ReceiptIssuer) => isGenericAppIssuerName(issuer.name) ? "" : issuer.name.trim();
@@ -44,6 +59,38 @@ export function formatPrintedDate(value?: string): string {
   const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? "";
   const period = /^p/i.test(get("dayPeriod")) ? "p.m." : "a.m.";
   return `${get("day")}/${get("month")}/${get("year")} ${get("hour")}:${get("minute")} ${period}`;
+}
+
+export function formatSheetVoucherDateTime(value?: string): string {
+  if (!value) return "—";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "—";
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "America/Santo_Domingo",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(parsed);
+  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${get("day")}-${get("month")}-${get("year")} |${get("hour")}:${get("minute")}:${get("second")}`;
+}
+
+export function formatAmountNumber(cents: number): string {
+  const exact = BigInt(cents);
+  const absolute = exact < 0n ? -exact : exact;
+  const whole = new Intl.NumberFormat("es-DO", { maximumFractionDigits: 0 }).format(absolute / 100n);
+  return `${exact < 0n ? "-" : ""}${whole}.${String(absolute % 100n).padStart(2, "0")}`;
+}
+
+export function sheetVoucherClaimsLine(issuer: ReceiptIssuer): string {
+  const cleanPhone = (issuer.phone ?? "").trim().replace(/^tel\.?:\s*/i, "").trim();
+  return cleanPhone
+    ? `PARA RECLAMACIONES FAVOR COMUNICARSE A ${cleanPhone}`
+    : "PARA RECLAMACIONES FAVOR COMUNICARSE CON LA OFICINA";
 }
 
 export function printedPaymentMethod(payment?: Transfer["payment"]): string {
@@ -141,7 +188,20 @@ export function remittanceReceipt(transfer: Transfer, fallback?: ReceiptIssuer, 
     ...(payment.method === "cash" ? [["Dinero recibido", formatMoney(payment.tenderedAmount, transfer.sourceCurrency)], ["Devuelta", formatMoney(payment.changeAmount, transfer.sourceCurrency)]]
       : [["Referencia del comprobante", payment.reference ?? "—"], ...(payment.last4 ? [["Tarjeta", `•••• ${payment.last4}`]] : []), ...(payment.bank ? [["Banco o proveedor", payment.bank]] : [])])]
     : [["Forma de pago", "No registrada en esta operación histórica"]];
-  return { reference: transfer.reciboReference, date, status: transfer.status, issuer, footer: issuer.footerNote || defaultReceiptFooter, printed,
+  const sheetVoucher: SheetReceiptVoucher | undefined = printed ? {
+    companyTitle: issuer.name,
+    envioReference: transfer.envioReference,
+    voucherDateTime: formatSheetVoucherDateTime(transfer.createdAt),
+    recipientName: transfer.recipientContact?.name ?? "Contacto histórico no registrado",
+    recipientPhone: transfer.recipientContact?.phone || transfer.recipientContact?.cellular || "No registrado",
+    sentAmount: formatMoney(transfer.amount, transfer.sourceCurrency),
+    destinationCurrency: transfer.destinationCurrency,
+    payoutAmountNumber: formatAmountNumber(payoutOf(transfer)),
+    warningLine: sheetVoucherWarningText,
+    claimsLine: sheetVoucherClaimsLine(issuer),
+    ...(transfer.cancelledAt ? { cancelledNote: `CANCELADO: ${formatPrintedDate(transfer.cancelledAt)} · Motivo: ${transfer.cancelReason || "—"}` } : {}),
+  } : undefined;
+  return { reference: transfer.reciboReference, date, status: transfer.status, issuer, footer: issuer.footerNote || defaultReceiptFooter, printed, ...(sheetVoucher ? { sheetVoucher } : {}),
     sections: printed ? [
       { title: "", columns: ["Dato", "Valor"], rows: [["Fecha", date], ["Envío", transfer.envioReference], ["Cód. Operación", transfer.operatingCode]] },
       party("sender", "Remitente"), party("recipient", "Destinatario"),
@@ -173,10 +233,32 @@ export function receiptHtml(receipt: Receipt, options: import("./ReceiptPrintCon
   const layout = receiptPrintLayout(options);
   const thermal = thermalReceiptSize(options.paper);
   const sections = receiptSections(receipt, options.compact);
-  const docTitle = String(receipt.printed ? (sections[0]?.rows.find(([label]) => label === "Envío")?.[1] ?? receipt.reference) : receipt.reference);
+  const sheetVoucherMode = Boolean(receipt.printed && receipt.sheetVoucher && isSheetVoucherPaper(options.paper));
+  const docTitle = String(receipt.printed ? (receipt.sheetVoucher?.envioReference ?? sections[0]?.rows.find(([label]) => label === "Envío")?.[1] ?? receipt.reference) : receipt.reference);
   if (options.output === "text") {
     const columns = receiptTextColumns(options.paper, options), narrowThermal = options.paper === "51" || options.paper === "58", fontSize = narrowThermal ? 9.5 : thermal ? 10 : 12;
-    return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${escapeHtml(docTitle)}</title><style>@page{size:${layout.pageSize};margin:${layout.marginMm}mm}*{box-sizing:border-box}html{margin:0;padding:0;background:#e2e8f0}body{margin:0;padding:0;width:100%;color:#000;background:#fff;${layout.widthMm === undefined ? "" : `max-width:${layout.widthMm}mm;`}}@media screen{body{box-shadow:0 2px 10px rgba(15,23,42,.12)}}@media print{html,body{background:#fff;box-shadow:none}}pre{font:${fontSize}px/1.45 "Courier New",Courier,monospace;letter-spacing:0;white-space:pre-wrap;margin:0;padding:0;tab-size:2}</style></head><body><pre aria-label="Recibo en formato de texto">${escapeHtml(receiptText({...receipt,sections},columns))}</pre></body></html>`;
+    const preFont = sheetVoucherMode ? `700 ${fontSize}px/1.45 "Consolas","Courier New",Courier,monospace` : `${fontSize}px/1.45 "Courier New",Courier,monospace`;
+    return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${escapeHtml(docTitle)}</title><style>@page{size:${layout.pageSize};margin:${layout.marginMm}mm}*{box-sizing:border-box}html{margin:0;padding:0;background:#e2e8f0}body{margin:0;padding:0;width:100%;color:#000;background:#fff;${layout.widthMm === undefined ? "" : `max-width:${layout.widthMm}mm;`}}@media screen{body{box-shadow:0 2px 10px rgba(15,23,42,.12)}}@media print{html,body{background:#fff;box-shadow:none}}pre{font:${preFont};letter-spacing:0;white-space:pre-wrap;margin:0;padding:0;tab-size:2}</style></head><body><pre aria-label="Recibo en formato de texto">${escapeHtml(receiptText({...receipt,sections},columns,sheetVoucherMode))}</pre></body></html>`;
+  }
+  if (sheetVoucherMode && receipt.sheetVoucher) {
+    const v = receipt.sheetVoucher;
+    const graphicWidthMm = layout.widthMm;
+    const titleHtml = v.companyTitle ? `<h1 class="sheet-voucher-company">${escapeHtml(v.companyTitle)}</h1>` : "";
+    return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${escapeHtml(docTitle)}</title><style>
+      @page{size:${layout.pageSize};margin:${layout.marginMm}mm}*{box-sizing:border-box}html{margin:0;padding:0;background:#e2e8f0}body{font:700 18px/1.38 "Consolas","Courier New",Courier,monospace;color:#000;background:#fff;margin:0;padding:4px 0 0;width:100%;${graphicWidthMm === undefined ? "max-width:100%;" : `max-width:${graphicWidthMm}mm;`}}@media screen{body{box-shadow:0 2px 10px rgba(15,23,42,.12);padding:12px 16px}}@media print{html,body{background:#fff;box-shadow:none;padding:4px 0 0}}
+      .sheet-voucher-header{border-bottom:1.5px solid #000;padding:2px 0 14px;margin-bottom:6px;text-align:center}
+      .sheet-voucher-company{margin:0;font-size:26px;line-height:1.2;font-weight:700;text-transform:uppercase;letter-spacing:0.28em;padding-left:0.28em;overflow-wrap:anywhere}
+      .sheet-voucher-meta{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+      .sheet-voucher-recipient{text-align:center;border-bottom:1.5px solid #000;padding:16px 0 6px;margin-bottom:6px;overflow-wrap:anywhere}
+      .sheet-voucher-recipient-name{margin:0 0 12px}
+      .sheet-voucher-recipient-phone{margin:0}
+      .sheet-voucher-amounts{margin:0 0 18px;overflow-wrap:anywhere}
+      .sheet-voucher-monto{text-align:center;margin:0 0 6px}
+      .sheet-voucher-payout{margin:0;white-space:pre-wrap}
+      .sheet-voucher-cancelled{margin:10px 0 0;white-space:pre-wrap}
+      .sheet-voucher-notice{margin:18px 0 16px;white-space:pre-wrap;overflow-wrap:anywhere}
+      .sheet-voucher-claims{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+    </style></head><body><main class="sheet-voucher"><header class="sheet-voucher-header">${titleHtml}</header><div class="sheet-voucher-meta"><div>Envío #: ${escapeHtml(v.envioReference)}</div><div>Fecha  : ${escapeHtml(v.voucherDateTime)}</div></div><section class="sheet-voucher-recipient"><div class="sheet-voucher-recipient-name">${escapeHtml(v.recipientName)}</div><div class="sheet-voucher-recipient-phone">TELÉFONO: ${escapeHtml(v.recipientPhone)}</div></section><section class="sheet-voucher-amounts"><div class="sheet-voucher-monto">MONTO: ${escapeHtml(v.sentAmount)}</div><div class="sheet-voucher-payout"><div>RECIBE EN ${escapeHtml(v.destinationCurrency)}:</div><div>${escapeHtml(v.payoutAmountNumber)}</div></div>${v.cancelledNote ? `<div class="sheet-voucher-cancelled">${escapeHtml(v.cancelledNote)}</div>` : ""}</section><p class="sheet-voucher-notice">${escapeHtml(v.warningLine)}</p><p class="sheet-voucher-claims">${escapeHtml(v.claimsLine)}</p></main></body></html>`;
   }
   const { issuer } = receipt;
   const isPrinted = Boolean(receipt.printed);

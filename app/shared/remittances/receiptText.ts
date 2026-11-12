@@ -2,7 +2,7 @@ import { cleanReceiptFooterNote, isSignatureRow, printedReceiptHeading, receiptI
 import { receiptPrintLayout, type ReceiptPrintOptions } from "./receiptPaper";
 
 /** Literal spaces/newlines survive text-only drivers; accents remain Unicode, never transliterated. */
-export function receiptText(receipt: Receipt, columns: number) {
+export function receiptText(receipt: Receipt, columns: number, sheetVoucherMode = false) {
   if (!Number.isInteger(columns) || columns < 20 || columns > 100) throw new Error("Ancho de texto no válido.");
   const clean = (value: unknown) => String(value).normalize("NFC").replace(/\r\n?/g,"\n")
     .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]/g,"")
@@ -25,6 +25,40 @@ export function receiptText(receipt: Receipt, columns: number) {
   };
   const lines: string[] = [], add = (value: string) => lines.push(...wrap(value,columns)), rule = () => lines.push("-".repeat(columns));
   const center = (value: string) => { for (const line of wrap(value, columns)) lines.push(" ".repeat(Math.max(0, Math.floor((columns - length(line)) / 2))) + line); };
+  if (sheetVoucherMode && receipt.sheetVoucher) {
+    const v = receipt.sheetVoucher;
+    const rawTitle = clean(v.companyTitle).trim().toUpperCase();
+    if (rawTitle) {
+      const spacedTitle = rawTitle.split(/\s+/u).map((word) => Array.from(word).join(" ")).join("   ");
+      if (length(spacedTitle) <= columns) {
+        lines.push(" ".repeat(Math.max(0, Math.floor((columns - length(spacedTitle)) / 2))) + spacedTitle);
+      } else {
+        center(rawTitle);
+      }
+    }
+    rule();
+    const pushExactOrWrap = (value: string) => {
+      const normalized = clean(value);
+      if (!normalized.includes("\n") && length(normalized) <= columns) lines.push(normalized);
+      else add(normalized);
+    };
+    pushExactOrWrap(`Envío #: ${v.envioReference}`);
+    pushExactOrWrap(`Fecha  : ${v.voucherDateTime}`);
+    lines.push("");
+    center(v.recipientName);
+    lines.push("");
+    center(`TELÉFONO: ${v.recipientPhone}`);
+    rule();
+    center(`MONTO: ${v.sentAmount}`);
+    add(`RECIBE EN ${v.destinationCurrency}:`);
+    add(v.payoutAmountNumber);
+    if (v.cancelledNote) add(v.cancelledNote);
+    lines.push("");
+    add(v.warningLine);
+    lines.push("");
+    add(v.claimsLine);
+    return lines.join("\n") + "\n";
+  }
   const issuerLines = [receipt.issuer.name, ...receiptIssuerLines(receipt.issuer, Boolean(receipt.printed))].filter((line): line is string => Boolean(line && clean(line).trim()));
   if (receipt.printed) {
     if (issuerLines.length) {
