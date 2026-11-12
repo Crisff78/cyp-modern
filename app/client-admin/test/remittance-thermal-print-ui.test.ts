@@ -72,7 +72,7 @@ for(const [name,paper,orientation,customWidthMm,customHeightMm] of [['sheet-8x4'
       await plain.waitForFunction(()=>(window as any).__prints===1);
       assert.equal(await plain.locator("img,canvas,svg,dl").count(),0,"generic mode does not need graphics support");
       const content=await plain.locator("pre").textContent(),columns=paper==="80"?40:paper==="76"?38:paper==="58"?26:paper==="51"?24:paper==="102"?54:72;
-      assert.match(content,/Nombre: {2,}José Núñez/);assert(content.includes("Código de operación:"));assert(content.includes("María Rodríguez"));
+      assert(content.includes("Nombre: José Núñez"));assert(!/Nombre: {2,}/.test(content));assert(content.includes("Código de operación:"));assert(content.includes("Nombre: María Rodríguez"));
       for(const line of content.split("\n"))assert(Array.from(line).length<=columns);
       assert.equal(await plain.evaluate(()=>document.body.scrollWidth<=document.body.clientWidth+1),true);
       assert.equal(await plain.evaluate(()=>(window as any).__runs.length),0,"no canvas is used by the generic driver path");
