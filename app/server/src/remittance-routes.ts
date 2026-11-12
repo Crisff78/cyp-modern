@@ -15,6 +15,7 @@ import { registerRemittanceClient } from "./remittance-client-registration.js";
 import { isCardholderNameDraft, isPaymentTextDraft, paymentMethods } from "../../shared/remittances/payment.mjs";
 import { CardVault, cardEnvelopeSchema } from "./card-vault.js";
 import { remittanceCashActivity } from "./remittance-cash-activity.js";
+import { demoCashReopeningProblem, reopenDemoRemittanceCash } from "./remittance-demo-cash.js";
 
 type Mutate = <T, P = Record<string, string>>(
   path: string, summary: string, schema: z.ZodType<T>,
@@ -33,13 +34,21 @@ const quoteFields = {
 };
 export function registerRemittanceRoutes(
   app: FastifyInstance, store: Store, user: (req: FastifyRequest) => User,
-  mutate: Mutate, describe: Describe, systemOperators: User[], vault?: CardVault,
+  mutate: Mutate, describe: Describe, systemOperators: User[], vault?: CardVault, demo = false,
 ) {
   const get = (path: string, summary: string, handler: (req: FastifyRequest) => unknown) => {
     app.get(path, handler); describe("get", path, summary);
   };
-  get("/api/envios/snapshot", "Estado de envíos, tasas y cajas por moneda", async (req) =>
-    ({ ...remittanceSnapshot(await store.read(), user(req), systemOperators), cardStorage: vault?.info() ?? { enabled: false } }));
+  get("/api/envios/snapshot", "Estado de envíos, tasas y cajas por moneda", async (req) => {
+    const state = await store.read(), actor = user(req), now = new Date();
+    const snapshot = remittanceSnapshot(state, actor, systemOperators, now);
+    return { ...snapshot, cashSessions: snapshot.cashSessions.map(cash => ({ ...cash,
+      ...(demo && actor.role === "admin" && cash.status === "closed" && cash.date === snapshot.businessDate
+        ? { canReopen: !demoCashReopeningProblem(state, actor, cash, now), reopenBlockedReason: demoCashReopeningProblem(state, actor, cash, now) } : {}),
+    })), cardStorage: vault?.info() ?? { enabled: false } };
+  });
+  if (demo) mutate("/api/envios/cajas/:id/reabrir-prueba", "Reabrir la misma caja de hoy solo en la demo y con autorización administrativa",
+    z.object({}).strict(), (state, actor, _input, params) => reopenDemoRemittanceCash(state, actor, params.id, demo));
   get("/api/envios/cajas/:id/movimientos", "Consultar el detalle de movimientos de una caja autorizada", async req => {
     const params = z.object({ id }).strict().parse(req.params);
     return remittanceCashActivity(await store.read(), user(req), params.id, systemOperators);

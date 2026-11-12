@@ -86,6 +86,11 @@ function checkRequest(actor: User, method: string, route: string): boolean {
     else if (path.endsWith("/cancelar")) permission = "remittances.cancel";
     else if (path.endsWith("/cajas/abrir")) permission = "remittances.cash.open";
     else if (/^envios\/cajas\/[^/]+\/cerrar$/.test(path)) permission = "remittances.cash.close";
+    else if (/^envios\/cajas\/[^/]+\/reabrir-prueba$/.test(path)) {
+      if (actor.role !== "admin") throw new DomainError("FORBIDDEN", "Solo un administrador puede reabrir una caja de prueba.", 403);
+      requireRemittancePermission(actor, "remittances.cash.close");
+      permission = "remittances.cash.open";
+    }
     else if (/^envios\/cajas\/[^/]+\/entregas$/.test(path)) permission = "remittances.cash.open";
     else if (/^envios\/cajas\/[^/]+\/retiros$/.test(path)) permission = "remittances.cash.close";
     else if (path === "envios") permission = method === "GET" ? "remittances.view" : "remittances.create";

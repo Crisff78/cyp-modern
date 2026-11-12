@@ -58,6 +58,7 @@ export type Cash = {
   id: string; operatorId: string; currency: Currency; date: string; openingAmount: number;
   openedBy: string; openedAt: string; status: "open" | "closed"; closedBy?: string; closedAt?: string;
   countedAmount?: number; sentTotal: number; cancelRefund: number; paid: number; expected: number; canClose: boolean;
+  canReopen?: boolean; reopenBlockedReason?: string;
   // Review of Mayo (26-10-2026): entregas adicionales, descargo at the close, what passes to the next opening and the
   // box this opening came from. Optional: an older server does not send them.
   added?: number; withdrawn?: number; discharged?: number; carry?: number; carriedFrom?: string; canAdd?: boolean; canWithdraw?: boolean;

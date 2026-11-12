@@ -58,7 +58,7 @@ const shortRate = (rate: string) => rate.includes(".") ? rate.replace(/\.?0+$/, 
 /** The rate from the currency sent to the currency received (display only). */
 const crossRateText = (sourceRate: string, destinationRate: string, sourceCurrency: Currency, destinationCurrency: Currency) => { try { const cross = formatCrossRate(sourceRate, destinationRate); return `1 ${sourceCurrency} ${cross.approximate ? "≈" : "="} ${cross.text} ${destinationCurrency}`; } catch { return "No disponible"; } };
 type Actor = { id: string; name: string; role?: string; access?: EffectiveAccess };
-type Confirmation = { title: string; path: string; body: Record<string, unknown>; description: ReactNode; kind: "create" | "pay" | "cancel" | "open" | "close" | "add" | "withdraw"; idempotencyKey?: string; expectedQuotation?: Quotation };
+type Confirmation = { title: string; path: string; body: Record<string, unknown>; description: ReactNode; kind: "create" | "pay" | "cancel" | "open" | "close" | "add" | "withdraw" | "reopen"; idempotencyKey?: string; expectedQuotation?: Quotation };
 // Only in-memory: retain an uncertain action across route changes and same-actor login.
 // Keyed by actor and sections, so one window does not show the uncertain action of another.
 const pendingByActor = new Map<string, Confirmation>();
@@ -72,6 +72,7 @@ const LIST_MIN_HEIGHT = 140, FORM_MIN_HEIGHT = 120;
 const centsDraft = (cents: number) => `${Math.trunc(cents / 100)}.${String(Math.abs(cents) % 100).padStart(2, "0")}`;
 for (const code of ["INVALID_PAYMENT", "INSUFFICIENT_TENDERED", "PAYMENT_NOT_VERIFIED", "REFUND_NOT_VERIFIED", "CARD_PAYMENT_REJECTED", "INVALID_CARD_ARCHIVE", "CARD_STORAGE_UNAVAILABLE", "CARD_ARCHIVE_REQUIRED"]) definitiveDomainErrors.add(code);
 definitiveDomainErrors.add("INVALID_DELIVERY_COMMISSION");
+definitiveDomainErrors.add("CASH_REOPEN_BLOCKED");
 const statusText = { pending: "Pendiente de entrega", paid: "Pagado", cancelled: "Cancelado" };
 const phoneRecordText = {
   newRecord: " También quedará guardado en la ficha nueva del destinatario, que no tiene teléfono.",
@@ -955,9 +956,15 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
                 : "Primera caja de este operador en esta moneda: escribe el efectivo con que empieza."}</p>
             </fieldset>
             {openingCash === "previousOpen" && <p className="remittance-cash-warning" role="status">La caja de remesas en {opening.currency} del {previousOpenCashDate(snapshot, openingOperator, opening.currency)} de {operatorName(openingOperator)} sigue abierta. Ciérrala con «Contar y cerrar» antes de abrir la de hoy.</p>}
-            {openingCash === "closedToday" && <p className="remittance-cash-warning" role="status">La caja de remesas de hoy en {opening.currency} de {operatorName(openingOperator)} ya se cerró. Hay una sola caja por operador, moneda y día: no se puede abrir otra hasta la jornada siguiente.</p>}
+            {openingCash === "closedToday" && <p className="remittance-cash-warning" role="status">La caja de remesas de hoy en {opening.currency} de {operatorName(openingOperator)} ya se cerró. {selectedTodayCash?.canReopen
+              ? "En esta demo puedes reabrir la misma caja para continuar las pruebas, conservando sus movimientos y saldo."
+              : selectedTodayCash?.reopenBlockedReason || "Hay una sola caja por operador, moneda y día: no se puede abrir otra hasta la jornada siguiente."}</p>}
             {canOpenCash && <button className="remittance-primary" disabled={working || uncertain || Boolean(selectedTodayCash) || openingCash === "previousOpen"}>Revisar apertura</button>}
           </form>
+          {selectedTodayCash?.canReopen && <button type="button" className="remittance-primary" disabled={working || uncertain} onClick={() => confirm({
+            title: "Reabrir caja para pruebas", path: `/envios/cajas/${encodeURIComponent(selectedTodayCash.id)}/reabrir-prueba`, kind: "reopen", body: {},
+            description: <p>¿Reabrir la caja de hoy de <strong>{operatorName(selectedTodayCash.operatorId)}</strong> en <strong>{selectedTodayCash.currency}</strong>? Continuarás con <strong>{money(selectedTodayCash.expected, selectedTodayCash.currency)}</strong>. Se conservarán todos los movimientos y el cierre anterior. Esta opción solo está disponible en la demo.</p>,
+          })}>Reabrir para pruebas</button>}
           {selectedOpenCash ? <>
             <p className="remittance-cash-target" role="status">Caja abierta de <strong>{operatorName(selectedOpenCash.operatorId)}</strong> en <strong>{selectedOpenCash.currency}</strong>. Las entregas y los retiros se registrarán en esta caja.</p>
             <div className="remittance-cash-movements">
