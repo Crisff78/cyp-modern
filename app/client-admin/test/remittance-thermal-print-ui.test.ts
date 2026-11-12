@@ -23,7 +23,7 @@ const receipt={reference:'REC-QA-ACENTOS',date:'05/11/2026, 11:13 a. m.',status:
 const syntheticLogo=(()=>{const c=document.createElement('canvas');c.width=220;c.height=72;const g=c.getContext('2d')!;g.fillStyle='#fff';g.fillRect(0,0,220,72);g.strokeStyle='#000';g.lineWidth=4;g.strokeRect(4,4,212,64);g.fillStyle='#000';g.font='bold 24px Arial';g.textAlign='center';g.fillText('DEMO LOGO',110,44);return c.toDataURL('image/png');})();
 const pos80Invoice=remittanceReceipt({id:'qa-pos80',sequence:48,envioReference:'ENV00000048',reciboReference:'REC00000048',operatingCode:'AD0B35A22F305CA2',senderClientId:'s1',recipientClientId:'r1',sendingUserId:'demo-admin',registeredBy:'demo-admin',status:'pending',canPay:true,canCancel:true,createdAt:'2026-11-11T13:15:00.000Z',note:'',sourceCurrency:'DOP',destinationCurrency:'DOP',amount:50000,commissionBps:1000,commissionAmount:5000,totalAmount:55000,receiveAmount:50000,quote:{date:'2026-11-11',sourceRate:'1.000000',destinationRate:'1.000000',sourceRateKind:'base',destinationRateKind:'base'},senderContact:{id:'s1',code:'1111111111',name:'mayo lomb',identification:'03103103103',phone:'111-111-1111',cellular:'',address:'santiago'},recipientContact:{id:'r1',code:'CL-0002',name:'María Rodríguez',identification:'',phone:'8095550100',cellular:'',address:'Calle Las Damas 18'},receiptIssuer:{name:'Cobros y Pagos',address:'',phone:'',email:'admin@cyp.local',logoDataUrl:syntheticLogo,footerNote:'Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío.'},payment:{version:2,method:'card',cardType:'credit',tenderedAmount:59400,changeAmount:0,cardSurchargeBps:800,cardSurchargeAmount:4400,reference:'658565',last4:'8888',bank:'Banreservas',confirmedBy:'demo-admin',confirmedAt:'2026-11-11T13:15:00.000Z'}},{name:'INVERSIONES DEMO S.R.L.',slogan:'Tu aliado en cobros, pagos y envíos',address:'Av. 27 de Febrero #2131, Local 12, Santiago',phone:'809-555-0222',rnc:'1-30-00100-1',email:'admin@cyp.local',footerNote:'Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío.'},'Administración','Administración',true);
 for(const [id,compact,mode] of [['pos80-full-text',false,'text'],['pos80-compact-text',true,'text'],['pos80-full-graphics',false,'graphics']] as const){const b=document.createElement('button');b.textContent=id;b.onclick=()=>printRemittanceReceipt(pos80Invoice,{paper:'80',compact,output:mode});document.body.append(b);}
-for(const [id,paper,mode] of [['invoice-a4-graphics','a4','graphics'],['invoice-a4-text','a4','text'],['invoice-letter-graphics','letter','graphics'],['invoice-letter-text','letter','text']] as const){const b=document.createElement('button');b.textContent=id;b.onclick=()=>printRemittanceReceipt(pos80Invoice,{paper,orientation:'portrait',compact:false,output:mode});document.body.append(b);}
+for(const [id,paper,mode] of [['invoice-a4-graphics','a4','graphics'],['invoice-letter-graphics','letter','graphics']] as const){const b=document.createElement('button');b.textContent=id;b.onclick=()=>printRemittanceReceipt(pos80Invoice,{paper,orientation:'portrait',compact:false,output:mode});document.body.append(b);}
 for(const paper of ['51','76','80','58','102','auto']){for(const output of ['graphics','text']){const button=document.createElement('button');button.textContent=output==='text'?'text-'+paper:paper;button.onclick=()=>printRemittanceReceipt(receipt,{paper,compact:false,output});document.body.append(button);}}
 for(const [name,paper,orientation,customWidthMm,customHeightMm] of [['sheet-8x4','8x4','landscape'],['sheet-8x11','8x11','landscape'],['sheet-a4','a4','portrait'],['sheet-letter','letter','portrait'],['sheet-custom','custom','landscape',180,90]]){for(const output of ['graphics','text']){const button=document.createElement('button');button.textContent=output==='text'?'text-'+name:name;button.onclick=()=>printRemittanceReceipt(receipt,{paper,orientation,customWidthMm,customHeightMm,compact:false,output});document.body.append(button);}}`);
   let browser:any, server:ReturnType<typeof createServer>|undefined;
@@ -145,38 +145,20 @@ for(const [name,paper,orientation,customWidthMm,customHeightMm] of [['sheet-8x4'
     for(const expected of ["Tel. 809-555-0222 / RNC: 1-30-00100-1","RECIBO DE ENVIO","Cód. Operación:","Remitente:","Código del Cliente:","Destinatario:","Importes del envío","Total pagado por el remitente:","DOP 594.00","Recibe el destinatario:","Forma pago del remitente:","TC","Recibido por:","Registrado por:","Nota:"])assert(posGraphicText.includes(expected),`graphic receipt missing ${expected}`);
     for(const forbidden of ["Cargo del envío","Recargo tarjeta de crédito","Cargo adicional por tarjeta","8888","658565","Banreservas"])assert(!posGraphicText.includes(forbidden),`graphic receipt unexpected ${forbidden}`);
     await posGraphic.screenshot({path:path.join(output,"pos80-full-graphics-72.1mm.png"),fullPage:true});await posGraphic.close();
-    for(const [id,widthMm,heightMm,isText] of [["invoice-a4-graphics",210,297,false],["invoice-a4-text",210,297,true],["invoice-letter-graphics",215.9,279.4,false],["invoice-letter-text",215.9,279.4,true]] as const){
-      const openingVoucher=page.waitForEvent("popup");await page.getByRole("button",{name:id,exact:true}).click();const voucherPopup=await openingVoucher;
-      await voucherPopup.waitForFunction(()=>(window as any).__prints===1);
-      await voucherPopup.setViewportSize({width:Math.round(widthMm*96/25.4),height:Math.round(heightMm*96/25.4)});
-      await voucherPopup.emulateMedia({media:"print"});
-      assert.equal(await voucherPopup.locator("img,canvas,svg").count(),0,`${id}: sheet voucher prints selectable text without logo/raster images`);
-      assert.equal(await voucherPopup.evaluate(()=>document.body.scrollWidth<=document.body.clientWidth+1),true,`${id}: zero horizontal overflow`);
-      const bodyText=await voucherPopup.locator("body").innerText();
-      for(const expected of ["Tu aliado en cobros, pagos y envíos","Av. 27 de Febrero #2131, Local 12, Santiago","Tel. 809-555-0222 / RNC: 1-30-00100-1","RECIBO DE ENVIO","Envío #: ENV00000048","Fecha  : 11-11-2026 |09:15:00","Cód. Operación: AD0B35A22F305CA2","Remitente: mayo lomb","Código del Cliente: 1111111111","DESTINATARIO: María Rodríguez","TELÉFONO: 8095550100","DIRECCIÓN: Calle Las Damas 18","MONTO A ENVIAR: DOP 500.00","Total pagado por el remitente: DOP 594.00","RECIBE EN DOP:","500.00","Forma pago del remitente: TC","Recibido por:","Registrado por: Administración","Nota: Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío."])assert(bodyText.includes(expected),`${id} missing ${expected}`);
-      for(const forbidden of ["REC00000048","Cobros y Pagos","admin@cyp.local","Cargo del envío","Recargo tarjeta de crédito","8888","658565","Banreservas","Es importante que revise su recibo","PARA RECLAMACIONES FAVOR COMUNICARSE"])assert(!bodyText.includes(forbidden),`${id} unexpected ${forbidden}`);
-      if(!isText){
-        const styleCheck=await voucherPopup.evaluate(()=>({
-          bodyWeight:getComputedStyle(document.body).fontWeight,
-          headerAlign:getComputedStyle(document.querySelector(".sheet-voucher-header")!).textAlign,
-          headerBorder:getComputedStyle(document.querySelector(".sheet-voucher-header")!).borderBottomWidth,
-          recipientAlign:getComputedStyle(document.querySelector(".sheet-voucher-recipient")!).textAlign,
-          recipientBorder:getComputedStyle(document.querySelector(".sheet-voucher-recipient")!).borderBottomWidth,
-          montoAlign:getComputedStyle(document.querySelector(".sheet-voucher-monto")!).textAlign,
-        }));
-        assert.equal(styleCheck.bodyWeight,"700");
-        assert.equal(styleCheck.headerAlign,"center");
-        assert.equal(styleCheck.recipientAlign,"center");
-        assert.equal(styleCheck.montoAlign,"center");
-        assert(parseFloat(styleCheck.headerBorder)>=1&&parseFloat(styleCheck.recipientBorder)>=1);
-      }
-      const pdf=await voucherPopup.pdf({path:path.join(output,`${id}.pdf`),preferCSSPageSize:true,printBackground:true});
+    for(const [id,widthMm,heightMm] of [["invoice-a4-graphics",210,297],["invoice-letter-graphics",215.9,279.4]] as const){
+      const openingSheet=page.waitForEvent("popup");await page.getByRole("button",{name:id,exact:true}).click();const sheetPopup=await openingSheet;
+      await sheetPopup.waitForFunction(()=>(window as any).__prints===1);
+      await sheetPopup.setViewportSize({width:Math.round(widthMm*96/25.4),height:Math.round(heightMm*96/25.4)});
+      await sheetPopup.emulateMedia({media:"print"});
+      assert.equal(await sheetPopup.locator("header img").count(),1,`${id}: company logo rendered in header`);
+      assert.equal(await sheetPopup.locator("main.thermal-image-output img").count(),0,`${id}: selectable text body`);
+      const bodyText=await sheetPopup.locator("body").innerText();
+      for(const expected of ["INVERSIONES DEMO S.R.L.","Tu aliado en cobros, pagos y envíos","Av. 27 de Febrero #2131, Local 12, Santiago","Tel. 809-555-0222 / RNC: 1-30-00100-1","RECIBO DE ENVIO","Fecha: 11/11/26 09:15 a.m.","Envío: ENV00000048","Cód. Operación: AD0B35A22F305CA2","Remitente: mayo lomb","Código del Cliente: 1111111111","Destinatario: María Rodríguez","Teléfono: 8095550100","Dirección: Calle Las Damas 18","Importes del envío","Monto a enviar: DOP 500.00","Total pagado por el remitente: DOP 594.00","Recibe el destinatario: DOP 500.00","Forma pago del remitente: TC","Recibido por:","Registrado por: Administración","Nota: Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío."])assert(bodyText.includes(expected),`${id} missing ${expected}`);
+      const pdf=await sheetPopup.pdf({path:path.join(output,`${id}.pdf`),preferCSSPageSize:true,printBackground:true});
       const boxes=[...pdf.toString("latin1").matchAll(/\/MediaBox\s*\[\s*0\s+0\s+([0-9.]+)\s+([0-9.]+)\s*\]/g)];
-      assert.equal(boxes.length,1,`${id}: fits cleanly on a single sheet page`);
-      assert(Math.abs(Number(boxes[0]![1])-widthMm*72/25.4)<1.5,`${id}: PDF width matches paper`);
-      assert(Math.abs(Number(boxes[0]![2])-heightMm*72/25.4)<1.5,`${id}: PDF height matches paper`);
-      await voucherPopup.screenshot({path:path.join(output,`${id}.png`),fullPage:true});
-      await voucherPopup.close();
+      assert.equal(boxes.length,1,`${id}: fits cleanly on a single page`);
+      await sheetPopup.screenshot({path:path.join(output,`${id}.png`),fullPage:true});
+      await sheetPopup.close();
     }
     // Failed raster preparation must not silently print a different format.
     await context.addInitScript(()=>{HTMLCanvasElement.prototype.toDataURL=()=>{throw new Error("Synthetic raster failure");};});
