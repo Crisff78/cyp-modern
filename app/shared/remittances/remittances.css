@@ -318,6 +318,8 @@ dialog.remittances-dialog { position: fixed; inset: 0; margin: auto; }
 .remittance-preview-block.is-meta { padding: 1.5px 0; }
 .remittance-print-preview-graphic.is-printed .remittance-preview-block { border-bottom: 0; padding: 0; }
 .remittance-print-preview-graphic.is-printed .remittance-preview-block + .remittance-preview-block { margin-top: 6px; }
+.remittance-print-preview-graphic.is-printed .remittance-preview-block.is-sheet-divided { border-bottom: 1px dashed #000; padding-bottom: 4px; }
+.remittance-print-preview-graphic.is-printed .remittance-preview-block.is-sheet-divided + .remittance-preview-block { margin-top: 4px; }
 .remittance-preview-title { font-weight: 700; font-size: 11px; margin-bottom: 1px; }
 .remittance-print-preview-graphic.is-printed .remittance-preview-title { font-weight: 400; font-size: inherit; margin-bottom: 0; }
 .remittance-preview-row { padding: 0.5px 0; text-align: left; overflow-wrap: anywhere; }
