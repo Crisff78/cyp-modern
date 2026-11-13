@@ -14,6 +14,7 @@ import {
   scryptSync,
   timingSafeEqual,
 } from "node:crypto";
+import { isIP } from "node:net";
 import { z } from "zod";
 import { emailOrEmpty, phoneOrEmpty } from "./contact-schemas.js";
 import {
@@ -92,6 +93,8 @@ type Config = {
   // Practice control with fictional stations, for demo mode only (see rraa.ts).
   demoStationControl?: RraaValidator;
   buildVersion?: string;
+  // Header in which the platform in front names the visitor's address, only where visitors cannot send it themselves.
+  clientAddressHeader?: string;
 };
 const money = z.number().int().positive().max(MAX_MONEY_AMOUNT);
 const currency = singleLine(40, 1)
@@ -207,7 +210,13 @@ export async function buildApp(config: Config) {
       : {}),
   });
   await app.register(jwt, { secret: config.secret });
-  await app.register(rateLimit, { max: 120, timeWindow: "1 minute" });
+  // Behind a platform proxy the socket is the proxy's, so all the visitors would share one limit. `trustProxy` is
+  // not the answer on Render: it appends to X-Forwarded-For whatever the visitor sent (see docs/LIMITE-POR-VISITANTE.md).
+  const clientAddress = (req: FastifyRequest) => {
+    const named = config.clientAddressHeader ? req.headers[config.clientAddressHeader] : undefined;
+    return typeof named === "string" && isIP(named) ? named : req.ip;
+  };
+  await app.register(rateLimit, { max: 120, timeWindow: "1 minute", keyGenerator: clientAddress });
   if (config.demoAccess) await registerDemoAccess(app, config.demoAccess);
   app.addHook("onSend", async (_req, reply, payload) => {
     reply.header("Cache-Control", "no-store");

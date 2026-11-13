@@ -127,6 +127,8 @@ const app = await buildApp({
   demoStationControl: demo ? createDemoStationControl() : undefined,
   buildVersion: /^[a-f0-9]{40}$/i.test(process.env.RENDER_GIT_COMMIT ?? "")
     ? process.env.RENDER_GIT_COMMIT : undefined,
+  // On Render the visitor comes through Cloudflare, which names it here and rejects requests that bring this header.
+  clientAddressHeader: process.env.RENDER === "true" ? "cf-connecting-ip" : undefined,
 });
 if (publicWeb) await registerPublicWeb(app);
 let recurringBusy = false;
