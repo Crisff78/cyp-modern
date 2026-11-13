@@ -1,4 +1,4 @@
-import { cleanReceiptFooterNote, isPrintedSignoffSection, isSignatureRow, printedReceiptHeading, receiptIssuerLines, type Receipt } from "./receipt";
+import { cleanReceiptFooterNote, formatSpacedTitleLines, isPrintedSignoffSection, isRecipientPrintedReceipt, isSignatureRow, printedReceiptHeading, receiptIssuerLines, type Receipt } from "./receipt";
 import { receiptPrintLayout, type ReceiptPrintOptions } from "./receiptPaper";
 
 /** Literal spaces/newlines survive text-only drivers; accents remain Unicode, never transliterated. */
@@ -25,6 +25,40 @@ export function receiptText(receipt: Receipt, columns: number, dividePrintedBloc
   };
   const lines: string[] = [], add = (value: string) => lines.push(...wrap(value,columns)), rule = () => lines.push("-".repeat(columns));
   const center = (value: string) => { for (const line of wrap(value, columns)) lines.push(" ".repeat(Math.max(0, Math.floor((columns - length(line)) / 2))) + line); };
+  if (isRecipientPrintedReceipt(receipt) && receipt.recipientVoucher) {
+    const v = receipt.recipientVoucher;
+    const rawTitle = clean(v.companyTitle).trim().toUpperCase();
+    if (rawTitle) {
+      const spacedLines = formatSpacedTitleLines(rawTitle, (candidate) => length(candidate) <= columns);
+      if (spacedLines.length) {
+        for (const spaced of spacedLines) lines.push(" ".repeat(Math.max(0, Math.floor((columns - length(spaced)) / 2))) + spaced);
+      } else {
+        center(rawTitle);
+      }
+    }
+    rule();
+    const pushExactOrWrap = (value: string) => {
+      const normalized = clean(value);
+      if (!normalized.includes("\n") && length(normalized) <= columns) lines.push(normalized);
+      else add(normalized);
+    };
+    pushExactOrWrap(`Envío #: ${v.envioReference}`);
+    pushExactOrWrap(`Fecha  : ${v.voucherDateTime}`);
+    lines.push("");
+    center(v.recipientName);
+    lines.push("");
+    center(`TELÉFONO: ${v.recipientPhone}`);
+    rule();
+    center(`MONTO: ${v.sentAmount}`);
+    add(`RECIBE EN ${v.destinationCurrency}:`);
+    add(v.payoutAmountNumber);
+    if (v.cancelledNote) add(v.cancelledNote);
+    lines.push("");
+    add(v.warningLine);
+    lines.push("");
+    add(v.claimsLine);
+    return lines.join("\n") + "\n";
+  }
   const issuerLines = [receipt.issuer.name, ...receiptIssuerLines(receipt.issuer, Boolean(receipt.printed))].filter((line): line is string => Boolean(line && clean(line).trim()));
   if (receipt.printed) {
     if (issuerLines.length) {

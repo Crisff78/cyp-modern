@@ -33,7 +33,7 @@ import { isPaymentTextDraft, paymentLabel, totalPaidForTransfer, type Remittance
 import { isMoneyDraft, MONEY_INPUT_MESSAGE as moneyInputMessage } from "./moneyInput";
 import { printRemittanceReceipt, remittanceReceipt } from "./receipt";
 import { RemittanceReceipt } from "./RemittanceReceipt";
-import { ReceiptPrintControls, type ReceiptPrintOptions } from "./ReceiptPrintControls";
+import { ReceiptPrintControls, type PrintedReceiptAudience, type ReceiptPrintOptions } from "./ReceiptPrintControls";
 import { readSavedReceiptPrintOptions, saveReceiptPrintOptions } from "./receiptPaper";
 import { encryptCardArchive } from "./cardArchive.mjs";
 import { CashMovementForm, type CashMovementReview } from "./CashMovementForm";
@@ -270,8 +270,21 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   const [confirmationError, setConfirmationError] = useState("");
   const [printTransfer, setPrintTransfer] = useState<Transfer | null>(null);
   const [receiptPrintError, setReceiptPrintError] = useState("");
+  const defaultAudienceFor = (section?: Tab): PrintedReceiptAudience => section === "recibos" ? "recipient" : "sender";
+  const [receiptAudience, setReceiptAudience] = useState<PrintedReceiptAudience>(() => defaultAudienceFor(tab));
+  const [promptAudience, setPromptAudience] = useState<PrintedReceiptAudience>("sender");
   const [receiptOptions, setReceiptOptionsState] = useState<ReceiptPrintOptions>(readSavedReceiptPrintOptions);
   const setReceiptOptions = (next: ReceiptPrintOptions) => { setReceiptOptionsState(next); saveReceiptPrintOptions(next); };
+  const detailPrintOptions: ReceiptPrintOptions = { ...receiptOptions, audience: receiptAudience };
+  const promptPrintOptions: ReceiptPrintOptions = { ...receiptOptions, audience: promptAudience };
+  const updateDetailPrintOptions = (next: ReceiptPrintOptions) => {
+    if (next.audience) setReceiptAudience(next.audience);
+    setReceiptOptions(next);
+  };
+  const updatePromptPrintOptions = (next: ReceiptPrintOptions) => {
+    if (next.audience) setPromptAudience(next.audience);
+    setReceiptOptions(next);
+  };
   const pendingCash = cashShown && cashRequest && cashRequest.id > appliedCashRequest ? cashRequest : undefined;
   const [opening, setOpening] = useState({ operatorId: pendingCash?.operatorId ?? user.id, currency: pendingCash?.currency ?? "DOP" as Currency, amount: "0" });
   // The keyboard goes to the box asked from a notice (the receipt closed by «Ir a Caja de remesas» does not take it back).
@@ -335,6 +348,9 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   useEffect(() => {
     if (snapshot && !permittedTabs.some(({ id }) => id === tab) && permittedTabs[0]) setTab(permittedTabs[0].id);
   }, [snapshot, tab, permittedTabs.map(({ id }) => id).join(",")]);
+  useEffect(() => {
+    if (view === "envios" || view === "recibos") setReceiptAudience(defaultAudienceFor(view));
+  }, [view]);
   useEffect(() => {
     const marker = `${tab}:${focusVersion}`;
     // A modeless receipt keeps the form usable: only a keyboard working inside a receipt is left there. Closing the
@@ -474,9 +490,9 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   // A printed receipt never carries an internal id: the manager saved with the transfer, or a plain "—".
   const receiptOperatorName = (id: string | undefined, saved?: string) => remittanceOperatorName(snapshot, id) ?? (id && id === user.id ? user.name : saved || "—");
   // printed: the paper for the customer carries only amounts; the receipt on screen keeps its detail.
-  const customerReceipt = (transfer: Transfer, printed = false) => remittanceReceipt(transfer, snapshot?.receiptIssuer,
+  const customerReceipt = (transfer: Transfer, printed = false, audience: PrintedReceiptAudience = receiptAudience) => remittanceReceipt(transfer, snapshot?.receiptIssuer,
     receiptOperatorName(transfer.sendingUserId, transfer.commissionAllocation?.managerName),
-    receiptOperatorName(transfer.registeredBy, transfer.registeredBy === transfer.sendingUserId ? transfer.commissionAllocation?.managerName : undefined), printed);
+    receiptOperatorName(transfer.registeredBy, transfer.registeredBy === transfer.sendingUserId ? transfer.commissionAllocation?.managerName : undefined), printed, audience);
   const detail = snapshot?.transfers.find((transfer) => transfer.id === detailId);
   // Only an administrator chooses the operator of a box; anyone else opens their own.
   const openingOperator = isAdmin ? opening.operatorId : user.id;
@@ -548,7 +564,10 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   // A capture hidden by Buscar comes back as it was left.
   const returnToCapture = () => { setFormOpen(true); quietCapture.current = true; setFocusVersion((value) => value + 1); };
   const openDetail = (id: string) => {
-    if (id !== detailId) { setCancelReason(""); setRefundReference(""); setRefundVerified(false); setCancelError(""); }
+    if (id !== detailId) {
+      setCancelReason(""); setRefundReference(""); setRefundVerified(false); setCancelError("");
+      setReceiptAudience(defaultAudienceFor(view));
+    }
     detailFocusReturn.current = true; setDetailId(id); setDetailReveal((value) => value + 1);
   };
   const updateReportFilter = (values: Partial<typeof reportFilters>) => { reportRequests.current.invalidate(); setReportBusy(false); setReportFilters((current) => ({ ...current, ...values })); setReport(null); setAllocationReport(null); setOutputError(""); };
@@ -558,7 +577,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   const closePrintPrompt = () => { setPrintTransfer(null); setReceiptPrintError(""); setFocusVersion((value) => value + 1); };
   const printSavedReceipt = () => {
     if (!printTransfer) return;
-    try { printRemittanceReceipt(customerReceipt(printTransfer, true), receiptOptions); closePrintPrompt(); }
+    try { printRemittanceReceipt(customerReceipt(printTransfer, true, promptAudience), promptPrintOptions); closePrintPrompt(); }
     catch (failure) { setReceiptPrintError(failureMessage(failure)); }
   };
   useEffect(() => {
@@ -609,7 +628,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
       if (action.kind === "add" || action.kind === "withdraw") setCompletedCashMovement({ path: action.path, key: action.idempotencyKey! });
       if (confirmation.kind === "cancel") { setCancelReason(""); setRefundReference(""); setRefundVerified(false); }
       setConfirmation(null); setUncertain(false); setReport(null); setAllocationReport(null);
-      if (savedTransfer) { setPrintTransfer(savedTransfer); setReceiptPrintError(""); }
+      if (savedTransfer) { setPromptAudience("sender"); setPrintTransfer(savedTransfer); setReceiptPrintError(""); }
       await refresh();
     } catch (failure) {
       // An answer 200 that does not match what was sent: the API finished this operation and a retry repeats the
@@ -1047,8 +1066,8 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
     {detail && <RemittanceWindow key={detail.id} title={`${detail.envioReference} · ${detail.reciboReference}`} desktopId={desktopId} nextZIndex={nextWindowZIndex} returnFocus={detailFocusReturn} revealVersion={detailReveal} onClose={() => { setDetailId(null); if (view === "recibos") setFocusVersion((value) => value + 1); }}>
       <RemittanceReceipt receipt={customerReceipt(detail)} />
       {payCashNotice}
-      <ReceiptPrintControls value={receiptOptions} onChange={setReceiptOptions} receipt={customerReceipt(detail, true)} />
-      <div className="remittance-actions"><button type="button" onClick={() => runOutput(() => printRemittanceReceipt(customerReceipt(detail, true), receiptOptions))}>Imprimir comprobante</button>{payoutsShown && detail.status === "pending" && detail.canPay && can("remittances.pay") && <button type="button" className="remittance-primary" onClick={() => confirm({ title: "Confirmar entrega al destinatario", path: `/envios/${encodeURIComponent(detail.id)}/pagar`, body: {}, kind: "pay", description: <p>Registrar entrega única de <strong>{money(detail.receiveAmount, detail.destinationCurrency)}</strong> a <strong>{detail.recipientContact?.name ?? clientName(detail.recipientClientId)}</strong>. Se descuenta de tu caja abierta de hoy. Confirma después de entregar el dinero.</p> })}>Registrar entrega</button>}</div>
+      <ReceiptPrintControls value={detailPrintOptions} onChange={updateDetailPrintOptions} receipt={customerReceipt(detail, true, receiptAudience)} />
+      <div className="remittance-actions"><button type="button" onClick={() => runOutput(() => printRemittanceReceipt(customerReceipt(detail, true, receiptAudience), detailPrintOptions))}>Imprimir comprobante</button>{payoutsShown && detail.status === "pending" && detail.canPay && can("remittances.pay") && <button type="button" className="remittance-primary" onClick={() => confirm({ title: "Confirmar entrega al destinatario", path: `/envios/${encodeURIComponent(detail.id)}/pagar`, body: {}, kind: "pay", description: <p>Registrar entrega única de <strong>{money(detail.receiveAmount, detail.destinationCurrency)}</strong> a <strong>{detail.recipientContact?.name ?? clientName(detail.recipientClientId)}</strong>. Se descuenta de tu caja abierta de hoy. Confirma después de entregar el dinero.</p> })}>Registrar entrega</button>}</div>
       {sendsShown && detail.status === "pending" && detail.canCancel && can("remittances.cancel") && <form className="remittance-cancel" onSubmit={prepareCancellation}><label>Motivo de cancelación<textarea aria-label="Motivo de cancelación" required maxLength={INPUT_LIMITS.freeNote} value={cancelReason} onPaste={(event) => restrictPaste(event, (value) => isTextDraft(value, INPUT_LIMITS.freeNote, true), () => setError("El motivo admite hasta 500 caracteres, sin caracteres de control."))} onChange={(event) => { if (!isTextDraft(event.target.value, INPUT_LIMITS.freeNote, true)) { setError("El motivo admite hasta 500 caracteres, sin caracteres de control."); return; } setCancelReason(event.target.value); setError(""); }} /></label>{detail.payment && detail.payment.method !== "cash" && <div className="remittance-refund">
         <p>Este envío se pagó por {paymentLabel(detail.payment)}. Comprueba la devolución al remitente por ese medio antes de cancelarlo; no se retirará efectivo de caja.</p>
         <label>Referencia de devolución<input inputMode="text" title="Hasta 160 caracteres en una sola línea, sin caracteres de control ni marcas invisibles." maxLength={160} value={refundReference} onPaste={(event) => restrictPaste(event, isPaymentTextDraft, () => setCancelError("La referencia de devolución admite hasta 160 caracteres en una sola línea, sin caracteres de control ni marcas invisibles."))} onChange={(event) => { if (!isPaymentTextDraft(event.target.value)) { setCancelError("La referencia de devolución admite hasta 160 caracteres en una sola línea, sin caracteres de control ni marcas invisibles."); return; } setRefundReference(event.target.value); setCancelError(""); }} /></label>
@@ -1083,7 +1102,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
     {printTransfer && <Dialog title="¿Quieres imprimir el recibo?" onClose={closePrintPrompt}>
       <p>El envío <strong>{printTransfer.envioReference}</strong> quedó registrado correctamente. Recibo: <strong>{printTransfer.reciboReference}</strong>.</p>
       <p>Puedes imprimirlo ahora o más tarde desde el detalle del envío.</p>
-      <ReceiptPrintControls value={receiptOptions} onChange={setReceiptOptions} receipt={customerReceipt(printTransfer, true)} />
+      <ReceiptPrintControls value={promptPrintOptions} onChange={updatePromptPrintOptions} receipt={customerReceipt(printTransfer, true, promptAudience)} />
       {receiptPrintError && <p className="remittance-error" role="alert">{receiptPrintError}</p>}
       <div className="remittance-actions"><button type="button" onClick={closePrintPrompt}>No imprimir</button><button type="button" data-autofocus className="remittance-primary" onClick={printSavedReceipt}>Imprimir</button></div>
     </Dialog>}

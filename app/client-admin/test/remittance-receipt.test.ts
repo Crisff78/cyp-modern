@@ -148,6 +148,71 @@ test("A4 and Carta printed receipts use the standard RECIBO DE ENVIO layout with
   const pos80Html = receiptHtml(model, { paper: "80", compact: false, output: "graphics" });
   assert(!pos80Html.includes("receipt-sheet-divided"), "POS80 thermal receipt keeps zero internal divider lines");
 });
+test("recipient delivery receipt (Para quien recibe) renders the KEBEK voucher across all paper sizes in graphics and text modes without altering sender receipts", () => {
+  const configuredIssuer = {
+    name: "Inversiones Demo S.R.L.",
+    slogan: "Tu aliado en cobros, pagos y envíos",
+    address: "Av. 27 de Febrero #2131, Local 12, Santiago",
+    phone: "+1(809)555-0222",
+    rnc: "1-30-00100-1",
+    email: "admin@cyp.local",
+    logoDataUrl: "data:image/png;base64,iVBORw0KGgo=",
+    footerNote: "Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío.",
+  };
+  const paidTransfer: Transfer = {
+    ...transfer,
+    sourceCurrency: "USD",
+    destinationCurrency: "DOP",
+    amount: 100000,
+    commissionBps: 500,
+    commissionAmount: 5000,
+    totalAmount: 105000,
+    receiveAmount: 6050000,
+    paidAt: "2026-09-01T15:58:10.000Z",
+    status: "paid",
+    recipientContact: { id: "recipient", code: "CL2", name: "natcash", phone: "50932367456", cellular: "", address: "Puerto Príncipe" },
+    receiptIssuer: configuredIssuer,
+  };
+  const recipientModel = remittanceReceipt(paidTransfer, undefined, "Operador", "Administración", true, "recipient");
+  assert.equal(recipientModel.audience, "recipient");
+  for (const paper of ["51", "58", "76", "80", "102", "auto", "a4", "letter", "8x4", "8x11"] as const) {
+    const graphicHtml = receiptHtml(recipientModel, { paper, compact: false, output: "graphics" });
+    for (const required of [
+      "Inversiones Demo S.R.L.",
+      "Envío #: ENV00000001",
+      "Fecha  : 01-09-2026 |11:58:10",
+      "natcash",
+      "TELÉFONO: 50932367456",
+      "MONTO: USD 1,000.00",
+      "RECIBE EN DOP:",
+      "60,500.00",
+      "Es importante que revise su recibo para asegurar que el número de teléfono esté correcto!",
+      "PARA RECLAMACIONES FAVOR COMUNICARSE A +1(809)555-0222",
+    ]) {
+      assert(graphicHtml.includes(required), `missing "${required}" in recipient graphic html for paper=${paper}`);
+    }
+    for (const forbidden of ["RECIBO DE ENVIO", "O&#39;Connor", "8095550101", "CL1", "Recibido por", "Registrado por", "Forma pago del remitente", "Conserve este recibo", "Comisión", "admin@cyp.local", "<img"]) {
+      assert(!graphicHtml.includes(forbidden), `unexpected "${forbidden}" in recipient graphic html for paper=${paper}`);
+    }
+    const textHtml = receiptHtml(recipientModel, { paper, compact: false, output: "text" });
+    const normalizedTextHtml = textHtml.replace(/\s+/g, " ");
+    assert(normalizedTextHtml.includes("Envío #: ENV00000001"));
+    assert(normalizedTextHtml.includes("TELÉFONO: 50932367456"));
+    assert(normalizedTextHtml.includes("MONTO: USD 1,000.00"));
+    assert(normalizedTextHtml.includes("RECIBE EN DOP:"));
+    assert(normalizedTextHtml.includes("60,500.00"));
+    assert(normalizedTextHtml.includes("PARA RECLAMACIONES FAVOR COMUNICARSE A +1(809)555-0222"));
+    assert(!textHtml.includes("RECIBO DE ENVIO"));
+    if (paper === "a4" || paper === "letter" || paper === "102" || paper === "auto") {
+      assert(textHtml.includes("I N V E R S I O N E S   D E M O   S . R . L ."), `expected spaced uppercase company title on paper=${paper}`);
+    }
+  }
+  // Switching options.audience on the same receipt model flips cleanly between sender and recipient formats.
+  const senderOverrideHtml = receiptHtml(recipientModel, { paper: "a4", compact: false, output: "graphics", audience: "sender" });
+  assert(senderOverrideHtml.includes("RECIBO DE ENVIO"));
+  assert.equal((senderOverrideHtml.match(/receipt-sheet-divided"/g) ?? []).length, 5);
+  assert(!senderOverrideHtml.includes("PARA RECLAMACIONES FAVOR COMUNICARSE"));
+});
 test("receipt confirmation rejects mismatched payment even when all other transfer fields match", () => {
   const expected = { sourceCurrency: "DOP", destinationCurrency: "DOP", amount: 90000, commissionBps: 1000, senderClientId: "sender", recipientClientId: "recipient", quote: transfer.quote,
     payment: { method: "cash", tenderedAmount: 100000 } };

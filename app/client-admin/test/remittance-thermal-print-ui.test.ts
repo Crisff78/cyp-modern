@@ -22,8 +22,10 @@ test("thermal receipt prints decoded raster blocks with Spanish glyphs, clear ga
 const receipt={reference:'REC-QA-ACENTOS',date:'05/11/2026, 11:13 a. m.',status:'pending',issuer:{name:'Empresa Álvarez y Núñez',address:'Calle del Niño, Santo Domingo',phone:'8095550100'},footer:'Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío.',sections:[{title:'Registro del recibo',columns:['Dato','Valor'],rows:[['Envío','ENV-QA-0001'],['Código de operación','OP-SYNTHETIC-01'],['Estado','Pendiente de entrega']]},{title:'Remitente',columns:['Dato','Valor'],rows:[['Nombre','José Núñez'],['Identificación','QA-001'],['Dirección','Calle de la Constitución, número doce, próximo al Parque de los Héroes']]},{title:'Destinatario',columns:['Dato','Valor'],rows:[['Nombre','María Rodríguez']]},{title:'Importes del envío',columns:['Dato','Valor'],rows:[['Monto a enviar','DOP 2,000.00'],['Cargo del envío','DOP 200.00'],['Total pagado por el remitente','DOP 2,200.00'],['Recibe el destinatario','DOP 2,000.00']]},{title:'Pago del remitente',columns:['Dato','Valor'],rows:[['Forma de pago','Efectivo'],['Dinero recibido','DOP 2,200.00'],['Devuelta','DOP 0.00']]},{title:'Nota',columns:['Dato','Valor'],rows:[['Nota de la operación','${"REFERENCIA".repeat(80)}']]}]};
 const syntheticLogo=(()=>{const c=document.createElement('canvas');c.width=220;c.height=72;const g=c.getContext('2d')!;g.fillStyle='#fff';g.fillRect(0,0,220,72);g.strokeStyle='#000';g.lineWidth=4;g.strokeRect(4,4,212,64);g.fillStyle='#000';g.font='bold 24px Arial';g.textAlign='center';g.fillText('DEMO LOGO',110,44);return c.toDataURL('image/png');})();
 const pos80Invoice=remittanceReceipt({id:'qa-pos80',sequence:48,envioReference:'ENV00000048',reciboReference:'REC00000048',operatingCode:'AD0B35A22F305CA2',senderClientId:'s1',recipientClientId:'r1',sendingUserId:'demo-admin',registeredBy:'demo-admin',status:'pending',canPay:true,canCancel:true,createdAt:'2026-11-11T13:15:00.000Z',note:'',sourceCurrency:'DOP',destinationCurrency:'DOP',amount:50000,commissionBps:1000,commissionAmount:5000,totalAmount:55000,receiveAmount:50000,quote:{date:'2026-11-11',sourceRate:'1.000000',destinationRate:'1.000000',sourceRateKind:'base',destinationRateKind:'base'},senderContact:{id:'s1',code:'1111111111',name:'mayo lomb',identification:'03103103103',phone:'111-111-1111',cellular:'',address:'santiago'},recipientContact:{id:'r1',code:'CL-0002',name:'María Rodríguez',identification:'',phone:'8095550100',cellular:'',address:'Calle Las Damas 18'},receiptIssuer:{name:'Cobros y Pagos',address:'',phone:'',email:'admin@cyp.local',logoDataUrl:syntheticLogo,footerNote:'Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío.'},payment:{version:2,method:'card',cardType:'credit',tenderedAmount:59400,changeAmount:0,cardSurchargeBps:800,cardSurchargeAmount:4400,reference:'658565',last4:'8888',bank:'Banreservas',confirmedBy:'demo-admin',confirmedAt:'2026-11-11T13:15:00.000Z'}},{name:'INVERSIONES DEMO S.R.L.',slogan:'Tu aliado en cobros, pagos y envíos',address:'Av. 27 de Febrero #2131, Local 12, Santiago',phone:'809-555-0222',rnc:'1-30-00100-1',email:'admin@cyp.local',footerNote:'Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío.'},'Administración','Administración',true);
+const recipientVoucher=remittanceReceipt({id:'qa-recipient',sequence:48,envioReference:'ENV00000048',reciboReference:'REC00000048',operatingCode:'AD0B35A22F305CA2',senderClientId:'s1',recipientClientId:'r1',sendingUserId:'demo-admin',registeredBy:'demo-admin',status:'paid',paidAt:'2026-11-11T15:58:10.000Z',canPay:false,canCancel:false,createdAt:'2026-11-11T13:15:00.000Z',note:'',sourceCurrency:'DOP',destinationCurrency:'DOP',amount:100000,commissionBps:1000,commissionAmount:10000,totalAmount:110000,receiveAmount:100000,quote:{date:'2026-11-11',sourceRate:'1.000000',destinationRate:'1.000000',sourceRateKind:'base',destinationRateKind:'base'},senderContact:{id:'s1',code:'1111111111',name:'mayo lomb',identification:'03103103103',phone:'111-111-1111',cellular:'',address:'santiago'},recipientContact:{id:'r1',code:'CL-0002',name:'María Rodríguez',identification:'',phone:'8095550100',cellular:'',address:'Calle Las Damas 18'},receiptIssuer:{name:'Cobros y Pagos',address:'',phone:'',email:'admin@cyp.local',logoDataUrl:syntheticLogo,footerNote:'Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío.'},payment:{version:2,method:'card',cardType:'credit',tenderedAmount:118800,changeAmount:0,cardSurchargeBps:800,cardSurchargeAmount:8800,reference:'658565',last4:'8888',bank:'Banreservas',confirmedBy:'demo-admin',confirmedAt:'2026-11-11T13:15:00.000Z'}},{name:'INVERSIONES DEMO S.R.L.',slogan:'Tu aliado en cobros, pagos y envíos',address:'Av. 27 de Febrero #2131, Local 12, Santiago',phone:'809-555-0222',rnc:'1-30-00100-1',email:'admin@cyp.local',footerNote:'Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío.'},'Administración','Administración',true,'recipient');
 for(const [id,compact,mode] of [['pos80-full-text',false,'text'],['pos80-compact-text',true,'text'],['pos80-full-graphics',false,'graphics']] as const){const b=document.createElement('button');b.textContent=id;b.onclick=()=>printRemittanceReceipt(pos80Invoice,{paper:'80',compact,output:mode});document.body.append(b);}
 for(const [id,paper,mode] of [['invoice-a4-graphics','a4','graphics'],['invoice-letter-graphics','letter','graphics']] as const){const b=document.createElement('button');b.textContent=id;b.onclick=()=>printRemittanceReceipt(pos80Invoice,{paper,orientation:'portrait',compact:false,output:mode});document.body.append(b);}
+for(const [id,paper,mode] of [['recipient-pos80-graphics','80','graphics'],['recipient-pos80-text','80','text'],['recipient-58-graphics','58','graphics'],['recipient-a4-graphics','a4','graphics'],['recipient-a4-text','a4','text'],['recipient-letter-graphics','letter','graphics']] as const){const b=document.createElement('button');b.textContent=id;b.onclick=()=>printRemittanceReceipt(recipientVoucher,{paper,orientation:'portrait',compact:false,output:mode,audience:'recipient'});document.body.append(b);}
 for(const paper of ['51','76','80','58','102','auto']){for(const output of ['graphics','text']){const button=document.createElement('button');button.textContent=output==='text'?'text-'+paper:paper;button.onclick=()=>printRemittanceReceipt(receipt,{paper,compact:false,output});document.body.append(button);}}
 for(const [name,paper,orientation,customWidthMm,customHeightMm] of [['sheet-8x4','8x4','landscape'],['sheet-8x11','8x11','landscape'],['sheet-a4','a4','portrait'],['sheet-letter','letter','portrait'],['sheet-custom','custom','landscape',180,90]]){for(const output of ['graphics','text']){const button=document.createElement('button');button.textContent=output==='text'?'text-'+name:name;button.onclick=()=>printRemittanceReceipt(receipt,{paper,orientation,customWidthMm,customHeightMm,compact:false,output});document.body.append(button);}}`);
   let browser:any, server:ReturnType<typeof createServer>|undefined;
@@ -163,6 +165,65 @@ for(const [name,paper,orientation,customWidthMm,customHeightMm] of [['sheet-8x4'
       await sheetPopup.screenshot({path:path.join(output,`${id}.png`),fullPage:true});
       await sheetPopup.close();
     }
+    for(const [id,widthMm] of [["recipient-pos80-graphics",66],["recipient-58-graphics",45]] as const){
+      const openingRecThermal=page.waitForEvent("popup");await page.getByRole("button",{name:id,exact:true}).click();const recThermal=await openingRecThermal;
+      await recThermal.waitForFunction(()=>(window as any).__prints===1);
+      await recThermal.setViewportSize({width:Math.floor((widthMm===66?72.1:48)*96/25.4),height:760});
+      await recThermal.emulateMedia({media:"print"});
+      const recCheck=await recThermal.evaluate(()=>({
+        runs:(window as any).__runs,
+        alts:Array.from(document.querySelectorAll<HTMLImageElement>("main.thermal-image-output img")).map(img=>img.alt),
+        widths:Array.from(document.querySelectorAll<HTMLImageElement>("main.thermal-image-output img")).map(img=>img.naturalWidth),
+        lefts:Array.from(document.querySelectorAll<HTMLImageElement>("main.thermal-image-output img")).map(img=>img.getBoundingClientRect().left),
+        bodyLeft:document.body.getBoundingClientRect().left,
+      }));
+      assert.equal(recCheck.bodyLeft,0);
+      assert.equal(recCheck.alts.filter((a:string)=>a==="Separador").length,2,`${id}: two solid KEBEK horizontal rules`);
+      assert(!recCheck.alts.includes("Logo de la empresa")&&!recCheck.alts.includes("Separador punteado"),`${id}: recipient voucher omits sender logo and dashed rule`);
+      for(const w of recCheck.widths)assert.equal(w,widthMm*8);
+      for(const l of recCheck.lefts)assert.equal(l,0);
+      for(const run of recCheck.runs){assert(run.left>=0.2,JSON.stringify(run));assert(run.right<=widthMm-0.3,`recipient clip risk: ${JSON.stringify(run)}`);}
+      const recText=recCheck.runs.map((r:any)=>r.text).join(" ").replace(/\s+/g," ");
+      for(const expected of ["Envío #: ENV00000048","11-11-2026 |11:58:10","María Rodríguez","TELÉFONO: 8095550100","MONTO: DOP 1,000.00","RECIBE EN DOP:","1,000.00","Es importante que revise su recibo para asegurar que el número de teléfono esté correcto!","PARA RECLAMACIONES FAVOR COMUNICARSE A 809-555-0222"])assert(recText.includes(expected),`${id} missing ${expected}`);
+      if(widthMm===66)assert(recCheck.runs.some((r:any)=>r.text==="Fecha  : 11-11-2026 |11:58:10"),"POS80 preserves exact spacing in Fecha  :");
+      for(const forbidden of ["RECIBO DE ENVIO","mayo lomb","111-111-1111","Recibido por","Registrado por","Forma pago del remitente","Conserve este recibo"])assert(!recText.includes(forbidden),`${id} unexpected ${forbidden}`);
+      await recThermal.screenshot({path:path.join(output,`${id}.png`),fullPage:true});
+      await recThermal.close();
+    }
+    const openingRecText80=page.waitForEvent("popup");await page.getByRole("button",{name:"recipient-pos80-text",exact:true}).click();const recText80=await openingRecText80;
+    await recText80.waitForFunction(()=>(window as any).__prints===1);
+    await recText80.setViewportSize({width:Math.floor(72.1*96/25.4),height:760});
+    await recText80.emulateMedia({media:"print"});
+    const recPre=await recText80.locator("pre").textContent()??"";
+    assert.equal((recPre.match(/-{40}/g)??[]).length,2,"POS80 text recipient voucher draws 2 solid horizontal rules");
+    for(const line of recPre.split("\n"))assert(Array.from(line).length<=40);
+    for(const expected of ["Envío #: ENV00000048","Fecha  : 11-11-2026 |11:58:10","María Rodríguez","TELÉFONO: 8095550100","MONTO: DOP 1,000.00","RECIBE EN DOP:","1,000.00"])assert(recPre.includes(expected),`recipient-pos80-text missing ${expected}`);
+    assert(recPre.replace(/\s+/g," ").includes("PARA RECLAMACIONES FAVOR COMUNICARSE A 809-555-0222"));
+    await recText80.screenshot({path:path.join(output,"recipient-pos80-text.png"),fullPage:true});
+    await recText80.close();
+    for(const [id,widthMm,heightMm,isText] of [["recipient-a4-graphics",210,297,false],["recipient-a4-text",210,297,true],["recipient-letter-graphics",215.9,279.4,false]] as const){
+      const openingRecSheet=page.waitForEvent("popup");await page.getByRole("button",{name:id,exact:true}).click();const recSheet=await openingRecSheet;
+      await recSheet.waitForFunction(()=>(window as any).__prints===1);
+      await recSheet.setViewportSize({width:Math.round(widthMm*96/25.4),height:Math.round(heightMm*96/25.4)});
+      await recSheet.emulateMedia({media:"print"});
+      assert.equal(await recSheet.locator("main.thermal-image-output img").count(),0);
+      assert.equal(await recSheet.locator("section.receipt-sheet-divided").count(),0,"recipient sheet voucher has no sender dashed block dividers");
+      const recSheetBody=(await recSheet.locator("body").innerText()).replace(/\s+/g," ");
+      for(const expected of ["Envío #: ENV00000048","11-11-2026 |11:58:10","María Rodríguez","TELÉFONO: 8095550100","MONTO: DOP 1,000.00","RECIBE EN DOP:","1,000.00","Es importante que revise su recibo para asegurar que el número de teléfono esté correcto!","PARA RECLAMACIONES FAVOR COMUNICARSE A 809-555-0222"])assert(recSheetBody.includes(expected),`${id} missing ${expected}`);
+      assert(!recSheetBody.includes("RECIBO DE ENVIO")&&!recSheetBody.includes("mayo lomb"));
+      if(!isText)assert.equal(await recSheet.locator(".recipient-voucher-header,.recipient-voucher-recipient").count(),2);
+      const pdf=await recSheet.pdf({path:path.join(output,`${id}.pdf`),preferCSSPageSize:true,printBackground:true});
+      const boxes=[...pdf.toString("latin1").matchAll(/\/MediaBox\s*\[\s*0\s+0\s+([0-9.]+)\s+([0-9.]+)\s*\]/g)];
+      assert.equal(boxes.length,1,`${id}: fits cleanly on a single page`);
+      await recSheet.screenshot({path:path.join(output,`${id}.png`),fullPage:true});
+      await recSheet.close();
+    }
+    if(process.env.CYP_RECEIPT_SNAPSHOT_DIR){
+      fs.mkdirSync(process.env.CYP_RECEIPT_SNAPSHOT_DIR,{recursive:true});
+      for(const snap of ["recipient-pos80-graphics.png","recipient-pos80-text.png","recipient-58-graphics.png","recipient-a4-graphics.png","recipient-letter-graphics.png","pos80-full-graphics-72.1mm.png","invoice-a4-graphics.png"]){
+        const src=path.join(output,snap);if(fs.existsSync(src))fs.copyFileSync(src,path.join(process.env.CYP_RECEIPT_SNAPSHOT_DIR,snap));
+      }
+    }
     // Failed raster preparation must not silently print a different format.
     await context.addInitScript(()=>{HTMLCanvasElement.prototype.toDataURL=()=>{throw new Error("Synthetic raster failure");};});
     const failing=page.waitForEvent("popup");await page.getByRole("button",{name:"80",exact:true}).click();const failed=await failing;
@@ -170,5 +231,5 @@ for(const [name,paper,orientation,customWidthMm,customHeightMm] of [['sheet-8x4'
     const compatible=page.waitForEvent("popup");await page.getByRole("button",{name:"text-80",exact:true}).click();const noCanvas=await compatible;await noCanvas.waitForFunction(()=>(window as any).__prints===1);assert.equal(await noCanvas.locator("img,canvas").count(),0);await noCanvas.close();
     assert.deepEqual(errors,[]);assert.deepEqual(external.filter(url=>!/(^|\.)kaspersky-labs\.com$/i.test(new URL(url).hostname)),[]);await context.close();
     t.diagnostic(`Synthetic receipt screenshots: ${output}; no physical printer used.`);
-  } finally {await browser?.close();if(server)await new Promise<void>(resolve=>server!.close(()=>resolve()));}
+  } finally {await browser?.close();if(server){server.closeAllConnections();await new Promise<void>(resolve=>server!.close(()=>resolve()));}}
 });
