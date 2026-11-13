@@ -124,6 +124,6 @@ export function ReceiptPrintControls({ value, onChange, receipt }: { value: Rece
       <label>Alto del papel (mm)<input type="number" inputMode="decimal" min={50} max={600} step="0.1" value={value.customHeightMm ?? 297} onChange={event => onChange({ ...value, customHeightMm: event.target.value === "" ? "" : event.target.valueAsNumber })} /></label>
     </div>}
     {receipt && <ReceiptPrintPreview receipt={receipt} options={value} />}
-    <p className="remittance-help">Para POS80-01 V6 USB usa «Rollo térmico de 3 pulgadas (80 mm · POS80)» y el papel de 80 mm en el diálogo del navegador, a escala 100% y sin márgenes adicionales.</p>
+    <p className="remittance-help">En la ventana de imprimir del navegador elige el mismo papel, a escala 100% y sin márgenes adicionales.</p>
   </div>;
 }

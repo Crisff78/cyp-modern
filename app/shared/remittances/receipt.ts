@@ -12,7 +12,7 @@ const status = { pending: "Pendiente de entrega", paid: "Pagado", cancelled: "Ca
 export const defaultReceiptFooter = "Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío.";
 export const printedReceiptHeading = "RECIBO DE ENVIO";
 export const signatureLineToken = "____________________________";
-export const recipientVoucherWarningText = "Es importante que revise su recibo para asegurar que el número de teléfono esté correcto!";
+export const recipientVoucherWarningText = "¡Es importante que revise su recibo para asegurar que el número de teléfono esté correcto!";
 export const isSignatureRow = (label: unknown, value: unknown) => String(label) === "Recibido por" && String(value) === signatureLineToken;
 export const isPrintedHighlightRow = (label: unknown) => {
   const key = String(label);

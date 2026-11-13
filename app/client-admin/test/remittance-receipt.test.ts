@@ -186,7 +186,7 @@ test("recipient delivery receipt (Para quien recibe) renders the KEBEK voucher a
       "MONTO: USD 1,000.00",
       "RECIBE EN DOP:",
       "60,500.00",
-      "Es importante que revise su recibo para asegurar que el número de teléfono esté correcto!",
+      "¡Es importante que revise su recibo para asegurar que el número de teléfono esté correcto!",
       "PARA RECLAMACIONES FAVOR COMUNICARSE A +1(809)555-0222",
     ]) {
       assert(graphicHtml.includes(required), `missing "${required}" in recipient graphic html for paper=${paper}`);
