@@ -184,7 +184,7 @@ for(const [name,paper,orientation,customWidthMm,customHeightMm] of [['sheet-8x4'
       for(const l of recCheck.lefts)assert.equal(l,0);
       for(const run of recCheck.runs){assert(run.left>=0.2,JSON.stringify(run));assert(run.right<=widthMm-0.3,`recipient clip risk: ${JSON.stringify(run)}`);}
       const recText=recCheck.runs.map((r:any)=>r.text).join(" ").replace(/\s+/g," ");
-      for(const expected of ["Envío #: ENV00000048","11-11-2026 |11:58:10","María Rodríguez","TELÉFONO: 8095550100","MONTO: DOP 1,000.00","RECIBE EN DOP:","1,000.00","Es importante que revise su recibo para asegurar que el número de teléfono esté correcto!","PARA RECLAMACIONES FAVOR COMUNICARSE A 809-555-0222"])assert(recText.includes(expected),`${id} missing ${expected}`);
+      for(const expected of ["Envío #: ENV00000048","11-11-2026 |11:58:10","María Rodríguez","TELÉFONO: 8095550100","MONTO: DOP 1,000.00","RECIBE EN DOP:","1,000.00","¡Es importante que revise su recibo para asegurar que el número de teléfono esté correcto!","PARA RECLAMACIONES FAVOR COMUNICARSE A 809-555-0222"])assert(recText.includes(expected),`${id} missing ${expected}`);
       if(widthMm===66)assert(recCheck.runs.some((r:any)=>r.text==="Fecha  : 11-11-2026 |11:58:10"),"POS80 preserves exact spacing in Fecha  :");
       for(const forbidden of ["RECIBO DE ENVIO","mayo lomb","111-111-1111","Recibido por","Registrado por","Forma pago del remitente","Conserve este recibo"])assert(!recText.includes(forbidden),`${id} unexpected ${forbidden}`);
       await recThermal.screenshot({path:path.join(output,`${id}.png`),fullPage:true});
@@ -209,7 +209,7 @@ for(const [name,paper,orientation,customWidthMm,customHeightMm] of [['sheet-8x4'
       assert.equal(await recSheet.locator("main.thermal-image-output img").count(),0);
       assert.equal(await recSheet.locator("section.receipt-sheet-divided").count(),0,"recipient sheet voucher has no sender dashed block dividers");
       const recSheetBody=(await recSheet.locator("body").innerText()).replace(/\s+/g," ");
-      for(const expected of ["Envío #: ENV00000048","11-11-2026 |11:58:10","María Rodríguez","TELÉFONO: 8095550100","MONTO: DOP 1,000.00","RECIBE EN DOP:","1,000.00","Es importante que revise su recibo para asegurar que el número de teléfono esté correcto!","PARA RECLAMACIONES FAVOR COMUNICARSE A 809-555-0222"])assert(recSheetBody.includes(expected),`${id} missing ${expected}`);
+      for(const expected of ["Envío #: ENV00000048","11-11-2026 |11:58:10","María Rodríguez","TELÉFONO: 8095550100","MONTO: DOP 1,000.00","RECIBE EN DOP:","1,000.00","¡Es importante que revise su recibo para asegurar que el número de teléfono esté correcto!","PARA RECLAMACIONES FAVOR COMUNICARSE A 809-555-0222"])assert(recSheetBody.includes(expected),`${id} missing ${expected}`);
       assert(!recSheetBody.includes("RECIBO DE ENVIO")&&!recSheetBody.includes("mayo lomb"));
       if(!isText)assert.equal(await recSheet.locator(".recipient-voucher-header,.recipient-voucher-recipient").count(),2);
       const pdf=await recSheet.pdf({path:path.join(output,`${id}.pdf`),preferCSSPageSize:true,printBackground:true});
