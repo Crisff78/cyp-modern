@@ -6,12 +6,13 @@ import { escapeHtml, formatDate, formatMoney, type OutputSection } from "./outpu
 import { formatCrossRate } from "./crossRate";
 import { thermalReceiptImages, thermalReceiptSize } from "./thermalReceipt";
 import { receiptText, receiptTextColumns } from "./receiptText";
-import { receiptPrintLayout } from "./receiptPaper";
+import { receiptPrintLayout, type PrintedReceiptAudience } from "./receiptPaper";
 
 const status = { pending: "Pendiente de entrega", paid: "Pagado", cancelled: "Cancelado" };
 export const defaultReceiptFooter = "Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío.";
 export const printedReceiptHeading = "RECIBO DE ENVIO";
 export const signatureLineToken = "____________________________";
+export const recipientVoucherWarningText = "Es importante que revise su recibo para asegurar que el número de teléfono esté correcto!";
 export const isSignatureRow = (label: unknown, value: unknown) => String(label) === "Recibido por" && String(value) === signatureLineToken;
 export const isPrintedHighlightRow = (label: unknown) => {
   const key = String(label);
@@ -21,7 +22,57 @@ export const cleanReceiptFooterNote = (footer: string) => footer.trim().replace(
 export const isSheetDashedPaper = (paper?: string) => paper === "a4" || paper === "letter";
 export const isPrintedSignoffSection = (section: OutputSection) =>
   section.title === "" && section.rows.length > 0 && section.rows.every(([label, value]) => isSignatureRow(label, value) || String(label) === "Registrado por");
-export type Receipt = { reference: string; date: string; status: Transfer["status"]; issuer: ReceiptIssuer; sections: OutputSection[]; footer: string; printed?: boolean };
+export type RecipientReceiptVoucher = {
+  companyTitle: string;
+  envioReference: string;
+  voucherDateTime: string;
+  recipientName: string;
+  recipientPhone: string;
+  sentAmount: string;
+  destinationCurrency: string;
+  payoutAmountNumber: string;
+  warningLine: string;
+  claimsLine: string;
+  cancelledNote?: string;
+};
+export type Receipt = {
+  reference: string;
+  date: string;
+  status: Transfer["status"];
+  issuer: ReceiptIssuer;
+  sections: OutputSection[];
+  footer: string;
+  printed?: boolean;
+  audience?: PrintedReceiptAudience;
+  recipientVoucher?: RecipientReceiptVoucher;
+};
+export const resolvePrintedAudience = (
+  receipt: Pick<Receipt, "printed" | "audience">,
+  options?: { audience?: PrintedReceiptAudience },
+): PrintedReceiptAudience => options?.audience ?? receipt.audience ?? "sender";
+export const isRecipientPrintedReceipt = (
+  receipt: Receipt,
+  options?: { audience?: PrintedReceiptAudience },
+) => Boolean(receipt.printed && receipt.recipientVoucher && resolvePrintedAudience(receipt, options) === "recipient");
+
+export function formatSpacedTitleLines(title: string, fits: (candidate: string) => boolean): string[] {
+  const upper = title.trim().toUpperCase();
+  if (!upper) return [];
+  const spacedWords = upper.split(/\s+/u).filter(Boolean).map((word) => Array.from(word).join(" "));
+  const lines: string[] = [];
+  let current = "";
+  for (const word of spacedWords) {
+    if (!fits(word)) return [];
+    const candidate = current ? `${current}   ${word}` : word;
+    if (fits(candidate)) current = candidate;
+    else {
+      lines.push(current);
+      current = word;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
 
 export const isGenericAppIssuerName = (name?: string) => !name?.trim() || /^cobros y pagos$/i.test(name.trim());
 export const receiptCompanyName = (issuer: ReceiptIssuer) => isGenericAppIssuerName(issuer.name) ? "" : issuer.name.trim();
@@ -47,6 +98,38 @@ export function formatPrintedDate(value?: string): string {
   const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? "";
   const period = /^p/i.test(get("dayPeriod")) ? "p.m." : "a.m.";
   return `${get("day")}/${get("month")}/${get("year")} ${get("hour")}:${get("minute")} ${period}`;
+}
+
+export function formatRecipientVoucherDateTime(value?: string): string {
+  if (!value) return "—";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "—";
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "America/Santo_Domingo",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(parsed);
+  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${get("day")}-${get("month")}-${get("year")} |${get("hour")}:${get("minute")}:${get("second")}`;
+}
+
+export function formatAmountNumber(cents: number): string {
+  const exact = BigInt(cents);
+  const absolute = exact < 0n ? -exact : exact;
+  const whole = new Intl.NumberFormat("es-DO", { maximumFractionDigits: 0 }).format(absolute / 100n);
+  return `${exact < 0n ? "-" : ""}${whole}.${String(absolute % 100n).padStart(2, "0")}`;
+}
+
+export function recipientVoucherClaimsLine(issuer: ReceiptIssuer): string {
+  const cleanPhone = (issuer.phone ?? "").trim().replace(/^tel\.?:\s*/i, "").trim();
+  return cleanPhone
+    ? `PARA RECLAMACIONES FAVOR COMUNICARSE A ${cleanPhone}`
+    : "PARA RECLAMACIONES FAVOR COMUNICARSE CON LA OFICINA";
 }
 
 export function printedPaymentMethod(payment?: Transfer["payment"]): string {
@@ -83,7 +166,14 @@ export function receiptIssuerLines(issuer: ReceiptIssuer, printed = false): stri
  * followed by Fecha / Envío / Cód. Operación, Remitente, Destinatario, Importes del envío, Forma pago del remitente,
  * Recibido por signature line, Registrado por and Nota footer without internal divider lines.
  */
-export function remittanceReceipt(transfer: Transfer, fallback?: ReceiptIssuer, operator = "—", registeredBy = transfer.registeredBy === transfer.sendingUserId ? operator : "—", printed = false): Receipt {
+export function remittanceReceipt(
+  transfer: Transfer,
+  fallback?: ReceiptIssuer,
+  operator = "—",
+  registeredBy = transfer.registeredBy === transfer.sendingUserId ? operator : "—",
+  printed = false,
+  audience: PrintedReceiptAudience = "sender",
+): Receipt {
   const rawIssuer = (transfer.receiptIssuer && (!isUnconfiguredIssuer(transfer.receiptIssuer) || !fallback || isUnconfiguredIssuer(fallback)))
     ? transfer.receiptIssuer
     : (fallback ?? transfer.receiptIssuer ?? { name: "", address: "", phone: "", email: "", footerNote: defaultReceiptFooter });
@@ -144,7 +234,21 @@ export function remittanceReceipt(transfer: Transfer, fallback?: ReceiptIssuer, 
     ...(payment.method === "cash" ? [["Dinero recibido", formatMoney(payment.tenderedAmount, transfer.sourceCurrency)], ["Devuelta", formatMoney(payment.changeAmount, transfer.sourceCurrency)]]
       : [["Referencia del comprobante", payment.reference ?? "—"], ...(payment.last4 ? [["Tarjeta", `•••• ${payment.last4}`]] : []), ...(payment.bank ? [["Banco o proveedor", payment.bank]] : [])])]
     : [["Forma de pago", "No registrada en esta operación histórica"]];
+  const recipientVoucher: RecipientReceiptVoucher | undefined = printed ? {
+    companyTitle: issuer.name,
+    envioReference: transfer.envioReference,
+    voucherDateTime: formatRecipientVoucherDateTime(transfer.paidAt ?? transfer.createdAt),
+    recipientName: transfer.recipientContact?.name ?? "Contacto histórico no registrado",
+    recipientPhone: transfer.recipientContact?.phone || transfer.recipientContact?.cellular || "No registrado",
+    sentAmount: formatMoney(transfer.amount, transfer.sourceCurrency),
+    destinationCurrency: transfer.destinationCurrency,
+    payoutAmountNumber: formatAmountNumber(payoutOf(transfer)),
+    warningLine: recipientVoucherWarningText,
+    claimsLine: recipientVoucherClaimsLine(issuer),
+    ...(transfer.cancelledAt ? { cancelledNote: `CANCELADO: ${formatPrintedDate(transfer.cancelledAt)} · Motivo: ${transfer.cancelReason || "—"}` } : {}),
+  } : undefined;
   return { reference: transfer.reciboReference, date, status: transfer.status, issuer, footer: issuer.footerNote || defaultReceiptFooter, printed,
+    ...(printed ? { audience } : {}), ...(recipientVoucher ? { recipientVoucher } : {}),
     sections: printed ? [
       { title: "", columns: ["Dato", "Valor"], rows: [["Fecha", date], ["Envío", transfer.envioReference], ["Cód. Operación", transfer.operatingCode]] },
       party("sender", "Remitente"), party("recipient", "Destinatario"),
@@ -175,16 +279,42 @@ export function receiptSections(receipt: Receipt, compact: boolean) {
 export function receiptHtml(receipt: Receipt, options: import("./ReceiptPrintControls").ReceiptPrintOptions = { paper: "auto", compact: false }) {
   const layout = receiptPrintLayout(options);
   const thermal = thermalReceiptSize(options.paper);
+  const audience = resolvePrintedAudience(receipt, options);
+  const recipientMode = isRecipientPrintedReceipt(receipt, options);
   const sections = receiptSections(receipt, options.compact);
-  const sheetDividers = Boolean(receipt.printed && isSheetDashedPaper(options.paper));
-  const docTitle = String(receipt.printed ? (sections[0]?.rows.find(([label]) => label === "Envío")?.[1] ?? receipt.reference) : receipt.reference);
+  const sheetDividers = Boolean(receipt.printed && !recipientMode && isSheetDashedPaper(options.paper));
+  const docTitle = String(receipt.printed ? (receipt.recipientVoucher?.envioReference ?? sections[0]?.rows.find(([label]) => label === "Envío")?.[1] ?? receipt.reference) : receipt.reference);
   if (options.output === "text") {
     const columns = receiptTextColumns(options.paper, options), narrowThermal = options.paper === "51" || options.paper === "58", fontSize = narrowThermal ? 9.5 : thermal ? 10 : 12;
-    return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${escapeHtml(docTitle)}</title><style>@page{size:${layout.pageSize};margin:${layout.marginMm}mm}*{box-sizing:border-box}html{margin:0;padding:0;background:#e2e8f0}body{margin:0;padding:0;width:100%;color:#000;background:#fff;${layout.widthMm === undefined ? "" : `max-width:${layout.widthMm}mm;`}}@media screen{body{box-shadow:0 2px 10px rgba(15,23,42,.12)}}@media print{html,body{background:#fff;box-shadow:none}}pre{font:${fontSize}px/1.45 "Courier New",Courier,monospace;letter-spacing:0;white-space:pre-wrap;margin:0;padding:0;tab-size:2}</style></head><body><pre aria-label="Recibo en formato de texto">${escapeHtml(receiptText({...receipt,sections},columns,sheetDividers))}</pre></body></html>`;
+    const preFont = recipientMode ? `700 ${fontSize}px/1.45 "Consolas","Courier New",Courier,monospace` : `${fontSize}px/1.45 "Courier New",Courier,monospace`;
+    return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${escapeHtml(docTitle)}</title><style>@page{size:${layout.pageSize};margin:${layout.marginMm}mm}*{box-sizing:border-box}html{margin:0;padding:0;background:#e2e8f0}body{margin:0;padding:0;width:100%;color:#000;background:#fff;${layout.widthMm === undefined ? "" : `max-width:${layout.widthMm}mm;`}}@media screen{body{box-shadow:0 2px 10px rgba(15,23,42,.12)}}@media print{html,body{background:#fff;box-shadow:none}}pre{font:${preFont};letter-spacing:0;white-space:pre-wrap;margin:0;padding:0;tab-size:2}</style></head><body><pre aria-label="Recibo en formato de texto">${escapeHtml(receiptText({...receipt,audience,sections},columns,sheetDividers))}</pre></body></html>`;
+  }
+  const graphicWidthMm = thermal ? thermal.graphicWidthMm : layout.widthMm;
+  if (recipientMode && receipt.recipientVoucher) {
+    const v = receipt.recipientVoucher;
+    const shortSheet = !thermal && layout.marginMm === 4;
+    const bodyFontSize = thermal ? (options.paper === "51" || options.paper === "58" ? 10 : 11.5) : shortSheet ? 14 : 18;
+    const companyFontSize = thermal ? (options.paper === "51" || options.paper === "58" ? 11.5 : 13.5) : shortSheet ? 20 : 26;
+    const titleHtml = v.companyTitle ? `<h1 class="recipient-voucher-company">${escapeHtml(v.companyTitle)}</h1>` : "";
+    return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${escapeHtml(docTitle)}</title><style>
+      @page{size:${layout.pageSize};margin:${layout.marginMm}mm}*{box-sizing:border-box}html{margin:0;padding:0;background:#e2e8f0}body{font:700 ${bodyFontSize}px/1.38 "Consolas","Courier New",Courier,monospace;color:#000;background:#fff;margin:0;padding:0;width:100%;${graphicWidthMm === undefined ? "max-width:100%;" : `max-width:${graphicWidthMm}mm;`}}@media screen{body{box-shadow:0 2px 10px rgba(15,23,42,.12)}}${!thermal ? `.recipient-voucher{padding:${shortSheet ? "2px" : "4px"} 0 0}@media screen{.recipient-voucher{padding:12px 16px}}@media print{.recipient-voucher{padding:${shortSheet ? "2px" : "4px"} 0 0}}` : ""}
+      .recipient-voucher-header{border-bottom:1.5px solid #000;padding:${thermal ? "2px 0 6px" : shortSheet ? "2px 0 8px" : "2px 0 14px"};margin-bottom:${thermal ? "4px" : "6px"};text-align:center}
+      .recipient-voucher-company{margin:0;font-size:${companyFontSize}px;line-height:1.2;font-weight:700;text-transform:uppercase;letter-spacing:${thermal ? "0.2em" : "0.28em"};padding-left:${thermal ? "0.2em" : "0.28em"};overflow-wrap:anywhere}
+      .recipient-voucher-meta{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+      .recipient-voucher-recipient{text-align:center;border-bottom:1.5px solid #000;padding:${thermal ? "8px 0 4px" : shortSheet ? "8px 0 4px" : "16px 0 6px"};margin-bottom:${thermal ? "4px" : "6px"};overflow-wrap:anywhere}
+      .recipient-voucher-recipient-name{margin:0 0 ${thermal ? "4px" : shortSheet ? "6px" : "12px"}}
+      .recipient-voucher-recipient-phone{margin:0}
+      .recipient-voucher-amounts{margin:0 0 ${thermal ? "8px" : shortSheet ? "8px" : "18px"};overflow-wrap:anywhere}
+      .recipient-voucher-monto{text-align:center;margin:0 0 ${thermal ? "3px" : "6px"}}
+      .recipient-voucher-payout{margin:0;white-space:pre-wrap}
+      .recipient-voucher-cancelled{margin:${thermal ? "5px" : "10px"} 0 0;white-space:pre-wrap}
+      .recipient-voucher-notice{margin:${thermal ? "8px 0 6px" : shortSheet ? "8px 0 6px" : "18px 0 16px"};white-space:pre-wrap;overflow-wrap:anywhere}
+      .recipient-voucher-claims{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+      @media print{html,body{background:#fff;box-shadow:none}.thermal-print-help{display:none!important}}.thermal-image-output{margin:0;padding:0;width:100%}
+    </style></head><body><main class="recipient-voucher"><header class="recipient-voucher-header">${titleHtml}</header><div class="recipient-voucher-meta"><div>Envío #: ${escapeHtml(v.envioReference)}</div><div>Fecha  : ${escapeHtml(v.voucherDateTime)}</div></div><section class="recipient-voucher-recipient"><div class="recipient-voucher-recipient-name">${escapeHtml(v.recipientName)}</div><div class="recipient-voucher-recipient-phone">TELÉFONO: ${escapeHtml(v.recipientPhone)}</div></section><section class="recipient-voucher-amounts"><div class="recipient-voucher-monto">MONTO: ${escapeHtml(v.sentAmount)}</div><div class="recipient-voucher-payout"><div>RECIBE EN ${escapeHtml(v.destinationCurrency)}:</div><div>${escapeHtml(v.payoutAmountNumber)}</div></div>${v.cancelledNote ? `<div class="recipient-voucher-cancelled">${escapeHtml(v.cancelledNote)}</div>` : ""}</section><p class="recipient-voucher-notice">${escapeHtml(v.warningLine)}</p><p class="recipient-voucher-claims">${escapeHtml(v.claimsLine)}</p></main></body></html>`;
   }
   const { issuer } = receipt;
   const isPrinted = Boolean(receipt.printed);
-  const graphicWidthMm = thermal ? thermal.graphicWidthMm : layout.widthMm;
   const logo = issuer.logoDataUrl && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(issuer.logoDataUrl) && issuer.logoDataUrl.length <= 24576 ? `<img alt="" src="${escapeHtml(issuer.logoDataUrl)}">` : "";
   const issuerLines = receiptIssuerLines(issuer, isPrinted);
   const hasHeader = Boolean(logo || issuer.name || issuerLines.length);
@@ -216,10 +346,11 @@ export function printRemittanceReceipt(receipt: Receipt, options?: import("./Rec
   if (options?.output === "text") { window.setTimeout(print,150); return; }
   if (thermal) {
     const compact = options?.compact ?? false;
+    const audience = resolvePrintedAudience(receipt, options);
     const preparing = popup.document.createElement("p"); preparing.className = "thermal-print-help";
     preparing.textContent = "Preparando vista previa del recibo…";
     popup.document.body.replaceChildren(preparing);
-    void thermalReceiptImages(popup.document, {...receipt, sections: receiptSections(receipt, compact)}, thermal.graphicWidthMm, compact).then(content => {
+    void thermalReceiptImages(popup.document, {...receipt, audience, sections: receiptSections(receipt, compact)}, thermal.graphicWidthMm, compact).then(content => {
       if (popup.closed) return;
       const help = popup.document.createElement("p"); help.className = "thermal-print-help";
       help.textContent = "Recibo preparado como imagen para conservar acentos y formato. Selecciona el papel térmico y el controlador de tu impresora.";
