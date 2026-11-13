@@ -1,5 +1,11 @@
 // Pruebas E2E contra el servidor real (modo real, PostgreSQL) — tolerante a datos acumulados.
 const BASE = "http://127.0.0.1:3001";
+// Escribe de verdad (cargos, cobros, descargos, un cierre de dia) y guarda la configuracion. Desde aqui no se
+// puede saber que base de datos usa el servidor, asi que solo corre si quien lo lanza confirma que es de prueba.
+if (process.env.CYP_E2E_BASE_DE_PRUEBA !== "si") {
+  console.error(`Este script escribe datos de prueba y cierra el dia en ${BASE}. Usalo solo con una base de datos de prueba y confirmalo con CYP_E2E_BASE_DE_PRUEBA=si.`);
+  process.exit(1);
+}
 const results = [];
 const ok = (name, cond, detail = "") => {
   results.push({ name, pass: !!cond, detail });
@@ -114,14 +120,22 @@ const hoy = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Santo_Domingo"
   const recArch = await req("POST", `/api/descargos-recurrentes/${recId}`, { status: "archived" });
   ok("G3 archivar plantilla => 200", recArch.status === 200 && recArch.json?.status === "archived", `status=${recArch.status}`);
 
-  // G6 configuracion
+  // G6 configuracion. Guardar reemplaza la configuracion entera: se prueba encima de la que habia y se devuelve
+  // tal cual al terminar, tambien si algo falla. Sin haberla leido no se guarda nada.
   const cfgGet0 = await req("GET", "/api/configuracion");
   ok("G6 GET configuracion => 200", cfgGet0.status === 200);
-  const cfgSet = await req("POST", "/api/configuracion", { config: { "general.empresa": "PRUEBA CyP", "cobros.guardarGps": true } });
-  ok("G6 POST configuracion => 200", cfgSet.status === 200, `status=${cfgSet.status}`);
-  const cfgGet1 = await req("GET", "/api/configuracion");
-  ok("G6 configuracion persiste", cfgGet1.json?.config?.["general.empresa"] === "PRUEBA CyP");
-  await req("POST", "/api/configuracion", { config: {} });
+  const cfgOriginal = cfgGet0.status === 200 ? cfgGet0.json?.config : undefined;
+  if (cfgOriginal) {
+    try {
+      const cfgSet = await req("POST", "/api/configuracion", { config: { ...cfgOriginal, "general.empresa": "PRUEBA CyP", "cobros.guardarGps": true } });
+      ok("G6 POST configuracion => 200", cfgSet.status === 200, `status=${cfgSet.status}`);
+      const cfgGet1 = await req("GET", "/api/configuracion");
+      ok("G6 configuracion persiste", cfgGet1.json?.config?.["general.empresa"] === "PRUEBA CyP");
+    } finally {
+      const cfgBack = await req("POST", "/api/configuracion", { config: cfgOriginal });
+      ok("G6 configuracion original restaurada", cfgBack.status === 200, `status=${cfgBack.status}`);
+    }
+  }
 
   // cierre de dia: pagar pendiente de descargos, depositar efectivo de cobros y cerrar
   const payoutsHoy = ((await req("GET", "/api/descargos")).json ?? []).filter(
