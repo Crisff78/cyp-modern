@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { defaultReceiptPrintOptions, receiptPrintLayout, receiptPaperLabels, thermalReceiptSize, type ReceiptPrintOptions } from "../../shared/remittances/receiptPaper";
+import { defaultReceiptPrintOptions, printedReceiptAudienceLabels, readSavedReceiptPrintOptions, receiptPrintLayout, receiptPaperLabels, saveReceiptPrintOptions, thermalReceiptSize, type ReceiptPrintOptions } from "../../shared/remittances/receiptPaper";
 import { receiptTextColumns } from "../../shared/remittances/receiptText";
 import { receiptHtml, type Receipt } from "../../shared/remittances/receipt";
 
@@ -47,4 +47,23 @@ test("custom dimensions are numeric, bounded and validated before opening a prin
   for(const paper of ["constructor","__proto__","unknown","80;}body{display:none}"]) assert.throws(()=>receiptHtml(receipt,{...options,paper} as never));
   assert.throws(()=>receiptHtml(receipt,{...options,orientation:"injected"} as never));
   assert(Object.keys(receiptPaperLabels).includes("custom"));
+  assert.match(printedReceiptAudienceLabels.sender, /quien envía/i);
+  assert.match(printedReceiptAudienceLabels.recipient, /quien recibe/i);
+  const memory = new Map<string, string>();
+  const previousStorage = (globalThis as { localStorage?: Storage }).localStorage;
+  try {
+    (globalThis as { localStorage?: unknown }).localStorage = {
+      getItem: (key: string) => memory.get(key) ?? null,
+      setItem: (key: string, value: string) => { memory.set(key, value); },
+    };
+    saveReceiptPrintOptions({ paper: "a4", compact: false, output: "graphics", audience: "recipient" });
+    const rawSaved = memory.get("cyp.remittances.receiptPrintOptions") ?? "";
+    assert(!rawSaved.includes("audience"), "window-specific audience must not overwrite saved printer hardware defaults");
+    const restored = readSavedReceiptPrintOptions();
+    assert.equal(restored.paper, "a4");
+    assert.equal(restored.output, "graphics");
+    assert.equal(restored.audience, undefined);
+  } finally {
+    (globalThis as { localStorage?: Storage }).localStorage = previousStorage;
+  }
 });
