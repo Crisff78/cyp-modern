@@ -4,8 +4,14 @@ export const receiptPaperLabels = {
   letter: "Carta (8½ × 11 pulgadas)", a4: "A4", "8x4": "Hoja de 8 × 4 pulgadas", "8x11": "Hoja de 8 × 11 pulgadas", custom: "Medidas personalizadas",
 } as const;
 export type ReceiptPaper = keyof typeof receiptPaperLabels;
+export type PrintedReceiptAudience = "sender" | "recipient";
+export const printedReceiptAudienceLabels: Record<PrintedReceiptAudience, string> = {
+  sender: "Para quien envía (comprobante de envío)",
+  recipient: "Para quien recibe (comprobante de entrega)",
+};
 export type ReceiptPrintOptions = { paper: ReceiptPaper; compact: boolean; output?: "graphics" | "text";
-  orientation?: "auto" | "portrait" | "landscape"; customWidthMm?: number | ""; customHeightMm?: number | "" };
+  orientation?: "auto" | "portrait" | "landscape"; customWidthMm?: number | ""; customHeightMm?: number | "";
+  audience?: PrintedReceiptAudience };
 
 const RECEIPT_PRINT_STORAGE_KEY = "cyp.remittances.receiptPrintOptions";
 export const defaultReceiptPrintOptions: ReceiptPrintOptions = { paper: "80", compact: false, output: "text" };
@@ -28,7 +34,8 @@ export function readSavedReceiptPrintOptions(): ReceiptPrintOptions {
 
 export function saveReceiptPrintOptions(options: ReceiptPrintOptions) {
   try {
-    if (typeof localStorage !== "undefined") localStorage.setItem(RECEIPT_PRINT_STORAGE_KEY, JSON.stringify(options));
+    const { audience: _audience, ...persisted } = options;
+    if (typeof localStorage !== "undefined") localStorage.setItem(RECEIPT_PRINT_STORAGE_KEY, JSON.stringify(persisted));
   } catch { /* ignore storage quota / private mode */ }
 }
 

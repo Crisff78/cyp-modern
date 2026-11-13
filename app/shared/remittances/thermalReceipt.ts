@@ -1,4 +1,4 @@
-import { cleanReceiptFooterNote, isPrintedHighlightRow, isSignatureRow, printedReceiptHeading, receiptIssuerLines, type Receipt } from "./receipt";
+import { cleanReceiptFooterNote, formatSpacedTitleLines, isPrintedHighlightRow, isRecipientPrintedReceipt, isSignatureRow, printedReceiptHeading, receiptIssuerLines, type Receipt } from "./receipt";
 export { thermalReceiptSize } from "./receiptPaper";
 
 // Draw glyphs in the browser, not with the printer's resident fonts/code page.
@@ -6,9 +6,9 @@ export { thermalReceiptSize } from "./receiptPaper";
 // paginate between rows without shrinking a long receipt onto one sheet.
 // Layout coordinates/font sizes are millimetres, mapped to pixels by the transform.
 const dotsPerMm = 8;
-type Font = { size: number; bold?: boolean };
+type Font = { size: number; bold?: boolean; mono?: boolean };
 const regular: Font = { size: 2.8 }, bold: Font = { size: 2.8, bold: true };
-const fontCss = (font: Font) => `${font.bold ? "bold " : ""}${font.size}px Arial, Helvetica, sans-serif`;
+const fontCss = (font: Font) => `${font.bold ? "bold " : ""}${font.size}px ${font.mono ? '"Consolas", "Courier New", Courier, monospace' : "Arial, Helvetica, sans-serif"}`;
 export async function thermalReceiptImages(document: Document, receipt: Receipt, widthMm: number, compact = false) {
   if (!Number.isFinite(widthMm) || widthMm < 40 || widthMm > 102) throw new Error("Tamaño de recibo no válido.");
   const padLeft = 0.25, padRight = 0.35, innerWidth = widthMm - padLeft - padRight, centerX = padLeft + innerWidth / 2, rightX = widthMm - padRight;
@@ -19,16 +19,16 @@ export async function thermalReceiptImages(document: Document, receipt: Receipt,
   output.className = "thermal-image-output";
   output.setAttribute("aria-label", "Recibo para impresión térmica");
   const textWidth = (text: string, font: Font) => { measure.font = fontCss(font); return measure.measureText(text).width; };
-  const wrap = (text: string, font: Font) => {
+  const wrap = (text: string, font: Font, maxLineWidth = innerWidth) => {
     const lines: string[] = [];
     for (const paragraph of text.normalize("NFC").replace(/\r\n?/g, "\n").split("\n")) {
       let line = "";
       for (const word of paragraph.trim().split(/\s+/u)) {
         if (!word) continue;
-        if (textWidth(line ? `${line} ${word}` : word, font) <= innerWidth) { line = line ? `${line} ${word}` : word; continue; }
+        if (textWidth(line ? `${line} ${word}` : word, font) <= maxLineWidth) { line = line ? `${line} ${word}` : word; continue; }
         if (line) { lines.push(line); line = ""; }
         for (const character of Array.from(word)) {
-          if (line && textWidth(line + character, font) > innerWidth) { lines.push(line); line = ""; }
+          if (line && textWidth(line + character, font) > maxLineWidth) { lines.push(line); line = ""; }
           line += character;
         }
       }
@@ -51,7 +51,7 @@ export async function thermalReceiptImages(document: Document, receipt: Receipt,
     output.append(image);
   };
   const text = (value: string, font: Font = regular, align: "left" | "center" | "right" = "left", extra = 0) => {
-    const lines = wrap(value, font), lineHeight = font.size * 1.18;
+    const lines = wrap(value, font, align === "center" ? innerWidth - 0.2 : innerWidth), lineHeight = font.size * 1.18;
     for (let start = 0; start < lines.length; start += 10) {
       const group = lines.slice(start, start + 10), topPad = 0.15 + (start === 0 ? extra : 0);
       block(topPad + group.length * lineHeight + 0.2, context => {
@@ -71,6 +71,52 @@ export async function thermalReceiptImages(document: Document, receipt: Receipt,
     context.stroke();
     context.setLineDash([]);
   }, "Separador punteado");
+
+  if (isRecipientPrintedReceipt(receipt) && receipt.recipientVoucher) {
+    const v = receipt.recipientVoucher;
+    const monoFont: Font = { size: widthMm < 50 ? 2.45 : 2.85, bold: true, mono: true };
+    const titleFont: Font = { size: widthMm < 50 ? 2.9 : 3.35, bold: true, mono: true };
+    const safeCenterWidth = innerWidth - 0.3;
+    const rawTitle = v.companyTitle.normalize("NFC").trim().toUpperCase();
+    if (rawTitle) {
+      const spacedLines = formatSpacedTitleLines(rawTitle, (candidate) => textWidth(candidate, titleFont) <= safeCenterWidth);
+      if (spacedLines.length) {
+        const lineHeight = titleFont.size * 1.22;
+        block(0.3 + spacedLines.length * lineHeight + 0.35, context => {
+          context.font = fontCss(titleFont); context.textAlign = "center";
+          spacedLines.forEach((line, index) => context.fillText(line, centerX, 0.3 + index * lineHeight));
+        }, spacedLines.join("\n"));
+      } else {
+        text(rawTitle, titleFont, "center", 0.15);
+      }
+    }
+    rule();
+    const monoExactOrWrap = (value: string, extra = 0) => {
+      const normalized = value.normalize("NFC");
+      if (!/[\r\n]/.test(normalized) && textWidth(normalized, monoFont) <= innerWidth - 0.1) {
+        const lineHeight = monoFont.size * 1.2;
+        block(0.15 + extra + lineHeight + 0.2, context => {
+          context.font = fontCss(monoFont); context.textAlign = "left";
+          context.fillText(normalized, padLeft, 0.15 + extra);
+        }, normalized);
+      } else {
+        text(normalized, monoFont, "left", extra);
+      }
+    };
+    monoExactOrWrap(`Envío #: ${v.envioReference}`, 0.15);
+    monoExactOrWrap(`Fecha  : ${v.voucherDateTime}`);
+    text(v.recipientName, monoFont, "center", 1.3);
+    text(`TELÉFONO: ${v.recipientPhone}`, monoFont, "center", 0.45);
+    rule();
+    text(`MONTO: ${v.sentAmount}`, monoFont, "center", 0.25);
+    text(`RECIBE EN ${v.destinationCurrency}:`, monoFont, "left", 0.2);
+    text(v.payoutAmountNumber, monoFont, "left");
+    if (v.cancelledNote) text(v.cancelledNote, monoFont, "left", 0.45);
+    text(v.warningLine, monoFont, "left", 1.4);
+    text(v.claimsLine, monoFont, "left", 1.0);
+    await Promise.all(Array.from(output.querySelectorAll("img")).map(image => image.decode()));
+    return output;
+  }
 
   const isPrinted = Boolean(receipt.printed);
   if (!isPrinted) { text(`Recibo ${receipt.reference}`, bold); text(receipt.date); }

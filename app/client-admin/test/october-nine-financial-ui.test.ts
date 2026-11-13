@@ -158,7 +158,12 @@ remittancesApi('/snapshot').then(snapshot=>createRoot(document.getElementById('r
       assert.equal(await payouts.getByRole("navigation", { name: "Secciones de remesas", exact: true }).count(), 0);
       await page.getByLabel("Buscar", { exact: true }).fill("QA-DOC-ORIGIN");
       const row = page.locator(".remittance-transfer-table tbody tr").filter({ hasText: "REC" }); await row.waitFor(); await row.dblclick();
-      const detail = page.getByRole("dialog"); const popupReady = context.waitForEvent("page"); await detail.getByRole("button", { name: "Imprimir comprobante", exact: true }).click(); const popup = await popupReady; await popup.waitForLoadState();
+      const detail = page.getByRole("dialog");
+      assert.equal(await detail.getByLabel("Tipo de recibo", { exact: true }).inputValue(), "recipient");
+      const recipientPopupReady = context.waitForEvent("page"); await detail.getByRole("button", { name: "Imprimir comprobante", exact: true }).click(); const recipientPopup = await recipientPopupReady; await recipientPopup.waitForLoadState();
+      const recipientText = await recipientPopup.locator("body").innerText(); assert.ok(recipientText.includes("8090000505")); assert.ok(recipientText.includes("RECIBE EN DOP:")); assert.ok(recipientText.includes("100.00")); assert.ok(recipientText.includes("PARA RECLAMACIONES FAVOR COMUNICARSE")); assert.ok(!recipientText.includes("8090000101")); assert.ok(!/Comisión|gestor/i.test(recipientText)); await recipientPopup.close();
+      await detail.getByLabel("Tipo de recibo", { exact: true }).selectOption("sender");
+      const popupReady = context.waitForEvent("page"); await detail.getByRole("button", { name: "Imprimir comprobante", exact: true }).click(); const popup = await popupReady; await popup.waitForLoadState();
       const receiptText = await popup.locator("body").innerText(); assert.ok(receiptText.includes("DOP 105.00")); assert.ok(receiptText.includes("8090000505")); assert.ok(!receiptText.includes("8090000101")); assert.ok(receiptText.replace(/\s+/g, " ").includes("Nota: Pie ficticio para comprobar impresión")); assert.ok(!/Comisión|gestor/i.test(receiptText)); await popup.close();
       await page.screenshot({ path: path.join(output, "remittance-detail.png"), fullPage: true });
     });
