@@ -1,6 +1,6 @@
 export const receiptPaperLabels = {
   auto: "Automático · papel elegido en la impresora", "51": "Rollo de 2 pulgadas (51 mm)", "58": "Rollo térmico de 58 mm",
-  "76": "Rollo de 76 mm (impacto / matricial)", "80": "Rollo térmico de 3 pulgadas (80 mm · POS80)", "102": "Rollo de 4 pulgadas (102 mm)",
+  "76": "Rollo de 76 mm (impacto / matricial)", "80": "Rollo térmico de 3 pulgadas (80 mm)", "102": "Rollo de 4 pulgadas (102 mm)",
   letter: "Carta (8½ × 11 pulgadas)", a4: "A4", "8x4": "Hoja de 8 × 4 pulgadas", "8x11": "Hoja de 8 × 11 pulgadas", custom: "Medidas personalizadas",
 } as const;
 export type ReceiptPaper = keyof typeof receiptPaperLabels;
