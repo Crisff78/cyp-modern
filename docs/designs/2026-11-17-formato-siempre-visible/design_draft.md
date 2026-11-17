@@ -32,7 +32,7 @@ nuevo y en la ventana del recibo abierta desde «Envíos de dinero».
 Lo que no cambia:
 
 - El formato elegido solo afecta a lo que se imprime «Para quien recibe». Con «Para quien envía» se imprime siempre
-  `RECIBO DE ENVIO`, también si el selector dice «Haití»: no existe un formato de Haití para quien envía.
+  `RECIBO DE ENVIO`, también si el selector dice «Haití»: no existe un formato de Haití para quien envía. Esto dejó de valer el 17-11-2026, por pedido de Rardiel: con «Haití» también cambia el recibo de quien envía; ver `docs/designs/2026-11-17-formato-haiti-para-ambos/design_draft.md`.
 - El selector sigue activo con «Para quien envía», para poder dejar elegido el formato antes de cambiar el tipo. La
   elección se sigue recordando en el navegador.
 - Textos, valores y orden de las opciones («Común», «Haití»).

@@ -31,7 +31,7 @@ Además hay «Formato de impresión» con «Solo texto» (valor por defecto) y �
 ## Qué cambia
 
 1. **«Para quien recibe» imprime por defecto el comprobante de recepción en formato común.** Es el mismo recibo de quien
-   envía, con el título `COMPROBANTE DE RECEPCIÓN`, sin las tres filas tachadas y sin el título «Importes del envío».
+   envía, con el título `COMPROBANTE DE RECEPCIÓN`, sin las tres filas tachadas y sin el título «Importes del envío». Desde el 17-11-2026 el título es `RECIBO DE RECEPCIÓN` y la opción, «Para quien recibe (recibo de recepción)»; ver `docs/designs/2026-11-17-formato-haiti-para-ambos/design_draft.md`.
 2. **El formato de Haití pasa a ser una opción.** Cuando el tipo es «Para quien recibe» aparece un selector «Formato para
    quien recibe» con «Común» y «Haití». «Común» es el valor por defecto. «Haití» imprime el comprobante actual, sin
    cambios. La elección se recuerda en el navegador, igual que el papel. Decisión sustituida el 2026-11-17 por pedido de Rardiel: el selector se queda siempre a la vista; ver `docs/designs/2026-11-17-formato-siempre-visible/design_draft.md`.
