@@ -6,8 +6,10 @@ El servidor deja 120 peticiones por minuto a cada dirección, y 10 por minuto pa
 invitación. En Render el servidor no ve la dirección del visitante, sino la del proxy de Render, así que **todos los
 visitantes compartían el mismo límite**: varias personas revisando a la vez podían agotarlo entre todas.
 
-Comprobado en la demo el 13-11-2026: una petición hecha desde otra red gastó del mismo contador que las de la laptop
-(`x-ratelimit-remaining` pasó de 119 a 117).
+Esto se deduce del código y no de una medida: sin la opción `trustProxy`, el servidor (Fastify) cuenta las
+peticiones por la dirección de quien se conecta a él, y en Render quien se conecta es el proxy. Antes del cambio no
+se midió. Hasta el 17-11-2026 este documento citaba aquí una medida del 13-11-2026; no valía, porque las dos
+peticiones que comparaba salieron de la misma laptop.
 
 ## Qué cambia
 
@@ -36,8 +38,12 @@ Repetir esta orden desde dos redes distintas (por ejemplo, la laptop y el teléf
 curl -s -o /dev/null -D - https://cyp-modern-demo.onrender.com/api/health
 ```
 
-Cada red debe llevar su propia cuenta en `x-ratelimit-remaining`; antes bajaban las dos del mismo número. Y la misma orden
+Cada red debe llevar su propia cuenta en `x-ratelimit-remaining`. Y la misma orden
 con `-H "CF-Connecting-IP: 203.0.113.9"` debe seguir respondiendo 403.
+
+Comprobado en la demo el 17-11-2026, con el cambio ya publicado: tres peticiones seguidas desde la laptop dieron
+`x-ratelimit-remaining` 119, 118 y 117; dos desde un servidor en otra red, 119 y 118; y una más desde la laptop,
+116. Cada red lleva su cuenta. La misma orden con `-H "CF-Connecting-IP: 203.0.113.9"` respondió 403.
 
 ## Si CyP se instala en otro servidor
 
