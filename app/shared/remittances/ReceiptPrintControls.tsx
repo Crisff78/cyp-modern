@@ -98,10 +98,10 @@ export function ReceiptPrintControls({ value, onChange, receipt }: { value: Rece
         const next = event.target.value;
         if (next === "sender" || next === "recipient") onChange({ ...value, audience: next as PrintedReceiptAudience });
       }}>{(["sender", "recipient"] as PrintedReceiptAudience[]).map((kind) => <option key={kind} value={kind}>{printedReceiptAudienceLabels[kind]}</option>)}</select></label>
-      {audience === "recipient" && <label>Formato para quien recibe<select aria-label="Formato para quien recibe" value={value.recipientFormat ?? "common"} onChange={(event) => {
+      <label>Formato para quien recibe<select aria-label="Formato para quien recibe" value={value.recipientFormat ?? "common"} onChange={(event) => {
         const next = event.target.value;
         if (next === "common" || next === "haiti") onChange({ ...value, recipientFormat: next });
-      }}>{(["common", "haiti"] as RecipientReceiptFormat[]).map((kind) => <option key={kind} value={kind}>{recipientReceiptFormatLabels[kind]}</option>)}</select></label>}
+      }}>{(["common", "haiti"] as RecipientReceiptFormat[]).map((kind) => <option key={kind} value={kind}>{recipientReceiptFormatLabels[kind]}</option>)}</select></label>
       <label>Papel de impresión<select aria-label="Papel de impresión" value={value.paper} onChange={(event) => {
         const paper = event.target.value;
         if (Object.hasOwn(receiptPaperLabels, paper)) onChange({ ...value, paper: paper as ReceiptPaper, orientation: "auto" });
