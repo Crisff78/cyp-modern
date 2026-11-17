@@ -173,7 +173,7 @@ remittancesApi('/snapshot').then(snapshot=>createRoot(document.getElementById('r
       const recipientPopupReady = context.waitForEvent("page"); await detail.getByRole("button", { name: "Imprimir comprobante", exact: true }).click(); const recipientPopup = await recipientPopupReady; await recipientPopup.waitForLoadState();
       const recipientText = await printedSheet(recipientPopup); assert.ok(recipientText.includes("8090000505")); assert.ok(recipientText.includes("RECIBE EN DOP:")); assert.ok(recipientText.includes("100.00")); assert.ok(recipientText.includes("PARA RECLAMACIONES FAVOR COMUNICARSE")); assert.ok(!recipientText.includes("8090000101")); assert.ok(!/Comisión|gestor/i.test(recipientText)); await recipientPopup.close();
       await detail.getByLabel("Tipo de recibo", { exact: true }).selectOption("sender");
-      assert.equal(await detail.getByLabel("Formato para quien recibe", { exact: true }).count(), 0);
+      assert.equal(await detail.getByLabel("Formato para quien recibe", { exact: true }).inputValue(), "haiti");
       const popupReady = context.waitForEvent("page"); await detail.getByRole("button", { name: "Imprimir comprobante", exact: true }).click(); const popup = await popupReady; await popup.waitForLoadState();
       const receiptText = await printedSheet(popup); assert.ok(receiptText.includes("DOP 105.00")); assert.ok(receiptText.includes("8090000505")); assert.ok(!receiptText.includes("8090000101")); assert.ok(receiptText.replace(/\s+/g, " ").includes("Nota: Pie ficticio para comprobar impresión")); assert.ok(!/Comisión|gestor/i.test(receiptText)); await popup.close();
       await page.screenshot({ path: path.join(output, "remittance-detail.png"), fullPage: true });
