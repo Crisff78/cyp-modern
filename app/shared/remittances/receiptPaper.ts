@@ -6,15 +6,15 @@ export const receiptPaperLabels = {
 export type ReceiptPaper = keyof typeof receiptPaperLabels;
 export type PrintedReceiptAudience = "sender" | "recipient";
 export const printedReceiptAudienceLabels: Record<PrintedReceiptAudience, string> = {
-  sender: "Para quien envía (comprobante de envío)",
-  recipient: "Para quien recibe (comprobante de recepción)",
+  sender: "Para quien envía (recibo de envío)",
+  recipient: "Para quien recibe (recibo de recepción)",
 };
-// What the recipient is given: the common voucher, or the one used for Haiti.
-export type RecipientReceiptFormat = "common" | "haiti";
-export const recipientReceiptFormatLabels: Record<RecipientReceiptFormat, string> = { common: "Común", haiti: "Haití" };
+// The common receipts (one for the sender, one for the recipient), or the single voucher used for Haiti.
+export type ReceiptFormat = "common" | "haiti";
+export const receiptFormatLabels: Record<ReceiptFormat, string> = { common: "Común", haiti: "Haití" };
 export type ReceiptPrintOptions = { paper: ReceiptPaper; compact: boolean;
   orientation?: "auto" | "portrait" | "landscape"; customWidthMm?: number | ""; customHeightMm?: number | "";
-  audience?: PrintedReceiptAudience; recipientFormat?: RecipientReceiptFormat };
+  audience?: PrintedReceiptAudience; receiptFormat?: ReceiptFormat };
 
 const RECEIPT_PRINT_STORAGE_KEY = "cyp.remittances.receiptPrintOptions";
 export const defaultReceiptPrintOptions: ReceiptPrintOptions = { paper: "80", compact: false };
@@ -28,9 +28,11 @@ export function readSavedReceiptPrintOptions(): ReceiptPrintOptions {
     const orientation = parsed.orientation === "auto" || parsed.orientation === "portrait" || parsed.orientation === "landscape" ? parsed.orientation : undefined;
     const customWidthMm = typeof parsed.customWidthMm === "number" && Number.isFinite(parsed.customWidthMm) && parsed.customWidthMm >= 50 && parsed.customWidthMm <= 320 ? parsed.customWidthMm : undefined;
     const customHeightMm = typeof parsed.customHeightMm === "number" && Number.isFinite(parsed.customHeightMm) && parsed.customHeightMm >= 50 && parsed.customHeightMm <= 600 ? parsed.customHeightMm : undefined;
-    const recipientFormat = parsed.recipientFormat === "haiti" ? "haiti" as const : undefined;
+    // Until 17-11-2026 this was saved as recipientFormat, when the format only changed the recipient's copy.
+    const savedFormat = parsed.receiptFormat ?? (parsed as { recipientFormat?: unknown }).recipientFormat;
+    const receiptFormat = savedFormat === "haiti" ? "haiti" as const : undefined;
     return { paper, compact: Boolean(parsed.compact), ...(orientation ? { orientation } : {}), ...(customWidthMm ? { customWidthMm } : {}), ...(customHeightMm ? { customHeightMm } : {}),
-      ...(recipientFormat ? { recipientFormat } : {}) };
+      ...(receiptFormat ? { receiptFormat } : {}) };
   } catch {
     return defaultReceiptPrintOptions;
   }

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { formatSpacedTitleLines, remittanceReceipt, receiptHtml, resolveRecipientFormat } from "../../shared/remittances/receipt";
+import { formatSpacedTitleLines, remittanceReceipt, receiptHtml, resolveReceiptFormat } from "../../shared/remittances/receipt";
 import type { Transfer } from "../../shared/remittances/types";
 import { confirmedCreatedTransfer } from "../../shared/remittances/createdTransferResponse";
 
@@ -151,7 +151,7 @@ test("the company title is spaced letter by letter and split only between words"
   assert.deepEqual(formatSpacedTitleLines("Inversiones Demo S.R.L.", (line) => line.length <= 31), ["I N V E R S I O N E S   D E M O", "S . R . L ."]);
   assert.deepEqual(formatSpacedTitleLines("Inversiones Demo S.R.L.", (line) => line.length <= 5), []);
 });
-test("recipient delivery receipt (Para quien recibe) renders the KEBEK voucher across all paper sizes without altering sender receipts", () => {
+test("the format of Haiti renders the KEBEK voucher across all paper sizes, the same for the recipient and for the sender", () => {
   const configuredIssuer = {
     name: "Inversiones Demo S.R.L.",
     slogan: "Tu aliado en cobros, pagos y envíos",
@@ -179,7 +179,9 @@ test("recipient delivery receipt (Para quien recibe) renders the KEBEK voucher a
   const recipientModel = remittanceReceipt(paidTransfer, undefined, "Operador", "Administración", true, "recipient");
   assert.equal(recipientModel.audience, "recipient");
   for (const paper of ["51", "58", "76", "80", "102", "auto", "a4", "letter", "8x4", "8x11"] as const) {
-    const graphicHtml = receiptHtml(recipientModel, { paper, compact: false, recipientFormat: "haiti" });
+    const graphicHtml = receiptHtml(recipientModel, { paper, compact: false, receiptFormat: "haiti" });
+    assert.equal(receiptHtml(recipientModel, { paper, compact: false, audience: "sender", receiptFormat: "haiti" }), graphicHtml,
+      `paper=${paper}: with the format of Haiti the sender gets the same voucher`);
     for (const required of [
       "Inversiones Demo S.R.L.",
       "Envío #: ENV00000001",
@@ -198,33 +200,33 @@ test("recipient delivery receipt (Para quien recibe) renders the KEBEK voucher a
       assert(!graphicHtml.includes(forbidden), `unexpected "${forbidden}" in recipient graphic html for paper=${paper}`);
     }
   }
-  // Switching options.audience on the same receipt model flips cleanly between sender and recipient formats.
-  const senderOverrideHtml = receiptHtml(recipientModel, { paper: "a4", compact: false, audience: "sender", recipientFormat: "haiti" });
-  assert(senderOverrideHtml.includes("RECIBO DE ENVIO"));
-  assert.equal((senderOverrideHtml.match(/receipt-sheet-divided"/g) ?? []).length, 5);
-  assert(!senderOverrideHtml.includes("PARA RECLAMACIONES FAVOR COMUNICARSE"));
+  // 17-11-2026: without the format of Haiti, the same model prints the sender's receipt.
+  const senderCommonHtml = receiptHtml(recipientModel, { paper: "a4", compact: false, audience: "sender" });
+  assert(senderCommonHtml.includes("RECIBO DE ENVIO"));
+  assert.equal((senderCommonHtml.match(/receipt-sheet-divided"/g) ?? []).length, 5);
+  assert(!senderCommonHtml.includes("PARA RECLAMACIONES FAVOR COMUNICARSE"));
 });
 // 17-11-2026 (Rardiel): what the recipient is given is the sender's receipt without the fields crossed out on his photo.
-test("the recipient's copy is the sender receipt titled COMPROBANTE DE RECEPCIÓN without the crossed-out fields", () => {
+test("the recipient's copy is the sender receipt titled RECIBO DE RECEPCIÓN without the crossed-out fields", () => {
   const receipt = remittanceReceipt(transfer, undefined, "Operador", "Cajero", true);
   const reception = (source = receipt, paper: "80" | "58" | "a4" | "letter" = "80", compact = false) => receiptHtml(source, { paper, compact, audience: "recipient" });
   const crossedOut = ["Código del Cliente", "CL1", "Importes del envío", "Total pagado por el remitente", "DOP 990.00", "Forma pago del remitente"];
   for (const paper of ["80", "58", "a4", "letter"] as const) {
     const raw = reception(receipt, paper), sheet = printedText(raw);
-    for (const kept of ["COMPROBANTE DE RECEPCIÓN", "Fecha: 21/10/26 12:00 p.m.", "Envío: ENV00000001", "Cód. Operación: OP-QA-123", "Remitente:", "Destinatario: Destinatario", "Teléfono: 8095550102",
+    for (const kept of ["RECIBO DE RECEPCIÓN", "Fecha: 21/10/26 12:00 p.m.", "Envío: ENV00000001", "Cód. Operación: OP-QA-123", "Remitente:", "Destinatario: Destinatario", "Teléfono: 8095550102",
       "Dirección: Fictional destination", "Monto a enviar: DOP 900.00", "Recibe el destinatario: DOP 900.00", "Recibido por:", "Registrado por: Cajero", "Nota: Conserve este recibo."]) assert(sheet.includes(kept), `${paper}: missing ${kept}`);
     for (const gone of ["RECIBO DE ENVIO", ...crossedOut, "RECIBE EN ", "PARA RECLAMACIONES"]) assert(!sheet.includes(gone), `${paper}: unexpected ${gone}`);
-    assert(sheet.indexOf("COMPROBANTE DE RECEPCIÓN") < sheet.indexOf("Fecha:"), "the title goes above the first field");
+    assert(sheet.indexOf("RECIBO DE RECEPCIÓN") < sheet.indexOf("Fecha:"), "the title goes above the first field");
     // On a sheet the block of «Forma pago del remitente» is gone, and with it one of the five dashed lines.
     if (paper === "a4" || paper === "letter") assert.equal((raw.match(/receipt-sheet-divided"/g) ?? []).length, 4);
   }
   const summary = printedText(reception(receipt, "80", true));
-  for (const kept of ["COMPROBANTE DE RECEPCIÓN", "Monto a enviar: DOP 900.00", "Recibe el destinatario: DOP 900.00"]) assert(summary.includes(kept), `summary: missing ${kept}`);
+  for (const kept of ["RECIBO DE RECEPCIÓN", "Monto a enviar: DOP 900.00", "Recibe el destinatario: DOP 900.00"]) assert(summary.includes(kept), `summary: missing ${kept}`);
   for (const gone of ["Total pagado por el remitente", "Forma pago del remitente", "Cód. Operación"]) assert(!summary.includes(gone), `summary: unexpected ${gone}`);
 
   const sender = printedText(receiptHtml(receipt, { paper: "80", compact: false, audience: "sender" }));
   for (const kept of ["RECIBO DE ENVIO", "Importes del envío", "Código del Cliente: CL1", "Total pagado por el remitente: DOP 990.00", "Forma pago del remitente: Efectivo"]) assert(sender.includes(kept), `sender: missing ${kept}`);
-  assert(!sender.includes("COMPROBANTE DE RECEPCIÓN"));
+  assert(!sender.includes("RECIBO DE RECEPCIÓN"));
 
   const cancelled = printedText(reception(remittanceReceipt({ ...transfer, status: "cancelled", cancelledAt: "2026-10-22T16:00:00.000Z", cancelReason: "Prueba" }, undefined, "Operador", "Cajero", true)));
   assert(cancelled.includes("Cancelación")); assert(cancelled.includes("Motivo: Prueba"));
@@ -235,9 +237,9 @@ test("the recipient's copy is the sender receipt titled COMPROBANTE DE RECEPCIÓ
   assert(delivered.includes("Cargo de entrega: DOP 45.00"), "the delivery charge is taken from what the recipient gets, so it stays");
 
   // The format is «Común» unless told otherwise, and what the window asks for goes before what the receipt brings.
-  assert.equal(resolveRecipientFormat(receipt), "common");
-  assert.equal(resolveRecipientFormat({ ...receipt, recipientFormat: "haiti" }), "haiti");
-  assert.equal(resolveRecipientFormat({ ...receipt, recipientFormat: "haiti" }, { recipientFormat: "common" }), "common");
+  assert.equal(resolveReceiptFormat(receipt), "common");
+  assert.equal(resolveReceiptFormat({ ...receipt, receiptFormat: "haiti" }), "haiti");
+  assert.equal(resolveReceiptFormat({ ...receipt, receiptFormat: "haiti" }, { receiptFormat: "common" }), "common");
   // Without «Haití», the recipient never gets the voucher of Haiti, also when the receipt was built for the recipient.
   assert(!receiptHtml(remittanceReceipt(transfer, undefined, "Operador", "Cajero", true, "recipient"), { paper: "80", compact: false }).includes("RECIBE EN "));
 });

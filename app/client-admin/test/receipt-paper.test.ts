@@ -47,8 +47,8 @@ test("custom dimensions are numeric, bounded and validated before opening a prin
   for(const paper of ["constructor","__proto__","unknown","80;}body{display:none}"]) assert.throws(()=>receiptHtml(receipt,{...options,paper} as never));
   assert.throws(()=>receiptHtml(receipt,{...options,orientation:"injected"} as never));
   assert(Object.keys(receiptPaperLabels).includes("custom"));
-  assert.match(printedReceiptAudienceLabels.sender, /quien envía/i);
-  assert.equal(printedReceiptAudienceLabels.recipient, "Para quien recibe (comprobante de recepción)");
+  assert.equal(printedReceiptAudienceLabels.sender, "Para quien envía (recibo de envío)");
+  assert.equal(printedReceiptAudienceLabels.recipient, "Para quien recibe (recibo de recepción)");
   const memory = new Map<string, string>();
   const previousStorage = (globalThis as { localStorage?: Storage }).localStorage;
   try {
@@ -67,11 +67,19 @@ test("custom dimensions are numeric, bounded and validated before opening a prin
     memory.set("cyp.remittances.receiptPrintOptions", JSON.stringify({ paper: "58", compact: true, output: "text" }));
     assert.deepEqual(readSavedReceiptPrintOptions(), { paper: "58", compact: true });
     // The format for Haiti is remembered like the paper; the type of receipt still is not.
-    saveReceiptPrintOptions({ paper: "80", compact: false, audience: "recipient", recipientFormat: "haiti" });
+    saveReceiptPrintOptions({ paper: "80", compact: false, audience: "recipient", receiptFormat: "haiti" });
     const savedHaiti = memory.get("cyp.remittances.receiptPrintOptions") ?? "";
-    assert(savedHaiti.includes('"recipientFormat":"haiti"')); assert(!savedHaiti.includes("audience"));
-    assert.deepEqual(readSavedReceiptPrintOptions(), { paper: "80", compact: false, recipientFormat: "haiti" });
+    assert(savedHaiti.includes('"receiptFormat":"haiti"')); assert(!savedHaiti.includes("audience"));
+    assert.deepEqual(readSavedReceiptPrintOptions(), { paper: "80", compact: false, receiptFormat: "haiti" });
+    memory.set("cyp.remittances.receiptPrintOptions", JSON.stringify({ paper: "80", compact: false, receiptFormat: "otro" }));
+    assert.deepEqual(readSavedReceiptPrintOptions(), { paper: "80", compact: false });
+    // Until 17-11-2026 the format was saved as recipientFormat: a browser that had «Haití» keeps it.
+    memory.set("cyp.remittances.receiptPrintOptions", JSON.stringify({ paper: "80", compact: false, recipientFormat: "haiti" }));
+    assert.deepEqual(readSavedReceiptPrintOptions(), { paper: "80", compact: false, receiptFormat: "haiti" });
     memory.set("cyp.remittances.receiptPrintOptions", JSON.stringify({ paper: "80", compact: false, recipientFormat: "otro" }));
+    assert.deepEqual(readSavedReceiptPrintOptions(), { paper: "80", compact: false });
+    // What was saved with the new name goes first.
+    memory.set("cyp.remittances.receiptPrintOptions", JSON.stringify({ paper: "80", compact: false, receiptFormat: "common", recipientFormat: "haiti" }));
     assert.deepEqual(readSavedReceiptPrintOptions(), { paper: "80", compact: false });
   } finally {
     (globalThis as { localStorage?: Storage }).localStorage = previousStorage;
