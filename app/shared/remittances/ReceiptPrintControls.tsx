@@ -1,5 +1,5 @@
-import { printedReceiptAudienceLabels, receiptPaperLabels, receiptPrintLayout, thermalReceiptSize, type PrintedReceiptAudience, type ReceiptPaper, type ReceiptPrintOptions } from "./receiptPaper";
-import { cleanReceiptFooterNote, isPrintedHighlightRow, isPrintedSignoffSection, isRecipientPrintedReceipt, isSheetDashedPaper, isSignatureRow, printedReceiptHeading, receiptIssuerLines, receiptSections, resolvePrintedAudience, type Receipt } from "./receipt";
+import { printedReceiptAudienceLabels, receiptPaperLabels, receiptPrintLayout, recipientReceiptFormatLabels, thermalReceiptSize, type PrintedReceiptAudience, type ReceiptPaper, type ReceiptPrintOptions, type RecipientReceiptFormat } from "./receiptPaper";
+import { cleanReceiptFooterNote, isHaitiRecipientVoucher, isPrintedHighlightRow, isPrintedSignoffSection, isSheetDashedPaper, isSignatureRow, printedReceiptTitle, receiptIssuerLines, receiptSections, resolvePrintedAudience, type Receipt } from "./receipt";
 export type { PrintedReceiptAudience, ReceiptPrintOptions } from "./receiptPaper";
 
 function ReceiptPrintPreview({ receipt, options }: { receipt: Receipt; options: ReceiptPrintOptions }) {
@@ -10,15 +10,15 @@ function ReceiptPrintPreview({ receipt, options }: { receipt: Receipt; options: 
   if (!layout) return <div className="remittance-print-preview-stage"><p className="remittance-help">{validationError}</p></div>;
 
   const audience = resolvePrintedAudience(receipt, options);
-  const recipientMode = isRecipientPrintedReceipt(receipt, options);
-  const sections = receiptSections(receipt, options.compact);
+  const haitiMode = isHaitiRecipientVoucher(receipt, options);
+  const sections = receiptSections(receipt, options.compact, options);
   const thermal = thermalReceiptSize(options.paper);
-  const sheetDividers = Boolean(receipt.printed && !recipientMode && isSheetDashedPaper(options.paper));
+  const sheetDividers = Boolean(receipt.printed && !haitiMode && isSheetDashedPaper(options.paper));
   const audienceLabel = receipt.printed ? `${audience === "recipient" ? "Para quien recibe" : "Para quien envía"} · ` : "";
-  const badge = `${audienceLabel}${receiptPaperLabels[options.paper]}${options.compact && !recipientMode ? " · Envío telefónico" : ""}`;
+  const badge = `${audienceLabel}${haitiMode ? "Formato de Haití · " : ""}${receiptPaperLabels[options.paper]}${options.compact && !haitiMode ? " · Envío telefónico" : ""}`;
   const graphicWidthMm = thermal ? thermal.graphicWidthMm : layout.widthMm;
   const previewWidthPx = graphicWidthMm ? Math.round(graphicWidthMm * 96 / 25.4) : 520;
-  if (recipientMode && receipt.recipientVoucher) {
+  if (haitiMode && receipt.recipientVoucher) {
     const v = receipt.recipientVoucher;
     return <div className="remittance-print-preview-stage">
       <div className="remittance-print-preview-caption"><strong>Vista previa de impresión</strong><span>{badge}</span></div>
@@ -67,7 +67,7 @@ function ReceiptPrintPreview({ receipt, options }: { receipt: Receipt; options: 
           {issuer.name && <div className="remittance-preview-company">{issuer.name}</div>}
           {issuerLines.map((line, index) => <div key={index} className="remittance-preview-company-line">{line}</div>)}
         </div>}
-        {isPrinted && <div className="remittance-preview-doc-title">{printedReceiptHeading}</div>}
+        {isPrinted && <div className="remittance-preview-doc-title">{printedReceiptTitle(audience)}</div>}
         {sections.map((section, sectionIndex) => <div key={`${section.title}-${sectionIndex}`} className={`remittance-preview-block${section.title ? "" : " is-meta"}${sheetDividers && !isPrintedSignoffSection(section) ? " is-sheet-divided" : ""}`}>
           {section.title && <div className="remittance-preview-title">{section.title}</div>}
           {section.rows.map(([label, val], rowIndex) => {
@@ -98,6 +98,10 @@ export function ReceiptPrintControls({ value, onChange, receipt }: { value: Rece
         const next = event.target.value;
         if (next === "sender" || next === "recipient") onChange({ ...value, audience: next as PrintedReceiptAudience });
       }}>{(["sender", "recipient"] as PrintedReceiptAudience[]).map((kind) => <option key={kind} value={kind}>{printedReceiptAudienceLabels[kind]}</option>)}</select></label>
+      {audience === "recipient" && <label>Formato para quien recibe<select aria-label="Formato para quien recibe" value={value.recipientFormat ?? "common"} onChange={(event) => {
+        const next = event.target.value;
+        if (next === "common" || next === "haiti") onChange({ ...value, recipientFormat: next });
+      }}>{(["common", "haiti"] as RecipientReceiptFormat[]).map((kind) => <option key={kind} value={kind}>{recipientReceiptFormatLabels[kind]}</option>)}</select></label>}
       <label>Papel de impresión<select aria-label="Papel de impresión" value={value.paper} onChange={(event) => {
         const paper = event.target.value;
         if (Object.hasOwn(receiptPaperLabels, paper)) onChange({ ...value, paper: paper as ReceiptPaper, orientation: "auto" });

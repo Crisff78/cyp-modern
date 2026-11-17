@@ -5,11 +5,13 @@ import { payoutOf } from "./types";
 import { escapeHtml, formatDate, formatMoney, type OutputSection } from "./output";
 import { formatCrossRate } from "./crossRate";
 import { thermalReceiptImages, thermalReceiptSize } from "./thermalReceipt";
-import { receiptPrintLayout, type PrintedReceiptAudience } from "./receiptPaper";
+import { receiptPrintLayout, type PrintedReceiptAudience, type RecipientReceiptFormat } from "./receiptPaper";
 
 const status = { pending: "Pendiente de entrega", paid: "Pagado", cancelled: "Cancelado" };
 export const defaultReceiptFooter = "Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío.";
 export const printedReceiptHeading = "RECIBO DE ENVIO";
+export const receptionReceiptHeading = "COMPROBANTE DE RECEPCIÓN";
+export const printedReceiptTitle = (audience: PrintedReceiptAudience) => audience === "recipient" ? receptionReceiptHeading : printedReceiptHeading;
 export const signatureLineToken = "____________________________";
 export const recipientVoucherWarningText = "¡Es importante que revise su recibo para asegurar que el número de teléfono esté correcto!";
 export const isSignatureRow = (label: unknown, value: unknown) => String(label) === "Recibido por" && String(value) === signatureLineToken;
@@ -43,16 +45,23 @@ export type Receipt = {
   footer: string;
   printed?: boolean;
   audience?: PrintedReceiptAudience;
+  recipientFormat?: RecipientReceiptFormat;
   recipientVoucher?: RecipientReceiptVoucher;
 };
 export const resolvePrintedAudience = (
   receipt: Pick<Receipt, "printed" | "audience">,
   options?: { audience?: PrintedReceiptAudience },
 ): PrintedReceiptAudience => options?.audience ?? receipt.audience ?? "sender";
-export const isRecipientPrintedReceipt = (
+export const resolveRecipientFormat = (
+  receipt: Pick<Receipt, "recipientFormat">,
+  options?: { recipientFormat?: RecipientReceiptFormat },
+): RecipientReceiptFormat => options?.recipientFormat ?? receipt.recipientFormat ?? "common";
+// The voucher used for Haiti is drawn from recipientVoucher; every other printed receipt is drawn from its sections.
+export const isHaitiRecipientVoucher = (
   receipt: Receipt,
-  options?: { audience?: PrintedReceiptAudience },
-) => Boolean(receipt.printed && receipt.recipientVoucher && resolvePrintedAudience(receipt, options) === "recipient");
+  options?: { audience?: PrintedReceiptAudience; recipientFormat?: RecipientReceiptFormat },
+) => Boolean(receipt.printed && receipt.recipientVoucher && resolvePrintedAudience(receipt, options) === "recipient"
+  && resolveRecipientFormat(receipt, options) === "haiti");
 
 export function formatSpacedTitleLines(title: string, fits: (candidate: string) => boolean): string[] {
   const upper = title.trim().toUpperCase();
@@ -164,6 +173,9 @@ export function receiptIssuerLines(issuer: ReceiptIssuer, printed = false): stri
  * printed: customer invoice layout — company header at the very top with dashed separator and RECIBO DE ENVIO,
  * followed by Fecha / Envío / Cód. Operación, Remitente, Destinatario, Importes del envío, Forma pago del remitente,
  * Recibido por signature line, Registrado por and Nota footer without internal divider lines.
+ * With the common recipient format, the recipient's copy (COMPROBANTE DE RECEPCIÓN) is the same layout without the rows in
+ * receptionOmittedRows and without the «Importes del envío» title; see receiptSections. The Haiti format is drawn from
+ * recipientVoucher instead.
  */
 export function remittanceReceipt(
   transfer: Transfer,
@@ -268,22 +280,29 @@ export function remittanceReceipt(
     ] };
 }
 
-export function receiptSections(receipt: Receipt, compact: boolean) {
-  return compact ? receipt.sections.filter((section) => section.title !== "Nota" && !section.title.startsWith("Tasas aplicadas")).map((section) => ({ ...section,
+// What the recipient's copy leaves out of the sender's receipt (17-11-2026); its amounts also lose their title.
+const receptionOmittedRows = new Set(["Código del Cliente", "Total pagado por el remitente", "Forma pago del remitente"]);
+export function receiptSections(receipt: Receipt, compact: boolean, options?: { audience?: PrintedReceiptAudience }) {
+  // The summary goes first: it keeps the amounts because their section has a title.
+  const sections = compact ? receipt.sections.filter((section) => section.title !== "Nota" && !section.title.startsWith("Tasas aplicadas")).map((section) => ({ ...section,
     rows: section.title === "" ? section.rows.filter(([label]) => label === "Fecha" || label === "Envío" || label === "Remitente" || label === "Destinatario" || label === "Teléfono" || label === "Forma pago del remitente" || label === "Registrado por")
       : section.title === "Registro del recibo" ? section.rows.filter(([label]) => label === "Envío" || label === "Estado")
       : section.title === "Remitente" || section.title === "Destinatario" ? section.rows.filter(([label]) => label === "Nombre" || label === "Teléfono") : section.rows,
   })).filter((section) => section.rows.length > 0) : receipt.sections;
+  if (!receipt.printed || resolvePrintedAudience(receipt, options) !== "recipient") return sections;
+  return sections.map((section) => ({ ...section, title: section.title === "Importes del envío" ? "" : section.title,
+    rows: section.rows.filter(([label]) => !receptionOmittedRows.has(String(label))) })).filter((section) => section.rows.length > 0);
 }
 export function receiptHtml(receipt: Receipt, options: import("./ReceiptPrintControls").ReceiptPrintOptions = { paper: "auto", compact: false }) {
   const layout = receiptPrintLayout(options);
   const thermal = thermalReceiptSize(options.paper);
-  const recipientMode = isRecipientPrintedReceipt(receipt, options);
-  const sections = receiptSections(receipt, options.compact);
-  const sheetDividers = Boolean(receipt.printed && !recipientMode && isSheetDashedPaper(options.paper));
+  const audience = resolvePrintedAudience(receipt, options);
+  const haitiMode = isHaitiRecipientVoucher(receipt, options);
+  const sections = receiptSections(receipt, options.compact, options);
+  const sheetDividers = Boolean(receipt.printed && !haitiMode && isSheetDashedPaper(options.paper));
   const docTitle = String(receipt.printed ? (receipt.recipientVoucher?.envioReference ?? sections[0]?.rows.find(([label]) => label === "Envío")?.[1] ?? receipt.reference) : receipt.reference);
   const graphicWidthMm = thermal ? thermal.graphicWidthMm : layout.widthMm;
-  if (recipientMode && receipt.recipientVoucher) {
+  if (haitiMode && receipt.recipientVoucher) {
     const v = receipt.recipientVoucher;
     const shortSheet = !thermal && layout.marginMm === 4;
     const bodyFontSize = thermal ? (options.paper === "51" || options.paper === "58" ? 10 : 11.5) : shortSheet ? 14 : 18;
@@ -312,7 +331,7 @@ export function receiptHtml(receipt: Receipt, options: import("./ReceiptPrintCon
   const issuerLines = receiptIssuerLines(issuer, isPrinted);
   const hasHeader = Boolean(logo || issuer.name || issuerLines.length);
   const headerHtml = hasHeader ? `<header>${logo}${issuer.name ? `<h1>${escapeHtml(issuer.name)}</h1>` : ""}${issuerLines.map((line) => `<p>${escapeHtml(line)}</p>`).join("")}</header>` : "";
-  const refHtml = isPrinted ? `<div class="receipt-doc-title">${escapeHtml(printedReceiptHeading)}</div>` : `<div class="ref"><span>Recibo ${escapeHtml(receipt.reference)}</span><span>${escapeHtml(receipt.date)}</span></div>`;
+  const refHtml = isPrinted ? `<div class="receipt-doc-title">${escapeHtml(printedReceiptTitle(audience))}</div>` : `<div class="ref"><span>Recibo ${escapeHtml(receipt.reference)}</span><span>${escapeHtml(receipt.date)}</span></div>`;
   const cleanFooter = cleanReceiptFooterNote(receipt.footer);
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${escapeHtml(docTitle)}</title><style>
     @page{size:${layout.pageSize};margin:${layout.marginMm}mm}*{box-sizing:border-box}html{margin:0;padding:0;background:#e2e8f0}body{font:12.5px/1.28 Arial,sans-serif;color:#000;background:#fff;margin:0;padding:0;width:100%;${graphicWidthMm === undefined ? "max-width:100%;" : `max-width:${graphicWidthMm}mm;`}}@media screen{body{box-shadow:0 2px 10px rgba(15,23,42,.12)}}header{text-align:center;border-bottom:${isPrinted ? "1px dashed #000" : "1.5px solid #31534e"};padding:4px 0}header img{max-width:120px;max-height:48px;display:block;margin:0 auto 2px}h1{font-size:15px;margin:2px 0}.receipt-doc-title{text-align:center;font-weight:700;font-size:13.5px;margin:4px 0 2px}h2{font-size:${isPrinted ? "12.5px" : "13px"};font-weight:${isPrinted ? "400" : "700"};margin:${isPrinted ? "0" : "4px 0 2px"};border-bottom:${isPrinted ? "0" : "1px solid #bbb"};padding-bottom:${isPrinted ? "0" : "2px"};break-after:avoid}p{margin:1px 0;white-space:pre-wrap;overflow-wrap:anywhere}.ref{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;padding:4px 0;font-weight:bold;overflow-wrap:anywhere}section{break-inside:auto}${isPrinted ? "section+section{margin-top:8px}" : ".receipt-meta-block{padding:2px 0;border-bottom:1px solid #bbb}.receipt-meta-block:last-child{border-bottom:0;border-top:1px solid #bbb;margin-top:3px}"}${sheetDividers ? ".receipt-sheet-divided{border-bottom:1px dashed #000;padding-bottom:5px}.receipt-sheet-divided+section{margin-top:5px}" : ""}dl{margin:${isPrinted ? "0" : "2px 0"}}dl>div{padding:${isPrinted ? "1px 0" : "1.5px 0"};border-bottom:${isPrinted ? "0" : "1px solid #eee"};break-inside:avoid;text-align:left;overflow-wrap:anywhere}dt{display:inline;font-weight:${isPrinted ? "400" : "700"}}dd{display:inline;margin:0;text-align:left;overflow-wrap:anywhere;white-space:pre-wrap}.receipt-row-highlight dt,.receipt-row-highlight dd{font-weight:700}.receipt-row-envio dt,.receipt-row-envio dd{font-size:1.06em}.receipt-signature-row{padding-top:6px}.receipt-signature-line{display:inline-block;width:62%;min-width:96px;border-bottom:1px solid #000;height:0.85em;vertical-align:baseline}footer{border-top:${isPrinted ? "0" : "1.5px solid #31534e"};margin-top:${isPrinted ? "1px" : "4px"};padding-top:${isPrinted ? "0" : "4px"};white-space:pre-wrap;overflow-wrap:anywhere;font-size:${isPrinted ? "12px" : "11px"}}
@@ -342,7 +361,7 @@ export function printRemittanceReceipt(receipt: Receipt, options?: import("./Rec
     const preparing = popup.document.createElement("p"); preparing.className = "thermal-print-help";
     preparing.textContent = "Preparando vista previa del recibo…";
     popup.document.body.replaceChildren(preparing);
-    void thermalReceiptImages(popup.document, {...receipt, audience, sections: receiptSections(receipt, compact)}, thermal.graphicWidthMm, compact).then(content => {
+    void thermalReceiptImages(popup.document, {...receipt, audience, recipientFormat: resolveRecipientFormat(receipt, options), sections: receiptSections(receipt, compact, options)}, thermal.graphicWidthMm, compact).then(content => {
       if (popup.closed) return;
       const help = popup.document.createElement("p"); help.className = "thermal-print-help";
       help.textContent = "Recibo preparado como imagen para conservar acentos y formato. Selecciona el papel térmico y el controlador de tu impresora.";

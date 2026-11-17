@@ -25,7 +25,8 @@ const pos80Invoice=remittanceReceipt({id:'qa-pos80',sequence:48,envioReference:'
 const recipientVoucher=remittanceReceipt({id:'qa-recipient',sequence:48,envioReference:'ENV00000048',reciboReference:'REC00000048',operatingCode:'AD0B35A22F305CA2',senderClientId:'s1',recipientClientId:'r1',sendingUserId:'demo-admin',registeredBy:'demo-admin',status:'paid',paidAt:'2026-11-11T15:58:10.000Z',canPay:false,canCancel:false,createdAt:'2026-11-11T13:15:00.000Z',note:'',sourceCurrency:'DOP',destinationCurrency:'DOP',amount:100000,commissionBps:1000,commissionAmount:10000,totalAmount:110000,receiveAmount:100000,quote:{date:'2026-11-11',sourceRate:'1.000000',destinationRate:'1.000000',sourceRateKind:'base',destinationRateKind:'base'},senderContact:{id:'s1',code:'1111111111',name:'mayo lomb',identification:'03103103103',phone:'111-111-1111',cellular:'',address:'santiago'},recipientContact:{id:'r1',code:'CL-0002',name:'María Rodríguez',identification:'',phone:'8095550100',cellular:'',address:'Calle Las Damas 18'},receiptIssuer:{name:'Cobros y Pagos',address:'',phone:'',email:'admin@cyp.local',logoDataUrl:syntheticLogo,footerNote:'Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío.'},payment:{version:2,method:'card',cardType:'credit',tenderedAmount:118800,changeAmount:0,cardSurchargeBps:800,cardSurchargeAmount:8800,reference:'658565',last4:'8888',bank:'Banreservas',confirmedBy:'demo-admin',confirmedAt:'2026-11-11T13:15:00.000Z'}},{name:'INVERSIONES DEMO S.R.L.',slogan:'Tu aliado en cobros, pagos y envíos',address:'Av. 27 de Febrero #2131, Local 12, Santiago',phone:'809-555-0222',rnc:'1-30-00100-1',email:'admin@cyp.local',footerNote:'Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío.'},'Administración','Administración',true,'recipient');
 for(const [id,compact] of [['pos80-full-graphics',false],['pos80-compact-graphics',true]] as const){const b=document.createElement('button');b.textContent=id;b.onclick=()=>printRemittanceReceipt(pos80Invoice,{paper:'80',compact});document.body.append(b);}
 for(const [id,paper] of [['invoice-a4-graphics','a4'],['invoice-letter-graphics','letter']] as const){const b=document.createElement('button');b.textContent=id;b.onclick=()=>printRemittanceReceipt(pos80Invoice,{paper,orientation:'portrait',compact:false});document.body.append(b);}
-for(const [id,paper] of [['recipient-pos80-graphics','80'],['recipient-58-graphics','58'],['recipient-a4-graphics','a4'],['recipient-letter-graphics','letter']] as const){const b=document.createElement('button');b.textContent=id;b.onclick=()=>printRemittanceReceipt(recipientVoucher,{paper,orientation:'portrait',compact:false,audience:'recipient'});document.body.append(b);}
+for(const [id,paper] of [['recipient-pos80-graphics','80'],['recipient-58-graphics','58'],['recipient-a4-graphics','a4'],['recipient-letter-graphics','letter']] as const){const b=document.createElement('button');b.textContent=id;b.onclick=()=>printRemittanceReceipt(recipientVoucher,{paper,orientation:'portrait',compact:false,audience:'recipient',recipientFormat:'haiti'});document.body.append(b);}
+for(const [id,paper] of [['reception-pos80-graphics','80'],['reception-58-graphics','58'],['reception-a4-graphics','a4']] as const){const b=document.createElement('button');b.textContent=id;b.onclick=()=>printRemittanceReceipt(pos80Invoice,{paper,orientation:'portrait',compact:false,audience:'recipient'});document.body.append(b);}
 for(const paper of ['51','76','80','58','102','auto']){const button=document.createElement('button');button.textContent=paper;button.onclick=()=>printRemittanceReceipt(receipt,{paper,compact:false});document.body.append(button);}
 for(const [name,paper,orientation,customWidthMm,customHeightMm] of [['sheet-8x4','8x4','landscape'],['sheet-8x11','8x11','landscape'],['sheet-a4','a4','portrait'],['sheet-letter','letter','portrait'],['sheet-custom','custom','landscape',180,90]]){const button=document.createElement('button');button.textContent=name;button.onclick=()=>printRemittanceReceipt(receipt,{paper,orientation,customWidthMm,customHeightMm,compact:false});document.body.append(button);}`);
   let browser:any, server:ReturnType<typeof createServer>|undefined;
@@ -181,9 +182,40 @@ for(const [name,paper,orientation,customWidthMm,customHeightMm] of [['sheet-8x4'
       await recSheet.screenshot({path:path.join(output,`${id}.png`),fullPage:true});
       await recSheet.close();
     }
+    // 17-11-2026: the recipient's copy in the common format is the sender's receipt with another title and fewer fields.
+    for(const [id,widthMm] of [["reception-pos80-graphics",66],["reception-58-graphics",45]] as const){
+      const openingReception=page.waitForEvent("popup");await page.getByRole("button",{name:id,exact:true}).click();const reception=await openingReception;
+      await reception.waitForFunction(()=>(window as any).__prints===1);
+      await reception.setViewportSize({width:Math.floor((widthMm===66?72.1:48)*96/25.4),height:900});
+      await reception.emulateMedia({media:"print"});
+      const receptionCheck=await reception.evaluate(()=>({
+        runs:(window as any).__runs,
+        alts:Array.from(document.querySelectorAll<HTMLImageElement>("main.thermal-image-output img")).map(img=>img.alt),
+        widths:Array.from(document.querySelectorAll<HTMLImageElement>("main.thermal-image-output img")).map(img=>img.naturalWidth),
+      }));
+      assert.equal(receptionCheck.alts[0],"Logo de la empresa");
+      assert(receptionCheck.alts.includes("Separador punteado")&&!receptionCheck.alts.includes("Separador"),`${id}: only the dashed line under the header`);
+      for(const w of receptionCheck.widths)assert.equal(w,widthMm*8);
+      for(const run of receptionCheck.runs){assert(run.left>=0.2,JSON.stringify(run));assert(run.right<=widthMm-0.3,`${id} clip risk: ${JSON.stringify(run)}`);}
+      // On the narrow roll the longer title takes two lines; joined by a space it still reads whole.
+      const receptionText=receptionCheck.runs.map((r:any)=>r.text).join(" ").replace(/\s+/g," ");
+      for(const expected of ["COMPROBANTE DE RECEPCIÓN","Cód. Operación:","Remitente:","mayo lomb","Destinatario:","Teléfono:","Dirección:","Monto a enviar:","DOP 500.00","Recibe el destinatario:","Recibido por:","Registrado por:","Nota:"])assert(receptionText.includes(expected),`${id} missing ${expected}`);
+      for(const forbidden of ["RECIBO DE ENVIO","Código del Cliente:","1111111111","Importes del envío","Total pagado por el remitente:","DOP 594.00","Forma pago del remitente:","RECIBE EN","PARA RECLAMACIONES"])assert(!receptionText.includes(forbidden),`${id} unexpected ${forbidden}`);
+      await reception.screenshot({path:path.join(output,`${id}.png`),fullPage:true});await reception.close();
+    }
+    const openingReceptionSheet=page.waitForEvent("popup");await page.getByRole("button",{name:"reception-a4-graphics",exact:true}).click();const receptionSheet=await openingReceptionSheet;
+    await receptionSheet.waitForFunction(()=>(window as any).__prints===1);
+    await receptionSheet.setViewportSize({width:Math.round(210*96/25.4),height:Math.round(297*96/25.4)});
+    await receptionSheet.emulateMedia({media:"print"});
+    assert.equal(await receptionSheet.locator("main.thermal-image-output img").count(),0);
+    assert.equal(await receptionSheet.locator("section.receipt-sheet-divided").count(),4,"one dashed block fewer than the sender's receipt: the payment block is gone");
+    const receptionSheetBody=(await receptionSheet.locator("body").innerText()).replace(/\s+/g," ");
+    for(const expected of ["COMPROBANTE DE RECEPCIÓN","Cód. Operación: AD0B35A22F305CA2","Remitente: mayo lomb","Destinatario: María Rodríguez","Monto a enviar: DOP 500.00","Recibe el destinatario: DOP 500.00","Recibido por:","Registrado por: Administración"])assert(receptionSheetBody.includes(expected),`reception-a4-graphics missing ${expected}`);
+    for(const forbidden of ["RECIBO DE ENVIO","Código del Cliente","Importes del envío","Total pagado por el remitente","Forma pago del remitente","RECIBE EN"])assert(!receptionSheetBody.includes(forbidden),`reception-a4-graphics unexpected ${forbidden}`);
+    await receptionSheet.screenshot({path:path.join(output,"reception-a4-graphics.png"),fullPage:true});await receptionSheet.close();
     if(process.env.CYP_RECEIPT_SNAPSHOT_DIR){
       fs.mkdirSync(process.env.CYP_RECEIPT_SNAPSHOT_DIR,{recursive:true});
-      for(const snap of ["recipient-pos80-graphics.png","recipient-58-graphics.png","recipient-a4-graphics.png","recipient-letter-graphics.png","pos80-full-graphics-72.1mm.png","invoice-a4-graphics.png"]){
+      for(const snap of ["reception-pos80-graphics.png","reception-58-graphics.png","reception-a4-graphics.png","recipient-pos80-graphics.png","recipient-58-graphics.png","recipient-a4-graphics.png","recipient-letter-graphics.png","pos80-full-graphics-72.1mm.png","invoice-a4-graphics.png"]){
         const src=path.join(output,snap);if(fs.existsSync(src))fs.copyFileSync(src,path.join(process.env.CYP_RECEIPT_SNAPSHOT_DIR,snap));
       }
     }

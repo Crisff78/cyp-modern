@@ -48,7 +48,7 @@ test("custom dimensions are numeric, bounded and validated before opening a prin
   assert.throws(()=>receiptHtml(receipt,{...options,orientation:"injected"} as never));
   assert(Object.keys(receiptPaperLabels).includes("custom"));
   assert.match(printedReceiptAudienceLabels.sender, /quien envía/i);
-  assert.match(printedReceiptAudienceLabels.recipient, /quien recibe/i);
+  assert.equal(printedReceiptAudienceLabels.recipient, "Para quien recibe (comprobante de recepción)");
   const memory = new Map<string, string>();
   const previousStorage = (globalThis as { localStorage?: Storage }).localStorage;
   try {
@@ -66,6 +66,13 @@ test("custom dimensions are numeric, bounded and validated before opening a prin
     // A browser that had «Solo texto» saved keeps its paper and prints with the design.
     memory.set("cyp.remittances.receiptPrintOptions", JSON.stringify({ paper: "58", compact: true, output: "text" }));
     assert.deepEqual(readSavedReceiptPrintOptions(), { paper: "58", compact: true });
+    // The format for Haiti is remembered like the paper; the type of receipt still is not.
+    saveReceiptPrintOptions({ paper: "80", compact: false, audience: "recipient", recipientFormat: "haiti" });
+    const savedHaiti = memory.get("cyp.remittances.receiptPrintOptions") ?? "";
+    assert(savedHaiti.includes('"recipientFormat":"haiti"')); assert(!savedHaiti.includes("audience"));
+    assert.deepEqual(readSavedReceiptPrintOptions(), { paper: "80", compact: false, recipientFormat: "haiti" });
+    memory.set("cyp.remittances.receiptPrintOptions", JSON.stringify({ paper: "80", compact: false, recipientFormat: "otro" }));
+    assert.deepEqual(readSavedReceiptPrintOptions(), { paper: "80", compact: false });
   } finally {
     (globalThis as { localStorage?: Storage }).localStorage = previousStorage;
   }
