@@ -7,11 +7,14 @@ export type ReceiptPaper = keyof typeof receiptPaperLabels;
 export type PrintedReceiptAudience = "sender" | "recipient";
 export const printedReceiptAudienceLabels: Record<PrintedReceiptAudience, string> = {
   sender: "Para quien envía (comprobante de envío)",
-  recipient: "Para quien recibe (comprobante de entrega)",
+  recipient: "Para quien recibe (comprobante de recepción)",
 };
+// What the recipient is given: the common voucher, or the one used for Haiti.
+export type RecipientReceiptFormat = "common" | "haiti";
+export const recipientReceiptFormatLabels: Record<RecipientReceiptFormat, string> = { common: "Común", haiti: "Haití" };
 export type ReceiptPrintOptions = { paper: ReceiptPaper; compact: boolean;
   orientation?: "auto" | "portrait" | "landscape"; customWidthMm?: number | ""; customHeightMm?: number | "";
-  audience?: PrintedReceiptAudience };
+  audience?: PrintedReceiptAudience; recipientFormat?: RecipientReceiptFormat };
 
 const RECEIPT_PRINT_STORAGE_KEY = "cyp.remittances.receiptPrintOptions";
 export const defaultReceiptPrintOptions: ReceiptPrintOptions = { paper: "80", compact: false };
@@ -25,7 +28,9 @@ export function readSavedReceiptPrintOptions(): ReceiptPrintOptions {
     const orientation = parsed.orientation === "auto" || parsed.orientation === "portrait" || parsed.orientation === "landscape" ? parsed.orientation : undefined;
     const customWidthMm = typeof parsed.customWidthMm === "number" && Number.isFinite(parsed.customWidthMm) && parsed.customWidthMm >= 50 && parsed.customWidthMm <= 320 ? parsed.customWidthMm : undefined;
     const customHeightMm = typeof parsed.customHeightMm === "number" && Number.isFinite(parsed.customHeightMm) && parsed.customHeightMm >= 50 && parsed.customHeightMm <= 600 ? parsed.customHeightMm : undefined;
-    return { paper, compact: Boolean(parsed.compact), ...(orientation ? { orientation } : {}), ...(customWidthMm ? { customWidthMm } : {}), ...(customHeightMm ? { customHeightMm } : {}) };
+    const recipientFormat = parsed.recipientFormat === "haiti" ? "haiti" as const : undefined;
+    return { paper, compact: Boolean(parsed.compact), ...(orientation ? { orientation } : {}), ...(customWidthMm ? { customWidthMm } : {}), ...(customHeightMm ? { customHeightMm } : {}),
+      ...(recipientFormat ? { recipientFormat } : {}) };
   } catch {
     return defaultReceiptPrintOptions;
   }
