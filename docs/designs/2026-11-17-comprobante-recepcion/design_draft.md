@@ -34,7 +34,7 @@ Además hay «Formato de impresión» con «Solo texto» (valor por defecto) y �
    envía, con el título `COMPROBANTE DE RECEPCIÓN`, sin las tres filas tachadas y sin el título «Importes del envío».
 2. **El formato de Haití pasa a ser una opción.** Cuando el tipo es «Para quien recibe» aparece un selector «Formato para
    quien recibe» con «Común» y «Haití». «Común» es el valor por defecto. «Haití» imprime el comprobante actual, sin
-   cambios. La elección se recuerda en el navegador, igual que el papel.
+   cambios. La elección se recuerda en el navegador, igual que el papel. Decisión sustituida el 2026-11-17 por pedido de Rardiel: el selector se queda siempre a la vista; ver `docs/designs/2026-11-17-formato-siempre-visible/design_draft.md`.
 3. **Desaparece «Solo texto».** Se quita el selector «Formato de impresión» y todo se imprime con diseño.
 4. **La opción del selector «Tipo de recibo»** pasa de «Para quien recibe (comprobante de entrega)» a «Para quien recibe
    (comprobante de recepción)».
@@ -73,7 +73,7 @@ centradas.
 - **Monto a enviar y Cargo de entrega se quedan.** No están tachados. «Cargo de entrega» no sale en la foto porque ese
   envío no lo tenía.
 - **La fecha no cambia.** Sigue siendo la del envío; el pedido es solo quitar campos y cambiar el título.
-- **El selector de formato solo se ve con «Para quien recibe».** No existe un formato de Haití para quien envía.
+- **El selector de formato solo se ve con «Para quien recibe».** No existe un formato de Haití para quien envía. Decisión sustituida el 2026-11-17 por pedido de Rardiel: el selector se queda siempre a la vista; ver `docs/designs/2026-11-17-formato-siempre-visible/design_draft.md`.
 - **Quien tenía guardado «Solo texto» pasa a imprimir con diseño** sin aviso: la opción ya no existe.
 - **El código de «Solo texto» se borra**, no se esconde. Queda en el historial de Git.
 - **Riesgo aceptado por el pedido:** una impresora instalada con un controlador de Windows de solo texto no imprime

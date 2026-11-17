@@ -303,7 +303,10 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         for (const gone of ["RECIBE EN", "Código del Cliente", "Total pagado por el remitente", "Forma pago del remitente"]) assert.equal(commonPrinted.includes(gone), false, gone);
 
         await detail.getByLabel("Tipo de recibo", { exact: true }).selectOption("sender");
-        assert.equal(await detail.getByLabel("Formato para quien recibe", { exact: true }).count(), 0, "the format is only asked for the recipient's copy");
+        assert.equal(await format.inputValue(), "common", "the format selector stays visible with the sender's receipt");
+        await format.selectOption("haiti");
+        assert.equal(await format.inputValue(), "haiti");
+        assert.equal((await detail.locator(".remittance-print-preview-caption").innerText()).includes("Formato de Haití"), false, "the sender's receipt has one format only");
         const preview = await detail.getByLabel("Vista previa del recibo para imprimir", { exact: true }).textContent();
         assert.ok(preview && /Registrado por:\s+Administración/.test(preview));
         assert.equal(preview?.includes("Operador del envío"), false);
@@ -315,6 +318,8 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         assert.equal(printed.includes("Operador del envío"), false, "the printed invoice omits Operador del envío");
         assert.ok(printed.indexOf("Forma pago del remitente") >= 0 && printed.indexOf("Forma pago del remitente") < printed.indexOf("Registrado por"), "Registrado por is placed at the bottom");
         assert.equal(printed.includes("demo-admin"), false, "the receipt never carries an internal id");
+        await detail.getByLabel("Tipo de recibo", { exact: true }).selectOption("recipient");
+        assert.match(await detail.locator(".remittance-print-preview-caption").innerText(), /Formato de Haití/, "what was chosen with the sender's receipt applies to the recipient's copy");
       } finally { await context.close(); }
     });
 
@@ -532,6 +537,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         await envios.getByRole("button", { name: "Revisar y confirmar envío", exact: true }).click();
         await confirmIn(page, "Confirmar envío");
         const print = page.getByRole("dialog", { name: "¿Quieres imprimir el recibo?", exact: true });
+        assert.equal(await print.getByLabel("Formato para quien recibe", { exact: true }).inputValue(), "common", "the print prompt of a new send shows the format selector too");
         await print.getByRole("button", { name: "No imprimir", exact: true }).click(); await print.waitFor({ state: "detached" });
         await waitForFocus(page, '[data-client-side="sender"] input');
         assert.equal(await envios.getByRole("listbox", { name: "Clientes para remitente", exact: true }).count(), 0, "the cursor waits in the sender without unfolding its catalog");
