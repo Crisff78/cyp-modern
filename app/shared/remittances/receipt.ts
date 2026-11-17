@@ -5,7 +5,6 @@ import { payoutOf } from "./types";
 import { escapeHtml, formatDate, formatMoney, type OutputSection } from "./output";
 import { formatCrossRate } from "./crossRate";
 import { thermalReceiptImages, thermalReceiptSize } from "./thermalReceipt";
-import { receiptText, receiptTextColumns } from "./receiptText";
 import { receiptPrintLayout, type PrintedReceiptAudience } from "./receiptPaper";
 
 const status = { pending: "Pendiente de entrega", paid: "Pagado", cancelled: "Cancelado" };
@@ -279,16 +278,10 @@ export function receiptSections(receipt: Receipt, compact: boolean) {
 export function receiptHtml(receipt: Receipt, options: import("./ReceiptPrintControls").ReceiptPrintOptions = { paper: "auto", compact: false }) {
   const layout = receiptPrintLayout(options);
   const thermal = thermalReceiptSize(options.paper);
-  const audience = resolvePrintedAudience(receipt, options);
   const recipientMode = isRecipientPrintedReceipt(receipt, options);
   const sections = receiptSections(receipt, options.compact);
   const sheetDividers = Boolean(receipt.printed && !recipientMode && isSheetDashedPaper(options.paper));
   const docTitle = String(receipt.printed ? (receipt.recipientVoucher?.envioReference ?? sections[0]?.rows.find(([label]) => label === "Envío")?.[1] ?? receipt.reference) : receipt.reference);
-  if (options.output === "text") {
-    const columns = receiptTextColumns(options.paper, options), narrowThermal = options.paper === "51" || options.paper === "58", fontSize = narrowThermal ? 9.5 : thermal ? 10 : 12;
-    const preFont = recipientMode ? `700 ${fontSize}px/1.45 "Consolas","Courier New",Courier,monospace` : `${fontSize}px/1.45 "Courier New",Courier,monospace`;
-    return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${escapeHtml(docTitle)}</title><style>@page{size:${layout.pageSize};margin:${layout.marginMm}mm}*{box-sizing:border-box}html{margin:0;padding:0;background:#e2e8f0}body{margin:0;padding:0;width:100%;color:#000;background:#fff;${layout.widthMm === undefined ? "" : `max-width:${layout.widthMm}mm;`}}@media screen{body{box-shadow:0 2px 10px rgba(15,23,42,.12)}}@media print{html,body{background:#fff;box-shadow:none}}pre{font:${preFont};letter-spacing:0;white-space:pre-wrap;margin:0;padding:0;tab-size:2}</style></head><body><pre aria-label="Recibo en formato de texto">${escapeHtml(receiptText({...receipt,audience,sections},columns,sheetDividers))}</pre></body></html>`;
-  }
   const graphicWidthMm = thermal ? thermal.graphicWidthMm : layout.widthMm;
   if (recipientMode && receipt.recipientVoucher) {
     const v = receipt.recipientVoucher;
@@ -343,7 +336,6 @@ export function printRemittanceReceipt(receipt: Receipt, options?: import("./Rec
   if (!popup) throw new Error("Permite abrir la ventana de impresión para este sitio.");
   popup.opener = null; popup.document.write(html); popup.document.close();
   const print = () => { if (!popup.closed) { popup.focus(); popup.print(); } };
-  if (options?.output === "text") { window.setTimeout(print,150); return; }
   if (thermal) {
     const compact = options?.compact ?? false;
     const audience = resolvePrintedAudience(receipt, options);

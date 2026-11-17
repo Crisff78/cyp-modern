@@ -1,6 +1,5 @@
 import { printedReceiptAudienceLabels, receiptPaperLabels, receiptPrintLayout, thermalReceiptSize, type PrintedReceiptAudience, type ReceiptPaper, type ReceiptPrintOptions } from "./receiptPaper";
 import { cleanReceiptFooterNote, isPrintedHighlightRow, isPrintedSignoffSection, isRecipientPrintedReceipt, isSheetDashedPaper, isSignatureRow, printedReceiptHeading, receiptIssuerLines, receiptSections, resolvePrintedAudience, type Receipt } from "./receipt";
-import { receiptText } from "./receiptText";
 export type { PrintedReceiptAudience, ReceiptPrintOptions } from "./receiptPaper";
 
 function ReceiptPrintPreview({ receipt, options }: { receipt: Receipt; options: ReceiptPrintOptions }) {
@@ -17,16 +16,6 @@ function ReceiptPrintPreview({ receipt, options }: { receipt: Receipt; options: 
   const sheetDividers = Boolean(receipt.printed && !recipientMode && isSheetDashedPaper(options.paper));
   const audienceLabel = receipt.printed ? `${audience === "recipient" ? "Para quien recibe" : "Para quien envía"} · ` : "";
   const badge = `${audienceLabel}${receiptPaperLabels[options.paper]}${options.compact && !recipientMode ? " · Envío telefónico" : ""}`;
-  if ((options.output ?? "graphics") === "text") {
-    const formatted = receiptText({ ...receipt, audience, sections }, layout.textColumns, sheetDividers);
-    return <div className="remittance-print-preview-stage">
-      <div className="remittance-print-preview-caption"><strong>Vista previa de impresión</strong><span>{badge} · {layout.textColumns} col.</span></div>
-      <div className="remittance-print-preview-scroll">
-        <pre className={`remittance-print-preview-sheet remittance-print-preview-text${thermal ? " is-thermal" : ""}${recipientMode ? " is-recipient-voucher" : ""}`}
-          aria-label="Vista previa del recibo para imprimir">{formatted}</pre>
-      </div>
-    </div>;
-  }
   const graphicWidthMm = thermal ? thermal.graphicWidthMm : layout.widthMm;
   const previewWidthPx = graphicWidthMm ? Math.round(graphicWidthMm * 96 / 25.4) : 520;
   if (recipientMode && receipt.recipientVoucher) {
@@ -113,7 +102,6 @@ export function ReceiptPrintControls({ value, onChange, receipt }: { value: Rece
         const paper = event.target.value;
         if (Object.hasOwn(receiptPaperLabels, paper)) onChange({ ...value, paper: paper as ReceiptPaper, orientation: "auto" });
       }}>{(["80", "76", "58", "51", "102", "auto", "letter", "a4", "8x4", "8x11", "custom"] as ReceiptPaper[]).map(paper => <option key={paper} value={paper}>{receiptPaperLabels[paper]}</option>)}</select></label>
-      <label>Formato de impresión<select aria-label="Formato de impresión" value={value.output ?? "graphics"} onChange={event => { const output = event.target.value; if (output === "text" || output === "graphics") onChange({ ...value, output }); }}><option value="text">Solo texto (compatible con genérica)</option><option value="graphics">Con diseño (impresora gráfica)</option></select></label>
       <label>Orientación<select aria-label="Orientación" disabled={Boolean(thermalReceiptSize(value.paper))} value={thermalReceiptSize(value.paper) ? "portrait" : value.orientation ?? "auto"} onChange={event => {
         const orientation = event.target.value; if (orientation === "auto" || orientation === "portrait" || orientation === "landscape") onChange({ ...value, orientation });
       }}><option value="auto">Según el papel de la impresora</option><option value="portrait">Vertical</option><option value="landscape">Horizontal</option></select></label>
