@@ -7,14 +7,17 @@ export type ReceiptPaper = keyof typeof receiptPaperLabels;
 export type PrintedReceiptAudience = "sender" | "recipient";
 export const printedReceiptAudienceLabels: Record<PrintedReceiptAudience, string> = {
   sender: "Para quien envía (comprobante de envío)",
-  recipient: "Para quien recibe (comprobante de entrega)",
+  recipient: "Para quien recibe (comprobante de recepción)",
 };
-export type ReceiptPrintOptions = { paper: ReceiptPaper; compact: boolean; output?: "graphics" | "text";
+// What the recipient is given: the common voucher, or the one used for Haiti.
+export type RecipientReceiptFormat = "common" | "haiti";
+export const recipientReceiptFormatLabels: Record<RecipientReceiptFormat, string> = { common: "Común", haiti: "Haití" };
+export type ReceiptPrintOptions = { paper: ReceiptPaper; compact: boolean;
   orientation?: "auto" | "portrait" | "landscape"; customWidthMm?: number | ""; customHeightMm?: number | "";
-  audience?: PrintedReceiptAudience };
+  audience?: PrintedReceiptAudience; recipientFormat?: RecipientReceiptFormat };
 
 const RECEIPT_PRINT_STORAGE_KEY = "cyp.remittances.receiptPrintOptions";
-export const defaultReceiptPrintOptions: ReceiptPrintOptions = { paper: "80", compact: false, output: "text" };
+export const defaultReceiptPrintOptions: ReceiptPrintOptions = { paper: "80", compact: false };
 
 export function readSavedReceiptPrintOptions(): ReceiptPrintOptions {
   try {
@@ -22,11 +25,12 @@ export function readSavedReceiptPrintOptions(): ReceiptPrintOptions {
     if (!raw) return defaultReceiptPrintOptions;
     const parsed = JSON.parse(raw) as Partial<ReceiptPrintOptions>;
     const paper = typeof parsed.paper === "string" && Object.hasOwn(receiptPaperLabels, parsed.paper) ? parsed.paper as ReceiptPaper : defaultReceiptPrintOptions.paper;
-    const output = parsed.output === "graphics" || parsed.output === "text" ? parsed.output : defaultReceiptPrintOptions.output;
     const orientation = parsed.orientation === "auto" || parsed.orientation === "portrait" || parsed.orientation === "landscape" ? parsed.orientation : undefined;
     const customWidthMm = typeof parsed.customWidthMm === "number" && Number.isFinite(parsed.customWidthMm) && parsed.customWidthMm >= 50 && parsed.customWidthMm <= 320 ? parsed.customWidthMm : undefined;
     const customHeightMm = typeof parsed.customHeightMm === "number" && Number.isFinite(parsed.customHeightMm) && parsed.customHeightMm >= 50 && parsed.customHeightMm <= 600 ? parsed.customHeightMm : undefined;
-    return { paper, compact: Boolean(parsed.compact), output, ...(orientation ? { orientation } : {}), ...(customWidthMm ? { customWidthMm } : {}), ...(customHeightMm ? { customHeightMm } : {}) };
+    const recipientFormat = parsed.recipientFormat === "haiti" ? "haiti" as const : undefined;
+    return { paper, compact: Boolean(parsed.compact), ...(orientation ? { orientation } : {}), ...(customWidthMm ? { customWidthMm } : {}), ...(customHeightMm ? { customHeightMm } : {}),
+      ...(recipientFormat ? { recipientFormat } : {}) };
   } catch {
     return defaultReceiptPrintOptions;
   }
@@ -40,9 +44,8 @@ export function saveReceiptPrintOptions(options: ReceiptPrintOptions) {
 }
 
 /**
- * Printable roll widths already exclude hardware edge margins (e.g. POS80-01 V6 USB reports 72.1 mm printable width on an 80 mm roll).
- * Plain text ("Solo texto") keeps widthMm/marginMm/textColumns unchanged; graphic mode ("Con diseño") uses graphicWidthMm to maximize
- * usable width right up to the physical printhead window (~67.4 mm from GDI x=0 on POS80-01 V6 USB) without clipping.
+ * widthMm is the printable width of the roll, without the hardware edge margins (e.g. POS80-01 V6 USB reports 72.1 mm on an 80 mm roll).
+ * graphicWidthMm is the width drawn: right up to the physical printhead window (~67.4 mm from GDI x=0 on POS80-01 V6 USB) without clipping.
  */
 export function thermalReceiptSize(paper?: string) {
   if (paper === "80") return {widthMm:72, graphicWidthMm:66, marginMm:0};
@@ -58,10 +61,9 @@ export function receiptPrintLayout(options: ReceiptPrintOptions) {
   if (!Object.hasOwn(receiptPaperLabels, options.paper)) throw new Error("Selecciona un tamaño de papel válido.");
   if (options.orientation !== undefined && !["auto", "portrait", "landscape"].includes(options.orientation)) throw new Error("Selecciona una orientación válida.");
   const thermal = thermalReceiptSize(options.paper);
-  if (thermal) return {pageSize:"auto", marginMm:thermal.marginMm, widthMm:thermal.widthMm, thermal:true, landscape:false,
-    textColumns:options.paper === "80" ? 40 : options.paper === "76" ? 38 : options.paper === "58" ? 26 : options.paper === "51" ? 24 : 54};
+  if (thermal) return {pageSize:"auto", marginMm:thermal.marginMm, widthMm:thermal.widthMm, thermal:true, landscape:false};
   if (options.paper === "auto") return {pageSize:options.orientation && options.orientation !== "auto" ? options.orientation : "auto",
-    marginMm:8, widthMm:undefined, thermal:false, landscape:options.orientation === "landscape", textColumns:72};
+    marginMm:8, widthMm:undefined, thermal:false, landscape:options.orientation === "landscape"};
   let [width, height] = options.paper === "letter" ? [215.9,279.4] : options.paper === "a4" ? [210,297]
     : options.paper === "8x4" ? [203.2,101.6] : options.paper === "8x11" ? [203.2,279.4] : [options.customWidthMm ?? 210, options.customHeightMm ?? 297];
   if (typeof width !== "number" || !Number.isFinite(width) || width < 50 || width > 320) throw new Error("El ancho del papel debe estar entre 50 y 320 mm.");
@@ -71,6 +73,5 @@ export function receiptPrintLayout(options: ReceiptPrintOptions) {
   const marginMm = Math.min(width, height) < 120 ? 4 : 8;
   const widthMm = Math.round((width - marginMm * 2) * 100) / 100;
   // Do not shrink the type to fit: narrower sheets wrap into more lines/pages.
-  return {pageSize:`${width}mm ${height}mm`, marginMm, widthMm, thermal:false, landscape:width > height,
-    textColumns:Math.max(20,Math.min(100,Math.floor(widthMm / (12 * 25.4 / 96 * .62))))};
+  return {pageSize:`${width}mm ${height}mm`, marginMm, widthMm, thermal:false, landscape:width > height};
 }
