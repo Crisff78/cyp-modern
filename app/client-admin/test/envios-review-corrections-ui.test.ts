@@ -273,10 +273,16 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         assert.ok(recipientPreview && recipientPreview.includes("RECIBE EN EUR:"));
         assert.equal(recipientPreview?.includes("Operador del envío"), false);
         assert.equal(recipientPreview?.includes("demo-admin"), false);
+        // A roll prints as images: what the sheet says is in their alternative text.
+        const printedSheet = async (sheet: any) => {
+          const blocks = sheet.locator("main.thermal-image-output img");
+          await blocks.first().waitFor({ state: "attached" });
+          return (await blocks.evaluateAll((images: HTMLImageElement[]) => images.map((image) => image.alt))).join("\n").replace(/[ \t]+/g, " ");
+        };
         const recPopupReady = context.waitForEvent("page");
         await detail.getByRole("button", { name: "Imprimir comprobante", exact: true }).click();
         const recPopup = await recPopupReady; await recPopup.waitForLoadState();
-        const recPrinted = await recPopup.locator("body").innerText(); await recPopup.close();
+        const recPrinted = await printedSheet(recPopup); await recPopup.close();
         assert.match(recPrinted, /RECIBE EN EUR:/);
         assert.equal(recPrinted.includes("Operador del envío"), false);
         assert.equal(recPrinted.includes("demo-admin"), false);
@@ -288,7 +294,7 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         const popupReady = context.waitForEvent("page");
         await detail.getByRole("button", { name: "Imprimir comprobante", exact: true }).click();
         const popup = await popupReady; await popup.waitForLoadState();
-        const printed = await popup.locator("body").innerText(); await popup.close();
+        const printed = await printedSheet(popup); await popup.close();
         assert.match(printed, /Registrado por:?\s+Administración/);
         assert.equal(printed.includes("Operador del envío"), false, "the printed invoice omits Operador del envío");
         assert.ok(printed.indexOf("Forma pago del remitente") >= 0 && printed.indexOf("Forma pago del remitente") < printed.indexOf("Registrado por"), "Registrado por is placed at the bottom");

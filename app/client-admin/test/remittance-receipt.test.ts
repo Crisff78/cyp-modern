@@ -1,8 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { remittanceReceipt, receiptHtml } from "../../shared/remittances/receipt";
+import { formatSpacedTitleLines, remittanceReceipt, receiptHtml } from "../../shared/remittances/receipt";
 import type { Transfer } from "../../shared/remittances/types";
 import { confirmedCreatedTransfer } from "../../shared/remittances/createdTransferResponse";
+
+// What a person reads on the printed sheet: the body without its tags.
+const printedText = (html: string) => html.slice(html.indexOf("<body>")).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
 
 const transfer: Transfer = {
   id: "qa-send", sequence: 1, envioReference: "ENV00000001", reciboReference: "REC00000001", operatingCode: "OP-QA-123",
@@ -37,8 +40,9 @@ test("thermal and telephone receipts never print the generic app name 'Cobros y 
   const demoIssuerTransfer: Transfer = { ...transfer, senderContact: { ...transfer.senderContact!, identification: "ID-SENDER-999" }, receiptIssuer: { name: "Cobros y Pagos", address: "", phone: "", email: "admin@cyp.local", logoDataUrl: "data:image/png;base64,iVBORw0KGgo=", footerNote: transfer.receiptIssuer!.footerNote } };
   const demoModel = remittanceReceipt(demoIssuerTransfer, undefined, "Operador Interno", "Cajero Ventanilla", true);
   assert.equal(demoModel.issuer.name, "", "generic app name is never treated as the company name");
-  const fullHtml = receiptHtml(demoModel, { paper: "80", compact: false, output: "text" });
-  for (const text of ["RECIBO DE ENVIO", "Fecha: 21/10/26 12:00 p.m.", "Envío: ENV00000001", "Cód. Operación: OP-QA-123", "Remitente: O&#39;Connor &lt;sender&gt;", "Código del Cliente: CL1", "Destinatario: Destinatario", "Teléfono: 8095550102", "Dirección: Fictional destination", "Importes del envío", "Monto a enviar: DOP 900.00", "DOP 990.00", "Recibe el destinatario: DOP 900.00", "Forma pago del remitente: Efectivo", "Recibido por: ________________________", "Registrado por: Cajero Ventanilla", "Nota: Conserve este recibo."]) {
+  const fullRaw = receiptHtml(demoModel, { paper: "80", compact: false }), fullHtml = printedText(fullRaw);
+  assert(fullRaw.includes("receipt-signature-line"), "Recibido por keeps its line to sign on");
+  for (const text of ["RECIBO DE ENVIO", "Fecha: 21/10/26 12:00 p.m.", "Envío: ENV00000001", "Cód. Operación: OP-QA-123", "Remitente: O&#39;Connor &lt;sender&gt;", "Código del Cliente: CL1", "Destinatario: Destinatario", "Teléfono: 8095550102", "Dirección: Fictional destination", "Importes del envío", "Monto a enviar: DOP 900.00", "DOP 990.00", "Recibe el destinatario: DOP 900.00", "Forma pago del remitente: Efectivo", "Recibido por:", "Registrado por: Cajero Ventanilla", "Nota: Conserve este recibo."]) {
     assert(fullHtml.includes(text), `missing ${text}`);
   }
   for (const forbidden of ["Cobros y Pagos", "REC00000001", "admin@cyp.local", "RNC:", "Tel.", "Pendiente de entrega", "Operador del envío", "Operador Interno", "Identificación", "ID-SENDER-999", "8095550101", "Fictional &amp; Co", "CL2", "Cargo del envío", "Dinero recibido", "Devuelta", "Nombre:", "----------------------------------------"]) {
@@ -54,16 +58,16 @@ test("thermal and telephone receipts never print the generic app name 'Cobros y 
   const configuredIssuer = { name: "Inversiones Demo S.R.L.", slogan: "Servicios confiables al instante", address: "Av. 27 de Febrero, #2131, Local 12, Santiago", phone: "809-555-0222", rnc: "1-30-00100-1", email: "admin@cyp.local", footerNote: transfer.receiptIssuer!.footerNote };
   const upgraded = remittanceReceipt(demoIssuerTransfer, configuredIssuer, "Operador Interno", "Cajero Ventanilla", true);
   assert.equal(upgraded.issuer.logoDataUrl, demoIssuerTransfer.receiptIssuer!.logoDataUrl);
-  const upgradedHtml = receiptHtml(upgraded, { paper: "80", compact: false, output: "text" });
-  for (const text of ["Inversiones Demo S.R.L.", "Servicios confiables al instante", "Av. 27 de Febrero", "Tel. 809-555-0222 / RNC: 1-30-00100-1", "----------------------------------------", "RECIBO DE ENVIO"]) {
+  const upgradedRaw = receiptHtml(upgraded, { paper: "80", compact: false }), upgradedHtml = printedText(upgradedRaw);
+  for (const text of ["Inversiones Demo S.R.L.", "Servicios confiables al instante", "Av. 27 de Febrero", "Tel. 809-555-0222 / RNC: 1-30-00100-1", "RECIBO DE ENVIO"]) {
     assert(upgradedHtml.includes(text), `missing configured header ${text}`);
   }
-  assert.equal((upgradedHtml.match(/-{40}/g) ?? []).length, 1, "only the dashed header line is drawn; internal divider lines are removed");
+  assert(upgradedRaw.includes("border-bottom:1px dashed #000"), "the dashed line under the company header");
+  assert(!upgradedRaw.includes("receipt-sheet-divided"), "only the dashed header line is drawn; internal divider lines are removed");
   assert(!upgradedHtml.includes("Cobros y Pagos"));
   assert(upgradedHtml.indexOf("Inversiones Demo S.R.L.") < upgradedHtml.indexOf("Servicios confiables al instante"));
   assert(upgradedHtml.indexOf("Servicios confiables al instante") < upgradedHtml.indexOf("Av. 27 de Febrero"));
-  assert(upgradedHtml.indexOf("Tel. 809-555-0222 / RNC: 1-30-00100-1") < upgradedHtml.indexOf("----------------------------------------"));
-  assert(upgradedHtml.indexOf("----------------------------------------") < upgradedHtml.indexOf("RECIBO DE ENVIO"));
+  assert(upgradedHtml.indexOf("Tel. 809-555-0222 / RNC: 1-30-00100-1") < upgradedHtml.indexOf("RECIBO DE ENVIO"));
   assert(upgradedHtml.indexOf("RECIBO DE ENVIO") < upgradedHtml.indexOf("Fecha:"));
 
   const model = remittanceReceipt({ ...transfer, senderContact: { ...transfer.senderContact!, identification: "ID-SENDER-999" } }, undefined, "Operador", "Cajero", true);
@@ -71,8 +75,6 @@ test("thermal and telephone receipts never print the generic app name 'Cobros y 
   for (const paper of ["76", "80", "58"] as const) {
     const html = receiptHtml(model, { paper, compact: true });
     assert(html.includes(`width:${paper === "80" ? 66 : paper === "58" ? 45 : 63}mm`));
-    const plainHtml = receiptHtml(model, { paper, compact: true, output: "text" });
-    assert(plainHtml.includes(`width:${paper === "80" ? 72 : paper === "58" ? 48 : 70}mm`));
     for (const text of ["Empresa de prueba", "Fictional office", "Tel. 8095550100", "RECIBO DE ENVIO", "Fecha", "ENV00000001", "Remitente", "O&#39;Connor &lt;sender&gt;", "Destinatario", "8095550102", "DOP 990.00", "Forma pago del remitente", "Efectivo", "Registrado por", "Cajero", "<strong>Nota:</strong>", "Conserve este recibo"]) assert(html.includes(text), text);
     for (const text of ["REC00000001", "RNC:", "office@example.test", "Pendiente de entrega", "Operador del envío", "Fictional &amp; Co", "Fictional destination", "Cód. Operación", "CL1", "CL2", "Identificación", "ID-SENDER-999", "8095550101", "Comisión del gestor", "Prueba &amp; validación", "Recibido por", "Cargo del envío"]) assert(!html.includes(text), text);
     const body = html.slice(html.indexOf("<body>"));
@@ -104,17 +106,15 @@ test("credit card surcharge is summed into Cargo del envío on consultation view
     ["Total pagado por el remitente", "DOP 24.20"],
     ["Recibe el destinatario", "DOP 20.00"],
   ]);
-  for (const output of ["text", "graphics"] as const) {
-    for (const compact of [false, true]) {
-      const html = receiptHtml(printedReceipt, { paper: "80", compact, output });
-      assert(html.includes("DOP 20.00"));
-      assert(html.includes("DOP 24.20"));
-      assert(html.includes("Forma pago del remitente"));
-      assert(/\bTC\b/.test(html), `expected TC payment code in output=${output} compact=${compact}`);
-      if (!compact) assert(html.includes("Recibido por"));
-      for (const forbidden of ["Cargo del envío", "Recargo tarjeta de crédito", "Cargo adicional por tarjeta", "4444", "22222222222"]) {
-        assert(!html.includes(forbidden), `unexpected ${forbidden} in output=${output} compact=${compact}`);
-      }
+  for (const compact of [false, true]) {
+    const html = receiptHtml(printedReceipt, { paper: "80", compact });
+    assert(html.includes("DOP 20.00"));
+    assert(html.includes("DOP 24.20"));
+    assert(html.includes("Forma pago del remitente"));
+    assert(/\bTC\b/.test(html), `expected TC payment code with compact=${compact}`);
+    if (!compact) assert(html.includes("Recibido por"));
+    for (const forbidden of ["Cargo del envío", "Recargo tarjeta de crédito", "Cargo adicional por tarjeta", "4444", "22222222222"]) {
+      assert(!html.includes(forbidden), `unexpected ${forbidden} with compact=${compact}`);
     }
   }
 });
@@ -131,7 +131,7 @@ test("A4 and Carta printed receipts use the standard RECIBO DE ENVIO layout with
   };
   const model = remittanceReceipt({ ...transfer, receiptIssuer: configuredIssuer, payment: { version: 2, method: "card", cardType: "credit", tenderedAmount: 99000, changeAmount: 0, confirmedBy: "office", confirmedAt: "2026-10-21T16:00:00.000Z" } }, undefined, "Operador", "Administración", true);
   for (const paper of ["a4", "letter"] as const) {
-    const graphicHtml = receiptHtml(model, { paper, compact: false, output: "graphics" });
+    const graphicHtml = receiptHtml(model, { paper, compact: false });
     assert(graphicHtml.includes(paper === "a4" ? "size:210mm 297mm" : "size:215.9mm 279.4mm"));
     assert(graphicHtml.includes("<img"));
     assert(graphicHtml.includes(".receipt-sheet-divided{border-bottom:1px dashed #000"));
@@ -139,16 +139,19 @@ test("A4 and Carta printed receipts use the standard RECIBO DE ENVIO layout with
     for (const required of ["Inversiones Demo S.R.L.", "Tu aliado en cobros, pagos y envíos", "Av. 27 de Febrero #2131, Local 12, Santiago", "Tel. 809-555-0222 / RNC: 1-30-00100-1", "RECIBO DE ENVIO", "Fecha: ", "Envío: ", "ENV00000001", "Cód. Operación: ", "Remitente: ", "Código del Cliente: ", "Destinatario: ", "Teléfono: ", "Dirección: ", "Importes del envío", "Monto a enviar: ", "Total pagado por el remitente: ", "Recibe el destinatario: ", "Forma pago del remitente: ", "TC", "Recibido por: ", "Registrado por: ", "Administración", "<strong>Nota:</strong> Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío."]) {
       assert(graphicHtml.includes(required), `missing "${required}" in paper=${paper}`);
     }
-    const textHtml = receiptHtml(model, { paper, compact: false, output: "text" });
-    assert.equal((textHtml.match(/-{72}/g) ?? []).length, 6, `expected 1 header dashed line + 5 field-block dashed lines in ${paper} text mode`);
     for (const forbidden of ["Envío #:", "DESTINATARIO:", "MONTO A ENVIAR:", "RECIBE EN ", "PARA RECLAMACIONES FAVOR COMUNICARSE", "Es importante que revise su recibo"]) {
       assert(!graphicHtml.includes(forbidden), `unexpected "${forbidden}" in paper=${paper}`);
     }
   }
-  const pos80Html = receiptHtml(model, { paper: "80", compact: false, output: "graphics" });
+  const pos80Html = receiptHtml(model, { paper: "80", compact: false });
   assert(!pos80Html.includes("receipt-sheet-divided"), "POS80 thermal receipt keeps zero internal divider lines");
 });
-test("recipient delivery receipt (Para quien recibe) renders the KEBEK voucher across all paper sizes in graphics and text modes without altering sender receipts", () => {
+test("the company title is spaced letter by letter and split only between words", () => {
+  assert.deepEqual(formatSpacedTitleLines("Inversiones Demo S.R.L.", () => true), ["I N V E R S I O N E S   D E M O   S . R . L ."]);
+  assert.deepEqual(formatSpacedTitleLines("Inversiones Demo S.R.L.", (line) => line.length <= 31), ["I N V E R S I O N E S   D E M O", "S . R . L ."]);
+  assert.deepEqual(formatSpacedTitleLines("Inversiones Demo S.R.L.", (line) => line.length <= 5), []);
+});
+test("recipient delivery receipt (Para quien recibe) renders the KEBEK voucher across all paper sizes without altering sender receipts", () => {
   const configuredIssuer = {
     name: "Inversiones Demo S.R.L.",
     slogan: "Tu aliado en cobros, pagos y envíos",
@@ -176,7 +179,7 @@ test("recipient delivery receipt (Para quien recibe) renders the KEBEK voucher a
   const recipientModel = remittanceReceipt(paidTransfer, undefined, "Operador", "Administración", true, "recipient");
   assert.equal(recipientModel.audience, "recipient");
   for (const paper of ["51", "58", "76", "80", "102", "auto", "a4", "letter", "8x4", "8x11"] as const) {
-    const graphicHtml = receiptHtml(recipientModel, { paper, compact: false, output: "graphics" });
+    const graphicHtml = receiptHtml(recipientModel, { paper, compact: false });
     for (const required of [
       "Inversiones Demo S.R.L.",
       "Envío #: ENV00000001",
@@ -194,21 +197,9 @@ test("recipient delivery receipt (Para quien recibe) renders the KEBEK voucher a
     for (const forbidden of ["RECIBO DE ENVIO", "O&#39;Connor", "8095550101", "CL1", "Recibido por", "Registrado por", "Forma pago del remitente", "Conserve este recibo", "Comisión", "admin@cyp.local", "<img"]) {
       assert(!graphicHtml.includes(forbidden), `unexpected "${forbidden}" in recipient graphic html for paper=${paper}`);
     }
-    const textHtml = receiptHtml(recipientModel, { paper, compact: false, output: "text" });
-    const normalizedTextHtml = textHtml.replace(/\s+/g, " ");
-    assert(normalizedTextHtml.includes("Envío #: ENV00000001"));
-    assert(normalizedTextHtml.includes("TELÉFONO: 50932367456"));
-    assert(normalizedTextHtml.includes("MONTO: USD 1,000.00"));
-    assert(normalizedTextHtml.includes("RECIBE EN DOP:"));
-    assert(normalizedTextHtml.includes("60,500.00"));
-    assert(normalizedTextHtml.includes("PARA RECLAMACIONES FAVOR COMUNICARSE A +1(809)555-0222"));
-    assert(!textHtml.includes("RECIBO DE ENVIO"));
-    if (paper === "a4" || paper === "letter" || paper === "102" || paper === "auto") {
-      assert(textHtml.includes("I N V E R S I O N E S   D E M O   S . R . L ."), `expected spaced uppercase company title on paper=${paper}`);
-    }
   }
   // Switching options.audience on the same receipt model flips cleanly between sender and recipient formats.
-  const senderOverrideHtml = receiptHtml(recipientModel, { paper: "a4", compact: false, output: "graphics", audience: "sender" });
+  const senderOverrideHtml = receiptHtml(recipientModel, { paper: "a4", compact: false, audience: "sender" });
   assert(senderOverrideHtml.includes("RECIBO DE ENVIO"));
   assert.equal((senderOverrideHtml.match(/receipt-sheet-divided"/g) ?? []).length, 5);
   assert(!senderOverrideHtml.includes("PARA RECLAMACIONES FAVOR COMUNICARSE"));

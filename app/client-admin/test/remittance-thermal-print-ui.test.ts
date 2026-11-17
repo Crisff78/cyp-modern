@@ -23,11 +23,11 @@ const receipt={reference:'REC-QA-ACENTOS',date:'05/11/2026, 11:13 a. m.',status:
 const syntheticLogo=(()=>{const c=document.createElement('canvas');c.width=220;c.height=72;const g=c.getContext('2d')!;g.fillStyle='#fff';g.fillRect(0,0,220,72);g.strokeStyle='#000';g.lineWidth=4;g.strokeRect(4,4,212,64);g.fillStyle='#000';g.font='bold 24px Arial';g.textAlign='center';g.fillText('DEMO LOGO',110,44);return c.toDataURL('image/png');})();
 const pos80Invoice=remittanceReceipt({id:'qa-pos80',sequence:48,envioReference:'ENV00000048',reciboReference:'REC00000048',operatingCode:'AD0B35A22F305CA2',senderClientId:'s1',recipientClientId:'r1',sendingUserId:'demo-admin',registeredBy:'demo-admin',status:'pending',canPay:true,canCancel:true,createdAt:'2026-11-11T13:15:00.000Z',note:'',sourceCurrency:'DOP',destinationCurrency:'DOP',amount:50000,commissionBps:1000,commissionAmount:5000,totalAmount:55000,receiveAmount:50000,quote:{date:'2026-11-11',sourceRate:'1.000000',destinationRate:'1.000000',sourceRateKind:'base',destinationRateKind:'base'},senderContact:{id:'s1',code:'1111111111',name:'mayo lomb',identification:'03103103103',phone:'111-111-1111',cellular:'',address:'santiago'},recipientContact:{id:'r1',code:'CL-0002',name:'María Rodríguez',identification:'',phone:'8095550100',cellular:'',address:'Calle Las Damas 18'},receiptIssuer:{name:'Cobros y Pagos',address:'',phone:'',email:'admin@cyp.local',logoDataUrl:syntheticLogo,footerNote:'Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío.'},payment:{version:2,method:'card',cardType:'credit',tenderedAmount:59400,changeAmount:0,cardSurchargeBps:800,cardSurchargeAmount:4400,reference:'658565',last4:'8888',bank:'Banreservas',confirmedBy:'demo-admin',confirmedAt:'2026-11-11T13:15:00.000Z'}},{name:'INVERSIONES DEMO S.R.L.',slogan:'Tu aliado en cobros, pagos y envíos',address:'Av. 27 de Febrero #2131, Local 12, Santiago',phone:'809-555-0222',rnc:'1-30-00100-1',email:'admin@cyp.local',footerNote:'Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío.'},'Administración','Administración',true);
 const recipientVoucher=remittanceReceipt({id:'qa-recipient',sequence:48,envioReference:'ENV00000048',reciboReference:'REC00000048',operatingCode:'AD0B35A22F305CA2',senderClientId:'s1',recipientClientId:'r1',sendingUserId:'demo-admin',registeredBy:'demo-admin',status:'paid',paidAt:'2026-11-11T15:58:10.000Z',canPay:false,canCancel:false,createdAt:'2026-11-11T13:15:00.000Z',note:'',sourceCurrency:'DOP',destinationCurrency:'DOP',amount:100000,commissionBps:1000,commissionAmount:10000,totalAmount:110000,receiveAmount:100000,quote:{date:'2026-11-11',sourceRate:'1.000000',destinationRate:'1.000000',sourceRateKind:'base',destinationRateKind:'base'},senderContact:{id:'s1',code:'1111111111',name:'mayo lomb',identification:'03103103103',phone:'111-111-1111',cellular:'',address:'santiago'},recipientContact:{id:'r1',code:'CL-0002',name:'María Rodríguez',identification:'',phone:'8095550100',cellular:'',address:'Calle Las Damas 18'},receiptIssuer:{name:'Cobros y Pagos',address:'',phone:'',email:'admin@cyp.local',logoDataUrl:syntheticLogo,footerNote:'Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío.'},payment:{version:2,method:'card',cardType:'credit',tenderedAmount:118800,changeAmount:0,cardSurchargeBps:800,cardSurchargeAmount:8800,reference:'658565',last4:'8888',bank:'Banreservas',confirmedBy:'demo-admin',confirmedAt:'2026-11-11T13:15:00.000Z'}},{name:'INVERSIONES DEMO S.R.L.',slogan:'Tu aliado en cobros, pagos y envíos',address:'Av. 27 de Febrero #2131, Local 12, Santiago',phone:'809-555-0222',rnc:'1-30-00100-1',email:'admin@cyp.local',footerNote:'Conserve este recibo. Para consultas o reclamaciones, presente la referencia del envío.'},'Administración','Administración',true,'recipient');
-for(const [id,compact,mode] of [['pos80-full-text',false,'text'],['pos80-compact-text',true,'text'],['pos80-full-graphics',false,'graphics']] as const){const b=document.createElement('button');b.textContent=id;b.onclick=()=>printRemittanceReceipt(pos80Invoice,{paper:'80',compact,output:mode});document.body.append(b);}
-for(const [id,paper,mode] of [['invoice-a4-graphics','a4','graphics'],['invoice-letter-graphics','letter','graphics']] as const){const b=document.createElement('button');b.textContent=id;b.onclick=()=>printRemittanceReceipt(pos80Invoice,{paper,orientation:'portrait',compact:false,output:mode});document.body.append(b);}
-for(const [id,paper,mode] of [['recipient-pos80-graphics','80','graphics'],['recipient-pos80-text','80','text'],['recipient-58-graphics','58','graphics'],['recipient-a4-graphics','a4','graphics'],['recipient-a4-text','a4','text'],['recipient-letter-graphics','letter','graphics']] as const){const b=document.createElement('button');b.textContent=id;b.onclick=()=>printRemittanceReceipt(recipientVoucher,{paper,orientation:'portrait',compact:false,output:mode,audience:'recipient'});document.body.append(b);}
-for(const paper of ['51','76','80','58','102','auto']){for(const output of ['graphics','text']){const button=document.createElement('button');button.textContent=output==='text'?'text-'+paper:paper;button.onclick=()=>printRemittanceReceipt(receipt,{paper,compact:false,output});document.body.append(button);}}
-for(const [name,paper,orientation,customWidthMm,customHeightMm] of [['sheet-8x4','8x4','landscape'],['sheet-8x11','8x11','landscape'],['sheet-a4','a4','portrait'],['sheet-letter','letter','portrait'],['sheet-custom','custom','landscape',180,90]]){for(const output of ['graphics','text']){const button=document.createElement('button');button.textContent=output==='text'?'text-'+name:name;button.onclick=()=>printRemittanceReceipt(receipt,{paper,orientation,customWidthMm,customHeightMm,compact:false,output});document.body.append(button);}}`);
+for(const [id,compact] of [['pos80-full-graphics',false],['pos80-compact-graphics',true]] as const){const b=document.createElement('button');b.textContent=id;b.onclick=()=>printRemittanceReceipt(pos80Invoice,{paper:'80',compact});document.body.append(b);}
+for(const [id,paper] of [['invoice-a4-graphics','a4'],['invoice-letter-graphics','letter']] as const){const b=document.createElement('button');b.textContent=id;b.onclick=()=>printRemittanceReceipt(pos80Invoice,{paper,orientation:'portrait',compact:false});document.body.append(b);}
+for(const [id,paper] of [['recipient-pos80-graphics','80'],['recipient-58-graphics','58'],['recipient-a4-graphics','a4'],['recipient-letter-graphics','letter']] as const){const b=document.createElement('button');b.textContent=id;b.onclick=()=>printRemittanceReceipt(recipientVoucher,{paper,orientation:'portrait',compact:false,audience:'recipient'});document.body.append(b);}
+for(const paper of ['51','76','80','58','102','auto']){const button=document.createElement('button');button.textContent=paper;button.onclick=()=>printRemittanceReceipt(receipt,{paper,compact:false});document.body.append(button);}
+for(const [name,paper,orientation,customWidthMm,customHeightMm] of [['sheet-8x4','8x4','landscape'],['sheet-8x11','8x11','landscape'],['sheet-a4','a4','portrait'],['sheet-letter','letter','portrait'],['sheet-custom','custom','landscape',180,90]]){const button=document.createElement('button');button.textContent=name;button.onclick=()=>printRemittanceReceipt(receipt,{paper,orientation,customWidthMm,customHeightMm,compact:false});document.body.append(button);}`);
   let browser:any, server:ReturnType<typeof createServer>|undefined;
   const errors:string[]=[], external:string[]=[];
   try {
@@ -70,58 +70,32 @@ for(const [name,paper,orientation,customWidthMm,customHeightMm] of [['sheet-8x4'
     }
     const opening=page.waitForEvent("popup");await page.getByRole("button",{name:"auto",exact:true}).click();const normal=await opening;await normal.waitForFunction(()=>(window as any).__prints===1);
     assert(await normal.locator("dt").count()>0);assert.equal(await normal.locator("main.thermal-image-output").count(),0);assert.match(await normal.locator("body").innerText(),/Nombre:\s+José Núñez/);await normal.close();
-    for(const paper of ["51","80","76","58","102","auto"]){
-      const opening=page.waitForEvent("popup");await page.getByRole("button",{name:`text-${paper}`,exact:true}).click();const plain=await opening;
-      await plain.waitForFunction(()=>(window as any).__prints===1);
-      assert.equal(await plain.locator("img,canvas,svg,dl").count(),0,"generic mode does not need graphics support");
-      const content=await plain.locator("pre").textContent(),columns=paper==="80"?40:paper==="76"?38:paper==="58"?26:paper==="51"?24:paper==="102"?54:72;
-      assert(content.includes("Nombre: José Núñez"));assert(!/Nombre: {2,}/.test(content));assert(content.includes("Código de operación:"));assert(content.includes("Nombre: María Rodríguez"));
-      for(const line of content.split("\n"))assert(Array.from(line).length<=columns);
-      assert.equal(await plain.evaluate(()=>document.body.scrollWidth<=document.body.clientWidth+1),true);
-      assert.equal(await plain.evaluate(()=>(window as any).__runs.length),0,"no canvas is used by the generic driver path");
-      await plain.screenshot({path:path.join(output,`receipt-text-${paper}.png`),fullPage:true});await plain.close();
-    }
     // The browser's PDF output proves the requested sheet size and orientation, not a physical printer result.
     for(const [name,widthMm,heightMm] of [["8x4",203.2,101.6],["8x11",279.4,203.2],["a4",210,297],["letter",215.9,279.4],["custom",180,90]] as const) {
-      for(const textOnly of [false,true]) {
-        const label=`${textOnly?"text-":""}sheet-${name}`, opened=page.waitForEvent("popup");
-        await page.getByRole("button",{name:label,exact:true}).click(); const sheet=await opened;
-        await sheet.waitForFunction(()=>(window as any).__prints===1);
-        await sheet.emulateMedia({media:"print"});
-        assert.equal(await sheet.locator("main.thermal-image-output img").count(),0);
-        assert.match(await sheet.locator("body").innerText(),/José Núñez/);
-        assert.match(await sheet.locator("body").innerText(),/DOP 2,200\.00/);
-        assert.equal(await sheet.evaluate(()=>document.body.scrollWidth<=document.body.clientWidth+1),true);
-        if(!textOnly) assert(parseFloat(await sheet.locator("body").evaluate((node:HTMLElement)=>getComputedStyle(node).fontSize))>=12,"sheet type is not shrunk to squeeze a receipt onto a page");
-        const pdf=await sheet.pdf({path:path.join(output,`${label}.pdf`),preferCSSPageSize:true,printBackground:true});
-        const boxes=[...pdf.toString("latin1").matchAll(/\/MediaBox\s*\[\s*0\s+0\s+([0-9.]+)\s+([0-9.]+)\s*\]/g)];
-        assert(boxes.length>0,"PDF contains physical page dimensions");
-        for(const box of boxes) { assert(Math.abs(Number(box[1])-widthMm*72/25.4)<1.5,`${label}: page width`); assert(Math.abs(Number(box[2])-heightMm*72/25.4)<1.5,`${label}: page height`); }
-        await sheet.screenshot({path:path.join(output,`${label}.png`),fullPage:true}); await sheet.close();
-      }
+      const label=`sheet-${name}`, opened=page.waitForEvent("popup");
+      await page.getByRole("button",{name:label,exact:true}).click(); const sheet=await opened;
+      await sheet.waitForFunction(()=>(window as any).__prints===1);
+      await sheet.emulateMedia({media:"print"});
+      assert.equal(await sheet.locator("main.thermal-image-output img").count(),0);
+      assert.match(await sheet.locator("body").innerText(),/José Núñez/);
+      assert.match(await sheet.locator("body").innerText(),/DOP 2,200\.00/);
+      assert.equal(await sheet.evaluate(()=>document.body.scrollWidth<=document.body.clientWidth+1),true);
+      assert(parseFloat(await sheet.locator("body").evaluate((node:HTMLElement)=>getComputedStyle(node).fontSize))>=12,"sheet type is not shrunk to squeeze a receipt onto a page");
+      const pdf=await sheet.pdf({path:path.join(output,`${label}.pdf`),preferCSSPageSize:true,printBackground:true});
+      const boxes=[...pdf.toString("latin1").matchAll(/\/MediaBox\s*\[\s*0\s+0\s+([0-9.]+)\s+([0-9.]+)\s*\]/g)];
+      assert(boxes.length>0,"PDF contains physical page dimensions");
+      for(const box of boxes) { assert(Math.abs(Number(box[1])-widthMm*72/25.4)<1.5,`${label}: page width`); assert(Math.abs(Number(box[2])-heightMm*72/25.4)<1.5,`${label}: page height`); }
+      await sheet.screenshot({path:path.join(output,`${label}.png`),fullPage:true}); await sheet.close();
     }
-    for(const [id,compact] of [["pos80-full-text",false],["pos80-compact-text",true]] as const){
-      const openingPos80=page.waitForEvent("popup");await page.getByRole("button",{name:id,exact:true}).click();const posPopup=await openingPos80;
-      await posPopup.waitForFunction(()=>(window as any).__prints===1);
-      // Emulate exact 72.1 mm printable width reported by Windows driver 2connet POS80-01 V6 USB ("80(72.1) x 297 mm").
-      await posPopup.setViewportSize({width:Math.floor(72.1*96/25.4),height:760});
-      await posPopup.emulateMedia({media:"print"});
-      const preMetrics=await posPopup.locator("pre").evaluate((pre:HTMLElement)=>{
-        const text=pre.textContent??"",lines=text.replace(/\n$/,"").split("\n"),lineHeight=parseFloat(getComputedStyle(pre).lineHeight);
-        return {text,lineCount:lines.length,renderedLines:Math.round(pre.getBoundingClientRect().height/lineHeight),scrollWidth:document.body.scrollWidth,clientWidth:document.body.clientWidth};
-      });
-      assert.equal(preMetrics.renderedLines,preMetrics.lineCount,`${id}: zero soft-wrapped lines on 72.1mm POS80 print preview`);
-      assert.ok(preMetrics.scrollWidth<=preMetrics.clientWidth+1,`${id}: fits inside 72.1mm POS80 width`);
-      for(const expected of ["INVERSIONES DEMO S.R.L.","Tu aliado en cobros, pagos y envíos","Av. 27 de Febrero","Tel. 809-555-0222 / RNC: 1-30-00100-1","----------------------------------------","RECIBO DE ENVIO","Fecha: 11/11/26 09:15 a.m.","Envío: ENV00000048","Remitente: mayo lomb","Destinatario: María Rodríguez","Teléfono: 8095550100","Importes del envío","Monto a enviar: DOP 500.00","DOP 594.00","Recibe el destinatario: DOP 500.00","Forma pago del remitente: TC","Registrado por: Administración","Nota: Conserve este recibo."])assert(preMetrics.text.includes(expected),`${id} missing ${expected}`);
-      assert.equal((preMetrics.text.match(/-{40}/g)??[]).length,1,`${id}: only the header dashed line is drawn`);
-      for(const forbidden of ["REC00000048","Cobros y Pagos","admin@cyp.local","Cargo del envío","Recargo tarjeta de crédito","Cargo adicional por tarjeta","DOP 44.00","DOP 94.00","8888","658565","Banreservas","Pendiente de entrega","Operador del envío","03103103103","111-111-1111","CL-0002","========================================"])assert(!preMetrics.text.includes(forbidden),`${id} unexpected ${forbidden}`);
-      assert(preMetrics.text.indexOf("INVERSIONES DEMO S.R.L.")<preMetrics.text.indexOf("RECIBO DE ENVIO"),`${id}: company header must appear at the very top`);
-      assert(preMetrics.text.indexOf("RECIBO DE ENVIO")<preMetrics.text.indexOf("Fecha:"),`${id}: RECIBO DE ENVIO precedes Fecha`);
-      if(compact){assert(!preMetrics.text.includes("Cód. Operación:"));assert(!preMetrics.text.includes("Calle Las Damas 18"));assert(!preMetrics.text.includes("1111111111"));assert(!preMetrics.text.includes("Recibido por:"));}
-      else{assert(preMetrics.text.includes("Cód. Operación: AD0B35A22F305CA2"));assert(preMetrics.text.includes("Dirección: Calle Las Damas 18"));assert(preMetrics.text.includes("Código del Cliente: 1111111111"));assert(preMetrics.text.includes("Recibido por: ________________________"));}
-      await posPopup.pdf({path:path.join(output,`${id}-72.1mm.pdf`),width:"72.1mm",height:"297mm",preferCSSPageSize:false,printBackground:true});
-      await posPopup.screenshot({path:path.join(output,`${id}-72.1mm.png`),fullPage:true});await posPopup.close();
-    }
+    // The summary for a telephone send, on the 80 mm roll: fewer rows, same design.
+    const openingCompactPos80=page.waitForEvent("popup");await page.getByRole("button",{name:"pos80-compact-graphics",exact:true}).click();const posCompact=await openingCompactPos80;
+    await posCompact.waitForFunction(()=>(window as any).__prints===1);
+    await posCompact.setViewportSize({width:Math.floor(72.1*96/25.4),height:760});
+    await posCompact.emulateMedia({media:"print"});
+    const posCompactText=(await posCompact.evaluate(()=>(window as any).__runs)).map((run:any)=>run.text).join("\n");
+    for(const expected of ["Tel. 809-555-0222 / RNC: 1-30-00100-1","RECIBO DE ENVIO","Envío:","ENV00000048","Remitente:","mayo lomb","Destinatario:","María Rodríguez","Teléfono:","8095550100","DOP 594.00","Forma pago del remitente:","TC","Registrado por:","Nota:"])assert(posCompactText.includes(expected),`pos80-compact-graphics missing ${expected}`);
+    for(const forbidden of ["Cód. Operación:","Calle Las Damas 18","1111111111","Recibido por:","REC00000048","Cobros y Pagos","Cargo del envío","8888","658565","Banreservas"])assert(!posCompactText.includes(forbidden),`pos80-compact-graphics unexpected ${forbidden}`);
+    await posCompact.screenshot({path:path.join(output,"pos80-compact-graphics-72.1mm.png"),fullPage:true});await posCompact.close();
     const openingGraphicPos80=page.waitForEvent("popup");await page.getByRole("button",{name:"pos80-full-graphics",exact:true}).click();const posGraphic=await openingGraphicPos80;
     await posGraphic.waitForFunction(()=>(window as any).__prints===1);
     await posGraphic.setViewportSize({width:Math.floor(72.1*96/25.4),height:900});
@@ -190,18 +164,7 @@ for(const [name,paper,orientation,customWidthMm,customHeightMm] of [['sheet-8x4'
       await recThermal.screenshot({path:path.join(output,`${id}.png`),fullPage:true});
       await recThermal.close();
     }
-    const openingRecText80=page.waitForEvent("popup");await page.getByRole("button",{name:"recipient-pos80-text",exact:true}).click();const recText80=await openingRecText80;
-    await recText80.waitForFunction(()=>(window as any).__prints===1);
-    await recText80.setViewportSize({width:Math.floor(72.1*96/25.4),height:760});
-    await recText80.emulateMedia({media:"print"});
-    const recPre=await recText80.locator("pre").textContent()??"";
-    assert.equal((recPre.match(/-{40}/g)??[]).length,2,"POS80 text recipient voucher draws 2 solid horizontal rules");
-    for(const line of recPre.split("\n"))assert(Array.from(line).length<=40);
-    for(const expected of ["Envío #: ENV00000048","Fecha  : 11-11-2026 |11:58:10","María Rodríguez","TELÉFONO: 8095550100","MONTO: DOP 1,000.00","RECIBE EN DOP:","1,000.00"])assert(recPre.includes(expected),`recipient-pos80-text missing ${expected}`);
-    assert(recPre.replace(/\s+/g," ").includes("PARA RECLAMACIONES FAVOR COMUNICARSE A 809-555-0222"));
-    await recText80.screenshot({path:path.join(output,"recipient-pos80-text.png"),fullPage:true});
-    await recText80.close();
-    for(const [id,widthMm,heightMm,isText] of [["recipient-a4-graphics",210,297,false],["recipient-a4-text",210,297,true],["recipient-letter-graphics",215.9,279.4,false]] as const){
+    for(const [id,widthMm,heightMm] of [["recipient-a4-graphics",210,297],["recipient-letter-graphics",215.9,279.4]] as const){
       const openingRecSheet=page.waitForEvent("popup");await page.getByRole("button",{name:id,exact:true}).click();const recSheet=await openingRecSheet;
       await recSheet.waitForFunction(()=>(window as any).__prints===1);
       await recSheet.setViewportSize({width:Math.round(widthMm*96/25.4),height:Math.round(heightMm*96/25.4)});
@@ -211,7 +174,7 @@ for(const [name,paper,orientation,customWidthMm,customHeightMm] of [['sheet-8x4'
       const recSheetBody=(await recSheet.locator("body").innerText()).replace(/\s+/g," ");
       for(const expected of ["Envío #: ENV00000048","11-11-2026 |11:58:10","María Rodríguez","TELÉFONO: 8095550100","MONTO: DOP 1,000.00","RECIBE EN DOP:","1,000.00","¡Es importante que revise su recibo para asegurar que el número de teléfono esté correcto!","PARA RECLAMACIONES FAVOR COMUNICARSE A 809-555-0222"])assert(recSheetBody.includes(expected),`${id} missing ${expected}`);
       assert(!recSheetBody.includes("RECIBO DE ENVIO")&&!recSheetBody.includes("mayo lomb"));
-      if(!isText)assert.equal(await recSheet.locator(".recipient-voucher-header,.recipient-voucher-recipient").count(),2);
+      assert.equal(await recSheet.locator(".recipient-voucher-header,.recipient-voucher-recipient").count(),2);
       const pdf=await recSheet.pdf({path:path.join(output,`${id}.pdf`),preferCSSPageSize:true,printBackground:true});
       const boxes=[...pdf.toString("latin1").matchAll(/\/MediaBox\s*\[\s*0\s+0\s+([0-9.]+)\s+([0-9.]+)\s*\]/g)];
       assert.equal(boxes.length,1,`${id}: fits cleanly on a single page`);
@@ -220,7 +183,7 @@ for(const [name,paper,orientation,customWidthMm,customHeightMm] of [['sheet-8x4'
     }
     if(process.env.CYP_RECEIPT_SNAPSHOT_DIR){
       fs.mkdirSync(process.env.CYP_RECEIPT_SNAPSHOT_DIR,{recursive:true});
-      for(const snap of ["recipient-pos80-graphics.png","recipient-pos80-text.png","recipient-58-graphics.png","recipient-a4-graphics.png","recipient-letter-graphics.png","pos80-full-graphics-72.1mm.png","invoice-a4-graphics.png"]){
+      for(const snap of ["recipient-pos80-graphics.png","recipient-58-graphics.png","recipient-a4-graphics.png","recipient-letter-graphics.png","pos80-full-graphics-72.1mm.png","invoice-a4-graphics.png"]){
         const src=path.join(output,snap);if(fs.existsSync(src))fs.copyFileSync(src,path.join(process.env.CYP_RECEIPT_SNAPSHOT_DIR,snap));
       }
     }
@@ -228,7 +191,6 @@ for(const [name,paper,orientation,customWidthMm,customHeightMm] of [['sheet-8x4'
     await context.addInitScript(()=>{HTMLCanvasElement.prototype.toDataURL=()=>{throw new Error("Synthetic raster failure");};});
     const failing=page.waitForEvent("popup");await page.getByRole("button",{name:"80",exact:true}).click();const failed=await failing;
     await failed.getByRole("alert").waitFor();assert.equal(await failed.evaluate(()=>(window as any).__prints),0);await failed.close();
-    const compatible=page.waitForEvent("popup");await page.getByRole("button",{name:"text-80",exact:true}).click();const noCanvas=await compatible;await noCanvas.waitForFunction(()=>(window as any).__prints===1);assert.equal(await noCanvas.locator("img,canvas").count(),0);await noCanvas.close();
     assert.deepEqual(errors,[]);assert.deepEqual(external.filter(url=>!/(^|\.)kaspersky-labs\.com$/i.test(new URL(url).hostname)),[]);await context.close();
     t.diagnostic(`Synthetic receipt screenshots: ${output}; no physical printer used.`);
   } finally {await browser?.close();if(server){server.closeAllConnections();await new Promise<void>(resolve=>server!.close(()=>resolve()));}}
