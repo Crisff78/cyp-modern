@@ -573,9 +573,8 @@ aplicación las medidas de la impresora seleccionada. En el diálogo nativo debe
 mismo papel. Ver [tamaño de página CSS](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/At-rules/@page/size)
 y [diálogo de impresión](https://developer.mozilla.org/en-US/docs/Web/API/Window/print).
 
-**Solo texto** conserva separadores, saltos y caracteres Unicode para controladores genéricos;
-su tabla de caracteres sigue dependiendo del controlador/impresora. **Con diseño** prepara los
-rollos como imágenes con acentos dibujados en el navegador y requiere un controlador gráfico.
+Los recibos se imprimen siempre con diseño: los rollos se preparan como imágenes con acentos
+dibujados en el navegador y requieren un controlador gráfico.
 Las pruebas de navegador/PDF comprueban distribución y dimensiones solicitadas; no acreditan
 legibilidad física en un modelo o controlador no probado.
 
