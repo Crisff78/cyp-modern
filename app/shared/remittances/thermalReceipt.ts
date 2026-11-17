@@ -1,4 +1,4 @@
-import { cleanReceiptFooterNote, formatSpacedTitleLines, isPrintedHighlightRow, isRecipientPrintedReceipt, isSignatureRow, printedReceiptHeading, receiptIssuerLines, type Receipt } from "./receipt";
+import { cleanReceiptFooterNote, formatSpacedTitleLines, isHaitiRecipientVoucher, isPrintedHighlightRow, isSignatureRow, printedReceiptTitle, receiptIssuerLines, resolvePrintedAudience, type Receipt } from "./receipt";
 export { thermalReceiptSize } from "./receiptPaper";
 
 // Draw glyphs in the browser, not with the printer's resident fonts/code page.
@@ -72,7 +72,7 @@ export async function thermalReceiptImages(document: Document, receipt: Receipt,
     context.setLineDash([]);
   }, "Separador punteado");
 
-  if (isRecipientPrintedReceipt(receipt) && receipt.recipientVoucher) {
+  if (isHaitiRecipientVoucher(receipt) && receipt.recipientVoucher) {
     const v = receipt.recipientVoucher;
     const monoFont: Font = { size: widthMm < 50 ? 2.45 : 2.85, bold: true, mono: true };
     const titleFont: Font = { size: widthMm < 50 ? 2.9 : 3.35, bold: true, mono: true };
@@ -158,7 +158,7 @@ export async function thermalReceiptImages(document: Document, receipt: Receipt,
   if (issuerLines.length) { text(issuerLines.join("\n"), regular, "center"); hasHeader = true; }
   if (isPrinted) {
     if (hasHeader) dashedRule();
-    text(printedReceiptHeading, { size: 3.15, bold: true }, "center", 0.15);
+    text(printedReceiptTitle(resolvePrintedAudience(receipt)), { size: 3.15, bold: true }, "center", 0.15);
   } else if (hasHeader) {
     rule();
   }
