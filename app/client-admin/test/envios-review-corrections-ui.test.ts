@@ -10,6 +10,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { buildApp } from "../../server/src/app.js";
 import { seed } from "../../server/src/seed.js";
 import { MemoryStore } from "../../server/src/store.js";
+import { getAdminTools } from "../../server/src/admin-tools.js";
+import { stationInstallationScope } from "../../server/src/station-installations.js";
 import { businessDate } from "../../server/src/domain.js";
 import { createRemittance, openRemittanceCash, quoteRemittance, setCommissionPolicy, setDailyRate } from "../../server/src/remittances.js";
 import { DEMO_PASSWORD } from "../../server/src/demo-credentials.js";
@@ -80,6 +82,11 @@ test("review of Envíos and Cajero: windows, notices, names and fields", { skip:
 import ${surface === "admin" ? "App" : "{ App }"} from ${module("App.tsx")};
 import ${module("styles.css")};
 ${surface === "admin" ? `import ${module("suggestions-shell.css")};` : ""}
+import { getOrCreateStationInstallationKey } from ${module("../../client-admin/src/stationInstallationKey.ts")};
+window.syntheticStation = async (stationId) => {
+  const {installationId, publicKeySpki} = await getOrCreateStationInstallationKey(stationId);
+  return { installationId, publicKeySpki };
+};
 window.print = () => {};
 createRoot(document.getElementById("root")).render(<App />);`, "utf8");
       await build({ root, configFile: false, envFile: false, publicDir: false, cacheDir: path.join(output, `cache-${surface}`), resolve: { dedupe: ["react", "react-dom"] }, plugins: surface === "admin" ? [react(), tailwind()] : [react()],
@@ -250,6 +257,17 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
       } finally { await context.close(); }
     });
 
+    // Register only in the isolated fixture. The browser key and format lookup are the production implementations.
+    const linkHaitiStation = async (page: any) => {
+      const stationId = randomUUID();
+      const identity = await page.evaluate((id: string) => (window as any).syntheticStation(id), stationId);
+      await store.transaction(current => {
+        const tools = getAdminTools(current);
+        tools.stations.push({ id: stationId, name: "Puesto ficticio", number: stationId, description: "", deviceId: "", group: "", type: "", license: "", version: "", active: true, recipientReceiptFormat: "haiti" });
+        tools.installations.push({ scopeId: stationInstallationScope(current, {}, true)!, stationId, ...identity, algorithm: "ECDSA-P256-SHA256", status: "active", revision: randomUUID(), registeredBy: admin.id, registeredAt: now.toISOString() });
+      });
+      return stationId;
+    };
     let pending: { envioReference: string; reciboReference: string } | undefined;
     const receiptDetail = async (page: any) => {
       await (await menuOption(page, "Entregas de dinero")).click();
@@ -269,13 +287,22 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         const summary = await detail.locator("section").filter({ has: page.getByRole("heading", { name: "Registro del recibo", exact: true }) }).innerText();
         assert.match(summary, /Operador del envío\s+Administración/); assert.match(summary, /Registrado por\s+Administración/);
         assert.equal(await detail.getByLabel("Tipo de recibo", { exact: true }).inputValue(), "recipient");
-        // 17-11-2026: the recipient gets the common voucher unless the format of Haiti is chosen in this same panel.
-        const format = detail.getByLabel("Formato de recibo", { exact: true });
-        assert.equal(await format.inputValue(), "common");
+        const type = detail.getByLabel("Tipo de recibo", { exact: true });
+        assert.equal(await detail.getByRole("combobox", { name: "Formato de recibo", exact: true }).count(), 0);
+        await detail.getByText("Formato de recepción de la estación: Común", { exact: true }).waitFor();
         const commonPreview = await detail.getByLabel("Vista previa del recibo para imprimir", { exact: true }).textContent();
         assert.ok(commonPreview && commonPreview.includes("RECIBO DE RECEPCIÓN"));
         for (const gone of ["RECIBE EN", "Código del Cliente", "Importes del envío", "Total pagado por el remitente", "Forma pago del remitente"]) assert.equal(commonPreview?.includes(gone), false, gone);
-        await format.selectOption("haiti");
+        const stationId = await linkHaitiStation(page);
+        await type.selectOption("sender");
+        // A failed lookup blocks only the recipient copy. Retry reads the registered station.
+        await page.route("**/api/envios/formato-recepcion", (route: any) => route.fulfill({ status: 503, json: {} }), { times: 1 });
+        await type.selectOption("recipient");
+        await detail.getByRole("button", { name: "Reintentar" }).waitFor();
+        assert.equal(await detail.getByRole("button", { name: "Imprimir comprobante" }).isDisabled(), true);
+        assert.equal(await detail.getByLabel("Vista previa del recibo para imprimir").count(), 0);
+        await detail.getByRole("button", { name: "Reintentar" }).click();
+        await detail.getByText("Formato de recepción de la estación: Haití", { exact: true }).waitFor();
         assert.match(await detail.locator(".remittance-print-preview-caption").innerText(), /Formato de Haití/);
         const recipientPreview = await detail.getByLabel("Vista previa del recibo para imprimir", { exact: true }).textContent();
         assert.ok(recipientPreview && recipientPreview.includes("RECIBE EN EUR:"));
@@ -294,7 +321,10 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         assert.match(recPrinted, /RECIBE EN EUR:/);
         assert.equal(recPrinted.includes("Operador del envío"), false);
         assert.equal(recPrinted.includes("demo-admin"), false);
-        await format.selectOption("common");
+        await ok("POST", `/api/estaciones/${stationId}/formato-recepcion`, { recipientReceiptFormat: "common" });
+        await type.selectOption("sender");
+        await type.selectOption("recipient");
+        await detail.getByText("Formato de recepción de la estación: Común", { exact: true }).waitFor();
         const commonPopupReady = context.waitForEvent("page");
         await detail.getByRole("button", { name: "Imprimir comprobante", exact: true }).click();
         const commonPopup = await commonPopupReady; await commonPopup.waitForLoadState();
@@ -302,8 +332,8 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         assert.match(commonPrinted, /RECIBO DE RECEPCIÓN/);
         for (const gone of ["RECIBE EN", "Código del Cliente", "Total pagado por el remitente", "Forma pago del remitente"]) assert.equal(commonPrinted.includes(gone), false, gone);
 
-        await detail.getByLabel("Tipo de recibo", { exact: true }).selectOption("sender");
-        assert.equal(await format.inputValue(), "common", "the format selector stays visible with the sender's receipt");
+        await ok("POST", `/api/estaciones/${stationId}/formato-recepcion`, { recipientReceiptFormat: "haiti" });
+        await type.selectOption("sender");
         const preview = await detail.getByLabel("Vista previa del recibo para imprimir", { exact: true }).textContent();
         assert.ok(preview && /Registrado por:\s+Administración/.test(preview));
         assert.equal(preview?.includes("Operador del envío"), false);
@@ -315,20 +345,38 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         assert.equal(printed.includes("Operador del envío"), false, "the printed invoice omits Operador del envío");
         assert.ok(printed.indexOf("Forma pago del remitente") >= 0 && printed.indexOf("Forma pago del remitente") < printed.indexOf("Registrado por"), "Registrado por is placed at the bottom");
         assert.equal(printed.includes("demo-admin"), false, "the receipt never carries an internal id");
-        // 17-11-2026: the format of Haiti changes the sender's receipt too.
-        await format.selectOption("haiti");
-        assert.match(await detail.locator(".remittance-print-preview-caption").innerText(), /Formato de Haití/);
-        const senderHaitiPreview = await detail.getByLabel("Vista previa del recibo para imprimir", { exact: true }).textContent();
-        assert.ok(senderHaitiPreview && senderHaitiPreview.includes("RECIBE EN EUR:"));
-        assert.equal(senderHaitiPreview?.includes("RECIBO DE ENVIO"), false);
-        const senderHaitiReady = context.waitForEvent("page");
-        await detail.getByRole("button", { name: "Imprimir comprobante", exact: true }).click();
-        const senderHaitiPopup = await senderHaitiReady; await senderHaitiPopup.waitForLoadState();
-        const senderHaitiPrinted = await printedSheet(senderHaitiPopup); await senderHaitiPopup.close();
-        assert.match(senderHaitiPrinted, /RECIBE EN EUR:/);
-        assert.equal(senderHaitiPrinted.includes("Forma pago del remitente"), false);
-        await detail.getByLabel("Tipo de recibo", { exact: true }).selectOption("recipient");
-        assert.match(await detail.locator(".remittance-print-preview-caption").innerText(), /Formato de Haití/, "what was chosen with the sender's receipt applies to the recipient's copy");
+        // A late error from a previous receipt selection must never replace the current station format.
+        let observed!: () => void, resume!: () => void;
+        const started = new Promise<void>(resolve => { observed = resolve; });
+        const release = new Promise<void>(resolve => { resume = resolve; });
+        await page.route("**/api/envios/formato-recepcion", async (route: any) => {
+          observed(); await release; await route.fulfill({ status: 503, json: {} });
+        }, { times: 1 });
+        await type.selectOption("recipient"); await started;
+        assert.equal(await detail.getByRole("button", { name: "Imprimir comprobante" }).isDisabled(), true);
+        await type.selectOption("sender");
+        assert.equal(await detail.getByRole("button", { name: "Imprimir comprobante" }).isDisabled(), false);
+        await type.selectOption("recipient");
+        await detail.getByText("Formato de recepción de la estación: Haití", { exact: true }).waitFor();
+        const late = page.waitForResponse((response: any) => response.url().endsWith("/formato-recepcion") && response.status() === 503);
+        resume(); await late;
+        assert.match(await detail.getByLabel("Vista previa del recibo para imprimir").innerText(), /RECIBE EN EUR:/);
+
+        // Same browser profile and origin, another operator on the collector portal.
+        const snapshot = await ok("GET", "/api/envios/snapshot", undefined, collectorToken);
+        const onRoute = snapshot.clients.find((c: { active: boolean; canReceive: boolean; id: string }) => c.active && c.canReceive && c.id !== sender.id);
+        assert.ok(onRoute);
+        const transfer = await store.transaction(current => {
+          const input = { sourceCurrency: "DOP" as const, destinationCurrency: "DOP" as const, amount: 10000, commissionBps: 500 };
+          return createRemittance(current, admin, { ...input, senderClientId: sender.id, recipientClientId: onRoute.id, quote: quoteRemittance(current, input, now).quote }, [], now);
+        });
+        await page.evaluate((token: string) => sessionStorage.setItem("cyp-collector-token", token), collectorToken);
+        await page.goto(`${origin}/collector/?view=remittances`);
+        await page.getByRole("navigation", { name: "Secciones de remesas" }).getByRole("button", { name: "Entregas" }).click();
+        await page.getByRole("button", { name: transfer.reciboReference, exact: true }).click();
+        const collectorReceipt = page.getByRole("dialog", { name: `${transfer.envioReference} · ${transfer.reciboReference}` });
+        await collectorReceipt.getByText("Formato de recepción de la estación: Haití", { exact: true }).waitFor();
+        assert.match(await collectorReceipt.getByLabel("Vista previa del recibo para imprimir").innerText(), /RECIBE EN DOP:/);
       } finally { await context.close(); }
     });
 
@@ -546,13 +594,16 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
         await envios.getByRole("button", { name: "Revisar y confirmar envío", exact: true }).click();
         await confirmIn(page, "Confirmar envío");
         const print = page.getByRole("dialog", { name: "¿Quieres imprimir el recibo?", exact: true });
-        assert.equal(await print.getByLabel("Formato de recibo", { exact: true }).inputValue(), "common", "the print prompt of a new send shows the format selector too");
-        // 17-11-2026: with «Haití», the receipt of a new send, which is the sender's, comes out in the format of Haiti.
-        await print.getByLabel("Formato de recibo", { exact: true }).selectOption("haiti");
-        const promptPreview = await print.getByLabel("Vista previa del recibo para imprimir", { exact: true }).textContent();
-        assert.ok(promptPreview && promptPreview.includes("RECIBE EN DOP:"));
-        assert.equal(promptPreview?.includes("RECIBO DE ENVIO"), false);
-        await print.getByLabel("Formato de recibo", { exact: true }).selectOption("common");
+        await linkHaitiStation(page);
+        assert.equal(await print.getByRole("combobox", { name: "Formato de recibo", exact: true }).count(), 0);
+        const promptPreview = print.getByLabel("Vista previa del recibo para imprimir", { exact: true });
+        assert.match(await promptPreview.innerText(), /RECIBO DE ENVIO/);
+        const type = print.getByLabel("Tipo de recibo", { exact: true });
+        await type.selectOption("recipient");
+        await print.getByText("Formato de recepción de la estación: Haití", { exact: true }).waitFor();
+        assert.match(await promptPreview.innerText(), /RECIBE EN DOP:/);
+        await type.selectOption("sender");
+        assert.match(await promptPreview.innerText(), /RECIBO DE ENVIO/);
         await print.getByRole("button", { name: "No imprimir", exact: true }).click(); await print.waitFor({ state: "detached" });
         await waitForFocus(page, '[data-client-side="sender"] input');
         assert.equal(await envios.getByRole("listbox", { name: "Clientes para remitente", exact: true }).count(), 0, "the cursor waits in the sender without unfolding its catalog");

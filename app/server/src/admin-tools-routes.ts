@@ -18,9 +18,11 @@ type Describe = (method: string, path: string, summary: string, schema?: z.ZodTy
 const id = singleLine(80, 1);
 const name = singleLine(160, 1);
 const short = singleLine(160).default("");
+const recipientReceiptFormat = z.enum(["common", "haiti"]);
+const stationReceiptBody = z.object({ recipientReceiptFormat }).strict();
 // `active` defaults only on creation (station inactive, PCP active): an edit that omits it keeps the current state.
 const stationBody = z.object({ name, number: singleLine(80, 1).optional(), deviceId: short, description: freeText(1000).default(""),
-  group: short, type: short, active: z.boolean().optional() }).strict();
+  group: short, type: short, active: z.boolean().optional(), recipientReceiptFormat: recipientReceiptFormat.optional() }).strict();
 const stationValidationBody = z.object({ stationCode: name, deviceId: name }).strict();
 const stationLookupBody = z.object({ stationCode: name }).strict();
 const pcpBody = z.object({ name, number: singleLine(80, 1), groupId: id, address: singleLine(500).default(""), phone: phone.pipe(phoneOrEmpty).default(""), active: z.boolean().optional() }).strict();
@@ -44,7 +46,7 @@ export function registerAdminToolsRoutes(app: FastifyInstance, store: Store, use
     return rraa;
   };
   const stationView = (station: ReturnType<typeof getAdminTools>["stations"][number]) =>
-    ({ ...station, rraaValidated: stationRraaValidated(station, rraa?.clientId) });
+    ({ ...station, recipientReceiptFormat: station.recipientReceiptFormat ?? "common", rraaValidated: stationRraaValidated(station, rraa?.clientId) });
   app.get("/api/estaciones", async (req) => { assertAdminRead(user(req)); return getAdminTools(await store.read()).stations.map(stationView); });
   app.get("/api/estaciones/rraa", async (req) => {
     assertAdminRead(user(req));
@@ -92,6 +94,12 @@ export function registerAdminToolsRoutes(app: FastifyInstance, store: Store, use
     return data.pcps.map((row) => ({ ...row, stationIds: data.pcpStations.filter((link) => link.pcpId === row.id).map((link) => link.stationId) }));
   });
   describe("get", "/api/estaciones", "Estaciones registradas");
+  mutate("/api/estaciones/:id/formato-recepcion", "Guardar el formato del recibo de recepción de una estación", stationReceiptBody, (state, actor, body, params) => {
+    assertAdmin(actor);
+    const station = requireAdminRow(getAdminTools(state).stations, params.id, "Estación");
+    station.recipientReceiptFormat = body.recipientReceiptFormat;
+    return stationView(station);
+  });
   describe("get", "/api/grupos-pcp", "Grupos de puntos de cobros y pagos");
   describe("get", "/api/pcps", "Puntos de cobros y pagos y sus estaciones");
   for (const editing of [false, true]) {

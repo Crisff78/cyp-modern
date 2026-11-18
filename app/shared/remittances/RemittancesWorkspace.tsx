@@ -35,6 +35,7 @@ import { printRemittanceReceipt, remittanceReceipt } from "./receipt";
 import { RemittanceReceipt } from "./RemittanceReceipt";
 import { ReceiptPrintControls, type PrintedReceiptAudience, type ReceiptPrintOptions } from "./ReceiptPrintControls";
 import { readSavedReceiptPrintOptions, saveReceiptPrintOptions } from "./receiptPaper";
+import { useStationReceiptFormat } from "./useStationReceiptFormat";
 import { encryptCardArchive } from "./cardArchive.mjs";
 import { CashMovementForm, type CashMovementReview } from "./CashMovementForm";
 import { CashActivityDialog } from "./CashActivityDialog";
@@ -275,8 +276,10 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   const [promptAudience, setPromptAudience] = useState<PrintedReceiptAudience>("sender");
   const [receiptOptions, setReceiptOptionsState] = useState<ReceiptPrintOptions>(readSavedReceiptPrintOptions);
   const setReceiptOptions = (next: ReceiptPrintOptions) => { setReceiptOptionsState(next); saveReceiptPrintOptions(next); };
-  const detailPrintOptions: ReceiptPrintOptions = { ...receiptOptions, audience: receiptAudience };
-  const promptPrintOptions: ReceiptPrintOptions = { ...receiptOptions, audience: promptAudience };
+  const detailStation = useStationReceiptFormat(api, user.id, detailId && receiptAudience === "recipient" ? JSON.stringify([detailId, detailReveal]) : null);
+  const promptStation = useStationReceiptFormat(api, user.id, promptAudience === "recipient" ? printTransfer?.id ?? null : null);
+  const detailPrintOptions: ReceiptPrintOptions = { ...receiptOptions, audience: receiptAudience, receiptFormat: detailStation.status === "ready" ? detailStation.format : undefined };
+  const promptPrintOptions: ReceiptPrintOptions = { ...receiptOptions, audience: promptAudience, receiptFormat: promptStation.status === "ready" ? promptStation.format : undefined };
   const updateDetailPrintOptions = (next: ReceiptPrintOptions) => {
     if (next.audience) setReceiptAudience(next.audience);
     setReceiptOptions(next);
@@ -576,7 +579,7 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
   const runOutput = (action: () => void) => { try { action(); setOutputError(""); } catch (failure) { setOutputError(failureMessage(failure)); } };
   const closePrintPrompt = () => { setPrintTransfer(null); setReceiptPrintError(""); setFocusVersion((value) => value + 1); };
   const printSavedReceipt = () => {
-    if (!printTransfer) return;
+    if (!printTransfer || promptStation.status !== "ready") return;
     try { printRemittanceReceipt(customerReceipt(printTransfer, true, promptAudience), promptPrintOptions); closePrintPrompt(); }
     catch (failure) { setReceiptPrintError(failureMessage(failure)); }
   };
@@ -1066,8 +1069,8 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
     {detail && <RemittanceWindow key={detail.id} title={`${detail.envioReference} · ${detail.reciboReference}`} desktopId={desktopId} nextZIndex={nextWindowZIndex} returnFocus={detailFocusReturn} revealVersion={detailReveal} onClose={() => { setDetailId(null); if (view === "recibos") setFocusVersion((value) => value + 1); }}>
       <RemittanceReceipt receipt={customerReceipt(detail)} />
       {payCashNotice}
-      <ReceiptPrintControls value={detailPrintOptions} onChange={updateDetailPrintOptions} receipt={customerReceipt(detail, true, receiptAudience)} />
-      <div className="remittance-actions"><button type="button" onClick={() => runOutput(() => printRemittanceReceipt(customerReceipt(detail, true, receiptAudience), detailPrintOptions))}>Imprimir comprobante</button>{payoutsShown && detail.status === "pending" && detail.canPay && can("remittances.pay") && <button type="button" className="remittance-primary" onClick={() => confirm({ title: "Confirmar entrega al destinatario", path: `/envios/${encodeURIComponent(detail.id)}/pagar`, body: {}, kind: "pay", description: <p>Registrar entrega única de <strong>{money(detail.receiveAmount, detail.destinationCurrency)}</strong> a <strong>{detail.recipientContact?.name ?? clientName(detail.recipientClientId)}</strong>. Se descuenta de tu caja abierta de hoy. Confirma después de entregar el dinero.</p> })}>Registrar entrega</button>}</div>
+      <ReceiptPrintControls value={detailPrintOptions} onChange={updateDetailPrintOptions} receipt={customerReceipt(detail, true, receiptAudience)} station={detailStation} />
+      <div className="remittance-actions"><button type="button" disabled={detailStation.status !== "ready"} onClick={() => runOutput(() => printRemittanceReceipt(customerReceipt(detail, true, receiptAudience), detailPrintOptions))}>Imprimir comprobante</button>{payoutsShown && detail.status === "pending" && detail.canPay && can("remittances.pay") && <button type="button" className="remittance-primary" onClick={() => confirm({ title: "Confirmar entrega al destinatario", path: `/envios/${encodeURIComponent(detail.id)}/pagar`, body: {}, kind: "pay", description: <p>Registrar entrega única de <strong>{money(detail.receiveAmount, detail.destinationCurrency)}</strong> a <strong>{detail.recipientContact?.name ?? clientName(detail.recipientClientId)}</strong>. Se descuenta de tu caja abierta de hoy. Confirma después de entregar el dinero.</p> })}>Registrar entrega</button>}</div>
       {sendsShown && detail.status === "pending" && detail.canCancel && can("remittances.cancel") && <form className="remittance-cancel" onSubmit={prepareCancellation}><label>Motivo de cancelación<textarea aria-label="Motivo de cancelación" required maxLength={INPUT_LIMITS.freeNote} value={cancelReason} onPaste={(event) => restrictPaste(event, (value) => isTextDraft(value, INPUT_LIMITS.freeNote, true), () => setError("El motivo admite hasta 500 caracteres, sin caracteres de control."))} onChange={(event) => { if (!isTextDraft(event.target.value, INPUT_LIMITS.freeNote, true)) { setError("El motivo admite hasta 500 caracteres, sin caracteres de control."); return; } setCancelReason(event.target.value); setError(""); }} /></label>{detail.payment && detail.payment.method !== "cash" && <div className="remittance-refund">
         <p>Este envío se pagó por {paymentLabel(detail.payment)}. Comprueba la devolución al remitente por ese medio antes de cancelarlo; no se retirará efectivo de caja.</p>
         <label>Referencia de devolución<input inputMode="text" title="Hasta 160 caracteres en una sola línea, sin caracteres de control ni marcas invisibles." maxLength={160} value={refundReference} onPaste={(event) => restrictPaste(event, isPaymentTextDraft, () => setCancelError("La referencia de devolución admite hasta 160 caracteres en una sola línea, sin caracteres de control ni marcas invisibles."))} onChange={(event) => { if (!isPaymentTextDraft(event.target.value)) { setCancelError("La referencia de devolución admite hasta 160 caracteres en una sola línea, sin caracteres de control ni marcas invisibles."); return; } setRefundReference(event.target.value); setCancelError(""); }} /></label>
@@ -1102,9 +1105,9 @@ export default function RemittancesWorkspace({ api, user, isAdmin, initialTab = 
     {printTransfer && <Dialog title="¿Quieres imprimir el recibo?" onClose={closePrintPrompt}>
       <p>El envío <strong>{printTransfer.envioReference}</strong> quedó registrado correctamente. Recibo: <strong>{printTransfer.reciboReference}</strong>.</p>
       <p>Puedes imprimirlo ahora o más tarde desde el detalle del envío.</p>
-      <ReceiptPrintControls value={promptPrintOptions} onChange={updatePromptPrintOptions} receipt={customerReceipt(printTransfer, true, promptAudience)} />
+      <ReceiptPrintControls value={promptPrintOptions} onChange={updatePromptPrintOptions} receipt={customerReceipt(printTransfer, true, promptAudience)} station={promptStation} />
       {receiptPrintError && <p className="remittance-error" role="alert">{receiptPrintError}</p>}
-      <div className="remittance-actions"><button type="button" onClick={closePrintPrompt}>No imprimir</button><button type="button" data-autofocus className="remittance-primary" onClick={printSavedReceipt}>Imprimir</button></div>
+      <div className="remittance-actions"><button type="button" onClick={closePrintPrompt}>No imprimir</button><button type="button" data-autofocus className="remittance-primary" disabled={promptStation.status !== "ready"} onClick={printSavedReceipt}>Imprimir</button></div>
     </Dialog>}
   </section>;
 }

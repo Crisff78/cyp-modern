@@ -138,15 +138,32 @@ test("station save allocates numbers transactionally, stores provider ID/license
   } finally { await env.close(); }
 });
 
-test("resolved provider data survives FileStore reopening without changing the software version", async () => {
+test("station receipt format survives FileStore reopening, legacy edits and provider unavailability", async () => {
   const directory = await mkdtemp(join(tmpdir(), "cyp-station-lookup-")), file = join(directory, "state.json");
   const env = await fixture(await FileStore.open(file, seed()));
   try {
-    const saved = (await env.post("/estaciones", { name: "QA STATION &1" })).json();
+    const common = (await env.post("/estaciones", { name: "QA-SECOND" })).json();
+    assert.equal(common.recipientReceiptFormat, "common");
+    const saved = (await env.post("/estaciones", { name: "QA STATION &1", recipientReceiptFormat: "haiti" })).json();
+    assert.equal(saved.recipientReceiptFormat, "haiti");
+    assert.equal((await env.post(`/estaciones/${saved.id}`, { name: saved.name })).json().recipientReceiptFormat, "haiti");
+    env.rejectLookup(true);
+    const calls = env.calls.length, path = `/estaciones/${common.id}/formato-recepcion`, key = randomUUID();
+    const response = await env.post(path, { recipientReceiptFormat: "haiti" }, key);
+    assert.equal(response.statusCode, 200, response.body);
+    assert.deepEqual(response.json(), { ...common, recipientReceiptFormat: "haiti" });
+    assert.deepEqual((await env.post(path, { recipientReceiptFormat: "haiti" }, key)).json(), response.json());
+    assert.equal((await env.post(path, { recipientReceiptFormat: "common" }, key)).statusCode, 409);
+    assert.equal((await env.post(path, { recipientReceiptFormat: "invalid" })).statusCode, 400);
+    assert.equal((await env.post(path, { recipientReceiptFormat: "common", active: true })).statusCode, 400);
+    assert.equal((await env.post(path, { recipientReceiptFormat: "common" }, randomUUID(), env.collector)).statusCode, 403);
+    assert.equal(env.calls.length, calls);
     const reopened = await FileStore.open(file, seed());
     try {
       const station = getAdminTools(await reopened.read()).stations.find((row) => row.id === saved.id)!;
       assert.equal(station.operatingSystem, "7"); assert.equal(station.deviceId, "QA-DEVICE"); assert.equal(station.version, "");
+      assert.equal(station.recipientReceiptFormat, "haiti");
+      assert.equal(getAdminTools(await reopened.read()).stations.find((item) => item.id === common.id)?.recipientReceiptFormat, "haiti");
     } finally { await reopened.close(); }
   } finally {
     await env.close(); assert.equal(dirname(resolve(directory)), resolve(tmpdir())); assert.ok(basename(directory).startsWith("cyp-station-lookup-"));

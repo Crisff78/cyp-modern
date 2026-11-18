@@ -64,6 +64,10 @@ function checkRequest(actor: User, method: string, route: string): boolean {
   }
   if (parts[0] === "envios") {
     let permission: RemittancePermission | undefined;
+    if (path === "envios/formato-recepcion") {
+      if (!hasRemittancePermission(actor, "remittances.receipts")) requireRemittancePermission(actor, "remittances.view");
+      return true;
+    }
     if (path === "envios/snapshot") {
       if (!hasRemittanceAccess(actor) && !hasRemittancePermission(actor, "remittances.commissions.view") && !hasRemittancePermission(actor, "remittances.rates.view"))
         throw new DomainError("PERMISSION_REQUIRED", "Tu cuenta no tiene acceso a Remesas.", 403);
@@ -103,6 +107,11 @@ function checkRequest(actor: User, method: string, route: string): boolean {
     return true;
   }
   if (path === "permisos") { requirePermission(actor, 101); return true; }
+  if (parts[0] === "estaciones" && parts[2] === "formato-recepcion") {
+    requirePermission(actor, 111);
+    requirePermission(actor, 113);
+    return true;
+  }
   if (["estaciones/validar", "estaciones/obtener-datos"].includes(path)) {
     requirePermission(actor, 111);
     if (!hasPermission(actor, 112) && !hasPermission(actor, 113)) throw new DomainError("PERMISSION_REQUIRED", "No tienes permiso para registrar ni editar estaciones.", 403);

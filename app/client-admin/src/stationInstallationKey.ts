@@ -1,5 +1,5 @@
-const DATABASE_NAME = "cyp-station-installation-v1";
-const STORE_NAME = "keys";
+import { base64Url, installationId, isStationSigningKey, keyScope, openDatabase, requireStorage, STORE_NAME, verifyPublicIdentity } from "../../shared/remittances/localStationInstallations";
+
 const pendingCreations = new Map<string, Promise<StationInstallationKey>>();
 
 export type StationInstallationKey = {
@@ -11,74 +11,18 @@ export type StationInstallationKey = {
   privateKey: CryptoKey;
 };
 
-function requireStorage() {
-  if (!globalThis.isSecureContext || !globalThis.crypto?.subtle || !globalThis.indexedDB) {
-    throw new Error("La identidad de instalación requiere HTTPS o localhost, Web Crypto e IndexedDB disponibles.");
-  }
-}
-
-function keyScope(stationId: string) {
-  if (!stationId || stationId.length > 200) throw new Error("Selecciona una estación válida.");
-  return JSON.stringify([window.location.origin, stationId]);
-}
-
-function base64Url(bytes: Uint8Array) {
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-}
-
-function publicBytes(value: string) {
-  if (!/^[A-Za-z0-9_-]{122}$/.test(value)) throw new Error("La clave pública local no es válida.");
-  const binary = atob(value.replace(/-/g, "+").replace(/_/g, "/"));
-  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
-  if (bytes.byteLength !== 91 || base64Url(bytes) !== value) throw new Error("La clave pública local no tiene codificación canónica.");
-  return bytes;
-}
-
-async function installationId(bytes: Uint8Array) {
-  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes as BufferSource));
-  return "CYP-INST-" + Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
 async function validateStored(value: unknown, stationId: string): Promise<StationInstallationKey | null> {
   if (value === undefined) return null;
   const record = value as Partial<StationInstallationKey> | null;
   const key = record?.privateKey;
-  const algorithm = key?.algorithm as EcKeyAlgorithm | undefined;
-  if (!record || record.scope !== keyScope(stationId) || record.origin !== window.location.origin ||
-      record.stationId !== stationId || typeof record.publicKeySpki !== "string" ||
-      key?.type !== "private" || key.extractable !== false || algorithm?.name !== "ECDSA" ||
-      algorithm.namedCurve !== "P-256" || !Array.isArray(key.usages) || key.usages.length !== 1 || key.usages[0] !== "sign" ||
-      record.installationId !== await installationId(publicBytes(record.publicKeySpki))) {
+  if (!record || !isStationSigningKey(key)) {
     throw new Error("La identidad guardada no es válida. No se reemplazó ni se registró otra instalación.");
   }
-  const bytes = publicBytes(record.publicKeySpki!);
-  const publicKey = await crypto.subtle.importKey("spki", bytes as BufferSource, { name: "ECDSA", namedCurve: "P-256" }, true, ["verify"]);
-  if (base64Url(new Uint8Array(await crypto.subtle.exportKey("spki", publicKey))) !== record.publicKeySpki) throw new Error("La clave pública guardada no es canónica.");
+  const publicKey = await verifyPublicIdentity(record, stationId);
   const probe = new TextEncoder().encode("CYP-INSTALLATION-LOCAL-KEY-CHECK-V1");
-  const proof = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, key!, probe);
+  const proof = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, key, probe);
   if (!await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, publicKey, proof, probe)) throw new Error("La clave privada guardada no corresponde a la identidad pública. No se reemplazó la identidad.");
   return record as StationInstallationKey;
-}
-
-function openDatabase(): Promise<IDBDatabase> {
-  requireStorage();
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const request = indexedDB.open(DATABASE_NAME, 1);
-    request.onupgradeneeded = () => {
-      if (!request.result.objectStoreNames.contains(STORE_NAME)) request.result.createObjectStore(STORE_NAME, { keyPath: "scope" });
-    };
-    request.onerror = () => { settled = true; reject(new Error("No se pudo abrir el almacenamiento de la identidad de este navegador.")); };
-    request.onblocked = () => { settled = true; reject(new Error("El almacenamiento está ocupado por otra pestaña. Cierra esa pestaña y vuelve a intentarlo.")); };
-    request.onsuccess = () => {
-      const database = request.result;
-      database.onversionchange = () => database.close();
-      if (settled) database.close();
-      else { settled = true; resolve(database); }
-    };
-  });
 }
 
 /** Reads a persisted CryptoKey. Reading a screen never generates a key. */
