@@ -2,10 +2,11 @@ import { randomUUID } from "node:crypto";
 import { assertAdmin, DomainError, type State, type User } from "./domain.js";
 import type { StationInstallation, StationInstallationChallenge } from "./station-installation-protocol.js";
 
+export type RecipientReceiptFormat = "common" | "haiti";
 export type PcpStation = {
   id: string; number: string; name: string; deviceId: string; description: string;
   group: string; type: string; license: string; version: string; active: boolean;
-  operatingSystem?: string;
+  operatingSystem?: string; recipientReceiptFormat?: RecipientReceiptFormat;
   rraaClientId?: string; rraaStationCode?: string; rraaDeviceId?: string;
   rraaValidatedAt?: string; rraaValidatedBy?: string;
 };

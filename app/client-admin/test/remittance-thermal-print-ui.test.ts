@@ -205,16 +205,15 @@ for(const [name,paper,orientation,customWidthMm,customHeightMm] of [['sheet-8x4'
       for(const forbidden of ["RECIBO DE ENVIO","Código del Cliente:","1111111111","Importes del envío","Total pagado por el remitente:","DOP 594.00","Forma pago del remitente:","RECIBE EN","PARA RECLAMACIONES"])assert(!receptionText.includes(forbidden),`${id} unexpected ${forbidden}`);
       await reception.screenshot({path:path.join(output,`${id}.png`),fullPage:true});await reception.close();
     }
-    // 17-11-2026: with the format of Haiti the sender's receipt is the same short voucher.
+    // A Haiti station prints the same sender receipt as a common station.
     const openingSenderHaiti=page.waitForEvent("popup");await page.getByRole("button",{name:"sender-haiti-pos80-graphics",exact:true}).click();const senderHaiti=await openingSenderHaiti;
     await senderHaiti.waitForFunction(()=>(window as any).__prints===1);
     await senderHaiti.setViewportSize({width:Math.floor(72.1*96/25.4),height:760});
     await senderHaiti.emulateMedia({media:"print"});
     const senderHaitiCheck=await senderHaiti.evaluate(()=>({runs:(window as any).__runs,alts:Array.from(document.querySelectorAll<HTMLImageElement>("main.thermal-image-output img")).map(img=>img.alt)}));
-    const senderHaitiText=senderHaitiCheck.runs.map((r:any)=>r.text).join(" ").replace(/\s+/g," ");
-    for(const expected of ["Envío #: ENV00000048","TELÉFONO: 8095550100","MONTO: DOP 500.00","RECIBE EN DOP:"])assert(senderHaitiText.includes(expected),`sender-haiti-pos80-graphics missing ${expected}`);
-    for(const forbidden of ["RECIBO DE ENVIO","Forma pago del remitente","Recibido por"])assert(!senderHaitiText.includes(forbidden),`sender-haiti-pos80-graphics unexpected ${forbidden}`);
-    assert.equal(senderHaitiCheck.alts.filter((a:string)=>a==="Separador").length,2);assert(!senderHaitiCheck.alts.includes("Logo de la empresa"));
+    const senderHaitiText = senderHaitiCheck.runs.map((run:any) => run.text).join("\n");
+    assert.equal(senderHaitiText, posGraphicText);
+    assert.deepEqual(senderHaitiCheck.alts, graphicCheck.alts);
     await senderHaiti.screenshot({path:path.join(output,"sender-haiti-pos80-graphics.png"),fullPage:true});await senderHaiti.close();
     const openingReceptionSheet=page.waitForEvent("popup");await page.getByRole("button",{name:"reception-a4-graphics",exact:true}).click();const receptionSheet=await openingReceptionSheet;
     await receptionSheet.waitForFunction(()=>(window as any).__prints===1);

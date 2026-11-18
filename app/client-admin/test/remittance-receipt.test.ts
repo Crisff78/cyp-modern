@@ -151,7 +151,7 @@ test("the company title is spaced letter by letter and split only between words"
   assert.deepEqual(formatSpacedTitleLines("Inversiones Demo S.R.L.", (line) => line.length <= 31), ["I N V E R S I O N E S   D E M O", "S . R . L ."]);
   assert.deepEqual(formatSpacedTitleLines("Inversiones Demo S.R.L.", (line) => line.length <= 5), []);
 });
-test("the format of Haiti renders the KEBEK voucher across all paper sizes, the same for the recipient and for the sender", () => {
+test("a Haiti station prints the KEBEK voucher only for the recipient across all paper sizes", () => {
   const configuredIssuer = {
     name: "Inversiones Demo S.R.L.",
     slogan: "Tu aliado en cobros, pagos y envíos",
@@ -178,10 +178,12 @@ test("the format of Haiti renders the KEBEK voucher across all paper sizes, the 
   };
   const recipientModel = remittanceReceipt(paidTransfer, undefined, "Operador", "Administración", true, "recipient");
   assert.equal(recipientModel.audience, "recipient");
-  for (const paper of ["51", "58", "76", "80", "102", "auto", "a4", "letter", "8x4", "8x11"] as const) {
+  for (const paper of ["51", "58", "76", "80", "102", "auto", "a4", "letter", "8x4", "8x11", "custom"] as const) {
     const graphicHtml = receiptHtml(recipientModel, { paper, compact: false, receiptFormat: "haiti" });
-    assert.equal(receiptHtml(recipientModel, { paper, compact: false, audience: "sender", receiptFormat: "haiti" }), graphicHtml,
-      `paper=${paper}: with the format of Haiti the sender gets the same voucher`);
+    const senderOptions = { paper, compact: false, audience: "sender" } as const;
+    const senderHtml = receiptHtml(recipientModel, senderOptions);
+    assert.equal(receiptHtml(recipientModel, { ...senderOptions, receiptFormat: "haiti" }), senderHtml);
+    assert(senderHtml.includes("RECIBO DE ENVIO") && senderHtml.includes("Forma pago del remitente"));
     for (const required of [
       "Inversiones Demo S.R.L.",
       "Envío #: ENV00000001",
@@ -200,7 +202,6 @@ test("the format of Haiti renders the KEBEK voucher across all paper sizes, the 
       assert(!graphicHtml.includes(forbidden), `unexpected "${forbidden}" in recipient graphic html for paper=${paper}`);
     }
   }
-  // 17-11-2026: without the format of Haiti, the same model prints the sender's receipt.
   const senderCommonHtml = receiptHtml(recipientModel, { paper: "a4", compact: false, audience: "sender" });
   assert(senderCommonHtml.includes("RECIBO DE ENVIO"));
   assert.equal((senderCommonHtml.match(/receipt-sheet-divided"/g) ?? []).length, 5);
@@ -236,10 +237,16 @@ test("the recipient's copy is the sender receipt titled RECIBO DE RECEPCIÓN wit
     undefined, "Operador", "Cajero", true)));
   assert(delivered.includes("Cargo de entrega: DOP 45.00"), "the delivery charge is taken from what the recipient gets, so it stays");
 
-  // The format is «Común» unless told otherwise, and what the window asks for goes before what the receipt brings.
+  // Both audience and format may come from the print request or its receipt.
   assert.equal(resolveReceiptFormat(receipt), "common");
-  assert.equal(resolveReceiptFormat({ ...receipt, receiptFormat: "haiti" }), "haiti");
-  assert.equal(resolveReceiptFormat({ ...receipt, receiptFormat: "haiti" }, { receiptFormat: "common" }), "common");
+  const haitiSender = { ...receipt, audience: "sender", receiptFormat: "haiti" } as const;
+  const haitiRecipient = { ...haitiSender, audience: "recipient" } as const;
+  assert.equal(resolveReceiptFormat(haitiSender), "common");
+  assert.equal(resolveReceiptFormat({ receiptFormat: "haiti" }), "common");
+  assert.equal(resolveReceiptFormat(haitiRecipient), "haiti");
+  assert.equal(resolveReceiptFormat(haitiRecipient, { receiptFormat: "common" }), "common");
+  assert.equal(resolveReceiptFormat(haitiRecipient, { audience: "sender" }), "common");
+  assert.equal(resolveReceiptFormat(haitiSender, { audience: "recipient" }), "haiti");
   // Without «Haití», the recipient never gets the voucher of Haiti, also when the receipt was built for the recipient.
   assert(!receiptHtml(remittanceReceipt(transfer, undefined, "Operador", "Cajero", true, "recipient"), { paper: "80", compact: false }).includes("RECIBE EN "));
 });

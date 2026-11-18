@@ -66,21 +66,15 @@ test("custom dimensions are numeric, bounded and validated before opening a prin
     // A browser that had «Solo texto» saved keeps its paper and prints with the design.
     memory.set("cyp.remittances.receiptPrintOptions", JSON.stringify({ paper: "58", compact: true, output: "text" }));
     assert.deepEqual(readSavedReceiptPrintOptions(), { paper: "58", compact: true });
-    // The format for Haiti is remembered like the paper; the type of receipt still is not.
-    saveReceiptPrintOptions({ paper: "80", compact: false, audience: "recipient", receiptFormat: "haiti" });
-    const savedHaiti = memory.get("cyp.remittances.receiptPrintOptions") ?? "";
-    assert(savedHaiti.includes('"receiptFormat":"haiti"')); assert(!savedHaiti.includes("audience"));
-    assert.deepEqual(readSavedReceiptPrintOptions(), { paper: "80", compact: false, receiptFormat: "haiti" });
-    memory.set("cyp.remittances.receiptPrintOptions", JSON.stringify({ paper: "80", compact: false, receiptFormat: "otro" }));
-    assert.deepEqual(readSavedReceiptPrintOptions(), { paper: "80", compact: false });
-    // Until 17-11-2026 the format was saved as recipientFormat: a browser that had «Haití» keeps it.
-    memory.set("cyp.remittances.receiptPrintOptions", JSON.stringify({ paper: "80", compact: false, recipientFormat: "haiti" }));
-    assert.deepEqual(readSavedReceiptPrintOptions(), { paper: "80", compact: false, receiptFormat: "haiti" });
-    memory.set("cyp.remittances.receiptPrintOptions", JSON.stringify({ paper: "80", compact: false, recipientFormat: "otro" }));
-    assert.deepEqual(readSavedReceiptPrintOptions(), { paper: "80", compact: false });
-    // What was saved with the new name goes first.
-    memory.set("cyp.remittances.receiptPrintOptions", JSON.stringify({ paper: "80", compact: false, receiptFormat: "common", recipientFormat: "haiti" }));
-    assert.deepEqual(readSavedReceiptPrintOptions(), { paper: "80", compact: false });
+    const printer = { paper: "custom", compact: true, orientation: "landscape", customWidthMm: 180, customHeightMm: 90 } as const;
+    const storageKey = "cyp.remittances.receiptPrintOptions";
+    for (const legacyFormat of [{ receiptFormat: "haiti" }, { recipientFormat: "haiti" }, { recipientFormat: "common", receiptFormat: "haiti" }] as const) {
+      const legacyOptions = { ...printer, audience: "recipient", ...legacyFormat } as const;
+      memory.set(storageKey, JSON.stringify(legacyOptions));
+      assert.deepEqual(readSavedReceiptPrintOptions(), printer);
+      saveReceiptPrintOptions(legacyOptions);
+      assert.deepEqual(JSON.parse(memory.get(storageKey)!), printer);
+    }
   } finally {
     (globalThis as { localStorage?: Storage }).localStorage = previousStorage;
   }
