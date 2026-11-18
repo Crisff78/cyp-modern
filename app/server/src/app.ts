@@ -342,7 +342,8 @@ export async function buildApp(config: Config) {
     if (!isOperationalRole(u.role) && !hasRoleExceptions(accessedUser)) {
       const ownSession = path === "/api/auth/me" || path === "/api/auth/logout" || path === "/api/soporte-contacto" || path === `/api/usuarios/${u.id}/clave`;
       const remittanceOperator = u.role === "cashier" && hasRemittanceAccess(accessedUser) && (path.startsWith("/api/envios") || path === "/api/snapshot");
-      if (!ownSession && !remittanceOperator && !(u.role === "supervisor" && req.method === "GET"))
+      const supervisorRead = u.role === "supervisor" && (req.method === "GET" || path === "/api/envios/formato-recepcion");
+      if (!ownSession && !remittanceOperator && !supervisorRead)
         throw new DomainError("FORBIDDEN", "Este rol no tiene permiso para realizar esta operación.", 403);
     }
     authorizeRequest(accessedUser, req.method, path);

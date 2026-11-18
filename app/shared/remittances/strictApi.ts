@@ -1,5 +1,6 @@
 import { beginSave } from "../keyboard";
-export type StrictApi = <T>(path: string, options?: RequestInit) => Promise<T>;
+type ApiOptions = RequestInit & { readOnly?: boolean };
+export type StrictApi = <T>(path: string, options?: ApiOptions) => Promise<T>;
 
 export class StrictApiError extends Error {
   constructor(message: string, public status = 0, public uncertain = false, public code?: string) {
@@ -19,12 +20,12 @@ export function createStrictApi(getToken: () => string | null, isDemo: () => boo
   // A payload identifies a retry only while it is the current intent for this
   // endpoint. Returning to an earlier payload starts a new operation.
   const attempts = new Map<string, Attempt>();
-  return async <T>(path: string, options: RequestInit = {}): Promise<T> => {
+  return async <T>(path: string, { readOnly, ...options }: ApiOptions = {}): Promise<T> => {
     if (isDemo()) throw new StrictApiError("Esta acción requiere una sesión conectada. Sal del modo de demostración e inicia sesión con tu cuenta.", 400);
     const token = getToken();
     if (!token) throw new StrictApiError("Tu sesión terminó. Inicia sesión para continuar.", 401);
     if (!navigator.onLine) throw new StrictApiError("Sin conexión. Conservamos el formulario; vuelve a intentarlo cuando tengas Internet.");
-    const mutation = options.method !== undefined && options.method.toUpperCase() !== "GET";
+    const mutation = !readOnly && options.method !== undefined && options.method.toUpperCase() !== "GET";
     const scope = `${token}\n${options.method?.toUpperCase()}\n${path}`;
     const body = String(options.body ?? "");
     const headers = new Headers(options.headers);

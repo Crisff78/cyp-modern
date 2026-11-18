@@ -79,8 +79,11 @@ test("CyP browser installation proves persistence, reviewed mutations and exact 
 import { ConnectedAdminTools } from ${module("ConnectedAdminTools.tsx")};
 import { PageAccessContext } from ${module("PageAccess.tsx")};
 import { remittancesApi } from ${module("remittancesApi.ts")};
+import { listLocalStationInstallations } from ${module("../../shared/remittances/localStationInstallations.ts")};
+window.listFixtureInstallations = listLocalStationInstallations;
 import ${module("styles.css")};
-remittancesApi("/snapshot").then(snapshot => createRoot(document.getElementById("root")).render(<PageAccessContext.Provider value={{actor:{role:"admin"},page:new URLSearchParams(location.search).get("view") || "stations"}}><ConnectedAdminTools page="stations" snapshot={snapshot} user={${JSON.stringify({ id: user.id, role: user.role })}} onRefresh={() => {}} /></PageAccessContext.Provider>));`, "utf8");
+const fixtureActor = location.search === "?read-only" ? {role:"admin",access:{mode:"custom",legacy:[1,111],remittances:[]}} : {role:"admin"};
+remittancesApi("/snapshot").then(snapshot => createRoot(document.getElementById("root")).render(<PageAccessContext.Provider value={{actor:fixtureActor,page:new URLSearchParams(location.search).get("view") || "stations"}}><ConnectedAdminTools page="stations" snapshot={snapshot} user={${JSON.stringify({ id: user.id, role: user.role })}} onRefresh={() => {}} /></PageAccessContext.Provider>));`, "utf8");
     const [{ build }, { default: react }, { chromium }] = await Promise.all([
       import(pathToFileURL(localRequire.resolve("vite")).href), import(pathToFileURL(localRequire.resolve("@vitejs/plugin-react")).href), import(pathToFileURL(playwrightEntry!).href),
     ]);
@@ -127,6 +130,7 @@ remittancesApi("/snapshot").then(snapshot => createRoot(document.getElementById(
     let installationA = "", installationB = "";
     await t.test("initial query creates no key or challenge; registration requires review", async () => {
       await page.goto(origin); await panel.getByText("Sin instalaciones registradas.", { exact: true }).waitFor();
+      assert.deepEqual(await page.evaluate(() => (window as any).listFixtureInstallations()), []);
       assert.equal((await storedKeys()).length, 0);
       await panel.getByRole("button", { name: "Obtener Datos de CyP", exact: true }).click();
       await panel.getByRole("alert").filter({ hasText: "Registra este navegador" }).waitFor();
@@ -149,6 +153,7 @@ remittancesApi("/snapshot").then(snapshot => createRoot(document.getElementById(
       assert.equal(key.installationId, installationA); assert.equal(key.origin, origin);
       assert.equal(key.extractable, false); assert.equal(key.type, "private"); assert.deepEqual(key.usages, ["sign"]);
       assert.equal(key.algorithm, "ECDSA"); assert.equal(key.curve, "P-256"); assert.equal(key.exportDenied, true);
+      assert.deepEqual(await page.evaluate(() => (window as any).listFixtureInstallations()), [{ stationId: station("A").id, installationId: installationA }]);
     });
     await t.test("reload preserves identity without registration; own query leaves RRAA station unchanged", async () => {
       const beforeWrites = writes.length, beforeRegistrations = getAdminTools(await store.read()).installations.length;
@@ -240,6 +245,47 @@ remittancesApi("/snapshot").then(snapshot => createRoot(document.getElementById(
     assert.equal(unexpectedPageErrors, 0);
     assert.equal(writes.filter((write) => write.path.endsWith("/validar")).length, 0);
     assert.deepEqual(getAdminTools(await store.read()).stations, originalStations);
+    await t.test("the receipt format is editable without RRAA using only the station edit permission", async () => {
+      await selectStation("A");
+      assert.equal(await page.getByTitle("Editar", { exact: true }).isDisabled(), true);
+      await page.getByRole("button", { name: "Formato de recepción", exact: true }).click();
+      const formatDialog = page.getByRole("dialog", { name: "Formato de recepción", exact: true });
+      const formatSelect = formatDialog.getByRole("combobox", { name: "Formato del recibo de recepción" });
+      assert.equal(await formatSelect.inputValue(), "common");
+      await formatSelect.selectOption("haiti");
+      const before = writes.length;
+      await formatDialog.getByRole("button", { name: "Guardar" }).click();
+      await page.getByRole("status").filter({ hasText: "Formato de recepción guardado para QA-CYP-A." }).waitFor();
+      assert.equal(writes.length, before + 1);
+      assert.equal(writes[before].path, `/api/estaciones/${station("A").id}/formato-recepcion`);
+      assert.deepEqual(JSON.parse(writes[before].body), { recipientReceiptFormat: "haiti" });
+      await page.getByRole("button", { name: "Formato de recepción", exact: true }).click();
+      assert.equal(await formatSelect.inputValue(), "haiti");
+      await formatDialog.getByRole("button", { name: "Cancelar" }).click();
+      await page.goto(origin + "/?read-only");
+      await page.getByTitle("Consultar", { exact: true }).waitFor();
+      assert.equal(await page.getByRole("button", { name: "Formato de recepción", exact: true }).isDisabled(), true);
+    });
+    await t.test("a damaged local identity stops the lookup without returning partial results", async () => {
+      const result = await page.evaluate(async () => {
+        const db = await new Promise<IDBDatabase>((resolve, reject) => {
+          const request = indexedDB.open("cyp-station-installation-v1", 1);
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+        try {
+          await new Promise<void>((resolve, reject) => {
+            const tx = db.transaction("keys", "readwrite");
+            tx.objectStore("keys").add({ scope: "synthetic-corrupt-record", stationId: "fixture" });
+            tx.oncomplete = () => resolve();
+            tx.onabort = () => reject(tx.error);
+          });
+        } finally { db.close(); }
+        try { await (window as any).listFixtureInstallations(); return "accepted"; }
+        catch (error) { return (error as Error).message; }
+      });
+      assert.match(result, /identidad guardada no es válida/);
+    });
     t.diagnostic(`Fresh browser/MemoryStore, exact loopback origin, ${externalAttempts} external attempts blocked; no provider, screenshots or shared data.`);
   } finally {
     await context?.close(); await browser?.close();

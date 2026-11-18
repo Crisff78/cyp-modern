@@ -1,6 +1,7 @@
 // Pure browser/server protocol. Never put Node APIs or private key material here.
 export const INSTALLATION_PROTOCOL_VERSION = "CYP-INSTALLATION-V1" as const;
 export type InstallationPurpose = "register" | "query";
+export type StationInstallationRef = { stationId: string; installationId: string };
 export type StationInstallation = {
   scopeId: string; stationId: string; installationId: string; publicKeySpki: string;
   algorithm: "ECDSA-P256-SHA256"; status: "active" | "revoked"; revision: string;

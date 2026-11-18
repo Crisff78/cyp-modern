@@ -49,18 +49,18 @@ export type Receipt = {
   recipientVoucher?: RecipientReceiptVoucher;
 };
 export const resolvePrintedAudience = (
-  receipt: Pick<Receipt, "printed" | "audience">,
+  receipt: Pick<Receipt, "audience">,
   options?: { audience?: PrintedReceiptAudience },
 ): PrintedReceiptAudience => options?.audience ?? receipt.audience ?? "sender";
 export const resolveReceiptFormat = (
-  receipt: Pick<Receipt, "receiptFormat">,
-  options?: { receiptFormat?: ReceiptFormat },
-): ReceiptFormat => options?.receiptFormat ?? receipt.receiptFormat ?? "common";
-// The Haiti voucher is the same for the sender and the recipient; it is drawn from recipientVoucher.
-// Every other printed receipt is drawn from its sections.
+  receipt: Pick<Receipt, "audience" | "receiptFormat">,
+  options?: Pick<Receipt, "audience" | "receiptFormat">,
+): ReceiptFormat => resolvePrintedAudience(receipt, options) === "recipient"
+  ? options?.receiptFormat ?? receipt.receiptFormat ?? "common"
+  : "common";
 export const isHaitiVoucher = (
   receipt: Receipt,
-  options?: { receiptFormat?: ReceiptFormat },
+  options?: Pick<Receipt, "audience" | "receiptFormat">,
 ) => Boolean(receipt.printed && receipt.recipientVoucher && resolveReceiptFormat(receipt, options) === "haiti");
 
 export function formatSpacedTitleLines(title: string, fits: (candidate: string) => boolean): string[] {
@@ -174,8 +174,8 @@ export function receiptIssuerLines(issuer: ReceiptIssuer, printed = false): stri
  * followed by Fecha / Envío / Cód. Operación, Remitente, Destinatario, Importes del envío, Forma pago del remitente,
  * Recibido por signature line, Registrado por and Nota footer without internal divider lines.
  * With the common format, the recipient's copy (RECIBO DE RECEPCIÓN) is the same layout without the rows in
- * receptionOmittedRows and without the «Importes del envío» title; see receiptSections. The Haiti format is drawn from
- * recipientVoucher instead, for the sender and for the recipient alike.
+ * receptionOmittedRows and without the «Importes del envío» title; see receiptSections.
+ * A station using the Haiti format draws the recipient's copy from recipientVoucher.
  */
 export function remittanceReceipt(
   transfer: Transfer,

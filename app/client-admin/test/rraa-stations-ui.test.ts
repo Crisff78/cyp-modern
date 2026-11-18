@@ -119,6 +119,9 @@ remittancesApi("/snapshot").then(snapshot => createRoot(document.getElementById(
       const dialog = page.getByRole("dialog", { name: "Datos de la Estación de PCP", exact: true });
       await dialog.getByLabel("Estación", { exact: true }).fill("QA-STATION");
       const description = "Oficina de José: cobros y pagos.\nPiso 2 (entrada A).";
+      const receiptFormat = dialog.getByRole("combobox", { name: "Formato del recibo de recepción" });
+      assert.equal(await receiptFormat.inputValue(), "common");
+      await receiptFormat.selectOption("haiti");
       await dialog.getByLabel("Descripción", { exact: true }).fill(description);
       await dialog.getByRole("button", { name: "Obtener Licencia", exact: true }).click(); await dialog.getByText(/Validación recibida:/).waitFor();
       assert.equal(await dialog.getByLabel("Descripción", { exact: true }).inputValue(), description, "lookup preserves local description");
@@ -128,6 +131,7 @@ remittancesApi("/snapshot").then(snapshot => createRoot(document.getElementById(
       const station = (await store.read()).adminTools.stations[0]; assert.equal(station.active, true); assert.equal(station.license, "QA-LICENSE");
       assert.equal(station.number, "1"); assert.equal(station.operatingSystem, "7");
       assert.equal(station.description, description);
+      assert.equal(station.recipientReceiptFormat, "haiti");
       await page.getByRole("row").filter({ hasText: "QA-STATION" }).click(); await page.getByTitle("Editar", { exact: true }).click();
       assert.equal(await dialog.getByLabel("ID dispositivo", { exact: true }).inputValue(), "QA-DEVICE");
       assert.equal(await dialog.getByLabel("Descripción", { exact: true }).inputValue(), description);
@@ -139,6 +143,7 @@ remittancesApi("/snapshot").then(snapshot => createRoot(document.getElementById(
       await dialog.waitFor({ state: "hidden" });
       const editedStation = (await store.read()).adminTools.stations[0];
       assert.equal(editedStation.description, editedDescription);
+      assert.equal(editedStation.recipientReceiptFormat, "haiti");
       assert.equal(editedStation.number, station.number); assert.equal(editedStation.deviceId, station.deviceId);
       assert.equal(editedStation.active, true); assert.equal(editedStation.operatingSystem, "7");
       assert.equal(calls, beforeEditCalls + 1, "saving local metadata still requires fresh RRAA validation");
