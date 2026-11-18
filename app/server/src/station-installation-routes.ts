@@ -7,11 +7,12 @@ import { assertAdmin, assertAdminRead, DomainError, type State, type User } from
 import { boundedId, freeText } from "./input-validation.js";
 import type { Store } from "./store.js";
 import { createStationInstallationChallenge, listStationInstallations, queryStationInstallation,
-  registerStationInstallation, revokeStationInstallation, stationInstallationScope,
+  registerStationInstallation, revokeStationInstallation, stationInstallationScope, stationReceiptFormats,
   type InstallationActor, type StationInstallationOptions } from "./station-installations.js";
 
 type Describe = (method: string, path: string, summary: string, schema?: z.ZodType, isPublic?: boolean, requiresIdempotency?: boolean) => void;
 const installationId = z.string().regex(/^CYP-INST-[a-f0-9]{64}$/);
+const receiptFormatBody = z.object({ installations: z.array(z.object({ stationId: boundedId, installationId }).strict()) }).strict();
 const publicKeySpki = z.string().regex(/^[A-Za-z0-9_-]{122}$/);
 const signature = z.string().regex(/^[A-Za-z0-9_-]{86}$/);
 const stationParams = z.object({ id: boundedId }).strict();
@@ -96,6 +97,16 @@ export function registerStationInstallationRoutes(app: FastifyInstance, store: S
   }
   const listPath = "/api/estaciones/:id/instalaciones", challengePath = `${listPath}/desafios`;
   const queryPath = "/api/estaciones/:id/datos", revokePath = `${listPath}/:installationId/revocar`;
+  const receiptFormatPath = "/api/envios/formato-recepcion";
+  app.post(receiptFormatPath, async (req) => {
+    const { installations } = receiptFormatBody.parse(req.body);
+    if (!installations.length) return { recipientReceiptFormat: "common" };
+    const formats = store.readStationReceiptFormats
+      ? await store.readStationReceiptFormats(installations, settings.rraaClientId)
+      : stationReceiptFormats(await store.read(), installations, settings);
+    return { recipientReceiptFormat: formats.length === 1 ? formats[0] : "common" };
+  });
+  describe("post", receiptFormatPath, "Consultar el formato de recepción de la estación de este navegador", receiptFormatBody, false, false);
   app.get(listPath, routeOptions(60), async (req) => {
     origin(req, false); noQuery.parse(req.query); const params = stationParams.parse(req.params), actor = user(req) as InstallationActor;
     const state = await store.read(); assertAuthSession(state, actor, actor.sid);

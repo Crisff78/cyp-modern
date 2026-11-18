@@ -1,10 +1,10 @@
 import { createHash, createPublicKey, randomBytes, randomUUID, verify, type KeyObject } from "node:crypto";
 import { assertAdmin, assertAdminRead, DomainError, type State, type User } from "./domain.js";
-import { assertAuthSession, getAdminTools, requireAdminRow } from "./admin-tools.js";
+import { assertAuthSession, getAdminTools, requireAdminRow, type RecipientReceiptFormat } from "./admin-tools.js";
 import { stationRraaValidated } from "./rraa.js";
 import { INSTALLATION_PROTOCOL_VERSION, signingPayload, type InstallationPurpose,
   type StationInstallation, type StationInstallationChallenge, type StationInstallationData,
-  type StationInstallationSummary } from "./station-installation-protocol.js";
+  type StationInstallationSummary, type StationInstallationRef } from "./station-installation-protocol.js";
 
 export type InstallationActor = User & { sid?: string };
 // validationClientId: company used only to report whether the station is validated (the provider, or the
@@ -26,6 +26,17 @@ export function stationInstallationScope(state: State, options: StationInstallat
   const tools = data(state);
   if (!tools.installationScopeId && create) tools.installationScopeId = randomUUID();
   return tools.installationScopeId ? JSON.stringify([tools.installationScopeId, options.rraaClientId ?? null]) : undefined;
+}
+export function stationReceiptFormats(state: State, installations: StationInstallationRef[], options: StationInstallationOptions): RecipientReceiptFormat[] {
+  const tools = getAdminTools(state);
+  const scopeId = stationInstallationScope(state, options);
+  if (!scopeId) return [];
+  const refKey = (ref: StationInstallationRef) => JSON.stringify([ref.stationId, ref.installationId]);
+  const requested = new Set(installations.map(refKey));
+  const stationIds = new Set(tools.installations.filter((row) =>
+    row.scopeId === scopeId && row.status === "active" && requested.has(refKey(row))).map((row) => row.stationId));
+  return tools.stations.filter((station) => station.active && stationIds.has(station.id))
+    .map((station) => station.recipientReceiptFormat ?? "common");
 }
 function publicKey(value: string): KeyObject {
   try {

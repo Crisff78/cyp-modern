@@ -9,7 +9,7 @@ export const printedReceiptAudienceLabels: Record<PrintedReceiptAudience, string
   sender: "Para quien envía (recibo de envío)",
   recipient: "Para quien recibe (recibo de recepción)",
 };
-// The common receipts (one for the sender, one for the recipient), or the single voucher used for Haiti.
+// Stations choose the recipient's format. The sender always receives the common receipt.
 export type ReceiptFormat = "common" | "haiti";
 export const receiptFormatLabels: Record<ReceiptFormat, string> = { common: "Común", haiti: "Haití" };
 export type ReceiptPrintOptions = { paper: ReceiptPaper; compact: boolean;
@@ -28,11 +28,7 @@ export function readSavedReceiptPrintOptions(): ReceiptPrintOptions {
     const orientation = parsed.orientation === "auto" || parsed.orientation === "portrait" || parsed.orientation === "landscape" ? parsed.orientation : undefined;
     const customWidthMm = typeof parsed.customWidthMm === "number" && Number.isFinite(parsed.customWidthMm) && parsed.customWidthMm >= 50 && parsed.customWidthMm <= 320 ? parsed.customWidthMm : undefined;
     const customHeightMm = typeof parsed.customHeightMm === "number" && Number.isFinite(parsed.customHeightMm) && parsed.customHeightMm >= 50 && parsed.customHeightMm <= 600 ? parsed.customHeightMm : undefined;
-    // Until 17-11-2026 this was saved as recipientFormat, when the format only changed the recipient's copy.
-    const savedFormat = parsed.receiptFormat ?? (parsed as { recipientFormat?: unknown }).recipientFormat;
-    const receiptFormat = savedFormat === "haiti" ? "haiti" as const : undefined;
-    return { paper, compact: Boolean(parsed.compact), ...(orientation ? { orientation } : {}), ...(customWidthMm ? { customWidthMm } : {}), ...(customHeightMm ? { customHeightMm } : {}),
-      ...(receiptFormat ? { receiptFormat } : {}) };
+    return { paper, compact: Boolean(parsed.compact), ...(orientation ? { orientation } : {}), ...(customWidthMm ? { customWidthMm } : {}), ...(customHeightMm ? { customHeightMm } : {}) };
   } catch {
     return defaultReceiptPrintOptions;
   }
@@ -40,7 +36,8 @@ export function readSavedReceiptPrintOptions(): ReceiptPrintOptions {
 
 export function saveReceiptPrintOptions(options: ReceiptPrintOptions) {
   try {
-    const { audience: _audience, ...persisted } = options;
+    const { paper, compact, orientation, customWidthMm, customHeightMm } = options;
+    const persisted = { paper, compact, orientation, customWidthMm, customHeightMm };
     if (typeof localStorage !== "undefined") localStorage.setItem(RECEIPT_PRINT_STORAGE_KEY, JSON.stringify(persisted));
   } catch { /* ignore storage quota / private mode */ }
 }

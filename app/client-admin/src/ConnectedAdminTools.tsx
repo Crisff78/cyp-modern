@@ -27,7 +27,7 @@ type PageResult = { items: Row[]; total: number; limit: number; offset: number }
 type RraaStatus = { configured: boolean; canObtainData?: boolean; clientId?: string; simulated?: boolean; examples?: Array<{ stationCode: string; deviceId: string }>; exampleRange?: [string, string] };
 type Draft = Record<string, string | boolean>;
 type Filter = { q: string; from: string; to: string; status: string };
-type Dialog = { type: "edit" | "stations" | "resolve" | "confirm" | "detail"; row?: Row; action?: "deactivate" | "activate" | "delete" | "close" };
+type Dialog = { type: "edit" | "receiptFormat" | "stations" | "resolve" | "confirm" | "detail"; row?: Row; action?: "deactivate" | "activate" | "delete" | "close" };
 type Field = { key: string; label: string; required?: boolean; multiline?: boolean; options?: { value: string; label: string }[]; boolean?: boolean; maxLength?: number };
 const value = (row: Row, key: string) => String(row[key] ?? "");
 const stationIds = (row: Row) => Array.isArray(row.stationIds) ? row.stationIds.filter((id): id is string => typeof id === "string") : [];
@@ -85,6 +85,7 @@ export function ConnectedAdminTools({ page, snapshot, user, onRefresh }: { page:
     // Without the modify permission an existing record opens read-only.
     if (next.type === "edit" && !next.row && !access.canCreate) return;
     if (next.type === "confirm" && !access.canDelete) return;
+    if (next.type === "receiptFormat" && (page !== "stations" || !next.row || !access.canEdit)) return;
     if (locked || loading || installationLocked) return;
     if (page === "stations" && !rraa.configured && next.type === "edit" && (!next.row || access.canEdit)) return;
     pendingRequest.current = null; stationLookupVersion.current += 1; setUncertain(false); setStationStatusReview(false);
@@ -94,6 +95,7 @@ export function ConnectedAdminTools({ page, snapshot, user, onRefresh }: { page:
     if (row) for (const [key, item] of Object.entries(row)) if (typeof item === "string" || typeof item === "boolean") nextDraft[key] = item;
     if (page === "stations") {
       nextDraft.active = Boolean(row?.active && row.rraaValidated);
+      nextDraft.recipientReceiptFormat = row?.recipientReceiptFormat === "haiti" ? "haiti" : "common";
       if (!row) { nextDraft.group = "Cobros"; nextDraft.type = "Cobros y Pagos"; }
     }
     if (next.type === "resolve") { nextDraft.status = "approved"; nextDraft.note = ""; }
@@ -133,10 +135,20 @@ export function ConnectedAdminTools({ page, snapshot, user, onRefresh }: { page:
   };
   const submit = async (event: FormEvent) => {
     event.preventDefault(); if (!dialog || busy) return;
+    if (dialog.type === "receiptFormat" && (!access.canEdit || !dialog.row)) return;
     setBusy(true); setFormError("");
     try {
       let path = definition.path, body: Record<string, unknown> = {}, text = "Datos guardados correctamente.";
-      if (dialog.type === "edit") { if (dialog.row) path += `/${encodeURIComponent(dialog.row.id)}`; body = payload(draft); }
+      if (dialog.type === "edit") {
+        if (dialog.row) path += `/${encodeURIComponent(dialog.row.id)}`;
+        body = payload(draft);
+        if (page === "stations" && !dialog.row) body.recipientReceiptFormat = draft.recipientReceiptFormat;
+      }
+      if (dialog.type === "receiptFormat" && dialog.row) {
+        path += `/${encodeURIComponent(dialog.row.id)}/formato-recepcion`;
+        body = { recipientReceiptFormat: draft.recipientReceiptFormat };
+        text = `Formato de recepción guardado para ${value(dialog.row, "name")}.`;
+      }
       if (dialog.type === "stations" && dialog.row) { path += `/${encodeURIComponent(dialog.row.id)}/estaciones`; body = { stationIds: links }; text = "Estaciones del PCP guardadas."; }
       if (dialog.type === "resolve" && dialog.row) { validateText(String(draft.note ?? ""), "Motivo", INPUT_LIMITS.note, { required: true, multiline: true }); path += `/${encodeURIComponent(dialog.row.id)}/resolver`; body = { status: draft.status, note: draft.note }; text = "Decisión registrada."; }
       if (dialog.type === "confirm" && dialog.row) {
@@ -241,6 +253,11 @@ export function ConnectedAdminTools({ page, snapshot, user, onRefresh }: { page:
     : page === "sessions" ? <><td title={value(row, "role") === "admin" ? "Administración" : accountRoleLabel(value(row, "role"))}>{value(row, "userName")}{row.current ? " (esta sesión)" : ""}</td><td>{unavailable("Las sesiones no registran una estación de PCP.")}</td><td>{dateTime(row.startedAt)}</td><td title={row.revokedAt ? "Cerrada: " + dateTime(row.revokedAt) : undefined}>{states[value(row, "status")] ?? value(row, "status")}</td><td>{dateTime(row.expiresAt)}</td></>
     : page === "traces" ? <><td>{dateTime(row.createdAt)}</td><td className="legacy-admin-trace-cell">{row.action === "session.started" ? "Inicio de sesión" : row.action === "mutation.completed" ? "Cambio guardado" : row.action === "permissions.changed" ? "Permisos actualizados" : value(row, "action")} · {value(row, "resource")} · Usuario: {value(row, "actorId")}{row.resourceId ? " · Referencia: " + value(row, "resourceId") : ""}{row.action === "permissions.changed" && <PermissionAuditDetails details={row.details} />}</td></>
     : <><td>{dateTime(row.createdAt)}</td><td title="Administrador que registró la solicitud">{personLabel(row, "createdBy")}</td><td>{collectorLabel(row)}</td><td>{clientFor(row)?.code ?? "—"}</td><td title={row.forCollection ? "Solicitud para cobro" : "Otra solicitud"}>{clientLabel(row)}</td><td>{clientFor(row)?.phone || clientFor(row)?.cellular || "—"}</td><td>{states[value(row, "status")] ?? value(row, "status")}</td></>;
+  const receiptFormatSelect = <label htmlFor={instanceId + "-receipt-format"}>Formato del recibo de recepción
+    <select id={instanceId + "-receipt-format"} value={String(draft.recipientReceiptFormat)} disabled={locked} onChange={(event) => updateDraft("recipientReceiptFormat", event.target.value)}>
+      <option value="common">Común</option><option value="haiti">Haití</option>
+    </select>
+  </label>;
   const fieldFor = (key: string) => fields.find((field) => field.key === key);
   const stationReadOnlyInput = (key: string, label?: string) => <input aria-label={label ?? fieldFor(key)?.label ?? key} readOnly value={String(draft[key] ?? "")} placeholder={key === "number" ? "Al guardar" : ""} />;
   const input = (key: string, className?: string, autoFocus = false) => <input aria-label={fieldFor(key)?.label ?? key} className={className} autoFocus={autoFocus} type={key === "phone" ? "tel" : "text"} inputMode={key === "phone" ? "tel" : undefined} value={String(draft[key] ?? "")} required={fieldFor(key)?.required} maxLength={fieldFor(key)?.maxLength ?? INPUT_LIMITS.name} disabled={locked} onChange={(event) => updateDraft(key, event.target.value)} />;
@@ -286,7 +303,7 @@ export function ConnectedAdminTools({ page, snapshot, user, onRefresh }: { page:
       showEdit={page !== "authorizationRequests"} consultOnEdit={page !== "authorizationRequests"} onEdit={() => selected && open({ type: "edit", row: selected })} disableEdit={installationLocked || (page === "stations" && !rraa.configured && access.canEdit) || loading || !selected}
       onDelete={deleteSelected} deleteTitle={deleteTitle} deleteIcon={page === "groups" ? "trash" : "x"} disableDelete={installationLocked || (page === "stations" && !rraa.configured && !selected?.active) || loading || !selected || (page === "authorizationRequests" && selected.status !== "pending")}
       onRefresh={() => { if (!loading && !installationLocked) void refresh(); }} extra={page === "pcps" ? <button type="button" className="pcp-stations-button" title="Estaciones del PCP" disabled={loading || !selected || selected.active === false} onClick={() => selected && open({ type: "stations", row: selected })}><Building2 size={15} /><span>Estaciones</span></button>
-        : page === "authorizationRequests" ? <><button type="button" disabled={loading || !selected} onClick={() => selected && open({ type: "detail", row: selected })}>Detalle</button><button type="button" disabled={loading || selected?.status !== "pending"} onClick={() => beginResolution()}>Resolver</button></> : search} />;
+        : page === "authorizationRequests" ? <><button type="button" disabled={loading || !selected} onClick={() => selected && open({ type: "detail", row: selected })}>Detalle</button><button type="button" disabled={loading || selected?.status !== "pending"} onClick={() => beginResolution()}>Resolver</button></> : page === "stations" ? <>{search}<button type="button" disabled={!access.canEdit || loading || locked || installationLocked || !selected} onClick={() => selected && open({ type: "receiptFormat", row: selected })}>Formato de recepción</button></> : search} />;
   const filterPanel = page === "pcps"
     ? <aside className="pcp-filter-panel legacy-admin-filters" aria-label="Filtros de PCP">
       <label className="pcp-radio-line"><input type="radio" name={instanceId + "-group"} checked={!groupFilter} onChange={() => setGroupFilter("")} /><span>Todos</span></label>
@@ -313,12 +330,12 @@ export function ConnectedAdminTools({ page, snapshot, user, onRefresh }: { page:
     </tr>)}{!visible.length && <tr><td className="legacy-admin-empty" colSpan={headers.length}>{loading ? "Cargando…" : error ? "No se pudo cargar el listado." : "No hay registros para estos filtros."}</td></tr>}</tbody>
   </table></div></div>;
   const totalPages = Math.max(1, Math.ceil(total / 50));
-  const dialogTitle = dialog?.type === "stations" ? "Estaciones del PCP..." : dialog?.type === "resolve" ? "Resolver solicitud" : dialog?.type === "detail" ? "Detalle de la solicitud" : dialog?.type === "confirm" || stationStatusReview ? "Confirmación" : page === "stations" ? "Datos de la Estación de PCP" : page === "groups" ? "Nombre del Grupo..." : page === "pcps" ? "Datos del PCP..." : "Solicitud de autorización";
-  const dialogClass = dialog?.type === "stations" ? "pcp-stations-dialog" : dialog?.type === "confirm" || stationStatusReview ? "legacy-confirm-dialog" : page === "stations" ? "pcp-station-dialog" : page === "groups" ? "legacy-select-dialog" : page === "pcps" ? "pcp-data-dialog" : "authorization-form-dialog";
+  const dialogTitle = dialog?.type === "receiptFormat" ? "Formato de recepción" : dialog?.type === "stations" ? "Estaciones del PCP..." : dialog?.type === "resolve" ? "Resolver solicitud" : dialog?.type === "detail" ? "Detalle de la solicitud" : dialog?.type === "confirm" || stationStatusReview ? "Confirmación" : page === "stations" ? "Datos de la Estación de PCP" : page === "groups" ? "Nombre del Grupo..." : page === "pcps" ? "Datos del PCP..." : "Solicitud de autorización";
+  const dialogClass = dialog?.type === "receiptFormat" ? "legacy-select-dialog" : dialog?.type === "stations" ? "pcp-stations-dialog" : dialog?.type === "confirm" || stationStatusReview ? "legacy-confirm-dialog" : page === "stations" ? "pcp-station-dialog" : page === "groups" ? "legacy-select-dialog" : page === "pcps" ? "pcp-data-dialog" : "authorization-form-dialog";
   const formClass = dialog?.type === "stations" ? "legacy-relation-manager legacy-admin-relations" : page === "stations" && dialog?.type === "edit" && !stationStatusReview ? "legacy-dialog-form pcp-station-form" : page === "pcps" && dialog?.type === "edit" ? "legacy-dialog-form pcp-data-form legacy-pcp-form" : page === "authorizationRequests" ? "authorization-form" : "legacy-dialog-form";
   return <section className={"connected-admin-tools legacy-mdi-view " + layout + "-mdi-view"} aria-label={definition.title} aria-busy={loading}>
     {toolbar}
-    {page === "stations" && rraaLoaded && <p className="legacy-admin-note" role="status" title={rraa.configured && rraa.simulated ? "Con datos que no estén en el control responde «Estación no encontrada». Las estaciones «DEMO V2 · Estación 1» a «6» del catálogo también están en él." : undefined}>{rraa.configured && rraa.simulated ? practiceNote : rraa.configured ? "Para consultar RRAA, escribe la Estación. Obtener Datos y Obtener Licencia consultan STATDAT y comprueban VALSTAT para la empresa configurada. Guardar y activar vuelven a comprobar los datos con RRAA." : "No validado. Deshabilitado temporalmente hasta conexión RRAA: no se permite crear, editar ni activar estaciones. Solo puedes desactivar registros históricos."}</p>}
+    {page === "stations" && rraaLoaded && <p className="legacy-admin-note" role="status" title={rraa.configured && rraa.simulated ? "Con datos que no estén en el control responde «Estación no encontrada». Las estaciones «DEMO V2 · Estación 1» a «6» del catálogo también están en él." : undefined}>{rraa.configured && rraa.simulated ? practiceNote : rraa.configured ? "Para consultar RRAA, escribe la Estación. Obtener Datos y Obtener Licencia consultan STATDAT y comprueban VALSTAT para la empresa configurada. Guardar y activar vuelven a comprobar los datos con RRAA." : "Sin conexión RRAA, el alta, la edición de datos y la activación de estaciones están deshabilitadas. El formato de recepción se guarda en CyP."}</p>}
     {page === "authorizationRequests" && <p className="legacy-admin-note">Solicitudes de revisión administrativa de un cliente y su cobrador responsable. <strong>Quién las genera:</strong> un administrador las registra aquí con el botón Nuevo; el cobrador no las crea desde su terminal y el sistema no las genera solo. La columna «Registrada por» muestra quién la creó. Después un administrador la resuelve como aprobada, rechazada o anulada. La decisión queda en el historial; no registra cobros o pagos ni amplía límites o permisos.</p>}
     {error && <p className="legacy-admin-feedback error" role="alert">{error}</p>}{message && <p className="legacy-admin-feedback success" role="status">{message}</p>}
     {page === "pcps" && !loading && canSeeGroups && !groups.length && <p className="legacy-admin-note">Crea un grupo de PCPs para registrar el primer punto.</p>}
@@ -352,8 +369,13 @@ export function ConnectedAdminTools({ page, snapshot, user, onRefresh }: { page:
             <label>Descrip.:<textarea aria-label="Descripción" rows={2} maxLength={INPUT_LIMITS.userNote} value={String(draft.description ?? "")} disabled={locked} onChange={(event) => updateDraft("description", event.target.value)} /></label>
             <div className="legacy-dialog-row two-cols"><label>Grupo:{stationReadOnlyInput("group")}</label><label>Tipo:{stationReadOnlyInput("type")}</label></div>
             <div className="legacy-dialog-row two-cols"><label>Versión registrada:<input readOnly value={String(draft.version ?? "")} /></label><label className="legacy-admin-checkbox"><input type="checkbox" checked={Boolean(draft.active)} disabled={locked || !draftValidated || activityLocked} onChange={(event) => updateDraft("active", event.target.checked)} /><span>Activa</span></label></div>
+            {!dialog.row && receiptFormatSelect}
           </fieldset><p className="legacy-admin-note">{busy ? "Consultando RRAA…" : rraaPreview ? "Validación recibida: " + dateTime(rraaPreview.validatedAt) + ". Se comprobará nuevamente al guardar." : rraa.simulated ? `Escribe la Estación del control de prueba${practiceExample ? `, por ejemplo «${practiceExample.stationCode}»` : ""}, y pulsa Obtener Datos u Obtener Licencia.` : "Para consultar RRAA, escribe la Estación y pulsa Obtener Datos u Obtener Licencia. RRAA proporciona el ID, la licencia y SO; consultar no guarda ni activa el registro."}</p>
           <p className="legacy-admin-note">La descripción es un dato local editable; se guarda al pulsar Aceptar.</p>
+        </>}
+        {dialog.type === "receiptFormat" && dialog.row && <>
+          <p>Estación: <strong>{value(dialog.row, "name")}</strong></p>
+          {receiptFormatSelect}
         </>}
         {dialog.type === "edit" && page === "groups" && <label>Nombre:{input("name", undefined, true)}</label>}
         {dialog.type === "edit" && page === "pcps" && <>
@@ -386,7 +408,7 @@ export function ConnectedAdminTools({ page, snapshot, user, onRefresh }: { page:
         </>}
         {dialog.type === "confirm" && <div className="legacy-confirm-content"><span className="legacy-question-icon">?</span><p>{dialog.action === "close" ? dialog.row?.current ? "Tu sesión se cerrará y tendrás que iniciar sesión de nuevo." : "Se cerrará la sesión de " + (dialog.row ? value(dialog.row, "userName") : "este usuario") + ". No podrá seguir usando el sistema hasta que vuelva a entrar." : dialog.action === "delete" ? "El grupo se eliminará si no tiene PCPs asociados." : page === "stations" && dialog.row ? `¿Está seguro que desea ${dialog.action === "activate" ? "activar" : "inactivar"} la estación ${value(dialog.row, "name")} (código ${value(dialog.row, "number")})? Su historial y asociaciones se conservan.${dialog.action !== "activate" ? deactivateWarning(dialog.row) : ""}` : "El registro quedará " + (dialog.action === "activate" ? "activo" : "inactivo") + "."}</p></div>}
         {stationStatusReview && <div className="legacy-confirm-content"><span className="legacy-question-icon">?</span><p>¿Está seguro que desea {draft.active ? "activar" : "inactivar"} la estación {String(draft.name ?? "")} (código {String(draft.number ?? "")})? Su historial y asociaciones se conservan.</p><p>También se guardarán los demás cambios del formulario. Cancelar vuelve a los datos sin guardarlos.</p></div>}
-        {dialog.type !== "stations" && <>{formMessages}{readOnlyDialog ? <><p className="legacy-admin-note">Solo consulta: tu cuenta no tiene permiso para modificar este registro.</p><div className="legacy-dialog-actions centered"><button type="button" onClick={close}>Cerrar</button></div></> : actions(dialog.type === "confirm" || stationStatusReview ? "Confirmar" : "Aceptar")}</>}
+        {dialog.type !== "stations" && <>{formMessages}{readOnlyDialog ? <><p className="legacy-admin-note">Solo consulta: tu cuenta no tiene permiso para modificar este registro.</p><div className="legacy-dialog-actions centered"><button type="button" onClick={close}>Cerrar</button></div></> : actions(dialog.type === "receiptFormat" ? "Guardar" : dialog.type === "confirm" || stationStatusReview ? "Confirmar" : "Aceptar")}</>}
       </form>}
     </LegacyDialog>}
     {dialog?.type === "stations" && addingStation && <LegacyDialog title="Seleccionar..." onClose={() => { if (!locked) setAddingStation(false); }} className="legacy-select-dialog legacy-admin-dialog">

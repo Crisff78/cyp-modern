@@ -1,4 +1,5 @@
-import { printedReceiptAudienceLabels, receiptPaperLabels, receiptPrintLayout, receiptFormatLabels, thermalReceiptSize, type PrintedReceiptAudience, type ReceiptPaper, type ReceiptPrintOptions, type ReceiptFormat } from "./receiptPaper";
+import { printedReceiptAudienceLabels, receiptPaperLabels, receiptPrintLayout, receiptFormatLabels, thermalReceiptSize, type PrintedReceiptAudience, type ReceiptPaper, type ReceiptPrintOptions } from "./receiptPaper";
+import type { StationReceiptFormat } from "./useStationReceiptFormat";
 import { cleanReceiptFooterNote, isHaitiVoucher, isPrintedHighlightRow, isPrintedSignoffSection, isSheetDashedPaper, isSignatureRow, printedReceiptTitle, receiptIssuerLines, receiptSections, resolvePrintedAudience, type Receipt } from "./receipt";
 export type { PrintedReceiptAudience, ReceiptPrintOptions } from "./receiptPaper";
 
@@ -90,7 +91,7 @@ function ReceiptPrintPreview({ receipt, options }: { receipt: Receipt; options: 
   </div>;
 }
 
-export function ReceiptPrintControls({ value, onChange, receipt }: { value: ReceiptPrintOptions; onChange: (value: ReceiptPrintOptions) => void; receipt?: Receipt }) {
+export function ReceiptPrintControls({ value, onChange, receipt, station }: { value: ReceiptPrintOptions; onChange: (value: ReceiptPrintOptions) => void; receipt?: Receipt; station: StationReceiptFormat }) {
   const audience = receipt ? resolvePrintedAudience(receipt, value) : (value.audience ?? "sender");
   return <div className="remittance-panel remittance-print-controls-panel">
     <div className="remittance-print-controls-grid">
@@ -98,10 +99,6 @@ export function ReceiptPrintControls({ value, onChange, receipt }: { value: Rece
         const next = event.target.value;
         if (next === "sender" || next === "recipient") onChange({ ...value, audience: next as PrintedReceiptAudience });
       }}>{(["sender", "recipient"] as PrintedReceiptAudience[]).map((kind) => <option key={kind} value={kind}>{printedReceiptAudienceLabels[kind]}</option>)}</select></label>
-      <label>Formato de recibo<select aria-label="Formato de recibo" value={value.receiptFormat ?? "common"} onChange={(event) => {
-        const next = event.target.value;
-        if (next === "common" || next === "haiti") onChange({ ...value, receiptFormat: next });
-      }}>{(["common", "haiti"] as ReceiptFormat[]).map((kind) => <option key={kind} value={kind}>{receiptFormatLabels[kind]}</option>)}</select></label>
       <label>Papel de impresión<select aria-label="Papel de impresión" value={value.paper} onChange={(event) => {
         const paper = event.target.value;
         if (Object.hasOwn(receiptPaperLabels, paper)) onChange({ ...value, paper: paper as ReceiptPaper, orientation: "auto" });
@@ -115,7 +112,10 @@ export function ReceiptPrintControls({ value, onChange, receipt }: { value: Rece
       <label>Ancho del papel (mm)<input type="number" inputMode="decimal" min={50} max={320} step="0.1" value={value.customWidthMm ?? 210} onChange={event => onChange({ ...value, customWidthMm: event.target.value === "" ? "" : event.target.valueAsNumber })} /></label>
       <label>Alto del papel (mm)<input type="number" inputMode="decimal" min={50} max={600} step="0.1" value={value.customHeightMm ?? 297} onChange={event => onChange({ ...value, customHeightMm: event.target.value === "" ? "" : event.target.valueAsNumber })} /></label>
     </div>}
-    {receipt && <ReceiptPrintPreview receipt={receipt} options={value} />}
+    {audience === "recipient" && (station.status === "error"
+      ? <div role="alert">No se pudo comprobar el formato de recepción de esta estación. <button type="button" onClick={station.retry}>Reintentar</button></div>
+      : <p className="remittance-help" role="status">{station.status === "loading" ? "Consultando el formato de la estación…" : `Formato de recepción de la estación: ${receiptFormatLabels[station.format]}`}</p>)}
+    {receipt && station.status === "ready" && <ReceiptPrintPreview receipt={receipt} options={value} />}
     <p className="remittance-help">En la ventana de imprimir del navegador elige el mismo papel, a escala 100% y sin márgenes adicionales.</p>
   </div>;
 }

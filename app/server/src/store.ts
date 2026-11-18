@@ -5,6 +5,8 @@ import pg from "pg";
 import { DomainError, emptyState, type State, type User } from "./domain.js";
 import { readRemittances, saveRemittances } from "./remittance-store.js";
 import { readAdminTools, saveAdminTools } from "./admin-tools-store.js";
+import type { RecipientReceiptFormat } from "./admin-tools.js";
+import type { StationInstallationRef } from "./station-installation-protocol.js";
 import { readCatalogs, saveCatalogMasters, saveRecurringCharges } from "./catalog-store.js";
 pg.types.setTypeParser(20, Number);
 export interface Store {
@@ -14,6 +16,7 @@ export interface Store {
   readRequest?(): Promise<State>;
   transactionRequest?<T>(fn: (s: State) => T | Promise<T>): Promise<T>;
   readAccess?(actor: User, sessionId: unknown): Promise<State>;
+  readStationReceiptFormats?(installations: StationInstallationRef[], rraaClientId?: string): Promise<RecipientReceiptFormat[]>;
   hasDueRecurring?(today: string): Promise<boolean>;
   readIdempotency?(key: string): Promise<State["idempotency"][number] | undefined>;
   readAdminPage?(kind: "traces" | "sessions", input: { from?: string; to?: string; q: string; status?: string; limit: number; offset: number }): Promise<{items: Record<string, unknown>[]; total: number; limit: number; offset: number}>;
@@ -730,6 +733,18 @@ export class PostgresStore implements Store {
   async readIdempotency(key: string) {
     const result = await this.pool.query('SELECT id,fingerprint,response,created_at AS "createdAt" FROM idempotency WHERE id=$1', [key]);
     return result.rows[0] as State["idempotency"][number] | undefined;
+  }
+  async readStationReceiptFormats(installations: StationInstallationRef[], rraaClientId?: string): Promise<RecipientReceiptFormat[]> {
+    // Each scope is [namespace_id, rraaClientId or null], enforced by migration 030.
+    const result = await this.pool.query<{ format: RecipientReceiptFormat }>(`
+      SELECT DISTINCT s.id, s.recipient_receipt_format AS format
+      FROM unnest($1::text[], $2::text[]) requested(station_id, installation_id)
+      JOIN station_installations i USING (station_id, installation_id)
+      JOIN station_installation_scope scope ON scope.scope_id = i.namespace_id AND scope.id = 'main'
+      JOIN pcp_stations s ON s.id = i.station_id
+      WHERE i.status = 'active' AND s.active AND (i.scope_id::jsonb ->> 1) IS NOT DISTINCT FROM $3::text
+      LIMIT 2`, [installations.map((ref) => ref.stationId), installations.map((ref) => ref.installationId), rraaClientId ?? null]);
+    return result.rows.map((row) => row.format);
   }
   async readAdminPage(kind: "traces" | "sessions", input: { from?: string; to?: string; q: string; status?: string; limit: number; offset: number }) {
     const trace = kind === "traces";
