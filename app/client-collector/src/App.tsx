@@ -765,7 +765,6 @@ function Login({
             </span>
           </div>
           <h2>Iniciar sesión</h2>
-          <p>Escribe tu usuario y tu contraseña para entrar.</p>
         </div>
         <form name="collector-login" autoComplete="on" data-keyboard-enter="send" onSubmit={(event) => void submit(event)}>
           <label>
@@ -794,7 +793,6 @@ function Login({
           </label>
           <LoginStationField api={api} choice={station.choice} restoreChoice={station.restoreChoice} onChange={value => { station.setChoice(value); setError(""); }} disabled={busy || leaving} />
           {station.credentialsLocked && <button type="button" disabled={busy} onClick={() => { station.changeAccount(); setError(""); }}>Cambiar cuenta</button>}
-          <PasswordManagerHint />
           {!online && (
             <p className="inline-error">
               <CloudOff size={17} />
@@ -817,6 +815,7 @@ function Login({
               </>
             )}
           </button>
+          <PasswordManagerHint />
         </form>
         {onRetry && (
           <button
