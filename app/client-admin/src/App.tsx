@@ -141,7 +141,8 @@ import { ConnectedBanks, type Bank } from "./ConnectedBanks";
 import { ThemeToggle } from "./ThemeToggle";
 import { LoginPasswordInput, PasswordManagerHint } from "../../shared/LoginPasswordInput";
 import { loginCredentials } from "../../shared/loginCredentials";
-import { openCollectorPortal, STATION_NOTICE_KEY } from "../../shared/sessionHandoff";
+import { openCollectorPortal } from "../../shared/sessionHandoff";
+import { LoginStationField, useStationLogin } from "../../shared/LoginStation";
 import { SessionStations } from "../../shared/SessionStations";
 import { registerSessionStation } from "./registerSessionStation";
 import { ReceiptPaperSelect, type ReceiptPaper } from "../../shared/ReceiptPaperSelect";
@@ -4638,30 +4639,28 @@ function Login({
     [busy, setBusy] = useState(false),
     [toCollector, setToCollector] = useState(false),
     [error, setError] = useState("");
+  const station = useStationLogin<User>();
   async function login(credentials: Readonly<{ email: string; password: string }>) {
     setBusy(true);
     setError("");
     try {
-      const result = await api<{ token: string; user: User }>("/auth/login", {
-        method: "POST",
-        body: JSON.stringify(credentials),
+      const result = await station.signIn(credentials, values => api<{ token: string; user: User }>("/auth/login", {
+        method: "POST", body: JSON.stringify(values),
+      }), account => {
+        const next = enrichUserRole(account);
+        if (isSuspendedUser(next))
+          throw new Error("Tu cuenta o tu empresa está suspendida. Habla con la oficina.");
+        if (normalizeRole(next.role) !== "COLLECTOR" && !canAccessAdmin(next))
+          throw new Error("Tu cuenta todavía no tiene permisos para entrar. Pide a la oficina que te los asigne.");
       });
       const next = enrichUserRole(result.user);
-      if (isSuspendedUser(next))
-        throw new Error("Tu cuenta o tu empresa está suspendida. Habla con la oficina.");
       // A collector works from the collector app: the session goes there without asking again.
       if (normalizeRole(next.role) === "COLLECTOR" && !hasRoleExceptions(next)) {
         setToCollector(true);
-        sessionStorage.setItem(STATION_NOTICE_KEY, next.id);
         openCollectorPortal(result.token, collectorUrl);
         return;
       }
-      if (!canAccessAdmin(next))
-        throw new Error(
-          "Tu cuenta todavía no tiene permisos para entrar. Pide a la oficina que te los asigne.",
-        );
       setToken(result.token);
-      sessionStorage.setItem(STATION_NOTICE_KEY, next.id);
       onLogin(next);
     } catch (error) {
       setError(
@@ -4701,7 +4700,7 @@ function Login({
                 inputMode="email"
                 autoCapitalize="none"
                 spellCheck={false}
-                disabled={busy || toCollector}
+                disabled={busy || toCollector || station.credentialsLocked}
                 autoComplete="username"
                 maxLength={INPUT_LIMITS.email}
                 autoFocus
@@ -4713,8 +4712,10 @@ function Login({
             </label>
             <label className="field">
               Contraseña
-              <LoginPasswordInput id="admin-login-password" value={password} onChange={setPassword} minLength={3} disabled={busy || toCollector} />
+              <LoginPasswordInput id="admin-login-password" value={password} onChange={setPassword} minLength={3} disabled={busy || toCollector || station.credentialsLocked} />
             </label>
+            <LoginStationField api={api} choice={station.choice} restoreChoice={station.restoreChoice} onChange={value => { station.setChoice(value); setError(""); }} disabled={busy || toCollector} />
+            {station.credentialsLocked && <button type="button" disabled={busy} onClick={() => { station.changeAccount(); setError(""); }}>Cambiar cuenta</button>}
             <PasswordManagerHint />
             {error && (
               <div className="inline-error" role="alert">

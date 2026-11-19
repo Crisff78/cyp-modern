@@ -51,7 +51,7 @@ import {
 import { CollectionSheet } from "./CollectionSheet";
 import { ReceiptView } from "./ReceiptView";
 import RemittancesWorkspace from "../../shared/remittances/RemittancesWorkspace";
-import { hasPermission, hasRemittancePermission } from "../../shared/access.mjs";
+import { hasPermission, hasRemittancePermission, hasRemittanceAccess, hasRoleExceptions } from "../../shared/access.mjs";
 import { collectorViewAllowed, type CollectorView } from "./services/views";
 import { remittancesApi } from "./remittancesApi";
 import { isMockToken } from "./mock";
@@ -60,7 +60,8 @@ import { locationUnavailable, locationError, validLocation } from "../../shared/
 import { INPUT_LIMITS, validateText } from "../../shared/inputRules";
 import { LoginPasswordInput, PasswordManagerHint } from "../../shared/LoginPasswordInput";
 import { loginCredentials } from "../../shared/loginCredentials";
-import { openAdminPortal, STATION_NOTICE_KEY } from "../../shared/sessionHandoff";
+import { openAdminPortal } from "../../shared/sessionHandoff";
+import { LoginStationField, useStationLogin } from "../../shared/LoginStation";
 import { SessionStations } from "../../shared/SessionStations";
 import { BAR_MENU_KEYS, dialogKeys, focusMenu, installKeyboard } from "../../shared/keyboard";
 import { updatedLabel } from "../../shared/buildInfo";
@@ -78,7 +79,7 @@ import type {
   Snapshot,
   User,
 } from "./types";
-import { canAccessCollector, enrichUserRole, isSuspendedUser } from "./types";
+import { canAccessAdmin, canAccessCollector, enrichUserRole, isSuspendedUser } from "./types";
 
 const APP_BASE_URL = import.meta.env.BASE_URL;
 type View = CollectorView;
@@ -667,6 +668,7 @@ function Login({
   const [busy, setBusy] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [error, setError] = useState(initialError);
+  const station = useStationLogin<User>();
   useEffect(() => setError(initialError), [initialError]);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -674,18 +676,21 @@ function Login({
     setBusy(true);
     setError("");
     try {
-      validateText(credentials.email, "Usuario o correo", INPUT_LIMITS.email, { required: true });
-      if (!credentials.password || credentials.password.length > INPUT_LIMITS.password)
-        throw new Error(`Escribe una contraseña de hasta ${INPUT_LIMITS.password} caracteres.`);
-      const result = await api<{ token: string; user: User }>("/auth/login", {
-        method: "POST",
-        body: JSON.stringify(credentials),
+      const result = await station.signIn(credentials, values => {
+        validateText(values.email, "Usuario o correo", INPUT_LIMITS.email, { required: true });
+        if (!values.password || values.password.length > INPUT_LIMITS.password)
+          throw new Error(`Escribe una contraseña de hasta ${INPUT_LIMITS.password} caracteres.`);
+        return api<{ token: string; user: User }>("/auth/login", { method: "POST", body: JSON.stringify(values) });
+      }, account => {
+        const next = enrichUserRole(account);
+        if (isSuspendedUser(next))
+          throw new Error("Tu cuenta o tu empresa está suspendida. Habla con la oficina.");
+        if (!canAccessCollector(next) && !canAccessAdmin(next) && !hasRoleExceptions(next) &&
+            !(next.role === "CASHIER" && hasRemittanceAccess(next)))
+          throw new Error("Tu cuenta todavía no tiene permisos para entrar. Pide a la oficina que te los asigne.");
       });
       const next = enrichUserRole(result.user);
-      if (isSuspendedUser(next))
-        throw new Error("Tu cuenta o tu empresa está suspendida. Habla con la oficina.");
       // One sign-in page for every account: an office account goes on to the office panel.
-      sessionStorage.setItem(STATION_NOTICE_KEY, next.id);
       if (!canAccessCollector(next)) {
         setLeaving(true);
         openAdminPortal(result.token, adminPortalUrl());
@@ -774,7 +779,7 @@ function Login({
               inputMode="email"
               autoCapitalize="none"
               spellCheck={false}
-              disabled={busy}
+              disabled={busy || station.credentialsLocked}
               required
               autoComplete="username"
               maxLength={INPUT_LIMITS.email}
@@ -785,8 +790,10 @@ function Login({
           </label>
           <label>
             Contraseña
-            <LoginPasswordInput id="collector-login-password" value={password} onChange={setPassword} disabled={busy} />
+            <LoginPasswordInput id="collector-login-password" value={password} onChange={setPassword} disabled={busy || station.credentialsLocked} />
           </label>
+          <LoginStationField api={api} choice={station.choice} restoreChoice={station.restoreChoice} onChange={value => { station.setChoice(value); setError(""); }} disabled={busy || leaving} />
+          {station.credentialsLocked && <button type="button" disabled={busy} onClick={() => { station.changeAccount(); setError(""); }}>Cambiar cuenta</button>}
           <PasswordManagerHint />
           {!online && (
             <p className="inline-error">
