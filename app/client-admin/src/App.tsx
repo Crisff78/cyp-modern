@@ -4678,10 +4678,6 @@ function Login({
             <Logo />
           </div>
           <h2>Iniciar sesión</h2>
-          <strong className="login-subtitle">
-            Cobros y Pagos
-          </strong>
-          <p className="login-instructions">Escribe tu usuario y tu contraseña para entrar.</p>
           <form
             data-keyboard-enter="send"
             name="login"
@@ -4716,7 +4712,6 @@ function Login({
             </label>
             <LoginStationField api={api} choice={station.choice} restoreChoice={station.restoreChoice} onChange={value => { station.setChoice(value); setError(""); }} disabled={busy || toCollector} />
             {station.credentialsLocked && <button type="button" disabled={busy} onClick={() => { station.changeAccount(); setError(""); }}>Cambiar cuenta</button>}
-            <PasswordManagerHint />
             {error && (
               <div className="inline-error" role="alert">
                 <CircleAlert size={17} />
@@ -4734,6 +4729,7 @@ function Login({
                 </>
               )}
             </button>
+            <PasswordManagerHint />
           </form>
           <p className="demo-disclaimer">
             ¿No tienes usuario? Pídeselo a la oficina de tu empresa.
