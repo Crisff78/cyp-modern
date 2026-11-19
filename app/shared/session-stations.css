@@ -1,0 +1,48 @@
+.session-station-trigger {
+  font: inherit;
+  font-size: .8rem;
+  font-weight: 600;
+  color: inherit;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: .4rem;
+  padding: .3rem .55rem;
+  cursor: pointer;
+  max-width: min(13rem, 24vw);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+dialog.session-stations {
+  margin: auto;
+  inset: 0;
+  width: min(26rem, 92vw);
+  max-height: 85dvh;
+  overflow: auto;
+  box-sizing: border-box;
+  color: var(--cyp-text, CanvasText);
+  background: var(--cyp-surface, Canvas);
+  padding: 1.25rem;
+  border: 1px solid var(--cyp-border-strong, GrayText);
+  border-radius: .65rem;
+  box-shadow: 0 .75rem 3rem #0004;
+  text-align: start;
+  white-space: normal;
+  font: normal .95rem/1.45 system-ui, sans-serif;
+}
+.session-stations::backdrop { background: #0006; }
+.session-stations h2 { font-size: 1.15rem; margin: 0 0 .5rem; }
+.session-stations p { margin: .5rem 0; }
+.session-stations ul { padding: 0; margin: .7rem 0; list-style: none; max-height: 42dvh; overflow: auto; }
+.session-stations li { display: flex; gap: .6rem; justify-content: space-between; align-items: baseline; padding: .45rem 0; border-bottom: 1px solid var(--cyp-border, #bbc4cc); overflow-wrap: anywhere; }
+.session-stations li strong { flex: none; }
+.session-stations-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: .8rem; }
+.session-stations-actions button {
+  color: inherit;
+  background: var(--cyp-surface-raised, ButtonFace);
+  border: 1px solid var(--cyp-border-strong, GrayText);
+  border-radius: .35rem;
+  font: inherit;
+  padding: .35rem .8rem;
+  cursor: pointer;
+}

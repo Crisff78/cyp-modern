@@ -141,7 +141,8 @@ import { ConnectedBanks, type Bank } from "./ConnectedBanks";
 import { ThemeToggle } from "./ThemeToggle";
 import { LoginPasswordInput, PasswordManagerHint } from "../../shared/LoginPasswordInput";
 import { loginCredentials } from "../../shared/loginCredentials";
-import { openCollectorPortal } from "../../shared/sessionHandoff";
+import { openCollectorPortal, STATION_NOTICE_KEY } from "../../shared/sessionHandoff";
+import { SessionStations } from "../../shared/SessionStations";
 import { ReceiptPaperSelect, type ReceiptPaper } from "../../shared/ReceiptPaperSelect";
 import { matchesClientSearch, copyPhoneIntoEmptyFields, clientCodeFromPhone } from "./clientSearch";
 import { canReviewCollectionFunds, unconfirmedCollectionBalances, recentMovementReceipts } from "./collectionAlerts";
@@ -360,18 +361,7 @@ const pageTitles: Record<Page, string> = {
   dailySettlements: "Cuadres Diarios",
   reports: "Reportes",
 };
-type Station = {
-  code: string;
-  name: string;
-  kind: "Administración" | "Estación de Cobro y Pago";
-};
-const stations: Station[] = [
-  {
-    code: "EST-01",
-    name: "Estaci\u00f3n Operativa Predeterminada",
-    kind: "Administraci\u00f3n",
-  },
-];
+
 
 type AdminPermissions = {
   role: ReturnType<typeof normalizeRole>;
@@ -4640,7 +4630,7 @@ function LegacyCodifierView({ page, snapshot, onRefresh, onAccount }: Readonly<{
 function Login({
   onLogin,
 }: Readonly<{
-  onLogin: (user: User, station: Station) => void;
+  onLogin: (user: User) => void;
 }>) {
   const [email, setEmail] = useState(""),
     [password, setPassword] = useState(""),
@@ -4661,6 +4651,7 @@ function Login({
       // A collector works from the collector app: the session goes there without asking again.
       if (normalizeRole(next.role) === "COLLECTOR" && !hasRoleExceptions(next)) {
         setToCollector(true);
+        sessionStorage.setItem(STATION_NOTICE_KEY, next.id);
         openCollectorPortal(result.token, collectorUrl);
         return;
       }
@@ -4669,7 +4660,8 @@ function Login({
           "Tu cuenta todavía no tiene permisos para entrar. Pide a la oficina que te los asigne.",
         );
       setToken(result.token);
-      onLogin(next, stations[0]);
+      sessionStorage.setItem(STATION_NOTICE_KEY, next.id);
+      onLogin(next);
     } catch (error) {
       setError(
         error instanceof Error ? error.message : "No pudimos iniciar sesión.",
@@ -4793,7 +4785,6 @@ function OwnPasswordDialog({ userId, onClose, onChanged, onSessionEnd }: Readonl
 export default function App() {
   const [authenticated, setAuthenticated] = useState(!!getToken()),
     [user, setUser] = useState<User | null>(null),
-    [station, setStation] = useState<Station>(() => stations[0]),
     [snapshot, setSnapshot] = useState<Snapshot | null>(null),
     [initialError, setInitialError] = useState(""),
     [refreshing, setRefreshing] = useState(false),
@@ -5077,9 +5068,8 @@ export default function App() {
       {createPortal(<Toaster position="top-right" richColors closeButton style={{ zIndex: 2147483647 }} />, document.body)}
       {!authenticated ? (
         <Login
-          onLogin={(user, nextStation) => {
+          onLogin={(user) => {
             setUser(user);
-            setStation(nextStation);
             setAuthenticated(true);
           }}
         />
@@ -5294,9 +5284,7 @@ export default function App() {
                    title="Abrir navegación">
                     <Menu size={21} />
                   </button>
-                  <span className="station-badge compact-station" title={station.name}>
-                    <strong>{station.code}</strong>
-                  </span>
+                  {user && <SessionStations key={user.id} actorId={user.id} api={remittancesApi} />}
                   <div className="module-context">
                     <span>{isMockToken(getToken()) || snapshot?.clients.some((client) => /PRUEBA|SINT[ÉE]TIC|DEMO/i.test(client.note ?? "")) ? "DATOS DE PRUEBA" : "Módulo activo"}</span>
                     <strong>{activeNav?.label ?? "Escritorio"}</strong>

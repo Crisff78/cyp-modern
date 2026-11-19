@@ -340,7 +340,7 @@ export async function buildApp(config: Config) {
     const accessedUser = currentAccessUser(state, u);
     req.user = accessedUser;
     if (!isOperationalRole(u.role) && !hasRoleExceptions(accessedUser)) {
-      const ownSession = path === "/api/auth/me" || path === "/api/auth/logout" || path === "/api/soporte-contacto" || path === `/api/usuarios/${u.id}/clave`;
+      const ownSession = path === "/api/auth/me" || path === "/api/auth/logout" || path === "/api/auth/estaciones" || path === "/api/soporte-contacto" || path === `/api/usuarios/${u.id}/clave`;
       const remittanceOperator = u.role === "cashier" && hasRemittanceAccess(accessedUser) && (path.startsWith("/api/envios") || path === "/api/snapshot");
       const supervisorRead = u.role === "supervisor" && (req.method === "GET" || path === "/api/envios/formato-recepcion");
       if (!ownSession && !remittanceOperator && !supervisorRead)

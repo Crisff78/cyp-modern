@@ -12,6 +12,7 @@ export function requestStore(store: Store): Store {
     transaction: <T>(fn: (state: State) => T | Promise<T>) => store.transactionRequest ? store.transactionRequest(fn) : store.transaction(fn),
     close: () => store.close(),
     ...(store.readAccess ? {readAccess: store.readAccess.bind(store)} : {}),
+    ...(store.readSessionStations ? {readSessionStations: store.readSessionStations.bind(store)} : {}),
     ...(store.readStationReceiptFormats ? {readStationReceiptFormats: store.readStationReceiptFormats.bind(store)} : {}),
     ...(store.readAdminPage ? {readAdminPage: store.readAdminPage.bind(store)} : {}),
     ...(store.readIdempotency ? {readIdempotency: store.readIdempotency.bind(store)} : {}),

@@ -247,6 +247,9 @@ remittancesApi("/snapshot").then(snapshot => createRoot(document.getElementById(
     assert.deepEqual(getAdminTools(await store.read()).stations, originalStations);
     await t.test("the receipt format is editable without RRAA using only the station edit permission", async () => {
       await selectStation("A");
+      await page.getByRole("columnheader", { name: "Método de facturación", exact: true }).waitFor();
+      const stationRow = page.getByRole("row").filter({ has: page.getByRole("cell", { name: "QA-CYP-A", exact: true }) });
+      await stationRow.getByRole("cell", { name: "Común", exact: true }).waitFor();
       assert.equal(await page.getByTitle("Editar", { exact: true }).isDisabled(), true);
       await page.getByRole("button", { name: "Formato de recepción", exact: true }).click();
       const formatDialog = page.getByRole("dialog", { name: "Formato de recepción", exact: true });
@@ -259,6 +262,7 @@ remittancesApi("/snapshot").then(snapshot => createRoot(document.getElementById(
       assert.equal(writes.length, before + 1);
       assert.equal(writes[before].path, `/api/estaciones/${station("A").id}/formato-recepcion`);
       assert.deepEqual(JSON.parse(writes[before].body), { recipientReceiptFormat: "haiti" });
+      await stationRow.getByRole("cell", { name: "Haitiano", exact: true }).waitFor();
       await page.getByRole("button", { name: "Formato de recepción", exact: true }).click();
       assert.equal(await formatSelect.inputValue(), "haiti");
       await formatDialog.getByRole("button", { name: "Cancelar" }).click();
