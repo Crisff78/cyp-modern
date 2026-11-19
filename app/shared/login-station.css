@@ -1,0 +1,3 @@
+.login-station-field { display: grid; gap: .35rem; min-width: 0; }
+.login-station-field select { width: 100%; min-width: 0; min-height: 44px; padding: .5rem; font: inherit; color: inherit; background: var(--cyp-surface, Canvas); border: 1px solid var(--cyp-border-strong, GrayText); border-radius: .45rem; }
+.login-station-field small { font-size: .8rem; line-height: 1.35; }

@@ -1,8 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { listLocalStationInstallations } from "./remittances/localStationInstallations";
 import type { StrictApi } from "./remittances/strictApi";
-import { STATION_NOTICE_KEY } from "./sessionHandoff";
-import { readSessionStations, type SessionStation } from "./sessionStationsApi";
+import { readSessionStations, rememberSessionStation, type SessionStation } from "./sessionStationsApi";
 import "./session-stations.css";
 
 type Result = { stations: SessionStation[]; browserReadable: boolean };
@@ -13,7 +12,7 @@ type Props = {
 };
 
 export function SessionStations({ actorId, api, registerStation }: Props) {
-  const [open, setOpen] = useState(() => sessionStorage.getItem(STATION_NOTICE_KEY) === actorId);
+  const [open, setOpen] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState(false);
@@ -41,7 +40,10 @@ export function SessionStations({ actorId, api, registerStation }: Props) {
       });
       if (!current) return;
       const stations = await readSessionStations(api, installations);
-      if (current) setResult({ stations, browserReadable });
+      if (current) {
+        if (browserReadable) rememberSessionStation(stations);
+        setResult({ stations, browserReadable });
+      }
     }
     void load().catch(() => { if (current) setError(true); });
     return () => { current = false; };
@@ -78,7 +80,6 @@ export function SessionStations({ actorId, api, registerStation }: Props) {
       setChoice(null);
       setRegistrationError("");
     }
-    if (sessionStorage.getItem(STATION_NOTICE_KEY) === actorId) sessionStorage.removeItem(STATION_NOTICE_KEY);
   };
   return <>
     <button type="button" className="session-station-trigger" title={status} aria-label={`Ver estaciones. ${status}`} onClick={reopen}>
