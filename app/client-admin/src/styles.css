@@ -4250,10 +4250,12 @@ table {
   font-weight: 650;
   letter-spacing: 0.01em;
 }
+.login-form-inner .field > :is(input, select, .cyp-login-password) {
+  margin-top: 8px;
+}
 .login-form-inner .field input,
 .login-form-inner .field select {
   min-height: 46px;
-  margin-top: 8px;
   border-radius: 9px;
   border-color: var(--cyp-border-strong, #cbd5e1);
   background: var(--cyp-surface, #ffffff);
