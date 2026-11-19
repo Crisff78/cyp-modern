@@ -2664,14 +2664,13 @@ table {
 .login-form-inner .field {
   font-size: 11px;
   color: var(--cyp-text-muted, #627769);
-  margin-bottom: 21px;
+  margin: 0;
 }
 .login-form-inner .field input {
   min-height: 47px;
   font-size: 12px;
 }
 .login-submit {
-  margin-top: 7px;
   min-height: 46px !important;
   justify-content: space-between;
   padding: 12px 17px;
@@ -2706,11 +2705,11 @@ table {
   margin-left: auto;
 }
 .login-form-inner .demo-disclaimer {
-  font-size: 9px;
-  line-height: 1.8;
-  color: var(--cyp-text-subtle, #a9b5ac);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--cyp-text-muted, #64748b);
   text-align: center;
-  margin-top: 15px;
+  margin-top: 8px;
 }
 .login-bottom {
   position: absolute;
@@ -4184,7 +4183,7 @@ table {
   align-items: center;
   justify-content: center;
   min-height: 100dvh;
-  padding: 32px 18px 72px;
+  padding: 16px clamp(12px, 3vw, 20px);
   background: linear-gradient(180deg, var(--cyp-surface-muted, #f8fafc) 0%, var(--cyp-surface-muted, #f1f5f9) 100%), var(--cyp-surface-muted, #f8fafc);
 }
 .login-story,
@@ -4203,7 +4202,7 @@ table {
   width: min(100%, 430px);
   max-width: 430px;
   margin: 0 auto;
-  padding: 34px 36px 32px;
+  padding: clamp(16px, 4vw, 24px);
   border: 1px solid var(--cyp-border, #e2e8f0);
   border-radius: 14px;
   background: var(--cyp-surface, #ffffff);
@@ -4214,7 +4213,7 @@ table {
 .login-card-brand {
   display: flex;
   justify-content: center;
-  margin-bottom: 24px;
+  margin-bottom: 10px;
 }
 .login-card-brand .brand-word {
   font-size: 28px;
@@ -4226,14 +4225,6 @@ table {
   letter-spacing: -0.4px;
   text-align: center;
 }
-.login-subtitle {
-  display: block;
-  margin-top: 3px;
-  color: var(--cyp-success-text, #059669);
-  font-size: 13px;
-  font-weight: 650;
-  text-align: center;
-}
 .login-form-inner > p {
   margin-top: 8px;
   color: var(--cyp-text-muted, #64748b);
@@ -4242,16 +4233,17 @@ table {
   text-align: center;
 }
 .login-form-inner form {
-  margin-top: 26px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  margin-top: 16px;
 }
 .login-form-inner .field {
+  gap: 5px;
   color: var(--cyp-text, #334155);
   font-size: 12px;
   font-weight: 650;
   letter-spacing: 0.01em;
-}
-.login-form-inner .field > :is(input, select, .cyp-login-password) {
-  margin-top: 8px;
 }
 .login-form-inner .field input,
 .login-form-inner .field select {
@@ -4378,7 +4370,8 @@ table {
 }
 .login-bottom {
   position: static;
-  margin-top: 20px;
+  margin-top: 10px;
+  font-size: 11px;
   justify-content: center;
   color: var(--cyp-text-muted, #64748b);
 }
