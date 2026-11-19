@@ -60,7 +60,8 @@ import { locationUnavailable, locationError, validLocation } from "../../shared/
 import { INPUT_LIMITS, validateText } from "../../shared/inputRules";
 import { LoginPasswordInput, PasswordManagerHint } from "../../shared/LoginPasswordInput";
 import { loginCredentials } from "../../shared/loginCredentials";
-import { openAdminPortal } from "../../shared/sessionHandoff";
+import { openAdminPortal, STATION_NOTICE_KEY } from "../../shared/sessionHandoff";
+import { SessionStations } from "../../shared/SessionStations";
 import { BAR_MENU_KEYS, dialogKeys, focusMenu, installKeyboard } from "../../shared/keyboard";
 import { updatedLabel } from "../../shared/buildInfo";
 import { useDialogFocus } from "../../shared/dialogFocus";
@@ -440,6 +441,7 @@ export function App() {
             <span className="brand-subtitle">EN RUTA</span>
           </a>
           <div className="header-actions">
+            <SessionStations key={user.id} actorId={user.id} api={remittancesApi} />
             <button
               className="icon-button"
               aria-label="Actualizar datos"
@@ -683,6 +685,7 @@ function Login({
       if (isSuspendedUser(next))
         throw new Error("Tu cuenta o tu empresa está suspendida. Habla con la oficina.");
       // One sign-in page for every account: an office account goes on to the office panel.
+      sessionStorage.setItem(STATION_NOTICE_KEY, next.id);
       if (!canAccessCollector(next)) {
         setLeaving(true);
         openAdminPortal(result.token, adminPortalUrl());
