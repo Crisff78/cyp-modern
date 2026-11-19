@@ -27,15 +27,26 @@ export function stationInstallationScope(state: State, options: StationInstallat
   if (!tools.installationScopeId && create) tools.installationScopeId = randomUUID();
   return tools.installationScopeId ? JSON.stringify([tools.installationScopeId, options.rraaClientId ?? null]) : undefined;
 }
-export function stationReceiptFormats(state: State, installations: StationInstallationRef[], options: StationInstallationOptions): RecipientReceiptFormat[] {
+function registeredStationIds(state: State, installations: StationInstallationRef[], options: StationInstallationOptions) {
   const tools = getAdminTools(state);
   const scopeId = stationInstallationScope(state, options);
-  if (!scopeId) return [];
+  if (!scopeId) return new Set<string>();
   const refKey = (ref: StationInstallationRef) => JSON.stringify([ref.stationId, ref.installationId]);
   const requested = new Set(installations.map(refKey));
-  const stationIds = new Set(tools.installations.filter((row) =>
+  return new Set(tools.installations.filter((row) =>
     row.scopeId === scopeId && row.status === "active" && requested.has(refKey(row))).map((row) => row.stationId));
-  return tools.stations.filter((station) => station.active && stationIds.has(station.id))
+}
+
+export function sessionStations(state: State, installations: StationInstallationRef[], options: StationInstallationOptions) {
+  const matches = registeredStationIds(state, installations, options);
+  return getAdminTools(state).stations.filter(station => station.active)
+    .map(({ id, name, number }) => ({ name, number, linked: matches.has(id) }))
+    .sort((a, b) => a.number.localeCompare(b.number));
+}
+
+export function stationReceiptFormats(state: State, installations: StationInstallationRef[], options: StationInstallationOptions): RecipientReceiptFormat[] {
+  const stationIds = registeredStationIds(state, installations, options);
+  return getAdminTools(state).stations.filter((station) => station.active && stationIds.has(station.id))
     .map((station) => station.recipientReceiptFormat ?? "common");
 }
 function publicKey(value: string): KeyObject {

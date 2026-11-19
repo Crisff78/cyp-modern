@@ -175,6 +175,7 @@ export function StationInstallationPanel({ station, user, disabled = false, onLo
         if (version === epoch.current) setData(response);
       } else if (!validSummary(result, station.id, request.installationId) ||
                  (request.kind === "register" ? result.status !== "active" : result.status !== "revoked")) throw invalidResponse();
+      if (request.kind !== "query") window.dispatchEvent(new Event("cyp-stations-updated"));
       if (pendingIntents.get(intentScope) === request) pendingIntents.delete(intentScope);
       pending.current = null;
       if (version === epoch.current) {

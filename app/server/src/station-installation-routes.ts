@@ -7,7 +7,7 @@ import { assertAdmin, assertAdminRead, DomainError, type State, type User } from
 import { boundedId, freeText } from "./input-validation.js";
 import type { Store } from "./store.js";
 import { createStationInstallationChallenge, listStationInstallations, queryStationInstallation,
-  registerStationInstallation, revokeStationInstallation, stationInstallationScope, stationReceiptFormats,
+  registerStationInstallation, revokeStationInstallation, sessionStations, stationInstallationScope, stationReceiptFormats,
   type InstallationActor, type StationInstallationOptions } from "./station-installations.js";
 
 type Describe = (method: string, path: string, summary: string, schema?: z.ZodType, isPublic?: boolean, requiresIdempotency?: boolean) => void;
@@ -97,6 +97,14 @@ export function registerStationInstallationRoutes(app: FastifyInstance, store: S
   }
   const listPath = "/api/estaciones/:id/instalaciones", challengePath = `${listPath}/desafios`;
   const queryPath = "/api/estaciones/:id/datos", revokePath = `${listPath}/:installationId/revocar`;
+  const sessionPath = "/api/auth/estaciones";
+  app.post(sessionPath, async (req) => {
+    const { installations } = receiptFormatBody.parse(req.body);
+    return store.readSessionStations
+      ? store.readSessionStations(installations, settings.rraaClientId)
+      : sessionStations(await store.read(), installations, settings);
+  });
+  describe("post", sessionPath, "Estaciones activas y vínculos de este navegador", receiptFormatBody, false, false);
   const receiptFormatPath = "/api/envios/formato-recepcion";
   app.post(receiptFormatPath, async (req) => {
     const { installations } = receiptFormatBody.parse(req.body);
