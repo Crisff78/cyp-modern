@@ -2,32 +2,19 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { LegacyDialog } from "./LegacyConnectedUi";
 import { remittancesApi } from "./remittancesApi";
 import { StrictApiError, operationKey } from "../../shared/remittances/strictApi";
+import type { StationInstallationSummary, StationInstallationData } from "../../server/src/station-installation-protocol";
 import {
-  INSTALLATION_PROTOCOL_VERSION, signingPayload,
-  type StationInstallationChallenge, type StationInstallationSummary, type StationInstallationData,
-} from "../../server/src/station-installation-protocol";
-import {
-  getOrCreateStationInstallationKey, readStationInstallationKey, signStationInstallationPayload,
+  getOrCreateStationInstallationKey, readStationInstallationKey,
   type StationInstallationKey,
 } from "./stationInstallationKey";
 import { normalizeRole, type User } from "./types";
 import { useAdjustablePanel } from "./useAdjustablePanel";
+import { invalidResponse, registrationChallenge, sendPending, signInstallationRequest, validSummary, type PendingRequest } from "./stationInstallationRequests";
 
 type Actor = Pick<User, "id" | "role">;
 export type InstallationStation = { id: string; name: string; deviceId: string; active: boolean; rraaValidated: boolean };
 type InstallationList = { installations: StationInstallationSummary[]; identityKind: "installation" };
 type Review = { kind: "register"; identity: StationInstallationKey } | { kind: "revoke"; installation: StationInstallationSummary };
-type PendingRequest = {
-  kind: "register" | "query" | "revoke";
-  stage: "challenge" | "complete";
-  path: string;
-  body: string;
-  key: string;
-  identity?: StationInstallationKey;
-  installationId: string;
-  inFlight?: Promise<unknown>;
-  uncertain?: boolean;
-};
 // Pending intents survive closing and reopening a view during this page session.
 // Proofs and operation keys are never serialized, logged or put in localStorage.
 const pendingIntents = new Map<string, PendingRequest>();
@@ -35,7 +22,6 @@ const errorText = (failure: unknown) => failure instanceof Error ? failure.messa
 const dateTime = (date?: string) => date ? new Date(date).toLocaleString("es-DO", { timeZone: "America/Santo_Domingo" }) : "—";
 const scopeFor = (stationId: string, user?: Actor) => JSON.stringify([window.location.origin, stationId, user?.id ?? ""]);
 const statusText = (status?: string) => status === "active" ? "Vigente" : status === "revoked" ? "Revocada" : "Sin registro en esta estación";
-const invalidResponse = () => new StrictApiError("La API no devolvió una confirmación válida. Reintenta la misma solicitud y revisa el listado.", 200, true);
 
 export function pendingStationInstallationStationId(user?: Actor): string {
   if (!user) return "";
@@ -46,37 +32,6 @@ export function pendingStationInstallationStationId(user?: Actor): string {
   return "";
 }
 
-function validSummary(value: unknown, stationId: string, installationId?: string): value is StationInstallationSummary {
-  const row = value as Partial<StationInstallationSummary> | null;
-  return Boolean(row && row.stationId === stationId && typeof row.installationId === "string" &&
-    (!installationId || row.installationId === installationId) && (row.status === "active" || row.status === "revoked") &&
-    typeof row.revision === "string" && row.revision.length > 0 && typeof row.registeredBy === "string" &&
-    typeof row.registeredAt === "string" && Number.isFinite(Date.parse(row.registeredAt)) &&
-    (row.revokedAt === undefined || (typeof row.revokedAt === "string" && Number.isFinite(Date.parse(row.revokedAt)))) &&
-    (row.revocationReason === undefined || typeof row.revocationReason === "string"));
-}
-
-function validateChallenge(challenge: StationInstallationChallenge, request: PendingRequest, stationId: string, user: Actor) {
-  if (!challenge || challenge.version !== INSTALLATION_PROTOCOL_VERSION || challenge.stationId !== stationId ||
-      challenge.installationId !== request.installationId || challenge.purpose !== request.kind ||
-      challenge.origin !== window.location.origin || challenge.actorId !== user.id ||
-      typeof challenge.challengeId !== "string" || !challenge.challengeId ||
-      typeof challenge.nonce !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(challenge.nonce) ||
-      typeof challenge.scopeId !== "string" || !challenge.scopeId ||
-      typeof challenge.sessionId !== "string" || !challenge.sessionId ||
-      !Number.isFinite(Date.parse(challenge.expiresAt)) || Date.parse(challenge.expiresAt) <= Date.now() ||
-      (request.kind === "register" && challenge.publicKeySpki !== request.identity?.publicKeySpki)) {
-    throw new Error("El desafío no corresponde a esta estación, usuario, navegador y operación, o ya venció. No se firmó ni se registró una instalación.");
-  }
-}
-
-async function sendPending(request: PendingRequest): Promise<unknown> {
-  if (request.inFlight) return request.inFlight;
-  const response = remittancesApi<unknown>(request.path, { method: "POST", body: request.body, headers: { "Idempotency-Key": request.key } });
-  request.inFlight = response;
-  try { return await response; }
-  finally { if (request.inFlight === response) request.inFlight = undefined; }
-}
 
 // The panel never gets smaller than its first row of fields, nor leaves the list above it without rows.
 const MIN_PANEL_HEIGHT = 96, MIN_LIST_HEIGHT = 84;
@@ -149,18 +104,7 @@ export function StationInstallationPanel({ station, user, disabled = false, onLo
     let request = initial;
     try {
       if (request.stage === "challenge") {
-        const challenge = await sendPending(request) as StationInstallationChallenge;
-        validateChallenge(challenge, request, station.id, user);
-        if (!request.identity) throw new Error("La identidad local no está disponible.");
-        const signature = await signStationInstallationPayload(request.identity, signingPayload(challenge));
-        request = {
-          kind: request.kind, stage: "complete", key: operationKey(), identity: request.identity,
-          installationId: request.installationId,
-          path: `/estaciones/${encodeURIComponent(station.id)}/${request.kind === "register" ? "instalaciones" : "datos"}`,
-          body: JSON.stringify(request.kind === "register"
-            ? { challengeId: challenge.challengeId, installationId: request.installationId, publicKeySpki: request.identity.publicKeySpki, signature, confirmed: true }
-            : { challengeId: challenge.challengeId, installationId: request.installationId, signature }),
-        };
+        request = await signInstallationRequest(request, station.id, user.id);
         pending.current = request; pendingIntents.set(intentScope, request);
       }
       const result = await sendPending(request);
@@ -225,11 +169,7 @@ export function StationInstallationPanel({ station, user, disabled = false, onLo
     if (busy || uncertain || !review || !station || !canManage) return;
     let request: PendingRequest;
     if (review.kind === "register") {
-      request = {
-        kind: "register", stage: "challenge", identity: review.identity, installationId: review.identity.installationId, key: operationKey(),
-        path: `/estaciones/${encodeURIComponent(station.id)}/instalaciones/desafios`,
-        body: JSON.stringify({ purpose: "register", installationId: review.identity.installationId, publicKeySpki: review.identity.publicKeySpki }),
-      };
+      request = registrationChallenge(station.id, review.identity);
     } else {
       if (!revocationReview) {
         if (!reason.trim() || reason.trim().length > 1000) { setError("Escribe un motivo de revocación de 1 a 1000 caracteres."); return; }

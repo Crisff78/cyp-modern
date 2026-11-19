@@ -20,7 +20,10 @@ const revokeParams = stationParams.extend({ installationId }).strict();
 const challengeBody = z.object({ purpose: z.enum(["register", "query"]), installationId, publicKeySpki: publicKeySpki.optional() }).strict()
   .refine((body) => body.purpose === "register" ? body.publicKeySpki !== undefined : body.publicKeySpki === undefined,
     { message: "El registro requiere clave pública y la consulta utiliza la clave registrada." });
-const registrationBody = z.object({ challengeId: z.uuid(), installationId, publicKeySpki, signature, confirmed: z.literal(true) }).strict();
+const registrationBody = z.object({
+  challengeId: z.uuid(), installationId, publicKeySpki, signature, confirmed: z.literal(true),
+  fromLogin: receiptFormatBody.extend({ number: z.string().min(1).max(80), name: z.string().min(1).max(160) }).optional(),
+}).strict();
 const queryBody = z.object({ challengeId: z.uuid(), installationId, signature }).strict();
 const revokeBody = z.object({ revision: z.uuid(), reason: freeText(1000, 1) }).strict();
 const noQuery = z.object({}).strict();
@@ -126,7 +129,7 @@ export function registerStationInstallationRoutes(app: FastifyInstance, store: S
     const params = stationParams.parse(req.params), body = challengeBody.parse(req.body); noQuery.parse(req.query);
     return transact(req, params.id, "challenge", (state, actor, requestOrigin) => createStationInstallationChallenge(state, actor, params.id, body, requestOrigin, settings));
   });
-  app.post(listPath, routeOptions(30), async (req) => {
+app.post(listPath, { ...routeOptions(30), bodyLimit: 1024 * 1024 }, async (req) => {
     const params = stationParams.parse(req.params), body = registrationBody.parse(req.body); noQuery.parse(req.query);
     return transact(req, params.id, "register", (state, actor, requestOrigin) => registerStationInstallation(state, actor, params.id, body, requestOrigin, settings), { body, params });
   });
