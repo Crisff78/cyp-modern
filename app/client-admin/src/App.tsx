@@ -143,6 +143,7 @@ import { LoginPasswordInput, PasswordManagerHint } from "../../shared/LoginPassw
 import { loginCredentials } from "../../shared/loginCredentials";
 import { openCollectorPortal, STATION_NOTICE_KEY } from "../../shared/sessionHandoff";
 import { SessionStations } from "../../shared/SessionStations";
+import { registerSessionStation } from "./registerSessionStation";
 import { ReceiptPaperSelect, type ReceiptPaper } from "../../shared/ReceiptPaperSelect";
 import { matchesClientSearch, copyPhoneIntoEmptyFields, clientCodeFromPhone } from "./clientSearch";
 import { canReviewCollectionFunds, unconfirmedCollectionBalances, recentMovementReceipts } from "./collectionAlerts";
@@ -5284,7 +5285,8 @@ export default function App() {
                    title="Abrir navegación">
                     <Menu size={21} />
                   </button>
-                  {user && <SessionStations key={user.id} actorId={user.id} api={remittancesApi} />}
+                  {user && <SessionStations key={user.id} actorId={user.id} api={remittancesApi}
+                    registerStation={hasPermission(effectiveUser, 111) && hasPermission(effectiveUser, 113) ? registerSessionStation : undefined} />}
                   <div className="module-context">
                     <span>{isMockToken(getToken()) || snapshot?.clients.some((client) => /PRUEBA|SINT[ÉE]TIC|DEMO/i.test(client.note ?? "")) ? "DATOS DE PRUEBA" : "Módulo activo"}</span>
                     <strong>{activeNav?.label ?? "Escritorio"}</strong>

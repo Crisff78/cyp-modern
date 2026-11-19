@@ -36,7 +36,10 @@ dialog.session-stations {
 .session-stations ul { padding: 0; margin: .7rem 0; list-style: none; max-height: 42dvh; overflow: auto; }
 .session-stations li { display: flex; gap: .6rem; justify-content: space-between; align-items: baseline; padding: .45rem 0; border-bottom: 1px solid var(--cyp-border, #bbc4cc); overflow-wrap: anywhere; }
 .session-stations li strong { flex: none; }
-.session-stations-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: .8rem; }
+.session-stations li label { display: flex; align-items: center; gap: .65rem; flex: 1; min-height: 2rem; cursor: pointer; }
+.session-stations li input[type="radio"] { width: 1rem; height: 1rem; flex: none; margin: 0; }
+.session-stations-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .5rem; margin-top: .8rem; }
+.session-stations-actions button:disabled { opacity: .55; cursor: default; }
 .session-stations-actions button {
   color: inherit;
   background: var(--cyp-surface-raised, ButtonFace);

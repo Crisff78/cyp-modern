@@ -35,6 +35,27 @@ function register(env: ReturnType<typeof fixture>) {
     installationId: env.key.installationId, publicKeySpki: env.key.publicKeySpki, signature: env.key.prove(challenge), confirmed: true }, origin, options, now);
 }
 
+test("the login selector rejects a changed station or an active link acquired before confirmation", () => {
+  const env = fixture();
+  const { state, actor, key } = env;
+  const first = register(env);
+  const station = getAdminTools(state).stations[1];
+  const challenge = createStationInstallationChallenge(state, actor, station.id, {
+    purpose: "register", installationId: key.installationId, publicKeySpki: key.publicKeySpki,
+  }, origin, options, now);
+  const fromLogin = { number: station.number, name: station.name, installations: [first] };
+  const body = { challengeId: challenge.challengeId, installationId: key.installationId, publicKeySpki: key.publicKeySpki,
+    signature: key.prove(challenge), confirmed: true as const, fromLogin };
+  const submit = () => registerStationInstallation(state, actor, station.id, body, origin, options, now);
+  expectedCode(submit, "BROWSER_ALREADY_LINKED");
+  station.active = false;
+  expectedCode(submit, "STATION_CHANGED");
+  station.active = true;
+  station.name += " changed";
+  expectedCode(submit, "STATION_CHANGED");
+  assert.equal(getAdminTools(state).installations.length, 1);
+});
+
 test("P-256 identity and versioned signing payload bind canonical public bytes", () => {
   const env = fixture(), challenge = createStationInstallationChallenge(env.state, env.actor, "station-a",
     { purpose: "register", installationId: env.key.installationId, publicKeySpki: env.key.publicKeySpki }, origin, options, now);
