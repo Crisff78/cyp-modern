@@ -13,7 +13,10 @@ export type InstallationActor = User & { sid?: string };
 export type StationInstallationOptions = { rraaClientId?: string; validationClientId?: string; publicOrigin?: string; origins?: string[]; buildVersion?: string };
 type InstallationState = { installationScopeId?: string; installations: StationInstallation[]; installationChallenges: StationInstallationChallenge[] };
 export type InstallationChallengeInput = { purpose: InstallationPurpose; installationId: string; publicKeySpki?: string };
-export type InstallationRegistrationInput = { challengeId: string; installationId: string; publicKeySpki: string; signature: string; confirmed: true };
+export type InstallationRegistrationInput = {
+  challengeId: string; installationId: string; publicKeySpki: string; signature: string; confirmed: true;
+  fromLogin?: { number: string; name: string; installations: StationInstallationRef[] };
+};
 export type InstallationQueryInput = { challengeId: string; installationId: string; signature: string };
 
 const fail = (code: string, message: string, status = 409): never => { throw new DomainError(code, message, status); };
@@ -140,7 +143,16 @@ function consumeProof(state: State, actor: InstallationActor, stationId: string,
 }
 export function registerStationInstallation(state: State, actor: InstallationActor, stationId: string,
   input: InstallationRegistrationInput, origin: string, options: StationInstallationOptions, now = new Date()): StationInstallationSummary {
-  assertAdmin(actor); requireAdminRow(getAdminTools(state).stations, stationId, "Estación");
+  assertAdmin(actor);
+  const stations = getAdminTools(state).stations;
+  const station = requireAdminRow(stations, stationId, "Estación");
+  if (input.fromLogin) {
+    if (!station.active || station.number !== input.fromLogin.number || station.name !== input.fromLogin.name)
+      fail("STATION_CHANGED", "La estación seleccionada cambió. Vuelve a consultar las estaciones.");
+    const linked = registeredStationIds(state, input.fromLogin.installations, options);
+    if (stations.some(row => row.active && linked.has(row.id)))
+      fail("BROWSER_ALREADY_LINKED", "Este navegador ya tiene una estación vinculada. Vuelve a consultar las estaciones.");
+  }
   if (input.confirmed !== true) fail("INSTALLATION_CONFIRMATION_REQUIRED", "Confirma el registro de esta instalación.", 400);
   requireIdentity(input.installationId, input.publicKeySpki);
   if (findInstallation(state, stationId, input.installationId, options))
