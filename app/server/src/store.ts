@@ -9,7 +9,20 @@ import type { RecipientReceiptFormat } from "./admin-tools.js";
 import type { StationInstallationRef } from "./station-installation-protocol.js";
 import { readCatalogs, saveCatalogMasters, saveRecurringCharges } from "./catalog-store.js";
 pg.types.setTypeParser(20, Number);
+type SessionStation = { name: string; number: string; linked: boolean };
+// The same installation must match the browser reference and the current company for both reads.
+const registeredStationsSql = `
+  SELECT DISTINCT i.station_id
+  FROM unnest($1::text[], $2::text[]) requested(station_id, installation_id)
+  JOIN station_installations i USING (station_id, installation_id)
+  JOIN station_installation_scope scope ON scope.scope_id = i.namespace_id AND scope.id = 'main'
+  WHERE i.status = 'active' AND (i.scope_id::jsonb ->> 1) IS NOT DISTINCT FROM $3::text`;
+function stationQueryParams(refs: StationInstallationRef[], company?: string) {
+  return [refs.map(ref => ref.stationId), refs.map(ref => ref.installationId), company ?? null];
+}
+
 export interface Store {
+  readSessionStations?(installations: StationInstallationRef[], rraaClientId?: string): Promise<SessionStation[]>;
   sameCurrencySchemaReady?(): Promise<boolean | null>;
   cardPaymentSchemaReady?(): Promise<boolean | null>;
   read(): Promise<State>;
@@ -735,16 +748,18 @@ export class PostgresStore implements Store {
     return result.rows[0] as State["idempotency"][number] | undefined;
   }
   async readStationReceiptFormats(installations: StationInstallationRef[], rraaClientId?: string): Promise<RecipientReceiptFormat[]> {
-    // Each scope is [namespace_id, rraaClientId or null], enforced by migration 030.
     const result = await this.pool.query<{ format: RecipientReceiptFormat }>(`
-      SELECT DISTINCT s.id, s.recipient_receipt_format AS format
-      FROM unnest($1::text[], $2::text[]) requested(station_id, installation_id)
-      JOIN station_installations i USING (station_id, installation_id)
-      JOIN station_installation_scope scope ON scope.scope_id = i.namespace_id AND scope.id = 'main'
-      JOIN pcp_stations s ON s.id = i.station_id
-      WHERE i.status = 'active' AND s.active AND (i.scope_id::jsonb ->> 1) IS NOT DISTINCT FROM $3::text
-      LIMIT 2`, [installations.map((ref) => ref.stationId), installations.map((ref) => ref.installationId), rraaClientId ?? null]);
+      SELECT s.recipient_receipt_format AS format FROM pcp_stations s
+      JOIN (${registeredStationsSql}) matched ON matched.station_id = s.id
+      WHERE s.active LIMIT 2`, stationQueryParams(installations, rraaClientId));
     return result.rows.map((row) => row.format);
+  }
+  async readSessionStations(installations: StationInstallationRef[], rraaClientId?: string) {
+    const result = await this.pool.query<SessionStation>(`
+      SELECT s.number, s.name, matched.station_id IS NOT NULL AS linked FROM pcp_stations s
+      LEFT JOIN (${registeredStationsSql}) matched ON matched.station_id = s.id
+      WHERE s.active ORDER BY s.number, s.id`, stationQueryParams(installations, rraaClientId));
+    return result.rows;
   }
   async readAdminPage(kind: "traces" | "sessions", input: { from?: string; to?: string; q: string; status?: string; limit: number; offset: number }) {
     const trace = kind === "traces";

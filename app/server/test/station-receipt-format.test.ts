@@ -45,6 +45,22 @@ test("the authenticated print lookup discloses one format for the active install
   });
   const admin = await login("admin", "Demo-CyP-2026!"), collector = await login("collector@cyp.local", "Demo-CyP-2026!");
   const supervisor = await login("receipt@example.invalid", password);
+  const stations = (installations: StationInstallationRef[], token?: string) => app.inject({
+    method: "POST", url: "/api/auth/estaciones", payload: { installations },
+    headers: token ? { authorization: `Bearer ${token}` } : {},
+  });
+  assert.equal((await stations([])).statusCode, 401);
+  for (const token of [admin, collector, supervisor]) {
+    const result = await stations([refA, refA], token);
+    assert.equal(result.statusCode, 200);
+    const rows = result.json<{ number: string; name: string; linked: boolean }[]>();
+    assert.ok(rows.every(row => Object.keys(row).sort().join() === "linked,name,number"));
+    assert.deepEqual(rows.filter(row => row.linked).map(row => row.number), [stationA]);
+  }
+  const linked = async (refs: StationInstallationRef[]) =>
+    (await stations(refs, collector)).json<{number: string; linked: boolean}[]>().filter(row => row.linked).map(row => row.number);
+  assert.deepEqual(await linked([]), []);
+  assert.deepEqual(await linked([refA, refB]), [stationA, stationB]);
   assert.equal((await lookup([refA])).statusCode, 401);
   for (const token of [admin, collector, supervisor]) assert.deepEqual((await lookup([refA], token)).json(), { recipientReceiptFormat: "haiti" });
   for (const refs of [[], [refB], [refA, refB], [{ ...refA, stationId: stationB }]]) {
@@ -64,6 +80,7 @@ test("the authenticated print lookup discloses one format for the active install
     s.adminTools.installations[0].status = "revoked";
   });
   assert.deepEqual((await lookup([refA], collector)).json(), { recipientReceiptFormat: "common" });
+  assert.deepEqual(await linked([refA]), []);
   await store.transaction((s) => { delete s.adminTools.installationScopeId; });
   assert.deepEqual((await lookup([refA], collector)).json(), { recipientReceiptFormat: "common" });
   assert.equal((await store.read()).adminTools.installationScopeId, undefined);
@@ -76,6 +93,9 @@ test("the authenticated print lookup discloses one format for the active install
   }
   await permissions(["remittances.reports"]);
   assert.equal((await lookup([], supervisor)).statusCode, 403);
+  assert.equal((await stations([], supervisor)).statusCode, 200);
+  await store.transaction((s) => { s.accounts.find(account => account.id === "receipt-supervisor")!.permissionIds = []; });
+  assert.equal((await stations([], supervisor)).statusCode, 403);
 });
 
 const qaUrl = process.env.CYP_RECEIPT_FORMAT_TEST_DATABASE_URL;
@@ -94,11 +114,17 @@ test("migration 054 preserves the historical station and the scoped PostgreSQL l
   const reopened = new PostgresStore(target.toString());
   t.after(() => reopened.close());
   assert.equal((await reopened.read()).adminTools.stations.find((row) => row.id === stationA)?.recipientReceiptFormat, "haiti");
+  const stationList = await reopened.readSessionStations([refA, refA, refB], company);
+  assert.deepEqual(stationList.filter(row => row.linked), [
+    { number: stationA, name: stationA, linked: true }, { number: stationB, name: stationB, linked: true },
+  ]);
+  assert.ok((await reopened.readSessionStations([refA], "other-company")).every(row => !row.linked));
   assert.deepEqual(await reopened.readStationReceiptFormats([refA, refA], company), ["haiti"]);
   assert.deepEqual((await reopened.readStationReceiptFormats([refA, refB], company)).sort(), ["common", "haiti"]);
   assert.deepEqual(await reopened.readStationReceiptFormats([refA], "other-company"), []);
   assert.deepEqual(await reopened.readStationReceiptFormats([{ ...refA, stationId: stationB }], company), []);
   await reopened.transaction((state) => { state.adminTools.stations.find((row) => row.id === stationA)!.active = false; });
+  assert.ok(!(await reopened.readSessionStations([refA], company)).some(row => row.number === stationA));
   assert.deepEqual(await reopened.readStationReceiptFormats([refA], company), []);
   await reopened.transaction((state) => {
     state.adminTools.stations.find((row) => row.id === stationA)!.active = true;
