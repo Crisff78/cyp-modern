@@ -1,7 +1,6 @@
-import { StrictApiError, operationKey } from "../../shared/remittances/strictApi";
-import { INSTALLATION_PROTOCOL_VERSION, signingPayload, type StationInstallationChallenge, type StationInstallationSummary, type StationInstallationRef } from "../../server/src/station-installation-protocol";
+import { StrictApiError, operationKey, type StrictApi } from "./remittances/strictApi";
+import { INSTALLATION_PROTOCOL_VERSION, signingPayload, type StationInstallationChallenge, type StationInstallationSummary, type StationInstallationRef } from "../server/src/station-installation-protocol";
 import { signStationInstallationPayload, type StationInstallationKey } from "./stationInstallationKey";
-import { remittancesApi } from "./remittancesApi";
 
 export type PendingRequest = {
   kind: "register" | "query" | "revoke";
@@ -40,9 +39,9 @@ function validateChallenge(challenge: StationInstallationChallenge, request: Pen
   }
 }
 
-export async function sendPending(request: PendingRequest): Promise<unknown> {
+export async function sendPending(api: StrictApi, request: PendingRequest): Promise<unknown> {
   if (request.inFlight) return request.inFlight;
-  const response = remittancesApi<unknown>(request.path, { method: "POST", body: request.body, headers: { "Idempotency-Key": request.key } });
+  const response = api<unknown>(request.path, { method: "POST", body: request.body, headers: { "Idempotency-Key": request.key } });
   request.inFlight = response;
   try { return await response; }
   finally { if (request.inFlight === response) request.inFlight = undefined; }
@@ -56,9 +55,9 @@ export function registrationChallenge(stationId: string, identity: StationInstal
   };
 }
 
-export async function signInstallationRequest(request: PendingRequest, stationId: string, actorId: string,
+export async function signInstallationRequest(api: StrictApi, request: PendingRequest, stationId: string, actorId: string,
   fromLogin?: { number: string; name: string; installations: StationInstallationRef[] }): Promise<PendingRequest> {
-  const challenge = await sendPending(request) as StationInstallationChallenge;
+  const challenge = await sendPending(api, request) as StationInstallationChallenge;
   validateChallenge(challenge, request, stationId, actorId);
   if (!request.identity) throw new Error("La identidad local no está disponible.");
   const signature = await signStationInstallationPayload(request.identity, signingPayload(challenge));

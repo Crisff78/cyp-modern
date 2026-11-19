@@ -282,6 +282,7 @@ export async function buildApp(config: Config) {
     if (
       path === "/api/health" ||
       path === "/api/auth/login" ||
+      (req.method === "GET" && path === "/api/auth/estaciones") ||
       path === "/api/openapi.json" ||
       (req.method === "GET" &&
         /^\/api\/recibos\/[^/]+(?:\/escpos)?$/.test(path))

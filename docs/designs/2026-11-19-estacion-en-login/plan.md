@@ -1,0 +1,7 @@
+# Estación en el formulario de inicio de sesión
+
+En oficina y cobrador, mostrar un selector nativo «Estación» debajo de la contraseña y antes de «Iniciar sesión». Cargar las estaciones activas con su número y nombre. Mantener la invitación delante de la demo. La consulta previa al ingreso no devuelve instalaciones, licencias, dispositivos, usuarios ni formatos. El selector ofrece usar el vínculo actual o entrar sin registrar si el navegador es nuevo; nunca elige la primera fila por su cuenta.
+
+Recordar en este perfil la última estación comprobada por el servidor como ayuda visual. Confirmar su vigencia de nuevo al entrar. En perfiles antiguos sin esa pista, la opción automática conserva el vínculo existente. Sólo una elección explícita puede iniciar un alta. Después de validar las credenciales, comprobar el vínculo y los permisos con el token recibido. Una cuenta con permisos de estaciones puede registrar; una cuenta con vínculo válido puede usarlo. Una elección incompatible muestra el motivo en el formulario. Conservar la identidad firmada, la protección frente a dos pestañas y el reintento sin duplicados. Entregar la sesión al escritorio o a la ruta después de completar la elección, también si el ingreso comenzó en el otro portal.
+
+Eliminar la apertura automática del diálogo posterior al ingreso. El botón del encabezado conserva su consulta manual. Probar con perfiles y estaciones ficticios la posición del selector, credenciales inválidas, permanencia del vínculo, permisos, envío entre portales y fallo de red.

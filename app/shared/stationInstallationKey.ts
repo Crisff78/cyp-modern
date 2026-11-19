@@ -1,4 +1,4 @@
-import { base64Url, installationId, isStationSigningKey, keyScope, openDatabase, requireStorage, STORE_NAME, verifyPublicIdentity } from "../../shared/remittances/localStationInstallations";
+import { base64Url, installationId, isStationSigningKey, keyScope, openDatabase, requireStorage, STORE_NAME, verifyPublicIdentity } from "./remittances/localStationInstallations";
 
 const pendingCreations = new Map<string, Promise<StationInstallationKey>>();
 

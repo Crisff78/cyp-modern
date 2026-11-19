@@ -31,6 +31,8 @@ import ${module("styles.css")};
 const qaLogins = () => Number(sessionStorage.getItem("qa-logins") || 0);
 window.fetch = async (input, options = {}) => {
   if (new URL(String(input), location.origin).pathname === "/api/recibos/QA-SIN-VALOR-CONTABLE") return new Response(JSON.stringify({ id: "QA-SIN-VALOR-CONTABLE", clientName: "Cliente ficticio con nombre largo y acentos: María Rodríguez " + "QA".repeat(40), collectorName: "Cobrador ficticio", concept: "PRUEBA SIN VALOR CONTABLE " + "CONCEPTO".repeat(30), amount: 123456, createdAt: "2026-10-09T16:00:00Z", type: "collection" }));
+  if (new URL(String(input), location.origin).pathname === "/api/auth/estaciones" && (!options.method || options.method === "GET"))
+    return new Response(JSON.stringify([{number:"QA-01",name:"Puesto de prueba"}]));
   if (new URL(String(input), location.origin).pathname !== "/api/auth/login") throw new Error("Unexpected API in isolated login fixture");
   sessionStorage.setItem("qa-logins", String(qaLogins() + 1));
   const credentials = JSON.parse(String(options.body || "{}"));
@@ -71,6 +73,9 @@ createRoot(document.getElementById("root")).render(<App />);`, "utf8");
     });
     const page = await context.newPage(); page.setDefaultTimeout(15000); page.on("pageerror", (error: Error) => errors.push(error.message));
     await page.goto(`${origin}/collector/`);
+    const stationChoice = page.getByRole("combobox", { name: "Estación", exact: true });
+    await stationChoice.getByRole("option", { name: "QA-01 · Puesto de prueba" }).waitFor({ state: "attached" });
+    assert.equal(await stationChoice.inputValue(), "");
     const logins = () => page.evaluate(() => Number(sessionStorage.getItem("qa-logins") || 0));
     const loginValues = () => page.evaluate(() => JSON.parse(sessionStorage.getItem("qa-login-values") ?? "null"));
     await page.getByRole("heading", { name: "Iniciar sesión", exact: true }).waitFor();

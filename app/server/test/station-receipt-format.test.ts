@@ -50,6 +50,11 @@ test("the authenticated print lookup discloses one format for the active install
     headers: token ? { authorization: `Bearer ${token}` } : {},
   });
   assert.equal((await stations([])).statusCode, 401);
+  const publicCatalog = await app.inject({ method: "GET", url: "/api/auth/estaciones" });
+  assert.equal(publicCatalog.statusCode, 200);
+  assert.equal(publicCatalog.headers["cache-control"], "no-store");
+  assert.ok(publicCatalog.json().some((row: {number: string}) => row.number === stationA));
+  assert.ok(publicCatalog.json().every((row: object) => Object.keys(row).sort().join() === "name,number"));
   for (const token of [admin, collector, supervisor]) {
     const result = await stations([refA, refA], token);
     assert.equal(result.statusCode, 200);
@@ -69,6 +74,7 @@ test("the authenticated print lookup discloses one format for the active install
   assert.deepEqual((await lookup([refA, refA], collector)).json(), { recipientReceiptFormat: "haiti" });
   assert.equal((await lookup([{ ...refA, installationId: "invalid" }], collector)).statusCode, 400);
   await store.transaction((s) => { s.adminTools.stations.find((row) => row.id === stationA)!.active = false; });
+  assert.ok(!(await app.inject({ method: "GET", url: "/api/auth/estaciones" })).json().some((row: {number: string}) => row.number === stationA));
   assert.deepEqual((await lookup([refA], collector)).json(), { recipientReceiptFormat: "common" });
   await store.transaction((s) => {
     s.adminTools.stations.find((row) => row.id === stationA)!.active = true;

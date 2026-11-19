@@ -6,10 +6,10 @@ import type { StationInstallationSummary, StationInstallationData } from "../../
 import {
   getOrCreateStationInstallationKey, readStationInstallationKey,
   type StationInstallationKey,
-} from "./stationInstallationKey";
+} from "../../shared/stationInstallationKey";
 import { normalizeRole, type User } from "./types";
 import { useAdjustablePanel } from "./useAdjustablePanel";
-import { invalidResponse, registrationChallenge, sendPending, signInstallationRequest, validSummary, type PendingRequest } from "./stationInstallationRequests";
+import { invalidResponse, registrationChallenge, sendPending, signInstallationRequest, validSummary, type PendingRequest } from "../../shared/stationInstallationRequests";
 
 type Actor = Pick<User, "id" | "role">;
 export type InstallationStation = { id: string; name: string; deviceId: string; active: boolean; rraaValidated: boolean };
@@ -104,10 +104,10 @@ export function StationInstallationPanel({ station, user, disabled = false, onLo
     let request = initial;
     try {
       if (request.stage === "challenge") {
-        request = await signInstallationRequest(request, station.id, user.id);
+        request = await signInstallationRequest(remittancesApi, request, station.id, user.id);
         pending.current = request; pendingIntents.set(intentScope, request);
       }
-      const result = await sendPending(request);
+      const result = await sendPending(remittancesApi, request);
       if (request.kind === "query") {
         const response = result as StationInstallationData;
         if (!response || response.stationId !== station.id || response.installationId !== request.installationId ||

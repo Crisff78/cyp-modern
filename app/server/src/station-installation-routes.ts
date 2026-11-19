@@ -101,6 +101,14 @@ export function registerStationInstallationRoutes(app: FastifyInstance, store: S
   const listPath = "/api/estaciones/:id/instalaciones", challengePath = `${listPath}/desafios`;
   const queryPath = "/api/estaciones/:id/datos", revokePath = `${listPath}/:installationId/revocar`;
   const sessionPath = "/api/auth/estaciones";
+  app.get(sessionPath, { config: { rateLimit: { max: 60, timeWindow: "1 minute" } } }, async (_req, reply) => {
+    const stations = store.readSessionStations
+      ? await store.readSessionStations([], settings.rraaClientId)
+      : sessionStations(await store.read(), [], settings);
+    reply.header("Cache-Control", "no-store");
+    return stations.map(({ number, name }) => ({ number, name }));
+  });
+  describe("get", sessionPath, "Número y nombre de las estaciones activas para el ingreso", undefined, true);
   app.post(sessionPath, async (req) => {
     const { installations } = receiptFormatBody.parse(req.body);
     return store.readSessionStations

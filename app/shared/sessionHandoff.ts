@@ -5,7 +5,6 @@
 // for the password again.
 export const ADMIN_TOKEN_KEY = "cyp-admin-token";
 export const COLLECTOR_TOKEN_KEY = "cyp-collector-token";
-export const STATION_NOTICE_KEY = "cyp-stations-after-login";
 
 export function openCollectorPortal(token: string, url: string) {
   sessionStorage.setItem(COLLECTOR_TOKEN_KEY, token);
