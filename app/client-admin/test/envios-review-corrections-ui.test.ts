@@ -82,7 +82,7 @@ test("review of Envíos and Cajero: windows, notices, names and fields", { skip:
 import ${surface === "admin" ? "App" : "{ App }"} from ${module("App.tsx")};
 import ${module("styles.css")};
 ${surface === "admin" ? `import ${module("suggestions-shell.css")};` : ""}
-import { getOrCreateStationInstallationKey } from ${module("../../client-admin/src/stationInstallationKey.ts")};
+import { getOrCreateStationInstallationKey } from ${module("../../shared/stationInstallationKey.ts")};
 window.syntheticStation = async (stationId) => {
   const {installationId, publicKeySpki} = await getOrCreateStationInstallationKey(stationId);
   return { installationId, publicKeySpki };

@@ -48,7 +48,7 @@ test("public demo protects static pages, login, schema and receipts before invit
       const response = await app.inject(url);
       assert.equal(response.statusCode, 303); assert.equal(response.headers.location, "/demo-access");
     }
-    for (const url of ["/api/snapshot", "/api/openapi.json", "/api/recibos/example"])
+    for (const url of ["/api/snapshot", "/api/openapi.json", "/api/recibos/example", "/api/auth/estaciones"])
       assert.equal((await app.inject(url)).statusCode, 401);
     assert.equal((await app.inject({ method: "POST", url: "/api/auth/login", payload: { email: "admin@cyp.local", password: "Demo-CyP-2026!" } })).statusCode, 401);
   } finally { await app.close(); }
