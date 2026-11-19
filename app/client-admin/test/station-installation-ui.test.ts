@@ -77,13 +77,16 @@ test("CyP browser installation proves persistence, reviewed mutations and exact 
     const fixture = path.join(output, "fixture.tsx"), module = (name: string) => JSON.stringify(path.join(adminRoot, "src", name).replaceAll("\\", "/"));
     fs.writeFileSync(fixture, `import { createRoot } from "react-dom/client";
 import { ConnectedAdminTools } from ${module("ConnectedAdminTools.tsx")};
+import { registerSessionStation } from ${module("registerSessionStation.ts")};
+import { SessionStations } from ${module("../../shared/SessionStations.tsx")};
 import { PageAccessContext } from ${module("PageAccess.tsx")};
 import { remittancesApi } from ${module("remittancesApi.ts")};
 import { listLocalStationInstallations } from ${module("../../shared/remittances/localStationInstallations.ts")};
 window.listFixtureInstallations = listLocalStationInstallations;
 import ${module("styles.css")};
 const fixtureActor = location.search === "?read-only" ? {role:"admin",access:{mode:"custom",legacy:[1,111],remittances:[]}} : {role:"admin"};
-remittancesApi("/snapshot").then(snapshot => createRoot(document.getElementById("root")).render(<PageAccessContext.Provider value={{actor:fixtureActor,page:new URLSearchParams(location.search).get("view") || "stations"}}><ConnectedAdminTools page="stations" snapshot={snapshot} user={${JSON.stringify({ id: user.id, role: user.role })}} onRefresh={() => {}} /></PageAccessContext.Provider>));`, "utf8");
+if (location.search === "?picker") createRoot(document.getElementById("root")).render(<SessionStations actorId={${JSON.stringify(user.id)}} api={remittancesApi} registerStation={registerSessionStation}/>);
+else remittancesApi("/snapshot").then(snapshot => createRoot(document.getElementById("root")).render(<PageAccessContext.Provider value={{actor:fixtureActor,page:new URLSearchParams(location.search).get("view") || "stations"}}><ConnectedAdminTools page="stations" snapshot={snapshot} user={${JSON.stringify({ id: user.id, role: user.role })}} onRefresh={() => {}} /></PageAccessContext.Provider>));`, "utf8");
     const [{ build }, { default: react }, { chromium }] = await Promise.all([
       import(pathToFileURL(localRequire.resolve("vite")).href), import(pathToFileURL(localRequire.resolve("@vitejs/plugin-react")).href), import(pathToFileURL(playwrightEntry!).href),
     ]);
@@ -269,6 +272,46 @@ remittancesApi("/snapshot").then(snapshot => createRoot(document.getElementById(
       await page.goto(origin + "/?read-only");
       await page.getByTitle("Consultar", { exact: true }).waitFor();
       assert.equal(await page.getByRole("button", { name: "Formato de recepción", exact: true }).isDisabled(), true);
+    });
+    await t.test("login picker registers the selected station once, including a lost response and another open tab", async () => {
+      await store.transaction(s => {
+        getAdminTools(s).stations.push(...["D", "E"].map(code => ({ ...station(code), active: true })));
+      });
+      const fresh = await browser.newContext({ serviceWorkers: "block" });
+      try {
+        await fresh.addInitScript((value: string) => sessionStorage.setItem("cyp-admin-token", value), token);
+        await fresh.route("**/*", (route: any) => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
+        const first = await fresh.newPage(), other = await fresh.newPage();
+        const dialog = first.getByRole("dialog"), otherDialog = other.getByRole("dialog");
+        for (const tab of [first, other]) {
+          await tab.goto(origin + "/?picker");
+          await tab.getByRole("button", { name: /^Ver estaciones/ }).click();
+        }
+        const startCount = getAdminTools(await store.read()).installations.length;
+        await dialog.getByRole("radio", { name: "D · QA-CYP-D" }).check();
+        await dialog.getByRole("button", { name: "Continuar sin registrar" }).click();
+        assert.deepEqual(await first.evaluate(() => (window as any).listFixtureInstallations()), []);
+        assert.equal(getAdminTools(await store.read()).installations.length, startCount);
+        await first.getByRole("button", { name: /^Ver estaciones/ }).click();
+        await otherDialog.getByRole("radio", { name: "E · QA-CYP-E" }).check();
+        await dialog.getByRole("radio", { name: "D · QA-CYP-D" }).check();
+        loseRegistrationResponse = true;
+        await dialog.getByRole("button", { name: "Registrar en D" }).click();
+        await dialog.getByRole("alert").waitFor();
+        await otherDialog.getByRole("button", { name: "Registrar en E" }).click();
+        await otherDialog.getByText("Estación actual: D · QA-CYP-D", { exact: true }).waitFor();
+        await dialog.getByRole("button", { name: "Reintentar registro en D" }).click();
+        await dialog.getByText("En uso", { exact: true }).waitFor();
+        const submitted = writes.filter(w => w.path === "/api/estaciones/" + station("D").id + "/instalaciones");
+        assert.equal(submitted.length, 2);
+        assert.equal(submitted[0].body, submitted[1].body);
+        assert.equal(submitted[0].key, submitted[1].key);
+        assert.equal(getAdminTools(await store.read()).installations.length, startCount + 1);
+        await first.reload();
+        await first.getByRole("button", { name: /^Ver estaciones\. Estación actual: D/ }).click();
+        await dialog.getByText("En uso", { exact: true }).waitFor();
+        assert.equal(await dialog.getByRole("radio").count(), 0);
+      } finally { await fresh.close(); }
     });
     await t.test("a damaged local identity stops the lookup without returning partial results", async () => {
       const result = await page.evaluate(async () => {
