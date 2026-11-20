@@ -1,4 +1,4 @@
-// Plain-text protocol for the mobile application (docs/protocolo-cyp/Protocolo CYP 0.3.txt).
+// Plain-text protocol for the mobile application (docs/protocolo-cyp/Protocolo CYP 0.4.txt).
 // This file has no Fastify in it: how a petition is read, how an answer is written and which code an error gets.
 import { DomainError } from "./domain.js";
 
@@ -141,15 +141,38 @@ export function parsePage(text: string) {
 }
 /**
  * The parameters as they travel. POST: the body, untouched. GET: everything after the first `?`, decoded as a whole
- * and only then split, so `%7C` is a pipe and `+` stays a plus sign.
+ * and only then split, so `%7C` is a pipe and `+` stays a plus sign. The application of the other party writes
+ * `?p=` before them (its own habit, in every petition): both ways are the same petition. Only a literal, lower-case
+ * `p=` right after the `?` is that prefix.
  */
 export function rawParameters(method: string, url: string, body: unknown) {
-  if (method === "POST") return typeof body === "string" ? body : "";
+  if (method === "POST") {
+    const text = typeof body === "string" ? body : "";
+    // The prefix is of the addresses only. A body that brings it would be read as a wrong user or a wrong session.
+    if (text.startsWith("p=")) throw invalid(WHOLE_PETITION, "Por POST los datos van tal cual en el cuerpo, sin p= delante");
+    return text;
+  }
   if (url.length > MAX_ADDRESS_LENGTH) throw invalid(WHOLE_PETITION, `La dirección pasa de ${MAX_ADDRESS_LENGTH} caracteres. Mande esta petición por POST`);
   const at = url.indexOf("?");
   if (at < 0) return "";
-  try { return decodeURIComponent(url.slice(at + 1)); }
-  catch { throw invalid(WHOLE_PETITION, "La dirección trae un % que no se puede decodificar"); }
+  const query = url.slice(at + 1);
+  try { return decodeURIComponent(query.startsWith("p=") ? query.slice(2) : query); }
+  catch { throw invalid(WHOLE_PETITION, "La dirección trae un % que no se puede decodificar. Las letras con acento van en UTF-8 (ñ = %C3%B1)"); }
+}
+// What the application of the other party adds after the last datum of a petition (3.0 today). Digits and dots, at
+// least one dot, short: a telephone written with dots (809.555.0100) is not one.
+const VERSION = /^\d{1,3}(\.\d{1,3}){1,2}$/;
+export const isVersion = (value: string) => VERSION.test(value);
+/** The data a petition cannot go without. Whatever comes after them is optional. */
+const REQUIRED: Record<Exclude<ProtocolCommand, "login">, number> = { logout: 1, clients: 1, client: 2, quote: 4, send: 16, recs: 1 };
+/**
+ * The data without the version of the application, when it comes. It is always one datum more: it is taken away only
+ * when the petition already has the data it cannot go without, so an amount in last place (100.00, written as a
+ * version is) stays the amount, and in Registrar Envío it can only be the seventeenth datum. The central does not
+ * use it. The sign-in reads its own (see login).
+ */
+export function withoutVersion(command: Exclude<ProtocolCommand, "login">, parts: string[]) {
+  return parts.length > REQUIRED[command] && isVersion(parts[parts.length - 1]) ? parts.slice(0, -1) : parts;
 }
 /** A petition is one line. The error names the parameter that brings the line break, the session too. */
 export function assertOneLine(command: Exclude<ProtocolCommand, "login">, parts: string[]) {

@@ -1,6 +1,6 @@
 Protocolo de Intercambio de Datos (CyP)
 
- Versión: 0.3
+ Versión: 0.4
    Fecha: 20/11/2026
 
 
@@ -22,7 +22,7 @@ lo tenemos programado en nuestra central de pruebas, tal como está escrito
 aquí, para que usted pueda probar su aplicación desde el principio (vea
 "Central de pruebas", en las Notas Generales).
 
- Esta es la versión 0.3. Lo que cambió desde la 0.1 está en "Agregado" y
+ Esta es la versión 0.4. Lo que cambió desde la 0.1 está en "Agregado" y
 "Modificado", justo antes de las Funcionalidades.
 
  Al final hay 12 puntos que quisiéramos que nos confirme. Si con sus
@@ -110,6 +110,38 @@ seguridad se encarga el HTTPS (la dirección empieza por https://).
  Parámetros -> Son los datos de la petición, separados por | (pipe) y en el
                orden indicado.
 
+ También puede mandarla como la manda su aplicación:
+
+ url/cyp_cmd?p=Parámetros|VersionApp
+
+ donde:
+
+ p= -> Va justo después del ?, en minúscula. La central lo acepta en las
+       siete peticiones y lo quita: con p= o sin él es la misma petición.
+       Es solo de las direcciones (GET); por POST el cuerpo son los
+       Parámetros tal cual, sin p=.
+
+ VersionApp -> El número que su aplicación pone al final (hoy, 3.0). No es
+               la versión de este documento: no lo cambie cuando reciba un
+               documento nuevo. Es opcional, vale en las siete peticiones,
+               y la central lo acepta y no lo usa.
+
+ Para no repetirlo, en las "Pet:" de este documento no escribimos ni p= ni
+ VersionApp. Valen en todas.
+
+ Sobre VersionApp:
+
+ - Es un número con punto: 3.0, 1.14, 10.2.1 (hasta tres grupos de hasta
+   tres cifras).
+ - Va siempre el último, después de todos los datos que mande. En Registrar
+   Envío va después de los 16 datos: es el dato 17.
+ - Un importe nunca se confunde con él: en Cotizar Envío, 100.00 al final
+   es el Monto.
+ - Un caso a tener en cuenta: si el último dato que manda es un Texto que
+   es solo un número con punto (buscar "3.0" en el Listado de Clientes), la
+   central lo toma por VersionApp. Para buscarlo, mande también la Pagina:
+   /cyp_clients?idSesion|3.0|1
+
  - Los parámetros que van entre corchetes [ ] se pueden omitir.
  - Un dato que no aplica se deja vacío, pero SIN quitar su | (pipe).
    Ejemplo: para pedir la página 2 del listado de clientes sin poner Texto:
@@ -123,7 +155,8 @@ seguridad se encarga el HTTPS (la dirección empieza por https://).
 
  - Las siete peticiones se aceptan por GET y por POST. Use la que prefiera;
    puede mezclar las dos.
- - Por GET, los Parámetros van después del ?, igual que en LSAN.
+ - Por GET, los Parámetros van después del ? (o después de ?p=), igual que
+   en LSAN.
  - Por POST, los Parámetros van en el cuerpo como texto plano
    (Content-Type: text/plain; charset=utf-8). No ponga un salto de línea al
    final del cuerpo.
@@ -155,7 +188,10 @@ seguridad se encarga el HTTPS (la dirección empieza por https://).
  - En POST el cuerpo va tal cual, sin codificar.
  - En GET los caracteres especiales van codificados con %, como en cualquier
    dirección web (espacio = %20, # = %23). La central primero decodifica
-   todo lo que sigue al ? y DESPUÉS separa por | (pipe).
+   todo lo que sigue al ? (o al ?p=) y DESPUÉS separa por | (pipe).
+ - Una letra con acento o un espacio SIN codificar hacen que el servidor
+   rechace la dirección entera (código HTTP 400, sin OK ni ER). La ñ va
+   como %C3%B1 y la í como %C3%AD.
  - El | (pipe) que separa los parámetros lo puede mandar tal cual o
    codificado como %7C: para la central es lo mismo.
  - El signo + NO se toma como espacio: es un signo de más. El espacio va
@@ -328,6 +364,13 @@ ficticios. Su dirección (url), el usuario y la clave se los damos aparte.
 Agregado
 --------
 
+ Versión 0.4 (20/11/2026):
+
+ - Las peticiones se pueden mandar como las manda su aplicación: con p=
+   delante de los Parámetros y con VersionApp (hoy, 3.0) al final. Vale en
+   las siete (Notas Generales, 1). Mandarlas como hasta ahora sigue
+   valiendo igual.
+
  Versión 0.2 (20/11/2026):
 
  - Iniciar Sesión devuelve un dato más, al final: Vence, la fecha y hora en
@@ -341,6 +384,10 @@ Agregado
 
 Modificado
 ----------
+
+ Versión 0.4 (20/11/2026):
+
+ - En las preguntas del final cambió la pregunta 2.
 
  Versión 0.3 (20/11/2026):
 
@@ -398,6 +445,7 @@ Funcionalidades
 
  Pet: /cyp_login?Usuario|Clave
       (por POST: /cyp_login, y en el cuerpo: Usuario|Clave)
+      (como la manda su aplicación: /cyp_login?p=Usuario|Clave|3.0)
 
  Res: OK|FechayHora|idSesion|DatosUsuario|Vence
       ER|FechayHora|Código|Mensaje|Dato
@@ -416,6 +464,10 @@ Funcionalidades
  o espacios. Por GET, la Clave va codificada con % como cualquier otro dato
  (espacio = %20, % = %25, # = %23; el + no es espacio). Por POST va tal
  cual, sin salto de línea al final.
+
+ Si al final viene VersionApp (por ejemplo |3.0), la central lo aparta y
+ la Clave es lo que queda. Una Clave que termine de forma parecida (por
+ ejemplo en |2.5) también entra: la central prueba las dos lecturas.
 
  Qué devuelve:
 
@@ -785,7 +837,9 @@ Funcionalidades
 
  Van SIEMPRE los 16 datos (15 pipes), en ese orden y en una sola línea, sin
  salto de línea al final. Los que no aplican van vacíos, también los del
- final.
+ final. Si su aplicación manda VersionApp, va después de los 16: es el dato
+ 17. Ojo: con 15 datos y VersionApp vuelven a ser 16, y la central tomaría
+ VersionApp por la Nota.
 
  Qué se manda:
 
@@ -814,7 +868,8 @@ Funcionalidades
                  cambiado una tasa, se haya cerrado la caja o la sesión
                  sea otra.
               c- "Los mismos datos" quiere decir todos los datos de la
-                 petición menos el idSesion. Repítalos igual, carácter por
+                 petición menos el idSesion (y menos VersionApp, si la
+                 manda). Repítalos igual, carácter por
                  carácter. Da lo mismo repetirla por GET o por POST: la
                  central compara los datos ya decodificados.
               d- Si llega el mismo idOperacion con otros datos, responde
@@ -1114,7 +1169,8 @@ Errores
  - El Mensaje viene siempre, en español, listo para mostrárselo al usuario.
  - El Dato viene solo en estos: PIN trae el nombre del dato que está mal
    (o la palabra Parametros si lo que está mal es la petición entera: le
-   sobran o le faltan datos, o es demasiado grande); CNE, CIN y CFR traen
+   sobran o le faltan datos, o es demasiado grande; VersionApp al final no
+   cuenta como dato de más); CNE, CIN y CFR traen
    el idCliente (en el Listado de Clientes, CNE no trae nada); OPD trae el
    NumEnvio que ya estaba registrado. En los demás viene vacío.
  - En cada petición pusimos sus errores propios. Además, PIN, DML, PNE, EIC
@@ -1220,9 +1276,12 @@ una versión nueva de este documento.
     alguna regla para nombrarlos, o prefiere otros nombres? Si no, se
     quedan estos.
 
- 2- Versión: el formato general de LSAN dice
+ 2- Versión: su aplicación manda un número al final de la petición (3.0),
+    y la central ya lo acepta. ¿Qué es ese número: la versión de su
+    aplicación? Y en las respuestas: el formato general de LSAN dice
     Estado|FechayHora|Versión|Otros Datos, pero en LSAN los ejemplos no
-    llevan la Versión. Aquí no la pusimos. ¿Debe ir?
+    llevan la Versión, y aquí tampoco la pusimos. ¿Su aplicación espera
+    recibirla después de la FechayHora?
 
  3- Códigos de error: los de este documento los pusimos nosotros. ¿Nos
     puede mandar el archivo "Errores versión 4_0.txt"? Con él cambiamos
