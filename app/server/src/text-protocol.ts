@@ -1,4 +1,4 @@
-// Plain-text protocol for the mobile application (docs/protocolo-cyp/Protocolo CYP 0.2.txt).
+// Plain-text protocol for the mobile application (docs/protocolo-cyp/Protocolo CYP 0.3.txt).
 // This file has no Fastify in it: how a petition is read, how an answer is written and which code an error gets.
 import { DomainError } from "./domain.js";
 
@@ -20,9 +20,6 @@ export const MAX_RECEIPT_DAYS = 31;
 export const WHOLE_PETITION = "Parametros";
 /** The longest address of a GET (what follows the name of the server): every server on the way takes it. More goes by POST. */
 export const MAX_ADDRESS_LENGTH = 8000;
-/** Header that carries the invitation of the public demo for these routes (see demo-access.ts). */
-export const INVITATION_HEADER = "x-cyp-invitacion";
-export const isTextProtocolPath = (path: string) => /^\/cyp_[^/]*$/.test(path);
 
 // One message per code, for the person who uses the application. The application decides by the code.
 const MESSAGES: Record<string, string> = {

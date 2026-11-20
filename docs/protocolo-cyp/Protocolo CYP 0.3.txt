@@ -1,6 +1,6 @@
 Protocolo de Intercambio de Datos (CyP)
 
- Versión: 0.2
+ Versión: 0.3
    Fecha: 20/11/2026
 
 
@@ -22,7 +22,7 @@ lo tenemos programado en nuestra central de pruebas, tal como está escrito
 aquí, para que usted pueda probar su aplicación desde el principio (vea
 "Central de pruebas", en las Notas Generales).
 
- Esta es la versión 0.2. Lo que cambió desde la 0.1 está en "Agregado" y
+ Esta es la versión 0.3. Lo que cambió desde la 0.1 está en "Agregado" y
 "Modificado", justo antes de las Funcionalidades.
 
  Al final hay 12 puntos que quisiéramos que nos confirme. Si con sus
@@ -314,18 +314,15 @@ esperar un minuto.
 ---------------------
 
  Para que pruebe su aplicación le damos una central de pruebas, con datos
-ficticios. Esa central pide además un código de invitación, que le damos
-aparte. Su aplicación lo manda en TODAS las peticiones, en esta cabecera
-HTTP:
+ficticios. Su dirección (url), el usuario y la clave se los damos aparte.
 
- X-CyP-Invitacion: (el código de invitación)
-
- - Si la cabecera falta o el código está mal, la central responde ER con
-   PIN, y en el Dato viene X-CyP-Invitacion.
- - Si desde una misma dirección IP se manda mal 10 veces en un minuto, la
-   central responde ER con DML y hay que esperar un minuto.
- - Esta cabecera es solo de la central de pruebas. Póngala donde sea fácil
-   de quitar.
+ - La central de pruebas NO pide código de invitación (lo pedía hasta la
+   versión 0.2). Su aplicación no tiene que mandar ninguna cabecera: basta
+   con la dirección y los Parámetros.
+ - Si su aplicación todavía manda la cabecera X-CyP-Invitacion, no pasa
+   nada: la central no la mira.
+ - La central de pruebas se duerme cuando lleva un rato sin uso. La primera
+   petición puede tardar un minuto o más; las siguientes van rápido.
 
 
 Agregado
@@ -344,6 +341,12 @@ Agregado
 
 Modificado
 ----------
+
+ Versión 0.3 (20/11/2026):
+
+ - La central de pruebas ya no pide código de invitación: se quitó la
+   cabecera X-CyP-Invitacion (Notas Generales, 9). No tiene que cambiar
+   nada en su aplicación: si la sigue mandando, la central no la mira.
 
  Versión 0.2 (20/11/2026):
 
@@ -1230,8 +1233,7 @@ una versión nueva de este documento.
     a) Usted nos dijo que trabaja con GET: desde la versión 0.2 todas las
        peticiones se aceptan por GET. Nos queda una duda, por la Clave:
        ¿puede su aplicación mandar POST, aunque sea solo en Iniciar Sesión?
-       Si no puede, ¿puede poner una cabecera propia en un GET? (Ya lo hace
-       con X-CyP-Invitacion.)
+       Si no puede, ¿puede poner una cabecera propia en un GET?
     b) En GET, ¿su aplicación codifica con % los caracteres especiales? ¿Y
        el espacio lo manda como %20? Si lo manda como +, díganoslo.
     c) La central responde HTTP 200 también en los errores. ¿Su aplicación

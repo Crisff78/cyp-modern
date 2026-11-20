@@ -62,7 +62,6 @@ import type { Store } from "./store.js";
 import { registerRemittanceRoutes } from "./remittance-routes.js";
 import { isTextProtocolRoute, registerTextProtocol } from "./text-protocol-routes.js";
 import { registerCatalogRoutes } from "./catalog-routes.js";
-import { registerDemoAccess, type DemoAccessConfig } from "./demo-access.js";
 import { assertAuthSession, createAuthSession, recordMutationTrace, revokeUserSessions } from "./admin-tools.js";
 import { registerAdminToolsRoutes } from "./admin-tools-routes.js";
 import { registerStationInstallationRoutes } from "./station-installation-routes.js";
@@ -85,7 +84,8 @@ type Config = {
   secret: string;
   demo: boolean;
   publicWeb?: boolean;
-  demoAccess?: DemoAccessConfig;
+  /** The address the public demo is served at: the installations of stations take it as one of their origins. */
+  publicOrigin?: string;
   origins: string[];
   collectorUrl: string;
   adminEmail?: string;
@@ -220,9 +220,10 @@ export async function buildApp(config: Config) {
     return typeof named === "string" && isIP(named) ? named : req.ip;
   };
   await app.register(rateLimit, { max: 120, timeWindow: "1 minute", keyGenerator: clientAddress });
-  if (config.demoAccess) await registerDemoAccess(app, config.demoAccess, clientAddress);
   app.addHook("onSend", async (_req, reply, payload) => {
     reply.header("Cache-Control", "no-store");
+    // The public demo opens without an invitation (20-11-2026): search engines are still asked to leave it out.
+    if (config.publicWeb) reply.header("X-Robots-Tag", "noindex, nofollow");
     return payload;
   });
   app.setErrorHandler((error, request, reply) => {
@@ -341,8 +342,6 @@ export async function buildApp(config: Config) {
   };
   app.addHook("preHandler", async (req) => {
     const path = req.url.split("?")[0];
-    if (config.publicWeb && config.demoAccess && req.routeOptions.url === "/demo-access") return;
-    if (config.publicWeb && config.demoAccess && req.method === "GET" && path === "/demo-access.js") return;
     if (config.publicWeb && ["/", "/collector", "/*"].includes(req.routeOptions.url ?? "")) return;
     // The plain-text protocol authenticates each petition itself, with this same check.
     if (isTextProtocolRoute(req.routeOptions.url)) return;
@@ -1634,7 +1633,7 @@ export async function buildApp(config: Config) {
     // change: the public demo keeps it without a company, so the installations already registered stay.
     validationClientId: stationControl?.clientId,
     origins: config.origins,
-    publicOrigin: config.demoAccess?.origin,
+    publicOrigin: config.publicOrigin,
     buildVersion: config.buildVersion,
   });
   const systemOperators: User[] = config.demo ? [
