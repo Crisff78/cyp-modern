@@ -313,7 +313,7 @@ remittancesApi("/snapshot").then(snapshot => { if (new URLSearchParams(location.
       await open("stations");
       const before = await store.read(), count = writes.length;
       const row = page.getByRole("row").filter({ hasText: "Estación sintética QA" }); await row.click();
-      assert.match(await page.getByRole("status").innerText(), /No validado.*RRAA/);
+      assert.match(await page.getByRole("status").innerText(), /Sin conexión RRAA.*alta.*edición de datos.*activación.*deshabilitadas/);
       for (const title of ["Nuevo", "Editar"]) assert.equal(await page.getByTitle(title, { exact: true }).isDisabled(), true);
       // A historical station can be deactivated safely; it cannot be activated without RRAA.
       assert.equal(await page.getByTitle("Inactivar", { exact: true }).isDisabled(), false);
