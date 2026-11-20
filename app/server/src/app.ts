@@ -553,6 +553,7 @@ export async function buildApp(config: Config) {
       return {
         token: app.jwt.sign({ ...u, authVersion: version, sid: session.id, ...(channel ? { channel } : {}) }, { expiresIn: "8h" }),
         user: accessedUser,
+        expiresAt: session.expiresAt,
       };
   };
   app.post(
@@ -560,7 +561,9 @@ export async function buildApp(config: Config) {
     { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } },
     async (req) => {
       const body = loginBody.parse(req.body);
-      return signIn(body.email, body.password);
+      // The answer of the web stays what it was: the end of the session is told by the text protocol only.
+      const { token, user } = await signIn(body.email, body.password);
+      return { token, user };
     },
   );
   describe("post", "/api/auth/login", "Iniciar sesión", loginBody, true);
@@ -1641,7 +1644,7 @@ export async function buildApp(config: Config) {
   registerRemittanceRoutes(app, config.store, user, mutate, describe, systemOperators, config.cardVault, config.demo);
   // Plain-text protocol for the mobile application (docs/PROTOCOLO-TEXTO-PLANO.md). It is not part of the OpenAPI.
   await registerTextProtocol(app, {
-    store: config.store, systemOperators, authenticate, signIn, loginBody,
+    store: config.store, systemOperators, authenticate, signIn, loginBody, passwordByGet: config.demo === true,
     verifyToken: (token) => app.jwt.verify<SessionClaims>(token),
   });
   app.get("/api/openapi.json", () => ({
