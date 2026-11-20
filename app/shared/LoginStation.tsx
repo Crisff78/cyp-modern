@@ -91,8 +91,10 @@ export function LoginStationField({ api, choice, onChange, restoreChoice, disabl
     return () => { current = false; };
   }, [api, attempt, restoreChoice]);
   return <div className="login-station-field">
+    {/* data-capture-skip: Enter does not stop on this optional list, so Enter in the password signs in, as always
+        (docs/TECLADO-COMPLETO.md). Tab and ↓ reach it. */}
     <label className="field">Estación
-      <select name="station" value={choice?.number ?? ""} disabled={disabled || state !== "ready"}
+      <select name="station" data-capture-skip value={choice?.number ?? ""} disabled={disabled || state !== "ready"}
         onChange={event => onChange(stations.find(row => row.number === event.currentTarget.value) ?? null)}>
         <option value="">Usar vínculo actual</option>
         {stations.map(row => <option key={row.number} value={row.number}>{row.number} · {row.name}</option>)}

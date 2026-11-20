@@ -112,6 +112,13 @@ $env:TEST_DATABASE_URL='postgresql://user:password@127.0.0.1:5432/cyp_test'
 pnpm --filter @cyp/server test
 ```
 
+Dos pruebas de la interfaz (`login-password-layout-ui` y `login-station-flow-ui`) necesitan en `dist` la compilación pública, la que hace Render, con el cobrador en `/collector/`. Con la compilación normal se omiten. Antes de un cambio en el inicio de sesión, compila con `pnpm build:public` y córrelas:
+
+```powershell
+pnpm build:public
+pnpm --filter @cyp/server exec tsx --test --test-concurrency=1 ../client-admin/test/login-password-layout-ui.test.ts ../client-admin/test/login-station-flow-ui.test.ts
+```
+
 `pnpm -r build` genera `app/server/dist`, `app/client-admin/dist` y `app/client-collector/dist`. La API compilada se inicia con `pnpm --filter @cyp/server start`. Servir ambos frontends con un servidor HTTPS estático y proxy `/api` hacia la API; cada portal necesita fallback de navegación a `index.html`. Ajustar `ALLOWED_ORIGINS` y `COLLECTOR_URL` a los dominios reales. El servidor Vite de desarrollo no es el servidor de producción.
 
 ## PWA, GPS y uso en teléfono
