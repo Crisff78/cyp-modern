@@ -9,11 +9,11 @@ function phoneMatches(value: string | undefined, digits: string) {
 
 // Search existing client identities without publishing a global contact/notes index.
 // Recipients may be in another route, as in the remittance creation workflow.
-export function searchRemittanceClients(state: State, actor: User, query: string, side: "sender" | "recipient", senderId = "") {
+function matchingClients(state: State, actor: User, query: string, side: "sender" | "recipient", senderId = "") {
   remittanceOperators(state, actor);
   const terms = normalized(query).split(/\s+/).filter(Boolean);
   const digits = /^[+\d\s().-]+$/.test(query) ? query.replace(/\D/g, "") : "";
-  const matches = state.clients.filter((client) => {
+  return state.clients.filter((client) => {
     if (client.active === false || (side === "recipient" && client.id === senderId)) return false;
     if (side === "sender" && actor.role === "collector" && !state.routes.some((route) => route.id === client.routeId && route.collectorId === actor.collectorId)) return false;
     const text = normalized(`${client.code} ${client.name} ${client.identification ?? ""} ${client.internalIdentification ?? ""}`);
@@ -21,7 +21,20 @@ export function searchRemittanceClients(state: State, actor: User, query: string
     const identityQuery = normalized(query).replace(/[\s-]/g, "");
     return terms.every((term) => text.includes(term)) || (identityQuery.length >= 3 && identity.includes(identityQuery)) || (digits.length >= 3 && [client.code, client.phone, client.cellular, client.note].some((value) => phoneMatches(value, digits)));
   });
+}
+export function searchRemittanceClients(state: State, actor: User, query: string, side: "sender" | "recipient", senderId = "") {
+  const matches = matchingClients(state, actor, query, side, senderId);
   return { ids: matches.slice(0, 100).map((client) => client.id), hasMore: matches.length > 100 };
+}
+const byName = new Intl.Collator("es", { sensitivity: "base" });
+/**
+ * The same clients of the search, or every active one when nothing is typed, in the order of a list that is read by
+ * pages: name, then code, then id, so no page repeats or skips a client. Only what is needed to choose one.
+ */
+export function listRemittanceClients(state: State, actor: User, query: string, side: "sender" | "recipient") {
+  return matchingClients(state, actor, query, side)
+    .map(({ id, code, name }) => ({ id, code, name }))
+    .sort((a, b) => byName.compare(a.name, b.name) || byName.compare(a.code, b.code) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
 
 // Preview only the explicitly selected contact; saved transfers keep their own snapshot.

@@ -1,7 +1,9 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
+import { errorLine, INVITATION_HEADER, invalid, isTextProtocolPath, ProtocolError } from "./text-protocol.js";
 
 export type DemoAccessConfig = { code: string; origin: string };
+const WRONG_INVITATIONS_PER_MINUTE = 10;
 export const DEMO_ACCESS_CODE_MIN_LENGTH = 9;
 export function validateDemoAccessCode(code: string | undefined): asserts code is string {
   if (typeof code !== "string" || code.length < DEMO_ACCESS_CODE_MIN_LENGTH || code.length > 256)
@@ -62,8 +64,22 @@ const accessScript = `"use strict";
   });
 })();`;
 
-export async function registerDemoAccess(app: FastifyInstance, config: DemoAccessConfig) {
+export async function registerDemoAccess(app: FastifyInstance, config: DemoAccessConfig,
+  clientAddress: (request: FastifyRequest) => string = (request) => request.ip) {
   validateDemoAccessCode(config.code);
+  // Wrong invitations sent in the header of the plain-text protocol, by address. This hook answers before the general
+  // limit counts anything, so it keeps its own count: after ten in a minute no invitation is looked at, right or wrong.
+  const wrong = new Map<string, { count: number; until: number }>();
+  const locked = (address: string, now: number) => {
+    const entry = wrong.get(address);
+    if (entry && entry.until <= now) wrong.delete(address);
+    return (wrong.get(address)?.count ?? 0) >= WRONG_INVITATIONS_PER_MINUTE;
+  };
+  const countWrong = (address: string, now: number) => {
+    const entry = wrong.get(address);
+    if (entry) entry.count += 1; else wrong.set(address, { count: 1, until: now + 60_000 });
+    if (wrong.size > 10_000) for (const [key, value] of wrong) if (value.until <= now) wrong.delete(key);
+  };
   const origin = new URL(config.origin).origin;
   if (!origin.startsWith("https://")) throw new Error("The public demo requires HTTPS.");
   const sign = (expiry: string) => createHmac("sha256", config.code).update(`cyp-demo:${expiry}`).digest("base64url");
@@ -93,6 +109,16 @@ export async function registerDemoAccess(app: FastifyInstance, config: DemoAcces
     if (path === "/demo-access" && (request.method === "GET" || request.method === "POST")) return;
     if (validCookie(request.headers.cookie)) return;
     reply.header("Cache-Control", "no-store").header("X-Robots-Tag", "noindex, nofollow");
+    if (isTextProtocolPath(path)) {
+      // A mobile application keeps no cookie: its invitation travels in a header with every petition, and what it
+      // gets back when the invitation is missing is an answer of its own protocol, not a page to type the code in.
+      const sent = request.headers[INVITATION_HEADER], address = clientAddress(request), now = Date.now();
+      const refuse = (error: ProtocolError) => reply.code(200).type("text/plain; charset=utf-8").send(errorLine(new Date(now), error));
+      if (locked(address, now)) return refuse(new ProtocolError("DML"));
+      if (typeof sent === "string" && sent.length <= 256 && timingSafeEqual(digest(sent), digest(config.code))) return;
+      if (sent !== undefined) countWrong(address, now);
+      return refuse(invalid("X-CyP-Invitacion", "Esta central de pruebas pide el código de invitación en la cabecera X-CyP-Invitacion"));
+    }
     if (path.startsWith("/api/")) return reply.code(401).send({ error: { code: "DEMO_INVITATION_REQUIRED", message: "Abre la demo e introduce tu código de invitación." } });
     return reply.code(303).redirect("/demo-access");
   });
