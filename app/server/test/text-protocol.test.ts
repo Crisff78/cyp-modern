@@ -8,6 +8,7 @@ import { businessDate, hashPassword, type State, type User } from "../src/domain
 import { DEMO_PASSWORD } from "../src/demo-credentials.js";
 import { DEMO_CASHIER_EMAIL, enrichCashierDemo } from "../src/demo-cashier-scenarios.js";
 import { cashBalance, closeRemittanceCash, openRemittanceCash, setCommissionPolicy, setDailyRate } from "../src/remittances.js";
+import { MAX_ADDRESS_LENGTH, protocolStamp } from "../src/text-protocol.js";
 
 // Synthetic data only. The figures are those of the example of the document: 5 % of commission, 2 % of delivery
 // charge and the dollar bought at 59.25.
@@ -18,11 +19,13 @@ const account = (id: string, email: string, role: User["role"], password = DEMO_
   const at = new Date().toISOString();
   return { id, name: `Cuenta ${id}`, email, role, ...hashPassword(password), credentialVersion: 1, status: "active" as const, createdAt: at, updatedAt: at };
 };
+// A password with what an address cannot carry as it is: by GET it travels encoded with %.
+const SIGNS = "50%+1 #clave&más?";
 function fixture() {
   const state = seed(), now = new Date(), date = businessDate(now);
   enrichCashierDemo(state, now);
   state.accounts.push(account("sup-1", "supervisora@cyp.local", "supervisor"), account("cli-user", "cliente@cyp.local", "client"),
-    account("pipes", "pipes@cyp.local", "cashier", "Clave|con!pipes;y@signos 2026"));
+    account("pipes", "pipes@cyp.local", "cashier", "Clave|con!pipes;y@signos 2026"), account("signos", "signos@cyp.local", "cashier", SIGNS));
   setCommissionPolicy(state, admin, { transactionCommissionBps: 500, managerCommissionBps: 0, deliveryCommissionBps: 200 }, now);
   setDailyRate(state, admin, { currency: "USD", rate: "59.25", purchaseRate: "59.25", saleRate: "60.00", date }, now);
   for (const operatorId of ["demo-admin", "demo-collector", "demo-cashier"])
@@ -30,9 +33,10 @@ function fixture() {
   Object.assign(state.clients.find((row) => row.id === "cli-2")!, { identification: "001-1234567-8", cellular: "8295550111", address: "Calle 5 #12, Santiago" });
   return state;
 }
-async function open(state = fixture(), demoAccess?: { code: string; origin: string }) {
+async function open(state = fixture(), demoAccess?: { code: string; origin: string }, demo = true) {
   const store = new MemoryStore(state);
-  const app = await buildApp({ store, demo: true, secret, origins: [], collectorUrl: "http://127.0.0.1:5174", ...(demoAccess ? { publicWeb: true, demoAccess } : {}) });
+  const app = await buildApp({ store, secret, origins: [], collectorUrl: "http://127.0.0.1:5174", ...(demoAccess ? { publicWeb: true, demoAccess } : {}),
+    ...(demo ? { demo: true } : { demo: false, adminEmail: "principal@example.invalid", adminPassword: "Principal-ficticia-2026!" }) });
   type Reply = { statusCode: number; headers: Record<string, unknown>; body: string };
   const check = (reply: Reply) => {
     assert.equal(reply.statusCode, 200, reply.body);
@@ -68,18 +72,56 @@ const sendBody = (token: string, change: Partial<Send> = {}) => {
     v.idForma_Pago, v.Recibido, v.Referencia, v.Banco, v.Verificado, v.Nota].join("|");
 };
 
-test("login: only POST, the password keeps its separators and each role gets its two permissions", async () => {
-  const { app, post, get } = await open();
+test("login: the password keeps its separators, each role gets its two permissions, and Vence is the end of the session", async () => {
+  const { app, store, post } = await open();
   try {
-    er(await get("login", "admin@cyp.local|x"), "PIN", "Parametros");
     const ok = await post("login", `admin@cyp.local|${DEMO_PASSWORD}`);
-    assert.equal(ok.length, 4); assert.equal(ok[0], "OK");
+    assert.equal(ok.length, 5); assert.equal(ok[0], "OK");
     assert.match(ok[2], /^[A-Za-z0-9._-]{100,1000}$/, "idSesion: letters, digits, dot, hyphen and underscore");
     assert.deepEqual(fields(ok[3]), ["demo-admin", "Administración", "admin", "1", "1"]);
+    // Vence: the first of the two ends a session has (its token and its record), eight hours after it started.
+    const claims = JSON.parse(Buffer.from(ok[2].split(".")[1], "base64url").toString("utf8")) as { exp: number; sid: string };
+    const saved = (await store.read()).adminTools!.sessions.find((row) => row.id === claims.sid)!;
+    const ends = Math.min(claims.exp * 1000, Date.parse(saved.expiresAt));
+    assert.equal(ok[4], protocolStamp(new Date(ends)));
+    assert.match(ok[4], /^\d{14}$/); assert.ok(ok[4] > ok[1], "after the FechayHora of the answer");
+    const hours = (ends - Date.parse(saved.startedAt)) / 3_600_000;
+    assert.ok(hours > 7.99 && hours <= 8, String(hours));
     assert.deepEqual(fields((await post("login", `  ${DEMO_CASHIER_EMAIL.toUpperCase()} |${DEMO_PASSWORD}`))[3]), ["demo-cashier", "Cajero de práctica", "cashier", "1", "1"]);
     assert.deepEqual(fields((await post("login", `supervisora@cyp.local|${DEMO_PASSWORD}`))[3]), ["sup-1", "Cuenta sup-1", "supervisor", "0", "1"]);
     assert.deepEqual(fields((await post("login", `cliente@cyp.local|${DEMO_PASSWORD}`))[3]), ["cli-user", "Cuenta cli-user", "client", "0", "0"]);
     assert.equal((await post("login", "pipes@cyp.local|Clave|con!pipes;y@signos 2026"))[0], "OK");
+    assert.equal((await post("login", `signos@cyp.local|${SIGNS}`))[0], "OK");
+  } finally { await app.close(); }
+});
+
+test("login by GET: the same petition after the ?, with the password encoded as any other datum", async () => {
+  const { app, get } = await open();
+  try {
+    const ok = await get("login", encodeURIComponent(`admin@cyp.local|${DEMO_PASSWORD}`));
+    assert.equal(ok.length, 5); assert.equal(ok[0], "OK");
+    assert.deepEqual(fields(ok[3]), ["demo-admin", "Administración", "admin", "1", "1"]);
+    assert.match(ok[4], /^\d{14}$/);
+    assert.equal((await get("quote", `${ok[2]}|USD|DOP|100.00`))[0], "OK", "the session of a GET is a session");
+    assert.equal((await get("login", encodeURIComponent("pipes@cyp.local|Clave|con!pipes;y@signos 2026")))[0], "OK");
+    assert.equal((await get("login", `signos@cyp.local|${encodeURIComponent(SIGNS)}`))[0], "OK");
+    // A space written as + is a plus sign, not a space: that is another password.
+    er(await get("login", `signos@cyp.local|${encodeURIComponent(SIGNS).replaceAll("%20", "+")}`), "UCI");
+    er(await get("login"), "PIN", "Usuario");
+    er(await get("login", encodeURIComponent("admin@cyp.local")), "PIN", "Clave");
+    er(await get("login", "admin@cyp.local|%E0%A4%A"), "PIN", "Parametros");
+  } finally { await app.close(); }
+});
+
+test("outside demo mode the sign-in is still POST only (a password does not travel in an address); the rest comes by GET", async () => {
+  const { app, post, get } = await open(fixture(), undefined, false);
+  try {
+    const refused = await get("login", encodeURIComponent(`supervisora@cyp.local|${DEMO_PASSWORD}`));
+    er(refused, "PIN", "Parametros"); assert.match(refused[3], /POST/);
+    const ok = await post("login", `supervisora@cyp.local|${DEMO_PASSWORD}`);
+    assert.equal(ok.length, 5); assert.equal(ok[0], "OK");
+    assert.equal((await get("recs", ok[2]))[2], "RNE", "the other petitions are taken by GET everywhere");
+    assert.equal((await get("logout", ok[2]))[0], "OK");
   } finally { await app.close(); }
 });
 
@@ -98,9 +140,12 @@ test("login: wrong or missing data", async () => {
 });
 
 test("login: ten a minute from one address, then DML, still with HTTP 200", async () => {
-  const { app, post } = await open();
+  const { app, post, get } = await open();
   try {
-    for (let attempt = 0; attempt < 10; attempt++) er(await post("login", "admin@cyp.local|mala"), "UCI");
+    // One count for the petition, by GET or by POST.
+    for (let attempt = 0; attempt < 5; attempt++) er(await post("login", "admin@cyp.local|mala"), "UCI");
+    for (let attempt = 0; attempt < 5; attempt++) er(await get("login", encodeURIComponent("admin@cyp.local|mala")), "UCI");
+    er(await get("login", encodeURIComponent(`admin@cyp.local|${DEMO_PASSWORD}`)), "DML");
     er(await post("login", `admin@cyp.local|${DEMO_PASSWORD}`), "DML");
   } finally { await app.close(); }
 });
@@ -231,10 +276,9 @@ test("quote: the example of the document, asked in its three ways", async () => 
 });
 
 test("send: cash with change, a transfer, and the same idOperacion never registers twice", async () => {
-  const { app, store, post, get, login } = await open();
+  const { app, store, post, login } = await open();
   try {
     const token = await login(DEMO_CASHIER_EMAIL);
-    er(await get("send", sendBody(token)), "PIN", "Parametros");
     const body = sendBody(token, { Nota: "Envío de prueba" });
     const ok = await post("send", body);
     assert.equal(ok.length, 3);
@@ -269,6 +313,35 @@ test("send: cash with change, a transfer, and the same idOperacion never registe
     const stored = (await store.read()).remittances.transfers;
     assert.deepEqual(stored.map((row) => row.payment?.method), ["cash", "cash", "transfer", "deposit", "cash"]);
     assert.equal(stored[2].payment?.reference, "TRF99812"); assert.equal(stored[2].payment?.bank, "Banco Popular");
+  } finally { await app.close(); }
+});
+
+test("send by GET: the same sixteen data after the ?, one send, and by POST it is the same petition", async () => {
+  const { app, store, post, get, login } = await open();
+  const sends = async () => (await store.read()).remittances.transfers;
+  try {
+    const token = await login(DEMO_CASHIER_EMAIL);
+    const petition = sendBody(token, { Nota: "Envío por GET, con ñ y espacios" });
+    const ok = await get("send", encodeURIComponent(petition));
+    assert.equal(ok.length, 3); assert.equal(ok[0], "OK"); assert.equal(fields(ok[2])[1], "ENV00000001");
+    assert.equal((await sends())[0].note, "Envío por GET, con ñ y espacios");
+    // The same address opened again, and the same data by POST: the send that was registered, never another one.
+    assert.equal((await get("send", encodeURIComponent(petition)))[2], ok[2]);
+    assert.equal((await post("send", petition))[2], ok[2]);
+    assert.equal((await sends()).length, 1);
+    er(await get("send", encodeURIComponent(sendBody(token, { idOperacion: petition.split("|")[1], Nota: "otra nota" }))), "OPD", "ENV00000001");
+    // A HEAD is not a petition: it registers no send and opens no session.
+    const sessions = (await store.read()).adminTools!.sessions.length;
+    assert.notEqual((await app.inject({ method: "HEAD", url: `/cyp_send?${encodeURIComponent(sendBody(token))}` })).statusCode, 200);
+    assert.notEqual((await app.inject({ method: "HEAD", url: `/cyp_login?${encodeURIComponent(`admin@cyp.local|${DEMO_PASSWORD}`)}` })).statusCode, 200);
+    assert.equal((await sends()).length, 1); assert.equal((await store.read()).adminTools!.sessions.length, sessions);
+    // An address longer than the servers on the way take is refused whole, and says how to send it: by POST.
+    const long = sendBody(token, { Nota: "ñ".repeat(2000) });
+    assert.ok(encodeURIComponent(long).length > MAX_ADDRESS_LENGTH);
+    const refused = await get("send", encodeURIComponent(long));
+    er(refused, "PIN", "Parametros"); assert.match(refused[3], /POST/);
+    assert.equal((await sends()).length, 1);
+    assert.equal(fields((await post("send", long))[2])[1], "ENV00000002");
   } finally { await app.close(); }
 });
 

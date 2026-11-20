@@ -1,4 +1,4 @@
-// Plain-text protocol for the mobile application (docs/protocolo-cyp/Protocolo CYP 0.1.txt).
+// Plain-text protocol for the mobile application (docs/protocolo-cyp/Protocolo CYP 0.2.txt).
 // This file has no Fastify in it: how a petition is read, how an answer is written and which code an error gets.
 import { DomainError } from "./domain.js";
 
@@ -18,6 +18,8 @@ export const PAGE_SIZE = 100;
 export const MAX_RECEIPT_DAYS = 31;
 /** What a PIN error names when the whole petition is wrong and not one of its parameters. */
 export const WHOLE_PETITION = "Parametros";
+/** The longest address of a GET (what follows the name of the server): every server on the way takes it. More goes by POST. */
+export const MAX_ADDRESS_LENGTH = 8000;
 /** Header that carries the invitation of the public demo for these routes (see demo-access.ts). */
 export const INVITATION_HEADER = "x-cyp-invitacion";
 export const isTextProtocolPath = (path: string) => /^\/cyp_[^/]*$/.test(path);
@@ -146,6 +148,7 @@ export function parsePage(text: string) {
  */
 export function rawParameters(method: string, url: string, body: unknown) {
   if (method === "POST") return typeof body === "string" ? body : "";
+  if (url.length > MAX_ADDRESS_LENGTH) throw invalid(WHOLE_PETITION, `La dirección pasa de ${MAX_ADDRESS_LENGTH} caracteres. Mande esta petición por POST`);
   const at = url.indexOf("?");
   if (at < 0) return "";
   try { return decodeURIComponent(url.slice(at + 1)); }

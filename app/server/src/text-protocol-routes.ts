@@ -1,4 +1,4 @@
-// Plain-text protocol for the mobile application: the seven petitions of docs/protocolo-cyp/Protocolo CYP 0.1.txt.
+// Plain-text protocol for the mobile application: the seven petitions of docs/protocolo-cyp/Protocolo CYP 0.2.txt.
 // Each one is a thin adapter in front of the same functions the JSON API uses; no rule of the business lives here.
 import { createHash } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -17,7 +17,7 @@ import {
   WHOLE_PETITION, type ProtocolCommand,
 } from "./text-protocol.js";
 
-type Claims = User & { authVersion?: string; sid?: string };
+type Claims = User & { authVersion?: string; sid?: string; exp?: number };
 /** Marks the session tokens given by this protocol: the JSON API does not take them (see the preHandler of app.ts). */
 export const TEXT_PROTOCOL_CHANNEL = "cyp";
 export type TextProtocolDeps = {
@@ -27,8 +27,15 @@ export type TextProtocolDeps = {
   verifyToken: (token: string) => Claims;
   /** The check of every request of the web (session alive, account, role, collector, permission of the path). */
   authenticate: (claims: Claims, method: string, path: string) => Promise<User>;
-  signIn: (login: string, password: string, channel?: string) => Promise<{ token: string; user: User }>;
+  /** `expiresAt`: when the record of the session ends (its token has its own end, in `exp`). */
+  signIn: (login: string, password: string, channel?: string) => Promise<{ token: string; user: User; expiresAt: string }>;
   loginBody: z.ZodType<{ email: string; password: string }>;
+  /**
+   * Whether the sign-in is taken by GET. A password in an address stays in the records of whatever is on the way, so
+   * it is taken only where the data are fictitious (demo mode); elsewhere the sign-in stays POST-only until that is
+   * decided (docs/PROTOCOLO-TEXTO-PLANO.md, «Antes de producción»).
+   */
+  passwordByGet: boolean;
 };
 export const TEXT_PROTOCOL_ROUTES = ["/cyp_login", "/cyp_:cmd"];
 export const isTextProtocolRoute = (url: string | undefined) => url !== undefined && TEXT_PROTOCOL_ROUTES.includes(url);
@@ -111,12 +118,15 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
         throw new ProtocolError("UCI", "Su cuenta no tiene permiso para entrar. Pida a Administración que la revise");
       throw error;
     }
+    const claims = deps.verifyToken(session.token);
     const can = async ([method, path]: readonly [string, string]) => {
-      try { await deps.authenticate(deps.verifyToken(session.token), method, path); return "1"; }
+      try { await deps.authenticate(claims, method, path); return "1"; }
       catch (error) { if (error instanceof DomainError) return "0"; throw error; }
     };
     const { id, name, role } = session.user;
-    return okLine(now, session.token, record(id, name, role, await can(SEND), await can(VIEW)));
+    // Vence: the first of the two ends a session has, the one of its record and the one of its token.
+    const ends = Math.min(Date.parse(session.expiresAt), ...(claims.exp ? [claims.exp * 1000] : []));
+    return okLine(now, session.token, record(id, name, role, await can(SEND), await can(VIEW)), protocolStamp(new Date(ends)));
   }
 
   async function logout(claims: Claims, parts: string[], now: Date) {
@@ -247,7 +257,8 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
   async function answer(command: string, request: FastifyRequest, now: Date) {
     if (!(PROTOCOL_COMMANDS as readonly string[]).includes(command)) throw new ProtocolError("PNE");
     const name = command as ProtocolCommand;
-    if ((name === "login" || name === "send") && request.method !== "POST") throw invalid(WHOLE_PETITION, "Esta petición solo se acepta por POST");
+    // Every petition comes by GET or by POST. The only exception is the password of the sign-in outside demo mode.
+    if (name === "login" && request.method !== "POST" && !deps.passwordByGet) throw invalid(WHOLE_PETITION, "En esta central, Iniciar Sesión solo se acepta por POST");
     const raw = rawParameters(request.method, request.url, request.body);
     if (name === "login") return login(raw, now);
     const parts = raw.split("|");
