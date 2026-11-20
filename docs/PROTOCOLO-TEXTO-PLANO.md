@@ -1,14 +1,15 @@
-# Protocolo de texto plano para la aplicación móvil (CYP 0.3)
+# Protocolo de texto plano para la aplicación móvil (CYP 0.4)
 
 Siete peticiones `/cyp_*` que responden en texto plano, separadas por `|`, para que una aplicación móvil hecha por
 otro equipo haga Envíos de Dinero contra CyP. Orden de Rardiel del 2026-11-19: «Programalo y deja todo listo».
 
-- **El contrato** es [`protocolo-cyp/Protocolo CYP 0.3.txt`](<protocolo-cyp/Protocolo CYP 0.3.txt>): es el documento
+- **El contrato** es [`protocolo-cyp/Protocolo CYP 0.4.txt`](<protocolo-cyp/Protocolo CYP 0.4.txt>): es el documento
   que se le envía a quien programa la aplicación. Si el servidor y ese documento no coinciden, hay un fallo: se
   arregla el servidor o se envía una versión nueva del documento, nunca se deja pasar.
 - **El plan** y su revisión están en `designs/2026-11-19-protocolo-texto-plano/`. La versión 0.2 (GET en todas las
   peticiones y `Vence`), en `designs/2026-11-20-protocolo-get-y-vence/`; la 0.3 (sin código de invitación), en
-  `designs/2026-11-20-sin-invitacion/`.
+  `designs/2026-11-20-sin-invitacion/`; la 0.4 (`p=` y la versión de la aplicación), en
+  `designs/2026-11-20-protocolo-p-y-version/`.
 
 ## Dónde está cada cosa
 
@@ -31,6 +32,16 @@ No hay reglas del negocio nuevas ni migración. El protocolo no aparece en `open
   enteros y después partidos por `|`) o por POST. Una dirección de más de 8000 caracteres responde `PIN`
   (`MAX_ADDRESS_LENGTH`): más larga, Node o el proxy la rechazarían sin el formato del protocolo. **Excepción:**
   fuera del modo demo, Iniciar Sesión sigue siendo solo por POST (`passwordByGet`; ver «Antes de producción»).
+- **`p=` y la versión de la aplicación (0.4).** La aplicación de la otra parte llama `…/cyp_login?p=Usuario|Clave|3.0`.
+  `rawParameters` quita un `p=` literal y en minúscula justo después del `?` (solo en GET; un cuerpo que empiece
+  por `p=` responde `PIN`). `withoutVersion` quita el último dato si tiene forma de versión
+  (`/^\d{1,3}(\.\d{1,3}){1,2}$/`) **y** la petición ya tiene sus datos obligatorios (`REQUIRED`): así un importe
+  al final (`100.00`) sigue siendo el importe y en `send` solo puede ser el dato 17. La central no usa la versión.
+  En `login`, `Usuario|Clave|3.0` se lee de dos maneras (la clave con y sin el último dato) y entra con la que valga;
+  solo se prueba la segunda si la primera dio `INVALID_CREDENTIALS`. Lo que eso cuesta, a sabiendas: un `Texto`
+  que sea solo un número con punto y vaya el último se toma por la versión; `Modo`, `Pagina`, `Lado` o `idEstado`
+  escritos `2.0` al final dejan de ser `PIN` y se toman por la versión; con 15 datos y la versión, `send` guarda la
+  versión como `Nota`; y una `Nota` con un pipe sin limpiar que termine en `|2.5` pierde ese final.
 - **`Vence`.** El inicio de sesión devuelve cuándo se vence la sesión: el primero de sus dos finales, el de su
   registro (`expiresAt`) y el de su token (`exp`). No hay otro «8 horas» escrito en el protocolo.
 - **Sesión.** `idSesion` es un token de sesión como el de la web, marcado con `channel: "cyp"`. Cada petición lo
@@ -41,7 +52,7 @@ No hay reglas del negocio nuevas ni migración. El protocolo no aparece en `open
 - **Un `idSesion` no sirve en la API JSON.** Puede viajar en una dirección (GET) y acabar en un registro; por eso el
   `preHandler` rechaza con 401 todo token que lleve `channel`. Al revés sí: un token de la web sirve en el protocolo.
 - **`idOperacion`.** Se guarda en la tabla `idempotency` con la clave `cyp:{idUsuario}:{idOperacion}`. La huella es
-  el SHA-256 de los parámetros ya decodificados, sin el `idSesion`, carácter por carácter (lo mismo por GET que por POST). Misma huella: se devuelve el envío guardado, aunque
+  el SHA-256 de los parámetros ya decodificados, sin el `idSesion` ni la versión de la aplicación, carácter por carácter (lo mismo por GET que por POST, con `p=` o sin él). Misma huella: se devuelve el envío guardado, aunque
   haya cambiado una tasa o esté cerrada la caja. Otra huella: `OPD` con el `NumEnvio`. Solo se guarda cuando el envío
   se registró. No caduca. **El documento promete 7 días como mínimo:** si algún día se depura la tabla `idempotency`,
   las filas `cyp:` de menos de 7 días no se tocan. (La clave supone que ninguna cuenta tiene el id literal `cyp`.)
@@ -53,7 +64,8 @@ No hay reglas del negocio nuevas ni migración. El protocolo no aparece en `open
 - **Lo que escribe el usuario** (`Texto`, `Referencia`, `Banco`, `Nota`): los caracteres de control y las marcas
   invisibles se cambian por un espacio antes de validar. Un salto de línea en cualquier parámetro es `PIN`.
 - **Límites.** 120 peticiones por minuto y dirección, como toda la API. `/cyp_login` tiene su contador de 10, aparte
-  del de `/api/auth/login`: entre las dos rutas son 20 intentos de clave por minuto y dirección.
+  del de `/api/auth/login`: entre las dos rutas son 20 peticiones de clave por minuto y dirección (hasta 30
+  comprobaciones, porque un inicio de sesión con versión al final puede probar dos lecturas de la clave).
 
 ## La demo pública
 
@@ -96,6 +108,18 @@ Una regla sin código propio va en `ORC` y no en `EIC` a propósito: `EIC` le di
 petición, y repetir no arregla una configuración. El Dato de un `PIN` es el nombre del parámetro, o `Parametros`
 cuando lo que está mal es la petición entera.
 
+## Lo que se sabe de la aplicación de la otra parte
+
+Visto en una captura suya del 2026-11-20 y comprobado contra un servidor local, byte a byte:
+
+- Llama por GET, con `p=` delante y un `3.0` al final, y el `|` sin codificar (pasa por Render sin problema).
+- No se sabe qué es el `3.0` ni si lo manda en todas las peticiones; la central sirve en los dos casos.
+- Su ejemplo (LSAN) dice que las respuestas son `Estado|FechayHora|Versión|Otros Datos`, pero ninguno de sus
+  ejemplos trae la Versión, y las de CyP tampoco. **Si su aplicación lee mal el `idSesion`, es lo primero que hay
+  que mirar:** puede estar esperando una Versión en el tercer lugar.
+- Una letra con acento o un espacio **sin codificar** en la dirección no llegan al protocolo: Node responde 400.
+  `%ED` (una í en Latin-1) responde `PIN`: los datos van en UTF-8. `+` es un signo de más, no un espacio.
+
 ## Antes de producción
 
 Hoy esto solo corre en la central de pruebas, con datos ficticios. Antes de ponerlo con datos reales hay que decidir:
@@ -105,7 +129,8 @@ Hoy esto solo corre en la central de pruebas, con datos ficticios. Antes de pone
   y la red del usuario sí pueden guardarlas. Por eso `passwordByGet` es verdadero solo en modo demo. Según lo que
   responda la otra parte a la pregunta 4a del documento, las salidas son tres: que manden Iniciar Sesión por POST;
   que manden la clave en una cabecera; o aceptar la clave por GET sabiendo
-  dónde queda. Es una decisión de Rardiel, no del código.
+  dónde queda. Es una decisión de Rardiel, no del código. Hay que tomarla antes de una central real: la aplicación
+  de la otra parte entra por GET, y fuera del modo demo eso responde `PIN`.
 - **El `idSesion` en una dirección.** Vale 8 horas y no sirve en la API JSON, así que el daño de que se filtre es
   limitado; la clave no vence.
 

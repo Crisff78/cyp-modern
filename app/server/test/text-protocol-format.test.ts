@@ -2,8 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { DomainError } from "../src/domain.js";
 import {
-  assertOneLine, clean, daysBetween, errorLine, invalid, moneyText, namedParameters, okLine, parseDate, parseMoney, parsePage, percentText,
-  protocolErrorOf, ProtocolError, protocolStamp, rawParameters, record, typedText,
+  assertOneLine, clean, daysBetween, errorLine, invalid, isVersion, moneyText, namedParameters, okLine, parseDate, parseMoney, parsePage, percentText,
+  protocolErrorOf, ProtocolError, protocolStamp, rawParameters, record, typedText, withoutVersion,
 } from "../src/text-protocol.js";
 
 const pin = (dato: string) => (error: unknown) => {
@@ -95,4 +95,43 @@ test("each failure gets its code; an unknown one is left for EIC", () => {
   assert.equal(code(Object.assign(new Error("x"), { statusCode: 413 })), "PIN");
   assert.equal(code(new Error("la base no responde")), undefined);
   assert.equal(code(invalid("Monto")), "PIN");
+});
+
+test("p= before the data of a GET is the habit of the other party's application: with it or without it, the same petition", () => {
+  assert.equal(rawParameters("GET", "/cyp_clients?p=idSesion|perez", undefined), "idSesion|perez");
+  assert.equal(rawParameters("GET", "/cyp_clients?p=idSesion%7CJuan%20P%C3%A9rez", undefined), "idSesion|Juan Pérez");
+  assert.equal(rawParameters("GET", "/cyp_login?p=usuario|clave|3.0", undefined), "usuario|clave|3.0");
+  assert.equal(rawParameters("GET", "/cyp_clients?p=", undefined), "");
+  // Only a literal, lower-case p= right after the ? is the prefix. What follows it is all data, an & too.
+  assert.equal(rawParameters("GET", "/cyp_clients?P=idSesion", undefined), "P=idSesion");
+  assert.equal(rawParameters("GET", "/cyp_clients?p%3DidSesion", undefined), "p=idSesion");
+  assert.equal(rawParameters("GET", "/cyp_clients?p=a|b&x=y", undefined), "a|b&x=y");
+  assert.equal(rawParameters("GET", "/cyp_clients?p=p=raro|x", undefined), "p=raro|x");
+  // In a body the data go as they are: with the prefix it would be read as a wrong user or a wrong session.
+  assert.throws(() => rawParameters("POST", "/cyp_login", "p=usuario|clave"), pin("Parametros"));
+  assert.equal(rawParameters("POST", "/cyp_login", "usuario|p=clave"), "usuario|p=clave");
+});
+
+test("the version of the application after the last datum is taken away, and only when it is one datum more", () => {
+  for (const value of ["3.0", "1.14", "10.2.1", "100.00", "0.10"]) assert.ok(isVersion(value), value);
+  for (const value of ["3", "3.", ".0", "v3.0", "3.0.0.0", "809.555.0100", "1500.00", "20261120", "cli-1", "", " 3.0", "3,0"]) assert.ok(!isVersion(value), value);
+  // Optional data left out, all of them sent, and the session alone.
+  assert.deepEqual(withoutVersion("clients", ["s", "perez", "3.0"]), ["s", "perez"]);
+  assert.deepEqual(withoutVersion("clients", ["s", "perez", "2", "0", "3.0"]), ["s", "perez", "2", "0"]);
+  assert.deepEqual(withoutVersion("logout", ["s", "3.0"]), ["s"]);
+  assert.deepEqual(withoutVersion("recs", ["s", "3.0"]), ["s"]);
+  assert.deepEqual(withoutVersion("client", ["s", "cli-1", "3.0"]), ["s", "cli-1"]);
+  // The data a petition cannot go without are never the version: an amount is written as one.
+  assert.deepEqual(withoutVersion("quote", ["s", "USD", "DOP", "100.00"]), ["s", "USD", "DOP", "100.00"]);
+  assert.deepEqual(withoutVersion("quote", ["s", "USD", "DOP", "100.00", "3.0"]), ["s", "USD", "DOP", "100.00"]);
+  assert.deepEqual(withoutVersion("quote", ["s", "USD", "DOP", "100.00", "1", "3.0"]), ["s", "USD", "DOP", "100.00", "1"]);
+  assert.deepEqual(withoutVersion("client", ["s", "3.0"]), ["s", "3.0"]);
+  assert.deepEqual(withoutVersion("logout", ["3.0"]), ["3.0"]);
+  // Registrar Envío: sixteen data always, so the version can only be the seventeenth. A Nota that is a number stays.
+  const sixteen = Array.from({ length: 16 }, (_value, index) => index === 15 ? "150.00" : "x");
+  assert.deepEqual(withoutVersion("send", sixteen), sixteen);
+  assert.deepEqual(withoutVersion("send", [...sixteen, "3.0"]), sixteen);
+  // What is not shaped as a version is left: one datum too many is still PIN.
+  assert.deepEqual(withoutVersion("clients", ["s", "perez", "1", "0", "de más"]), ["s", "perez", "1", "0", "de más"]);
+  assert.throws(() => namedParameters("clients", withoutVersion("clients", ["s", "perez", "1", "0", "de más"])), pin("Parametros"));
 });
