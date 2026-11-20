@@ -16,12 +16,17 @@ try { playwright = localRequire.resolve("playwright"); }
 catch {
   if (fs.existsSync(cache)) playwright = fs.readdirSync(cache).map(dir => path.join(cache, dir, "node_modules/playwright/index.mjs")).find(file => fs.existsSync(file));
 }
-const available = playwright && fs.existsSync(edge) && [adminRoot, collectorRoot].every(root => fs.existsSync(path.join(root, "dist/index.html")));
+// The public build serves the collector under /collector/. A plain `pnpm build` leaves it at the root, and this test
+// would only see a blank page: it is skipped, saying how to make the build it needs.
+const collectorIndex = path.join(collectorRoot, "dist/index.html");
+const publicBuilds = fs.existsSync(path.join(adminRoot, "dist/index.html")) && fs.existsSync(collectorIndex)
+  && fs.readFileSync(collectorIndex, "utf8").includes('"/collector/assets/');
+const available = playwright && fs.existsSync(edge) && publicBuilds;
 const origin = "http://127.0.0.1:52999";
 const centerY = (box: { y: number; height: number }) => box.y + box.height / 2;
 
 test("the office and collector logins fit the viewport and keep the password eye centered and keyboard accessible", {
-  skip: available ? false : "Requires both public web builds and installed Edge/Playwright",
+  skip: available ? false : "Requires both public web builds (pnpm build:public) and installed Edge/Playwright",
 }, async () => {
   const { chromium } = await import(pathToFileURL(playwright!).href);
   const browser = await chromium.launch({ executablePath: edge });
