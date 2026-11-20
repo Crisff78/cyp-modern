@@ -14,6 +14,7 @@
   "scripts": {
     "dev": "pnpm -r --parallel dev",
     "build": "pnpm -r build",
+    "build:public": "node scripts/build-public.mjs",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm --filter @cyp/server test && pnpm --filter @cyp/client-collector test && pnpm --filter @cyp/server exec tsx --test --test-concurrency=1 ../client-admin/test/*.test.ts ../client-admin/tests/*.test.ts",
     "db:migrate": "pnpm --filter @cyp/server db:migrate",

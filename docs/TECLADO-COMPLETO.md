@@ -74,7 +74,9 @@ Clientes, la página del servidor). Nada de esto choca con el navegador.
   último campo, **Intro nunca se queda quieto** (28-10-2026): en cualquier formulario o diálogo lleva el teclado a su
   botón (Guardar, Aceptar, Calcular cotización…) sin pulsarlo, y un segundo Intro lo pulsa; en los filtros de una
   ventana con lista baja a la lista; si no hay ni lista ni botón, va adonde iría Tab. Solo «Iniciar sesión» entra con
-  Intro en la clave, como siempre (su formulario lleva `data-keyboard-enter="send"`). Un campo obligatorio vacío hace
+  Intro en la clave, como siempre (su formulario lleva `data-keyboard-enter="send"`). La lista de Estación que va
+  debajo de la clave es opcional y no es parada de Intro (lleva `data-capture-skip`): se llega a ella con ↓ o con Tab,
+  y desde ella Intro va a «Iniciar sesión» sin pulsarlo (20-11-2026). Un campo obligatorio vacío hace
   que el navegador avise «Completa este campo». Un campo para subir un archivo no es parada de Intro (Intro abriría la
   ventana para elegir el archivo); Tab sí llega a él.
 - **← y →, atrás y adelante en todas partes (28-10-2026):** hacen lo mismo que Mayús+Tab y Tab. En lo escrito primero
