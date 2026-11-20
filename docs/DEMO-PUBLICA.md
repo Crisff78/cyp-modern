@@ -234,6 +234,10 @@ La invitación habilita una cookie segura de ocho horas; después se necesita el
 inicio de sesión del programa. Los visitantes no necesitan cuentas en Render,
 Neon, Supabase ni ChatGPT. Cambiar el código invalida las invitaciones anteriores.
 Las sesiones del programa se pueden consultar y cerrar desde Administración.
+
+Una aplicación móvil que use el protocolo de texto plano (`docs/PROTOCOLO-TEXTO-PLANO.md`) no guarda esa cookie:
+manda el mismo código en la cabecera `X-CyP-Invitacion` de cada petición `/cyp_*`. La cabecera solo abre esas
+peticiones, no las páginas ni la API JSON. Diez cabeceras equivocadas en un minuto bloquean esa dirección un minuto.
 Al actualizar desde una versión sin sesiones persistidas, hay que iniciar sesión
 de nuevo. Las trazas registran acciones nuevas, sin cuerpos ni contraseñas.
 

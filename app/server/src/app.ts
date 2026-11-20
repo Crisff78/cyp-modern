@@ -60,6 +60,7 @@ import {
 } from "./domain.js";
 import type { Store } from "./store.js";
 import { registerRemittanceRoutes } from "./remittance-routes.js";
+import { isTextProtocolRoute, registerTextProtocol } from "./text-protocol-routes.js";
 import { registerCatalogRoutes } from "./catalog-routes.js";
 import { registerDemoAccess, type DemoAccessConfig } from "./demo-access.js";
 import { assertAuthSession, createAuthSession, recordMutationTrace, revokeUserSessions } from "./admin-tools.js";
@@ -96,6 +97,8 @@ type Config = {
   // Header in which the platform in front names the visitor's address, only where visitors cannot send it themselves.
   clientAddressHeader?: string;
 };
+/** What the session token carries besides the user. `channel` marks the tokens given by the plain-text protocol. */
+type SessionClaims = User & { authVersion?: string; sid?: string; channel?: string };
 const money = z.number().int().positive().max(MAX_MONEY_AMOUNT);
 const currency = singleLine(40, 1)
   .refine((value) => supportedLedgerCurrency(value) !== undefined, "Selecciona DOP, USD o EUR.")
@@ -217,7 +220,7 @@ export async function buildApp(config: Config) {
     return typeof named === "string" && isIP(named) ? named : req.ip;
   };
   await app.register(rateLimit, { max: 120, timeWindow: "1 minute", keyGenerator: clientAddress });
-  if (config.demoAccess) await registerDemoAccess(app, config.demoAccess);
+  if (config.demoAccess) await registerDemoAccess(app, config.demoAccess, clientAddress);
   app.addHook("onSend", async (_req, reply, payload) => {
     reply.header("Cache-Control", "no-store");
     return payload;
@@ -274,27 +277,14 @@ export async function buildApp(config: Config) {
       },
     });
   });
-  app.addHook("preHandler", async (req) => {
-    const path = req.url.split("?")[0];
-    if (config.publicWeb && config.demoAccess && req.routeOptions.url === "/demo-access") return;
-    if (config.publicWeb && config.demoAccess && req.method === "GET" && path === "/demo-access.js") return;
-    if (config.publicWeb && ["/", "/collector", "/*"].includes(req.routeOptions.url ?? "")) return;
-    if (
-      path === "/api/health" ||
-      path === "/api/auth/login" ||
-      (req.method === "GET" && path === "/api/auth/estaciones") ||
-      path === "/api/openapi.json" ||
-      (req.method === "GET" &&
-        /^\/api\/recibos\/[^/]+(?:\/escpos)?$/.test(path))
-    )
-      return;
-    await req.jwtVerify();
-    const u = req.user as User & { authVersion?: string };
+  // The check of every authenticated request. The plain-text protocol runs the same one: its token travels in the
+  // parameters of the petition, not in the Authorization header, and its permissions are those of an equivalent path.
+  const authenticate = async (u: SessionClaims, method: string, path: string): Promise<User> => {
     // Validate this request against one consistent state. Each store.read()
     // fetches the full PostgreSQL state, including operational histories.
     // Mutating routes retain their own fresh checks inside the transaction.
-    const state = config.store.readAccess ? await config.store.readAccess(u, (req.user as User & { sid?: string }).sid) : await config.store.read();
-    assertAuthSession(state, u, (req.user as User & { sid?: string }).sid);
+    const state = config.store.readAccess ? await config.store.readAccess(u, u.sid) : await config.store.read();
+    assertAuthSession(state, u, u.sid);
     const persistedAccount = state.accounts.find((account) => account.id === u.id);
     const legacyIdentity = !persistedAccount && (config.demo
       ? (u.id === "demo-admin" && u.role === "admin") ||
@@ -315,9 +305,9 @@ export async function buildApp(config: Config) {
       }
       if (config.demo && u.id === "demo-collector" && u.role === "collector" && u.collectorId === "col-1")
         u.name = "Cobrador";
-      req.user = currentAccessUser(state, u);
-      authorizeRequest(req.user as User, req.method, path);
-      return;
+      const legacyUser = currentAccessUser(state, u);
+      authorizeRequest(legacyUser, method, path);
+      return legacyUser;
     }
     // Provisioned accounts: the token carries the account's credential
     // version, so a password change or a disable revokes older sessions.
@@ -339,15 +329,38 @@ export async function buildApp(config: Config) {
     if (u.role === "collector" && !state.collectors.some((c) => c.id === u.collectorId && c.active !== false))
       throw new DomainError("COLLECTOR_INACTIVE", "El cobrador está inactivo.", 403);
     const accessedUser = currentAccessUser(state, u);
-    req.user = accessedUser;
     if (!isOperationalRole(u.role) && !hasRoleExceptions(accessedUser)) {
       const ownSession = path === "/api/auth/me" || path === "/api/auth/logout" || path === "/api/auth/estaciones" || path === "/api/soporte-contacto" || path === `/api/usuarios/${u.id}/clave`;
       const remittanceOperator = u.role === "cashier" && hasRemittanceAccess(accessedUser) && (path.startsWith("/api/envios") || path === "/api/snapshot");
-      const supervisorRead = u.role === "supervisor" && (req.method === "GET" || path === "/api/envios/formato-recepcion");
+      const supervisorRead = u.role === "supervisor" && (method === "GET" || path === "/api/envios/formato-recepcion");
       if (!ownSession && !remittanceOperator && !supervisorRead)
         throw new DomainError("FORBIDDEN", "Este rol no tiene permiso para realizar esta operación.", 403);
     }
-    authorizeRequest(accessedUser, req.method, path);
+    authorizeRequest(accessedUser, method, path);
+    return accessedUser;
+  };
+  app.addHook("preHandler", async (req) => {
+    const path = req.url.split("?")[0];
+    if (config.publicWeb && config.demoAccess && req.routeOptions.url === "/demo-access") return;
+    if (config.publicWeb && config.demoAccess && req.method === "GET" && path === "/demo-access.js") return;
+    if (config.publicWeb && ["/", "/collector", "/*"].includes(req.routeOptions.url ?? "")) return;
+    // The plain-text protocol authenticates each petition itself, with this same check.
+    if (isTextProtocolRoute(req.routeOptions.url)) return;
+    if (
+      path === "/api/health" ||
+      path === "/api/auth/login" ||
+      (req.method === "GET" && path === "/api/auth/estaciones") ||
+      path === "/api/openapi.json" ||
+      (req.method === "GET" &&
+        /^\/api\/recibos\/[^/]+(?:\/escpos)?$/.test(path))
+    )
+      return;
+    await req.jwtVerify();
+    // A session given by the plain-text protocol serves its seven petitions only: its token may travel in an address,
+    // and one that leaks must not open the rest of the API.
+    if ((req.user as SessionClaims).channel !== undefined)
+      throw new DomainError("UNAUTHORIZED", "Inicia sesión para continuar.", 401);
+    req.user = await authenticate(req.user as SessionClaims, req.method, path);
   });
   const user = (req: FastifyRequest) => req.user as User;
   const paths: Record<string, Record<string, unknown>> = {};
@@ -488,14 +501,11 @@ export async function buildApp(config: Config) {
     ? (login === "admin" || login === "admin@cyp.local" ? "demo-admin"
       : login === "collector.demo" || login === "collector@cyp.local" ? "demo-collector" : undefined)
     : login === config.adminEmail!.toLowerCase() ? "configured-admin" : undefined;
-  app.post(
-    "/api/auth/login",
-    { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } },
-    async (req) => {
-      const body = loginBody.parse(req.body),
-        email = body.email.toLowerCase();
+  // Signing in, for the JSON API and for the plain-text protocol: the same accounts, checks and session.
+  const signIn = async (login: string, password: string, channel?: string) => {
+      const email = login.toLowerCase();
       const matches = timingSafeEqual(
-        scryptSync(body.password, salt, 64),
+        scryptSync(password, salt, 64),
         expectedPassword,
       );
       let u: User | undefined,
@@ -516,7 +526,7 @@ export async function buildApp(config: Config) {
       const account = u ? stored.accounts.find((row) => row.id === u!.id) : findAccount(stored, email);
       if (account) {
         // A base or file that once started in demo mode keeps the practice Cajero with the published password.
-        if (account.status !== "active" || (!config.demo && account.id === DEMO_CASHIER_ID) || !verifyPassword(body.password, account.salt, account.passwordHash))
+        if (account.status !== "active" || (!config.demo && account.id === DEMO_CASHIER_ID) || !verifyPassword(password, account.salt, account.passwordHash))
           throw new DomainError("INVALID_CREDENTIALS", "Usuario o contraseña incorrectos.", 401);
         u = { id: account.id, name: account.name, role: account.role, ...(account.collectorId ? { collectorId: account.collectorId } : {}) };
         version = String(account.credentialVersion);
@@ -541,9 +551,16 @@ export async function buildApp(config: Config) {
         throw new DomainError("ACCESS_REVOKED", "Tu cuenta no tiene permiso para entrar al sistema. Solicita una revisión a Administración.", 403);
       const session = await config.store.transaction((s) => createAuthSession(s, u!));
       return {
-        token: app.jwt.sign({ ...u, authVersion: version, sid: session.id }, { expiresIn: "8h" }),
+        token: app.jwt.sign({ ...u, authVersion: version, sid: session.id, ...(channel ? { channel } : {}) }, { expiresIn: "8h" }),
         user: accessedUser,
       };
+  };
+  app.post(
+    "/api/auth/login",
+    { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } },
+    async (req) => {
+      const body = loginBody.parse(req.body);
+      return signIn(body.email, body.password);
     },
   );
   describe("post", "/api/auth/login", "Iniciar sesión", loginBody, true);
@@ -1617,10 +1634,16 @@ export async function buildApp(config: Config) {
     publicOrigin: config.demoAccess?.origin,
     buildVersion: config.buildVersion,
   });
-  registerRemittanceRoutes(app, config.store, user, mutate, describe, config.demo ? [
+  const systemOperators: User[] = config.demo ? [
     { id: "demo-admin", name: "Administración", role: "admin" },
     { id: "demo-collector", name: "Cobrador", role: "collector", collectorId: "col-1" },
-  ] : [{ id: "configured-admin", name: "Administración", role: "admin" }], config.cardVault, config.demo);
+  ] : [{ id: "configured-admin", name: "Administración", role: "admin" }];
+  registerRemittanceRoutes(app, config.store, user, mutate, describe, systemOperators, config.cardVault, config.demo);
+  // Plain-text protocol for the mobile application (docs/PROTOCOLO-TEXTO-PLANO.md). It is not part of the OpenAPI.
+  await registerTextProtocol(app, {
+    store: config.store, systemOperators, authenticate, signIn, loginBody,
+    verifyToken: (token) => app.jwt.verify<SessionClaims>(token),
+  });
   app.get("/api/openapi.json", () => ({
     openapi: "3.1.0",
     info: {
