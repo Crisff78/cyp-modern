@@ -1,0 +1,1213 @@
+Protocolo de Intercambio de Datos (CyP)
+
+ Versión: 0.1
+   Fecha: 19/11/2026
+
+
+ Aquí le explicamos cómo su aplicación móvil le va a pedir datos a la
+central de CyP (Cobros y Pagos) para hacer Envíos de Dinero.
+
+ Usamos el mismo formato del protocolo LSAN (versión 1.14) que usted nos
+mandó de ejemplo. Donde hicimos algo distinto de LSAN se lo decimos ahí
+mismo, y al final está todo junto en una lista.
+
+ Cubre lo que hablamos el 19/11/2026: iniciar sesión, listado
+de clientes, datos de un cliente, registrar un envío y listado de recibos.
+Agregamos dos peticiones: cerrar sesión, y cotizar. Cotizar hace falta
+porque las cuentas del envío (la comisión y el cambio de moneda) las hace
+siempre la central.
+
+ La central la programamos nosotros y la aplicación la programa usted. Ya
+lo tenemos programado en nuestra central de pruebas, tal como está escrito
+aquí, para que usted pueda probar su aplicación desde el principio (vea
+"Central de pruebas", en las Notas Generales).
+
+ Al final hay 12 puntos que quisiéramos que nos confirme. Si con sus
+respuestas hay que cambiar algo, lo cambiamos en la central y le mandamos
+una versión nueva de este documento. Si además algo no se entiende, díganos
+y lo aclaramos.
+
+
+Cómo se hace un envío, paso a paso
+==================================
+
+ 1- Iniciar Sesión: el usuario pone su nombre de usuario y su clave, y la
+    central devuelve un idSesion. Ese idSesion se manda en todo lo demás.
+ 2- Listado de Clientes: se busca al que envía (remitente) y al que recibe
+    (destinatario). Si hace falta ver su cédula, su teléfono o su
+    dirección, se pide Datos del Cliente.
+ 3- Cotizar Envío: se mandan el monto y las monedas, y la central devuelve
+    la comisión, el total que paga el remitente y lo que va a recibir el
+    destinatario.
+ 4- Registrar Envío: se mandan los dos clientes, lo cotizado y la forma de
+    pago, junto con un idOperacion que inventa su aplicación para que el
+    envío no se registre dos veces. Para registrar, el usuario tiene que
+    tener abierta su Caja de Remesas en la central. La central registra el
+    envío y devuelve su número y el del recibo.
+ 5- Listado de Recibos: para ver los envíos que ya están registrados.
+ 6- Cerrar Sesión: cuando el usuario termina.
+
+
+Palabras que usamos
+===================
+
+ Central -> El sistema CyP, que guarda los datos y hace las cuentas.
+
+ Usuario -> La persona que usa la aplicación (cajero, cobrador,
+            administrador...). No es el cliente.
+
+ Envío -> Un cliente paga para que otro cliente reciba dinero.
+
+ Remitente -> El cliente que envía el dinero.
+
+ Destinatario -> El cliente que lo recibe.
+
+ Recibo -> El comprobante que la central hace al registrar un envío. Cada
+           envío tiene un solo recibo, con su propio número.
+
+ Entregar -> Pagarle el envío al destinatario. Un envío está pendiente
+             hasta que se entrega o se cancela.
+
+ Comisión -> Lo que paga el remitente por hacer el envío, aparte del monto
+             que envía.
+
+ Cargo de entrega -> Lo que la central le descuenta al destinatario de lo
+                     que recibe. Puede ser cero.
+
+ Caja de Remesas -> (Remesa es otro nombre del envío de dinero.) Es la
+                    caja donde la central lleva el dinero de los envíos de
+                    cada usuario. Hay una por usuario, por día y por
+                    moneda. La abre el Administrador en la central (un
+                    Cajero puede abrir la suya). Desde la aplicación no se
+                    abre.
+
+ Ruta -> Grupo de clientes que la central le tiene asignado a un Cobrador.
+
+
+Notas Generales
+===============
+
+ Las peticiones se hacen por HTTP a una dirección de internet. De la
+seguridad se encarga el HTTPS (la dirección empieza por https://).
+
+
+1) Cómo es una petición
+-----------------------
+
+ url/cyp_cmd?Parámetros
+
+ donde:
+
+ url -> Es la dirección de la central de CyP. Se la damos aparte.
+
+ cyp -> Es el nombre del PlugIn. En este protocolo es siempre cyp.
+
+ cmd -> Es el comando dentro de ese PlugIn (login, clients, send...).
+
+ Parámetros -> Son los datos de la petición, separados por | (pipe) y en el
+               orden indicado.
+
+ - Los parámetros que van entre corchetes [ ] se pueden omitir.
+ - Un dato que no aplica se deja vacío, pero SIN quitar su | (pipe).
+   Ejemplo: para pedir la página 2 del listado de clientes sin poner Texto:
+   /cyp_clients?idSesion||2
+ - En los ejemplos de este documento ponemos "idSesion" en vez del texto
+   completo de la sesión, para que se lean mejor.
+
+
+2) Cómo se manda: GET o POST
+----------------------------
+
+ - Le recomendamos mandar TODAS las peticiones por POST, con los Parámetros
+   en el cuerpo como texto plano (Content-Type: text/plain; charset=utf-8).
+   El motivo: mientras dura la sesión, quien tenga el idSesion puede hacer
+   lo mismo que con la clave, y en un GET el idSesion queda a la vista en
+   la dirección.
+ - Las consultas (clients, client, quote, recs) y logout también se aceptan
+   por GET, con los Parámetros después del ?, igual que en LSAN.
+ - Iniciar Sesión (login) y Registrar Envío (send) se aceptan SOLO por POST
+   (distinto de LSAN). En la primera viaja la Clave. La segunda registra
+   dinero, y no queremos que se pueda repetir con solo abrir otra vez una
+   dirección guardada. Si llegan por GET, la central responde ER con PIN.
+ - En ningún POST ponga un salto de línea al final del cuerpo.
+
+ La misma consulta, de las dos maneras:
+
+ Por GET:   /cyp_clients?idSesion|perez
+ Por POST:  /cyp_clients          (en el cuerpo: idSesion|perez)
+
+ En este documento escribimos los ejemplos de las consultas como GET porque
+se leen mejor.
+
+
+3) Letras y signos especiales
+-----------------------------
+
+ - Todo viaja en UTF-8.
+ - En POST el cuerpo va tal cual, sin codificar.
+ - En GET los caracteres especiales van codificados con %, como en cualquier
+   dirección web (espacio = %20, # = %23). La central primero decodifica
+   todo lo que sigue al ? y DESPUÉS separa por | (pipe).
+ - El | (pipe) que separa los parámetros lo puede mandar tal cual o
+   codificado como %7C: para la central es lo mismo.
+ - El signo + NO se toma como espacio.
+
+
+4) Cómo es una respuesta
+------------------------
+
+ Es texto plano (Content-Type: text/plain; charset=utf-8), en una sola
+línea y sin salto de línea al final. Hay dos formas:
+
+ OK|FechayHora|Otros Datos
+ ER|FechayHora|Código|Mensaje|Dato
+
+ donde:
+
+ OK / ER -> Es el Estado: OK si salió bien, ER si hubo un error.
+
+ FechayHora -> Formato: YYYYMMDDHHMMSS, hora de República Dominicana.
+
+ Otros Datos -> Dependen del comando. Se explican en cada petición.
+
+ Código -> El código del error, de tres letras. La lista completa está más
+           abajo, en "Errores".
+
+ Mensaje -> Un texto en español, listo para mostrárselo al usuario.
+
+ Dato -> El dato al que se refiere el error, cuando lo hay. Si no lo hay,
+         viene vacío.
+
+ (Distinto de LSAN: aquí no va la Versión, y en los errores viene un
+ Mensaje entre el Código y el Dato.)
+
+ Ejemplo: ER|20261119093000|CNE|Cliente no encontrado|0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+
+ donde:
+
+ CNE: Cliente No Encontrado.
+
+ Y el Dato es el idCliente que se pidió y no existe.
+
+ Una respuesta de error tiene SIEMPRE 5 partes. Cuando no hay Dato, el
+último | (pipe) viene igual:
+
+ Sin Dato: ER|20261119093000|CNA|No tiene abierta su Caja de Remesas|
+
+ Muy importante:
+
+ - La central responde SIEMPRE con HTTP 200, también en los errores. El
+   resultado está en el Estado (OK o ER), no en el código HTTP.
+ - Para decidir qué hacer, su aplicación mira el Código. El Mensaje solo se
+   muestra: su texto puede cambiar, así que no lo compare.
+ - Si llega otro código HTTP, o una respuesta que no empieza por OK| o ER|,
+   o no llega ninguna respuesta (le aconsejamos esperar unos 30 segundos),
+   es un fallo de comunicación. La petición se puede repetir. En Registrar
+   Envío hay que repetirla con el MISMO idOperacion (se explica en 3.2).
+
+
+5) Separadores
+--------------
+
+ Son los mismos de LSAN:
+
+ | (pipe)        - Para separar tipos de datos
+ ! (exclamation) - Para separar registros de datos
+ ; (semicolon)   - Para separar campos de datos
+ @ (At - Arroba) - Para separar documentos Maestro/Detalle (en esta versión
+                   no se usa)
+
+ Qué pasa si un dato trae un separador por dentro:
+
+ - En las RESPUESTAS, la central cambia por un espacio cualquier separador
+   (| ! ; @) que venga dentro de un dato. Así nunca se le descuadran los
+   campos. Por eso un texto puede llegarle con un espacio donde en la
+   central hay un ; o un @.
+ - En las PETICIONES de esta versión el único separador es el | (pipe). Un
+   dato puede llevar ! ; y @ (por ejemplo, un correo), pero NO puede llevar
+   | (pipe) ni saltos de línea, tampoco codificados. Lo que escribe el
+   usuario (el Texto para buscar, la Referencia, el Banco, la Nota) su
+   aplicación tiene que limpiarlo antes de mandarlo: cambie cada | y cada
+   salto de línea por un espacio. Si no, la central cuenta un dato de más y
+   entiende mal la petición. La única excepción es la Clave (se explica en
+   1.1). Los tabuladores y otros caracteres que no se ven (pasa al pegar
+   un texto copiado de otra aplicación) los cambia la central por un
+   espacio: esos no hace falta limpiarlos.
+
+
+6) Formato de los datos
+-----------------------
+
+ Identificadores (idUsuario, idCliente, idEnvio)
+             -> Son TEXTOS, no números, de hasta 80 caracteres (normalmente
+                36). Ejemplo: 3f6c1e0a-9b2d-4c7e-8a51-0d2f6b7c9e14
+
+ Fechas      -> YYYYMMDD
+
+ Fechas con hora -> YYYYMMDDHHMMSS (se indica en cada campo que la lleva)
+
+ Importes    -> Con punto decimal y dos decimales, sin separador de miles.
+                Ejemplo: 1500.00. Así vienen en las respuestas y así se
+                mandan en las peticiones.
+
+ Tasas       -> Pesos dominicanos por una unidad de la moneda, con punto
+                decimal y seis decimales. Ejemplo: 59.250000
+
+ idMoneda    -> Código de tres letras, en mayúsculas: DOP (Peso
+                Dominicano), USD (Dólar), EUR (Euro). OJO: no es el número
+                que usa LSAN (1 = Peso Dominicano). En esta versión solo
+                existen estas tres.
+
+ Sí / No     -> 1 / 0
+
+
+7) Listados largos (páginas)
+----------------------------
+
+ El Listado de Clientes y el Listado de Recibos vienen de 100 en 100. Cada
+respuesta trae un dato HayMas:
+
+ 1 - Quedan más: se pide la página siguiente con el parámetro Pagina
+ 0 - No quedan más
+
+ Si un listado no tiene nada que mostrar, la respuesta es ER (con CNE en
+clientes y RNE en recibos). No es un fallo: su aplicación muestra la lista
+vacía. Lo mismo responde si se pide una página que ya no existe. (Distinto
+de LSAN: la lista vacía se responde con ER.)
+
+
+8) Errores que pueden venir en cualquier petición
+-------------------------------------------------
+
+ En cada petición ponemos sus errores propios. Además, pueden venir:
+
+ - En cualquier petición: PIN, DML, PNE, EIC y ORC.
+ - En todas las que llevan idSesion: SNE y SNA.
+ - En todas las que llevan idSesion, menos Cerrar Sesión: SPE y CBI. (CBI
+   también puede venir al Iniciar Sesión.)
+
+ Con estos y los errores propios, la lista de cada petición está completa.
+Todos están explicados más abajo, en "Errores".
+
+ La central admite 120 peticiones por minuto desde una misma dirección IP
+(y 10 inicios de sesión). Si se pasan, responde ER con DML y hay que
+esperar un minuto.
+
+
+9) Central de pruebas
+---------------------
+
+ Para que pruebe su aplicación le damos una central de pruebas, con datos
+ficticios. Esa central pide además un código de invitación, que le damos
+aparte. Su aplicación lo manda en TODAS las peticiones, en esta cabecera
+HTTP:
+
+ X-CyP-Invitacion: (el código de invitación)
+
+ - Si la cabecera falta o el código está mal, la central responde ER con
+   PIN, y en el Dato viene X-CyP-Invitacion.
+ - Si desde una misma dirección IP se manda mal 10 veces en un minuto, la
+   central responde ER con DML y hay que esperar un minuto.
+ - Esta cabecera es solo de la central de pruebas. Póngala donde sea fácil
+   de quitar.
+
+
+Agregado
+--------
+
+ Primera versión.
+
+
+Modificado
+----------
+
+
+
+Funcionalidades
+===============
+
+1- Sesión
+---------
+
+1.1- Iniciar Sesión (login)
+1.2- Cerrar Sesión (logout)
+
+
+2- Clientes
+-----------
+
+2.1- Listado de Clientes (clients)
+2.2- Datos del Cliente (client)
+
+
+3- Envíos
+---------
+
+3.1- Cotizar Envío (quote)
+3.2- Registrar Envío (send)
+
+
+4- Recibos
+----------
+
+4.1- Listado de Recibos (recs)
+
+
+
+1- Sesión
+=========
+
+1.1- Iniciar Sesión
+-------------------
+
+ Para qué sirve: el usuario entra con su nombre de usuario y su clave, y la
+ central devuelve el idSesion que se usa en todas las demás peticiones.
+
+ Pet: /cyp_login          (solo POST; en el cuerpo: Usuario|Clave)
+
+ Res: OK|FechayHora|idSesion|DatosUsuario
+      ER|FechayHora|Código|Mensaje|Dato
+
+ Qué se manda:
+
+ Usuario: El nombre de usuario con el que la persona entra en la central
+          (normalmente es su correo). Da igual mayúsculas o minúsculas.
+          Hasta 200 caracteres.
+
+ Clave: La misma clave con la que esa persona entra en la central. Hasta
+        200 caracteres.
+
+ El cuerpo se parte SOLO por el primer | (pipe): lo de antes es el Usuario
+ y TODO lo de después es la Clave, tal cual, aunque traiga | ! ; @ o
+ espacios. No ponga un salto de línea al final.
+
+ Qué devuelve:
+
+ idSesion: El identificador de la sesión. Es un texto largo y su tamaño
+           cambia: normalmente tiene entre 300 y 450 caracteres (más si el
+           nombre del usuario es largo), pero reserve espacio para 1000.
+           Lleva letras, números, punto, guion y guion bajo. Se manda tal
+           cual, como primer parámetro, en todas las demás peticiones.
+
+ DatosUsuario: idUsuario;Nombre;Rol;PuedeEnviar;PuedeVerEnvios
+
+ idUsuario: El identificador del usuario.
+
+ Nombre: El nombre del usuario, para mostrarlo.
+
+ Rol: admin      - Administrador
+      supervisor - Supervisor (solo consulta)
+      collector  - Cobrador
+      cashier    - Cajero
+      client     - Cliente (sin acceso: no puede enviar ni ver envíos)
+      undefined  - No definido (sin acceso: no puede enviar ni ver envíos)
+
+ PuedeEnviar: 1 - El usuario puede buscar clientes, cotizar y registrar
+                  envíos
+              0 - No puede. Si lo intenta, la central responde ER con SPE.
+
+ PuedeVerEnvios: 1 - El usuario puede pedir el Listado de Recibos
+                 0 - No puede. Si lo intenta, la central responde ER con
+                     SPE.
+
+ Errores propios:
+
+ UCI - Usuario o Clave Incorrectos (también si la cuenta está desactivada).
+ CBI - El usuario es un Cobrador y en la central lo desactivaron como
+       cobrador.
+ DML - Se pasó de 10 intentos de inicio de sesión en un minuto.
+ PIN - Falta el Usuario o la Clave, o no vienen como se indica.
+
+ (DML y PIN pueden venir en cualquier petición; los repetimos aquí porque
+ en Iniciar Sesión son frecuentes.)
+
+ A tener en cuenta:
+
+ 1- Para decidir qué le muestra al usuario, use PuedeEnviar y
+    PuedeVerEnvios, no el Rol: en la central los permisos se pueden ajustar
+    usuario por usuario.
+ 2- La sesión dura 8 horas, contadas desde que se inició; no se alarga por
+    usarla. Después de ese tiempo, o si la cierran desde la central, o si
+    al usuario le cambian la clave, el rol o lo desactivan, las peticiones
+    responden ER con SNE o SNA y hay que iniciar sesión otra vez.
+ 3- La central admite 10 intentos de inicio de sesión por minuto desde una
+    misma dirección IP. Si se pasan, responde ER con DML.
+
+ Ejemplo:
+
+ Pet: /cyp_login          (en el cuerpo: caja1@empresa.com|MiClave!2026)
+
+ Res: OK|20261119093000|eyJhbGciOi...(sigue)|9d2c7a10-55e1-4f0b-a3c8-6e7f8a9b0c1d;María López;cashier;1;1
+
+
+1.2- Cerrar Sesión
+------------------
+
+ Para qué sirve: cierra la sesión. Después de esto, ese idSesion ya no
+ sirve.
+
+ Pet: /cyp_logout?idSesion
+
+ Res: OK|FechayHora
+      ER|FechayHora|Código|Mensaje|Dato
+
+ Errores propios: ninguno. Si el idSesion ya no valía, responde ER con SNE
+ o SNA; para su aplicación es lo mismo: la sesión está cerrada.
+
+ A tener en cuenta:
+
+ 1- Si no llega respuesta, su aplicación puede borrar el idSesion igual: la
+    sesión se vence sola.
+
+ Ejemplo:
+
+ Pet: /cyp_logout?idSesion
+
+ Res: OK|20261119170000
+
+
+
+2- Clientes
+===========
+
+2.1- Listado de Clientes
+------------------------
+
+ Para qué sirve: trae los clientes, todos o los que coinciden con lo que se
+ busca. De cada uno trae solo lo necesario para elegirlo.
+
+ Pet: /cyp_clients?idSesion[|Texto[|Pagina[|Lado]]]
+
+ Res: OK|FechayHora|HayMas|Clientes
+      ER|FechayHora|Código|Mensaje|Dato
+
+ Qué se manda:
+
+ Texto: Lo que se quiere buscar (hasta 160 caracteres, sin | ni saltos de
+        línea). Si no se manda, vienen todos. Si se manda, vienen:
+
+        - Los clientes que tienen TODAS las palabras del texto entre su
+          código, su nombre y su identificación (cada palabra puede estar
+          en un dato distinto). Da igual mayúsculas y acentos.
+        - Los que tienen el texto dentro de su identificación. Da igual si
+          se escribe con guiones o sin ellos: 001-1234567-8 y 00112345678
+          encuentran lo mismo.
+        - Si el texto es solo números (con o sin guiones o espacios) y trae
+          3 o más, también los que lo tienen en su teléfono o en su
+          celular.
+        - Puede venir además algún cliente que tenga ese texto en otro
+          dato de su ficha en la central.
+
+ Pagina: El número de página, empezando por 1. Si no se manda se asume 1.
+         Cada página trae 100 clientes como máximo.
+
+ Lado: De qué lado del envío está el cliente que se busca.
+
+       0 - Para elegir el remitente (se asume si no se manda). Un Cobrador
+           recibe solo los clientes de su ruta.
+       1 - Para elegir el destinatario. Vienen los clientes de cualquier
+           ruta.
+
+       Para los usuarios que no son Cobrador, el 0 y el 1 traen lo mismo.
+
+ Qué devuelve:
+
+ HayMas: 1 - Quedan más clientes (pedir la página siguiente)
+         0 - No quedan más
+
+ Clientes: Cliente1!Cliente2!...!ClienteN
+
+ ClienteX: idCliente;Codigo;Nombre
+
+ idCliente: El identificador del cliente. Es el que se manda en las demás
+            peticiones. No se le muestra al usuario.
+
+ Codigo: El código del cliente, el que conoce el usuario.
+         Ejemplo: CLI00000012
+
+ Nombre: El nombre del cliente.
+
+ Errores propios:
+
+ CNE - No hay ningún cliente que mostrar. No es un fallo: su aplicación
+       muestra la lista vacía. Aquí el Dato viene vacío.
+
+ A tener en cuenta:
+
+ 1- Solo vienen clientes activos, ordenados por Nombre.
+ 2- La identificación, los teléfonos y la dirección NO vienen en el
+    listado. Se piden cliente por cliente, con Datos del Cliente (2.2).
+ 3- Para buscar a alguien por su cédula o su pasaporte, se manda ese dato
+    en Texto.
+ 4- Cada búsqueda cuenta para el límite de 120 peticiones por minuto. No
+    busque con cada letra que escribe el usuario: espere a que termine de
+    escribir.
+
+ Ejemplos:
+
+ Pet: /cyp_clients?idSesion|perez
+
+ Res: OK|20261119093000|0|7b1d9c44-2e6f-4a83-b0c5-91e2d3f4a567;CLI00000024;Ana Pérez!3f6c1e0a-9b2d-4c7e-8a51-0d2f6b7c9e14;CLI00000012;Juan Pérez
+
+ Buscar "perez" para el destinatario:   /cyp_clients?idSesion|perez|1|1
+
+ Todos los clientes, cuando hay más de 100. La primera respuesta trae
+ HayMas en 1 y se pide la página 2:
+
+ Pet: /cyp_clients?idSesion
+
+ Res: OK|20261119093000|1|...(los primeros 100 clientes)
+
+ Pet: /cyp_clients?idSesion||2
+
+ Res: OK|20261119093001|0|...(los que faltan)
+
+
+2.2- Datos del Cliente
+----------------------
+
+ Para qué sirve: trae todos los datos de UN cliente (cédula, teléfonos,
+ dirección), para mostrarlos antes de hacer el envío.
+
+ Pet: /cyp_client?idSesion|idCliente[|Lado]
+
+ Res: OK|FechayHora|Cliente
+      ER|FechayHora|Código|Mensaje|Dato
+
+ Qué se manda:
+
+ idCliente: El que vino en el Listado de Clientes.
+
+ Lado: Igual que en el Listado de Clientes: 0 si es el remitente (se asume
+       si no se manda) y 1 si es el destinatario.
+
+ Qué devuelve:
+
+ Cliente: idCliente;Codigo;Nombre;Identificacion;Telefono;Celular;Direccion;
+          idMoneda
+
+ Identificacion: Cédula o pasaporte. Puede venir vacía.
+
+ Telefono, Celular, Direccion: Pueden venir vacíos.
+
+ idMoneda: La moneda preferida del cliente. Si no tiene, viene DOP. Sirve
+           para proponer la moneda en pantalla; el usuario la puede
+           cambiar.
+
+ Errores propios:
+
+ CNE - Ese cliente no existe.
+ CIN - Ese cliente está inactivo.
+ CFR - Cliente Fuera de Ruta: con Lado 0, el usuario es Cobrador y el
+       cliente no es de su ruta.
+
+ En los tres, el Dato es el idCliente.
+
+ A tener en cuenta:
+
+ 1- La misma petición sirve para el cliente que envía (remitente, Lado 0) y
+    para el que recibe (destinatario, Lado 1).
+ 2- Para buscar un cliente por su cédula o su pasaporte se usa el Listado
+    de Clientes (2.1), con ese dato en Texto.
+
+ Ejemplo:
+
+ Pet: /cyp_client?idSesion|3f6c1e0a-9b2d-4c7e-8a51-0d2f6b7c9e14
+
+ Res: OK|20261119093000|3f6c1e0a-9b2d-4c7e-8a51-0d2f6b7c9e14;CLI00000012;Juan Pérez;00112345678;8095550100;;Calle 5 #12, Santiago;DOP
+
+ (En el ejemplo el Celular viene vacío: por eso hay dos ; seguidos.)
+
+
+
+3- Envíos
+=========
+
+3.1- Cotizar Envío
+------------------
+
+ Para qué sirve: antes de registrar, su aplicación le pregunta a la central
+ cuánto tiene que pagar el remitente y cuánto va a recibir el destinatario.
+ Así el usuario ve los importes y se los dice al cliente.
+
+ Pet: /cyp_quote?idSesion|idMonedaOrigen|idMonedaDestino|Monto[|Modo]
+
+ Res: OK|FechayHora|Cotizacion
+      ER|FechayHora|Código|Mensaje|Dato
+
+ Qué se manda:
+
+ idMonedaOrigen: La moneda en la que paga el remitente.
+
+ idMonedaDestino: La moneda en la que se le entrega al destinatario. Puede
+                  ser la misma.
+
+ Monto: El importe. Qué importe es, lo dice el Modo.
+
+ Modo: 0 - Monto es lo que se quiere enviar, en la moneda de origen (se
+           asume si no se manda)
+       1 - Monto es el total que paga el remitente, con la comisión dentro,
+           en la moneda de origen
+       2 - Monto es lo que debe recibir el destinatario, en la moneda de
+           destino
+
+ Qué devuelve:
+
+ Cotizacion: MontoAEnviar;Comision;TotalAPagar;MontoARecibir;
+             Por_Comision;CargoEntrega;TasaOrigen;TasaDestino
+
+ MontoAEnviar: Lo que se envía, en la moneda de origen.
+
+ Comision: Lo que paga el remitente por el envío, en la moneda de origen.
+           Es el Por_Comision % de MontoAEnviar.
+
+ TotalAPagar: Lo que paga en total el remitente: MontoAEnviar + Comision.
+
+ MontoARecibir: Lo que se le entrega al destinatario, en la moneda de
+                destino, con el cargo de entrega ya descontado.
+
+ Por_Comision: El porcentaje de la comisión. Ejemplo: 5.00
+
+ CargoEntrega: Lo que se le descuenta al destinatario de lo que recibe, en
+               la moneda de destino. Puede ser 0.00
+
+ TasaOrigen: La tasa a la que la central compra la moneda de origen.
+
+ TasaDestino: La tasa a la que la central vende la moneda de destino.
+
+ Errores propios:
+
+ TNE - Tasa No Encontrada: la central no tiene tasa registrada para una de
+       las dos monedas.
+ MIN - Monto INsuficiente: el Monto es demasiado pequeño para cotizar.
+
+ A tener en cuenta:
+
+ 1- Las tasas y los porcentajes los pone la central. Su aplicación no los
+    manda ni los puede cambiar.
+ 2- Cotizar no guarda nada en la central ni deja apartada la tasa: solo
+    sirve para mostrarle los importes al usuario antes de registrar.
+ 3- Con Modo 1 el TotalAPagar puede quedar unos centavos por debajo del
+    Monto, y con Modo 2 el MontoARecibir puede no ser igual al Monto. Según
+    cómo esté configurada la central, el MontoARecibir puede venir
+    redondeado. Su aplicación muestra los importes de la Cotizacion, y esos
+    mismos (TotalAPagar y MontoARecibir) son los que manda en Registrar
+    Envío. No los que calcule ella.
+ 4- Aunque la moneda de origen y la de destino sean la misma (por ejemplo,
+    de USD a USD), las dos tasas pueden ser distintas, porque una es de
+    compra y la otra de venta. De DOP a DOP son iguales.
+ 5- Cotizar no revisa la Caja de Remesas. Si está cerrada, el aviso (CNA)
+    llega al registrar.
+
+ Ejemplo (comisión del 5 %, cargo de entrega del 2 %, dólar a 59.25):
+
+ Pet: /cyp_quote?idSesion|USD|DOP|100.00
+
+ Res: OK|20261119093000|100.00;5.00;105.00;5806.50;5.00;118.50;59.250000;1.000000
+
+ En el ejemplo: 100.00 USD a 59.25 son 5925.00 DOP; se descuentan 118.50
+ de cargo de entrega y el destinatario recibe 5806.50 DOP. El remitente
+ paga 105.00 USD (100.00 + 5.00 de comisión).
+
+ (La Comision y el Por_Comision valen 5.00 los dos por casualidad: el
+ segundo dato es la comisión en dinero y el quinto es el porcentaje.)
+
+ La misma cotización pedida de las otras dos maneras:
+
+ Por el total que paga el remitente:     /cyp_quote?idSesion|USD|DOP|105.00|1
+
+ Por lo que recibe el destinatario:      /cyp_quote?idSesion|USD|DOP|5806.50|2
+
+
+3.2- Registrar Envío
+--------------------
+
+ Para qué sirve: registra el envío en la central. Es la única petición que
+ mueve dinero.
+
+ Pet: /cyp_send           (solo POST; en el cuerpo, en una sola línea:)
+
+      idSesion|idOperacion|idRemitente|idDestinatario|
+      idMonedaOrigen|idMonedaDestino|Monto|Modo|
+      TotalAPagar|MontoARecibir|
+      idForma_Pago|Recibido|Referencia|Banco|Verificado|Nota
+
+ Res: OK|FechayHora|Envio
+      ER|FechayHora|Código|Mensaje|Dato
+
+ Van SIEMPRE los 16 datos (15 pipes), en ese orden y en una sola línea, sin
+ salto de línea al final. Los que no aplican van vacíos, también los del
+ final.
+
+ Qué se manda:
+
+ idOperacion: Un código único que su aplicación inventa para CADA envío.
+              De 8 a 64 caracteres: letras, números o guiones (se
+              distinguen mayúsculas de minúsculas). Le recomendamos un
+              UUID. (En LSAN no existe.)
+
+              Sirve para que un envío nunca se registre dos veces. Por
+              ejemplo: su aplicación manda el envío y se va la señal antes
+              de que llegue la respuesta. No sabe si se registró o no. Con
+              el idOperacion no hay problema: su aplicación manda lo mismo
+              otra vez y la central se da cuenta.
+
+              Cómo funciona:
+
+              a- Antes de mandar la petición, su aplicación guarda el
+                 idOperacion y el cuerpo completo, tal como lo va a
+                 mandar. Así puede repetirla idéntica aunque la aplicación
+                 se cierre.
+              b- Después de comprobar la sesión y que la petición viene
+                 completa, es lo primero que revisa la central. Si ese
+                 usuario ya registró un envío con ese idOperacion y los
+                 mismos datos, NO registra otro: responde OK con el envío
+                 que ya estaba registrado. Lo hace aunque después haya
+                 cambiado una tasa, se haya cerrado la caja o la sesión
+                 sea otra.
+              c- "Los mismos datos" quiere decir todos los datos de la
+                 petición menos el idSesion. Repita el cuerpo igual,
+                 carácter por carácter.
+              d- Si llega el mismo idOperacion con otros datos, responde
+                 ER con OPD, y en el Dato viene el NumEnvio que ya estaba
+                 registrado. Quiere decir que el envío YA quedó registrado
+                 con los datos de la primera vez: no lo mande de nuevo ni
+                 invente otro idOperacion; muéstrele al usuario ese
+                 NumEnvio. El envío se puede ver en el Listado de Recibos
+                 (4.1).
+              e- Un idOperacion solo queda usado cuando la central
+                 respondió OK. Después de un ER que no sea OPD (por
+                 ejemplo CCA) se puede corregir y mandar otra vez con el
+                 mismo idOperacion, o con uno nuevo.
+              f- Si no llega respuesta, o llega EIC, o llega algo que no
+                 es OK ni ER, su aplicación repite la MISMA petición con
+                 el MISMO idOperacion. Nunca debe crear otro idOperacion
+                 para ese envío, ni dejar que el usuario le cambie los
+                 datos, hasta que llegue un OK o un ER que no sea EIC.
+                 Repítala unas 3 veces, esperando unos segundos entre una
+                 y otra. Si sigue igual, avísele al usuario y guarde el
+                 envío para repetirlo más tarde, con el mismo idOperacion.
+              g- Si al repetir llega SNE o SNA (la sesión se venció), el
+                 MISMO usuario inicia sesión otra vez y se repite la
+                 petición con el idSesion nuevo y el MISMO idOperacion: el
+                 idSesion es lo único que puede cambiar. No la repita con
+                 la sesión de otro usuario.
+              h- La central recuerda cada idOperacion por lo menos 7 días.
+                 Si un envío lleva más de 7 días sin respuesta, no lo
+                 repita: mire antes en el Listado de Recibos.
+
+ idRemitente, idDestinatario: El idCliente de cada uno. Tienen que ser dos
+              clientes distintos, existir y estar activos. Si el usuario es
+              Cobrador, el remitente tiene que ser de su ruta.
+
+ idMonedaOrigen, idMonedaDestino, Monto, Modo: Los mismos que se mandaron a
+              Cotizar Envío. Aquí el Modo es obligatorio (0 si se cotizó
+              sin Modo).
+
+ TotalAPagar, MontoARecibir: Los que devolvió Cotizar Envío y vio el
+              usuario. Si al registrar ya no coinciden (porque cambió una
+              tasa o un porcentaje), la central no registra nada y
+              responde ER con CCA: hay que cotizar otra vez.
+
+ idForma_Pago: 1 - Efectivo
+               3 - Transferencia
+               4 - Depósito
+
+               (El 2 es Tarjeta, que no entra en esta versión. Si se manda
+               un 2, la central responde ER con PIN.)
+
+ Recibido: Solo con Efectivo: el dinero que entrega el remitente, en la
+           moneda de origen. No puede ser menos que el TotalAPagar. Si va
+           vacío, quiere decir que entregó el importe exacto. Con las demás
+           formas de pago va vacío.
+
+ Referencia: El número del comprobante de la transferencia o del depósito,
+             el que da el banco (hasta 160 caracteres, sin | ni saltos de
+             línea). Obligatoria con Transferencia y Depósito; con Efectivo
+             va vacía.
+
+ Banco: El nombre del banco o del proveedor, como texto (hasta 160
+        caracteres, sin | ni saltos de línea; no es un idBanco). Opcional
+        con Transferencia y Depósito; con Efectivo va vacío.
+
+ Verificado: Con Transferencia y Depósito, su aplicación le pregunta al
+             usuario si ya comprobó que el pago llegó (por ejemplo, con una
+             casilla que tiene que marcar). Solo si dice que sí, manda 1.
+             Si no va 1, la central responde ER con PNV. La central no hace
+             la transferencia ni el depósito: solo anota que ya se
+             hicieron. Con Efectivo va vacío.
+
+ Nota (el último dato): Texto libre que escribe el usuario (hasta 2000
+       caracteres, sin | ni saltos de línea). Opcional.
+
+ Si se manda un dato que debía ir vacío (por ejemplo, Recibido con
+ Transferencia, o Referencia con Efectivo), la central responde ER con PIN.
+
+ Qué devuelve:
+
+ Envio: idEnvio;NumEnvio;NumRecibo;CodOperacion;Fecha;
+        MontoAEnviar;Comision;TotalAPagar;MontoARecibir;Devuelta
+
+ idEnvio: El identificador interno del envío. No se le muestra al usuario.
+
+ NumEnvio: El número del envío, el que se le muestra al usuario.
+           Ejemplo: ENV00000048
+
+ NumRecibo: El número del recibo, el que se le muestra al usuario.
+            Ejemplo: REC00000048
+
+ CodOperacion: Un código de 16 letras y números que pone la central y que
+               sale impreso en el recibo que hace la central. NO es el
+               idOperacion que mandó su aplicación. Se lo puede mostrar al
+               usuario junto con el NumEnvio y el NumRecibo.
+
+ Fecha: La fecha y la hora en que se registró (YYYYMMDDHHMMSS).
+
+ MontoAEnviar, Comision, TotalAPagar, MontoARecibir: Los importes con que
+               quedó registrado. Significan lo mismo que en Cotizar Envío.
+
+ Devuelta: Con Efectivo, lo que hay que devolverle al remitente:
+           Recibido - TotalAPagar. Con las demás formas de pago, 0.00
+
+ Errores propios:
+
+ CNE - El remitente o el destinatario no existe. El Dato es su idCliente.
+ CIN - El remitente o el destinatario está inactivo. El Dato es su
+       idCliente.
+ CFR - Cliente Fuera de Ruta: el usuario es Cobrador y el remitente no es
+       de su ruta. El Dato es el idCliente.
+ MCL - Mismo CLiente: el remitente y el destinatario son el mismo.
+ TNE - No hay tasa registrada para una de las monedas.
+ MIN - El Monto es demasiado pequeño.
+ CCA - Cotización CAmbiada: el TotalAPagar o el MontoARecibir ya no
+       coinciden. Hay que cotizar otra vez.
+ CNA - Caja No Abierta: el usuario no tiene abierta su Caja de Remesas.
+ EIS - Efectivo InSuficiente: lo Recibido es menos que el TotalAPagar.
+ PNV - Pago No Verificado: con Transferencia o Depósito no vino
+       Verificado = 1.
+ OPD - OPeración Duplicada: ese idOperacion ya se usó con otros datos. El
+       envío ya estaba registrado; el Dato es su NumEnvio. No lo mande de
+       nuevo.
+
+ A tener en cuenta:
+
+ 1- Para registrar, el usuario tiene que tener abierta su Caja de Remesas
+    de ese día (el día de República Dominicana), en la moneda de origen
+    (ver "Palabras que usamos"). Si no la tiene, la respuesta es ER con CNA
+    y su aplicación le avisa de que hay que abrirla en la central (la abre
+    el Administrador; un Cajero puede abrir la suya).
+ 2- Los dos clientes tienen que estar ya registrados en la central. Crear
+    (registrar) un cliente nuevo desde la aplicación no entra en esta
+    versión.
+ 3- El pago con Tarjeta no entra en esta versión (por eso no hay
+    idForma_Pago 2).
+
+ Ejemplo con Efectivo (el remitente entrega 120.00 y se le devuelven 15.00):
+
+ Pet: /cyp_send           (en el cuerpo, en una sola línea:)
+
+ idSesion|5e0b7c1a-4d2f-4b6e-8f90-a1b2c3d4e5f6|3f6c1e0a-9b2d-4c7e-8a51-0d2f6b7c9e14|7b1d9c44-2e6f-4a83-b0c5-91e2d3f4a567|USD|DOP|100.00|0|105.00|5806.50|1|120.00||||
+
+ Res: OK|20261119093005|c2a4e6f8-1b3d-4f5a-9c7e-0a1b2c3d4e5f;ENV00000048;REC00000048;AD0B35A22F305CA2;20261119093005;100.00;5.00;105.00;5806.50;15.00
+
+ Ejemplo con Transferencia (solo cambia el final del cuerpo):
+
+ ...|USD|DOP|100.00|0|105.00|5806.50|3||TRF99812|Banco Popular|1|
+
+ Los 16 datos del primer ejemplo, uno por uno:
+
+  1 idSesion          idSesion
+  2 idOperacion       5e0b7c1a-4d2f-4b6e-8f90-a1b2c3d4e5f6
+  3 idRemitente       3f6c1e0a-9b2d-4c7e-8a51-0d2f6b7c9e14
+  4 idDestinatario    7b1d9c44-2e6f-4a83-b0c5-91e2d3f4a567
+  5 idMonedaOrigen    USD
+  6 idMonedaDestino   DOP
+  7 Monto             100.00
+  8 Modo              0             (obligatorio aquí)
+  9 TotalAPagar       105.00
+ 10 MontoARecibir     5806.50
+ 11 idForma_Pago      1
+ 12 Recibido          120.00
+ 13 Referencia        (vacío)
+ 14 Banco             (vacío)
+ 15 Verificado        (vacío)
+ 16 Nota              (vacío)
+
+
+
+4- Recibos
+==========
+
+4.1- Listado de Recibos
+-----------------------
+
+ Para qué sirve: trae los envíos registrados (cada uno con su recibo),
+ entre dos fechas.
+
+ Pet: /cyp_recs?idSesion[|FechaInicial[|FechaFinal[|idEstado[|Pagina]]]]
+
+ Res: OK|FechayHora|HayMas|Recibos
+      ER|FechayHora|Código|Mensaje|Dato
+
+ Qué se manda:
+
+ FechaInicial, FechaFinal: Formato YYYYMMDD.
+
+ idEstado: 0 - Pendientes de entregar
+           1 - Entregados (ya se le pagaron al destinatario)
+           2 - Cancelados
+           3 - Todos
+
+ Pagina: El número de página, empezando por 1. Si no se manda se asume 1.
+         Cada página trae 100 recibos como máximo.
+
+ Qué devuelve:
+
+ HayMas: 1 - Quedan más recibos (pedir la página siguiente)
+         0 - No quedan más
+
+ Recibos: Recibo1!Recibo2!...!ReciboN
+
+ ReciboX: idEnvio;NumEnvio;NumRecibo;CodOperacion;Fecha;idEstado;
+          idRemitente;Remitente;idDestinatario;Destinatario;Telefono;
+          idMonedaOrigen;MontoAEnviar;Comision;TotalAPagar;
+          idMonedaDestino;MontoARecibir;idForma_Pago;Fecha_Pago
+
+ idEnvio, NumEnvio, NumRecibo, CodOperacion: Los mismos que devuelve
+          Registrar Envío.
+
+ Fecha: La fecha y la hora en que se registró el envío (YYYYMMDDHHMMSS).
+
+ idEstado: 0, 1 o 2, con el mismo significado de arriba.
+
+ idRemitente, idDestinatario: El idCliente de cada uno.
+
+ Remitente, Destinatario: Sus nombres. En envíos antiguos pueden venir
+          vacíos.
+
+ Telefono: El teléfono del destinatario. Puede venir vacío.
+
+ idMonedaOrigen, MontoAEnviar, Comision, TotalAPagar: La moneda en que pagó
+          el remitente, lo que envió, la comisión y lo que pagó en total.
+          Con Tarjeta, el TotalAPagar incluye además el recargo de tarjeta:
+          en esos recibos no es igual a MontoAEnviar + Comision.
+
+ idMonedaDestino, MontoARecibir: La moneda en que se le entrega al
+          destinatario y lo que recibe.
+
+ idForma_Pago: Cómo pagó el remitente:
+
+               1 - Efectivo
+               2 - Tarjeta
+               3 - Transferencia
+               4 - Depósito
+
+               Viene vacío si no se registró. (Tarjeta solo aparece en
+               envíos hechos en la central.)
+
+ Fecha_Pago: La fecha y la hora en que se le entregó el dinero al
+             destinatario (YYYYMMDDHHMMSS). Vacía si todavía no se ha
+             entregado. OJO: no es cuándo pagó el remitente; eso es Fecha.
+
+ Errores propios:
+
+ RNE - No hay ningún recibo que mostrar. No es un fallo: su aplicación
+       muestra la lista vacía.
+
+ A tener en cuenta:
+
+ 1- Si no se manda la FechaInicial se asume el día de hoy en República
+    Dominicana (el de la central, no el del teléfono).
+ 2- Si no se manda la FechaFinal se asume la misma FechaInicial.
+ 3- Si no se manda el idEstado se asume 3 (todos).
+ 4- Las fechas se comparan con la fecha en que se registró el envío. Entre
+    la FechaInicial y la FechaFinal puede haber 31 días como máximo,
+    contando el primero y el último (por ejemplo, del 1 al 31 de octubre).
+    Si se piden más, o la FechaFinal es anterior a la FechaInicial, la
+    central responde ER con PIN.
+ 5- Vienen los envíos que hizo el usuario de la sesión. Un Cobrador recibe
+    además los envíos cuyo remitente es de su ruta. El Administrador y el
+    Supervisor reciben los de todos. (Un usuario al que la central le dio
+    permisos especiales puede recibir además los de otros.)
+ 6- Vienen ordenados del más reciente al más antiguo.
+
+ Ejemplo (los pendientes de hoy):
+
+ Pet: /cyp_recs?idSesion|||0
+
+ Res: OK|20261119100000|0|c2a4e6f8-1b3d-4f5a-9c7e-0a1b2c3d4e5f;ENV00000048;REC00000048;AD0B35A22F305CA2;20261119093005;0;3f6c1e0a-9b2d-4c7e-8a51-0d2f6b7c9e14;Juan Pérez;7b1d9c44-2e6f-4a83-b0c5-91e2d3f4a567;Ana Pérez;8295550111;USD;100.00;5.00;105.00;DOP;5806.50;1;
+
+ (El último campo, Fecha_Pago, viene vacío porque no se ha entregado.)
+
+ Otros ejemplos:
+
+ Los de hoy, todos:                     /cyp_recs?idSesion
+
+ Del 1 al 19 de noviembre, entregados:  /cyp_recs?idSesion|20261101|20261119|1
+
+
+
+Errores
+=======
+
+ Una respuesta de error es así, siempre con sus 5 partes:
+
+ ER|FechayHora|Código|Mensaje|Dato
+
+ - El Mensaje viene siempre, en español, listo para mostrárselo al usuario.
+ - El Dato viene solo en estos: PIN trae el nombre del dato que está mal
+   (o la palabra Parametros si lo que está mal es la petición entera: le
+   sobran o le faltan datos, es demasiado grande, o llegó por GET una que
+   es solo por POST); CNE, CIN y CFR traen el idCliente (en el Listado de
+   Clientes, CNE no trae nada); OPD trae el NumEnvio que ya estaba
+   registrado. En los demás viene vacío.
+ - En cada petición pusimos sus errores propios. Además, PIN, DML, PNE, EIC
+   y ORC pueden venir en cualquier petición; SNE y SNA en todas las que
+   llevan idSesion; y SPE y CBI en todas esas menos Cerrar Sesión.
+ - Si llega un código que no está en esta lista, basta con mostrar el
+   Mensaje.
+
+ De la sesión y los permisos:
+
+ SNE - Sesión No Encontrada: el idSesion no vale o la central ya no lo
+       reconoce (puede pasar con una sesión vencida). Hay que iniciar
+       sesión otra vez.
+ SNA - Sesión No Activa: la sesión se venció, la cerraron, o al usuario le
+       cambiaron la clave, el rol o el estado. Hay que iniciar sesión otra
+       vez.
+ UCI - Usuario o Clave Incorrectos (también si la cuenta está desactivada).
+ CBI - CoBrador Inactivo: el usuario es un Cobrador y en la central lo
+       desactivaron como cobrador. Puede llegar al iniciar sesión o con la
+       sesión ya abierta. Su aplicación muestra el Mensaje y vuelve a la
+       pantalla de inicio de sesión.
+ SPE - Sin PErmiso: el usuario no tiene permiso para esa petición.
+
+ De la petición:
+
+ PIN - Parámetros INválidos: falta un dato, sobra, o no tiene el formato
+       indicado. El Dato dice cuál.
+ DML - DeMasiadas peticiones: se pasó el Límite por minuto desde esa
+       dirección IP (120 peticiones; 10 inicios de sesión). Hay que esperar
+       un minuto.
+ PNE - Petición No Encontrada: ese comando no existe.
+ EIC - Error Interno de la Central: no se pudo completar. Se puede repetir
+       la petición. En Registrar Envío se repite con el mismo idOperacion.
+       Si después de unos 3 intentos sigue llegando EIC, deje de repetir y
+       muestre el Mensaje.
+ ORC - Operación Rechazada por la Central: la central no aceptó la
+       operación por una regla suya que no tiene código propio (por
+       ejemplo, cuando el Administrador tiene que revisar algo de su
+       configuración). NO repita la petición: muestre el Mensaje.
+
+ De los clientes:
+
+ CNE - Cliente No Encontrado (o ningún cliente que mostrar en el listado).
+ CIN - Cliente INactivo.
+ CFR - Cliente Fuera de Ruta: el usuario es Cobrador y el remitente no es
+       de su ruta.
+ MCL - Mismo CLiente: el remitente y el destinatario son el mismo.
+
+ Del envío:
+
+ TNE - Tasa No Encontrada: no hay tasa registrada para una de las monedas.
+ MIN - Monto INsuficiente: el Monto es demasiado pequeño.
+ CCA - Cotización CAmbiada: los importes ya no coinciden. Hay que cotizar
+       otra vez.
+ CNA - Caja No Abierta: el usuario no tiene abierta su Caja de Remesas.
+ EIS - Efectivo InSuficiente: lo Recibido es menos que el TotalAPagar.
+ PNV - Pago No Verificado: falta Verificado = 1 en Transferencia o
+       Depósito.
+ OPD - OPeración Duplicada: ese idOperacion ya se usó con otros datos. El
+       envío ya estaba registrado; no hay que mandarlo de nuevo.
+
+ De los recibos:
+
+ RNE - Recibo No Encontrado (ningún recibo que mostrar en el listado).
+
+
+
+No incluido en esta versión
+===========================
+
+ Esto todavía no se puede hacer desde la aplicación; se sigue haciendo en
+la central:
+
+ - Pedir los datos completos de un recibo, para imprimirlo desde la
+   aplicación.
+ - Entregar (pagar) un envío al destinatario.
+ - Cancelar un envío.
+ - Crear (registrar) un cliente nuevo.
+ - Abrir y cerrar la Caja de Remesas.
+ - Pagar con Tarjeta.
+
+ Si necesita alguna de estas cosas, díganos y la agregamos en la próxima
+versión.
+
+
+
+Distinto de LSAN, y lo que quisiéramos que nos confirme
+=======================================================
+
+ Lo que está escrito en este documento ya está programado y queda firme,
+salvo estos 12 puntos (diez sobre el formato y dos sobre el contenido). Son
+los que hicimos distinto de LSAN o donde no estamos seguros de cómo trabaja
+usted. Hoy la central funciona como dice el documento también en estos 12.
+
+ Por favor, contéstenos los 12 por su número, aunque sea con un "sí". Si
+con sus respuestas cambia algo, lo cambiamos en la central y le mandamos
+una versión nueva de este documento.
+
+ Sobre el formato:
+
+ 1- PlugIn y comandos: pusimos "cyp" y los comandos de este documento
+    (login, logout, clients, client, quote, send, recs). ¿Tiene usted
+    alguna regla para nombrarlos, o prefiere otros nombres? Si no, se
+    quedan estos.
+
+ 2- Versión: el formato general de LSAN dice
+    Estado|FechayHora|Versión|Otros Datos, pero en LSAN los ejemplos no
+    llevan la Versión. Aquí no la pusimos. ¿Debe ir?
+
+ 3- Códigos de error: los de este documento los pusimos nosotros. ¿Nos
+    puede mandar el archivo "Errores versión 4_0.txt"? Con él cambiamos
+    estos códigos por los suyos donde signifiquen lo mismo. Además,
+    agregamos un Mensaje entre el Código y el Dato; ¿le sirve así?
+
+ 4- Cómo se mandan las peticiones:
+    a) Iniciar Sesión y Registrar Envío van solo por POST. ¿Tiene algún
+       problema para mandar POST con el cuerpo en texto plano UTF-8?
+    b) En GET, ¿su aplicación codifica con % los caracteres especiales?
+    c) La central responde HTTP 200 también en los errores. ¿Su aplicación
+       lo maneja así?
+
+ 5- Monedas: LSAN usa idMoneda con número (1 = Peso Dominicano). Aquí
+    pusimos DOP, USD y EUR. Si prefiere números, ¿cuáles usa para Dólar y
+    para Euro?
+
+ 6- Forma de pago: aquí pusimos 1 = Efectivo, 2 = Tarjeta,
+    3 = Transferencia y 4 = Depósito. ¿Coinciden con los valores de
+    idForma_Pago que usted ya usa? Si no, mándenos su lista y usamos la
+    suya. El Banco va con su nombre, como texto, porque CyP no tiene
+    idBanco. ¿Le sirve?
+
+ 7- Identificadores: los de CyP son textos de hasta 80 caracteres
+    (normalmente 36), no números. ¿Le da algún problema?
+
+ 8- Importes: los pusimos con punto y dos decimales (1500.00). ¿Así los
+    usa usted?
+
+ 9- Registrar Envío: los datos del envío van separados por | (como en
+    quickloan de LSAN). ¿Los prefiere separados por ; (como en egreso)?
+
+ 10- Lista vacía: aquí se responde ER con CNE o RNE, como entendimos en la
+     reunión. ¿Así lo maneja usted, o prefiere OK sin registros?
+
+ Sobre el contenido:
+
+ 11- Datos del Cliente: en la reunión se habló de pedirlo con la
+     identificación (la cédula). En CyP hay clientes sin cédula; por eso
+     aquí se pide por idCliente, y por la cédula se busca en el Listado de
+     Clientes (con la cédula en Texto). ¿Le sirve?
+
+ 12- idOperacion: en LSAN no existe. ¿Puede su aplicación generarlo,
+     guardarlo y repetirlo cuando no llegue la respuesta?
