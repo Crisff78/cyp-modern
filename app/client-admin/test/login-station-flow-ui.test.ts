@@ -19,10 +19,16 @@ let playwrightEntry: string | undefined;
 try { playwrightEntry = localRequire.resolve("playwright"); }
 catch { playwrightEntry = fs.existsSync(existingCache) ? fs.readdirSync(existingCache).map((name) => path.join(existingCache, name, "node_modules/playwright/index.mjs")).find((file) => fs.existsSync(file)) : undefined; }
 
+// The public build serves the collector under /collector/. A plain `pnpm build` leaves it at the root, and this test
+// would only see a blank page: it is skipped, saying how to make the build it needs. The office must also hand its
+// session over to /collector/ (VITE_COLLECTOR_URL), which `pnpm build:public` sets; that is not looked for here.
+const collectorIndex = path.join(adminRoot, "../client-collector/dist/index.html");
+const publicBuilds = fs.existsSync(path.join(adminRoot, "dist/index.html")) && fs.existsSync(collectorIndex)
+  && fs.readFileSync(collectorIndex, "utf8").includes('"/collector/assets/');
+
 // Run against both public web builds, with a fresh browser profile and an isolated in-memory server.
 test("station selection is part of sign-in across the office and collector portals", {
-  skip: !fs.existsSync(edge) || !playwrightEntry || !fs.existsSync(path.join(adminRoot, "dist/index.html"))
-    || !fs.existsSync(path.join(adminRoot, "../client-collector/dist/index.html")) ? "Requires public web builds and installed Edge/Playwright" : false,
+  skip: !fs.existsSync(edge) || !playwrightEntry || !publicBuilds ? "Requires both public web builds (pnpm build:public) and installed Edge/Playwright" : false,
   timeout: 180000,
 }, async () => {
   const listener = createServer((req, res) => app.server.emit("request", req, res));
