@@ -1,4 +1,4 @@
-// Plain-text protocol for the mobile application: the seven petitions of docs/protocolo-cyp/Protocolo CYP 0.2.txt.
+// Plain-text protocol for the mobile application: the seven petitions of docs/protocolo-cyp/Protocolo CYP 0.3.txt.
 // Each one is a thin adapter in front of the same functions the JSON API uses; no rule of the business lives here.
 import { createHash } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";

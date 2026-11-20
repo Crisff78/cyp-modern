@@ -2,8 +2,8 @@
 
 ## Qué pasaba
 
-El servidor deja 120 peticiones por minuto a cada dirección, y 10 por minuto para entrar o para escribir el código de
-invitación. En Render el servidor no ve la dirección del visitante, sino la del proxy de Render, así que **todos los
+El servidor deja 120 peticiones por minuto a cada dirección, y 10 por minuto para entrar (y, hasta el 2026-11-20, para escribir el
+código de invitación de la demo, que ya no existe). En Render el servidor no ve la dirección del visitante, sino la del proxy de Render, así que **todos los
 visitantes compartían el mismo límite**: varias personas revisando a la vez podían agotarlo entre todas.
 
 Esto se deduce del código y no de una medida: sin la opción `trustProxy`, el servidor (Fastify) cuenta las

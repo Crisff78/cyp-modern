@@ -14,7 +14,6 @@ import { FileStore } from "../src/store.js";
 
 const secret = "synthetic-auth-restart-test-only-secret-2026";
 const origin = "https://auth-restart.example.test";
-const invitation = "synthetic-auth-restart-invitation";
 const originalPassword = "Demo-CyP-2026!";
 const actors = [
   { id: "demo-admin", aliases: ["admin", "admin@cyp.local"], password: "Synthetic-new-admin" },
@@ -30,7 +29,6 @@ async function isolatedRestart() {
   const file = join(createdDirectory, "fictional-state.json");
   let app: App | undefined;
   let store: FileStore | undefined;
-  let cookie = "";
 
   const currentApp = () => {
     assert.ok(app, "An isolated application must be running.");
@@ -43,13 +41,11 @@ async function isolatedRestart() {
   async function stop() {
     const closingApp = app;
     app = undefined;
-    cookie = "";
     if (closingApp) await closingApp.close();
     else if (store) await store.close();
     store = undefined;
   }
   async function start(jwtSecret = secret) {
-    const previousInvitationCookie = cookie;
     await stop();
     store = await FileStore.open(file, seedPublicDemo());
     try {
@@ -61,26 +57,14 @@ async function isolatedRestart() {
         enrichCollectorDemo(state);
       });
       app = await buildApp({ store, secret: jwtSecret, demo: true, publicWeb: true,
-        demoAccess: { code: invitation, origin }, origins: [origin], collectorUrl: `${origin}/collector` });
-      if (previousInvitationCookie) {
-        const retainedAccess = await app.inject({ url: "/api/openapi.json", headers: { cookie: previousInvitationCookie } });
-        assert.equal(retainedAccess.statusCode, 200,
-          "An unexpired invitation cookie must survive restart with the same invitation configuration.");
-      }
-      const admitted = await app.inject({ method: "POST", url: "/demo-access",
-        headers: { origin, accept: "application/json", "content-type": "application/x-www-form-urlencoded" },
-        payload: new URLSearchParams({ code: invitation }).toString() });
-      assert.equal(admitted.statusCode, 200, "Synthetic invitation must succeed.");
-      const setCookie = admitted.headers["set-cookie"];
-      assert.ok(typeof setCookie === "string", "Invitation must issue a cookie.");
-      cookie = setCookie.split(";")[0];
+        publicOrigin: origin, origins: [origin], collectorUrl: `${origin}/collector` });
     } catch (error) {
       await stop();
       throw error;
     }
   }
   const login = (alias: string, password: string) => currentApp().inject({
-    method: "POST", url: "/api/auth/login", headers: { cookie }, payload: { email: alias, password },
+    method: "POST", url: "/api/auth/login", payload: { email: alias, password },
   });
   async function token(alias: string, password: string) {
     const response = await login(alias, password);
@@ -90,10 +74,10 @@ async function isolatedRestart() {
     return value;
   }
   const me = (bearer: string) => currentApp().inject({ url: "/api/auth/me",
-    headers: { cookie, authorization: `Bearer ${bearer}` } });
+    headers: { authorization: `Bearer ${bearer}` } });
   const changePassword = (id: string, bearer: string, password: string) => currentApp().inject({
     method: "POST", url: `/api/usuarios/${id}/clave`,
-    headers: { cookie, authorization: `Bearer ${bearer}`, "idempotency-key": randomUUID() },
+    headers: { authorization: `Bearer ${bearer}`, "idempotency-key": randomUUID() },
     payload: { currentPassword: originalPassword, password },
   });
   async function close() {
