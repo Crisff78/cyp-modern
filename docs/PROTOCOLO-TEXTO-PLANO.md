@@ -1,12 +1,13 @@
-# Protocolo de texto plano para la aplicación móvil (CYP 0.1)
+# Protocolo de texto plano para la aplicación móvil (CYP 0.2)
 
 Siete peticiones `/cyp_*` que responden en texto plano, separadas por `|`, para que una aplicación móvil hecha por
 otro equipo haga Envíos de Dinero contra CyP. Orden de Rardiel del 2026-11-19: «Programalo y deja todo listo».
 
-- **El contrato** es [`protocolo-cyp/Protocolo CYP 0.1.txt`](<protocolo-cyp/Protocolo CYP 0.1.txt>): es el documento
+- **El contrato** es [`protocolo-cyp/Protocolo CYP 0.2.txt`](<protocolo-cyp/Protocolo CYP 0.2.txt>): es el documento
   que se le envía a quien programa la aplicación. Si el servidor y ese documento no coinciden, hay un fallo: se
   arregla el servidor o se envía una versión nueva del documento, nunca se deja pasar.
-- **El plan** y su revisión están en `designs/2026-11-19-protocolo-texto-plano/`.
+- **El plan** y su revisión están en `designs/2026-11-19-protocolo-texto-plano/`. La versión 0.2 (GET en todas las
+  peticiones y `Vence`), en `designs/2026-11-20-protocolo-get-y-vence/`.
 
 ## Dónde está cada cosa
 
@@ -26,6 +27,12 @@ No hay reglas del negocio nuevas ni migración. El protocolo no aparece en `open
   que no existe responde `PNE`. Viven en un complemento encapsulado de Fastify con su propio manejador de errores:
   todo sale con HTTP 200, `text/plain; charset=utf-8`, en una línea y sin salto final. El cuerpo de un POST se toma
   tal cual, venga con el `Content-Type` que venga.
+- **GET o POST.** Desde la 0.2 las siete peticiones llegan por GET (los parámetros después del `?`, decodificados
+  enteros y después partidos por `|`) o por POST. Una dirección de más de 8000 caracteres responde `PIN`
+  (`MAX_ADDRESS_LENGTH`): más larga, Node o el proxy la rechazarían sin el formato del protocolo. **Excepción:**
+  fuera del modo demo, Iniciar Sesión sigue siendo solo por POST (`passwordByGet`; ver «Antes de producción»).
+- **`Vence`.** El inicio de sesión devuelve cuándo se vence la sesión: el primero de sus dos finales, el de su
+  registro (`expiresAt`) y el de su token (`exp`). No hay otro «8 horas» escrito en el protocolo.
 - **Sesión.** `idSesion` es un token de sesión como el de la web, marcado con `channel: "cyp"`. Cada petición lo
   verifica y pasa por `authenticate`, la comprobación de toda petición de la web, con una ruta equivalente para los
   permisos: `POST /api/envios` para `clients`, `client`, `quote` y `send` (es `PuedeEnviar`) y `GET /api/envios`
@@ -34,7 +41,7 @@ No hay reglas del negocio nuevas ni migración. El protocolo no aparece en `open
 - **Un `idSesion` no sirve en la API JSON.** Puede viajar en una dirección (GET) y acabar en un registro; por eso el
   `preHandler` rechaza con 401 todo token que lleve `channel`. Al revés sí: un token de la web sirve en el protocolo.
 - **`idOperacion`.** Se guarda en la tabla `idempotency` con la clave `cyp:{idUsuario}:{idOperacion}`. La huella es
-  el SHA-256 del cuerpo sin el `idSesion`, carácter por carácter. Misma huella: se devuelve el envío guardado, aunque
+  el SHA-256 de los parámetros ya decodificados, sin el `idSesion`, carácter por carácter (lo mismo por GET que por POST). Misma huella: se devuelve el envío guardado, aunque
   haya cambiado una tasa o esté cerrada la caja. Otra huella: `OPD` con el `NumEnvio`. Solo se guarda cuando el envío
   se registró. No caduca. **El documento promete 7 días como mínimo:** si algún día se depura la tabla `idempotency`,
   las filas `cyp:` de menos de 7 días no se tocan. (La clave supone que ninguna cuenta tiene el id literal `cyp`.)
@@ -91,6 +98,19 @@ Una regla sin código propio va en `ORC` y no en `EIC` a propósito: `EIC` le di
 petición, y repetir no arregla una configuración. El Dato de un `PIN` es el nombre del parámetro, o `Parametros`
 cuando lo que está mal es la petición entera.
 
+## Antes de producción
+
+Hoy esto solo corre en la central de pruebas, con datos ficticios. Antes de ponerlo con datos reales hay que decidir:
+
+- **La clave por GET.** En un GET la clave viaja en la dirección. El servidor de CyP no escribe direcciones en ningún
+  sitio (`Fastify({ logger: false })`, y las trazas guardan la ruta, no la dirección), pero el proxy de la plataforma
+  y la red del usuario sí pueden guardarlas. Por eso `passwordByGet` es verdadero solo en modo demo. Según lo que
+  responda la otra parte a la pregunta 4a del documento, las salidas son tres: que manden Iniciar Sesión por POST;
+  que manden la clave en una cabecera, como ya hacen con `X-CyP-Invitacion`; o aceptar la clave por GET sabiendo
+  dónde queda. Es una decisión de Rardiel, no del código.
+- **El `idSesion` en una dirección.** Vale 8 horas y no sirve en la API JSON, así que el daño de que se filtre es
+  limitado; la clave no vence.
+
 ## Para probarlo a mano
 
 Con el servidor local en modo demo (`pnpm dev`):
@@ -99,7 +119,8 @@ Con el servidor local en modo demo (`pnpm dev`):
 curl -s -X POST http://127.0.0.1:3001/cyp_login -H "Content-Type: text/plain; charset=utf-8" --data-binary "USUARIO|CLAVE"
 ```
 
-La respuesta trae el `idSesion` en el tercer dato. Con él:
+En modo demo también vale por GET: `curl -s "http://127.0.0.1:3001/cyp_login?USUARIO|CLAVE"` (la clave, codificada
+con `%`). La respuesta trae el `idSesion` en el tercer dato y `Vence` en el quinto. Con el `idSesion`:
 
 ```bash
 curl -s "http://127.0.0.1:3001/cyp_quote?ID_SESION|USD|DOP|100.00"

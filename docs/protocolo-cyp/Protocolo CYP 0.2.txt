@@ -1,7 +1,7 @@
 Protocolo de Intercambio de Datos (CyP)
 
- Versión: 0.1
-   Fecha: 19/11/2026
+ Versión: 0.2
+   Fecha: 20/11/2026
 
 
  Aquí le explicamos cómo su aplicación móvil le va a pedir datos a la
@@ -21,6 +21,9 @@ siempre la central.
 lo tenemos programado en nuestra central de pruebas, tal como está escrito
 aquí, para que usted pueda probar su aplicación desde el principio (vea
 "Central de pruebas", en las Notas Generales).
+
+ Esta es la versión 0.2. Lo que cambió desde la 0.1 está en "Agregado" y
+"Modificado", justo antes de las Funcionalidades.
 
  Al final hay 12 puntos que quisiéramos que nos confirme. Si con sus
 respuestas hay que cambiar algo, lo cambiamos en la central y le mandamos
@@ -118,26 +121,31 @@ seguridad se encarga el HTTPS (la dirección empieza por https://).
 2) Cómo se manda: GET o POST
 ----------------------------
 
- - Le recomendamos mandar TODAS las peticiones por POST, con los Parámetros
-   en el cuerpo como texto plano (Content-Type: text/plain; charset=utf-8).
-   El motivo: mientras dura la sesión, quien tenga el idSesion puede hacer
-   lo mismo que con la clave, y en un GET el idSesion queda a la vista en
-   la dirección.
- - Las consultas (clients, client, quote, recs) y logout también se aceptan
-   por GET, con los Parámetros después del ?, igual que en LSAN.
- - Iniciar Sesión (login) y Registrar Envío (send) se aceptan SOLO por POST
-   (distinto de LSAN). En la primera viaja la Clave. La segunda registra
-   dinero, y no queremos que se pueda repetir con solo abrir otra vez una
-   dirección guardada. Si llegan por GET, la central responde ER con PIN.
- - En ningún POST ponga un salto de línea al final del cuerpo.
+ - Las siete peticiones se aceptan por GET y por POST. Use la que prefiera;
+   puede mezclar las dos.
+ - Por GET, los Parámetros van después del ?, igual que en LSAN.
+ - Por POST, los Parámetros van en el cuerpo como texto plano
+   (Content-Type: text/plain; charset=utf-8). No ponga un salto de línea al
+   final del cuerpo.
+ - La misma petición con los mismos Parámetros vale igual por GET que por
+   POST.
+ - Una dirección de GET (lo que va después del nombre del servidor) puede
+   tener hasta 8000 caracteres, ya codificada. Si pasa de ahí, la central
+   responde ER con PIN: mande esa petición por POST. Solo puede pasarle en
+   Registrar Envío con una Nota muy larga.
+ - Un consejo, no una obligación: en un GET, lo que se manda queda escrito
+   en la dirección, y las direcciones se guardan en los registros de los
+   servidores por donde pasan. Por eso, si su aplicación puede, mande
+   Iniciar Sesión por POST: ahí viaja la Clave. En la central de pruebas se
+   acepta por GET sin problema, porque los datos son ficticios. Para la
+   central real lo decidimos con usted (punto 4 del final).
 
- La misma consulta, de las dos maneras:
+ La misma petición, de las dos maneras:
 
  Por GET:   /cyp_clients?idSesion|perez
  Por POST:  /cyp_clients          (en el cuerpo: idSesion|perez)
 
- En este documento escribimos los ejemplos de las consultas como GET porque
-se leen mejor.
+ En este documento escribimos los ejemplos como GET porque se leen mejor.
 
 
 3) Letras y signos especiales
@@ -150,7 +158,12 @@ se leen mejor.
    todo lo que sigue al ? y DESPUÉS separa por | (pipe).
  - El | (pipe) que separa los parámetros lo puede mandar tal cual o
    codificado como %7C: para la central es lo mismo.
- - El signo + NO se toma como espacio.
+ - El signo + NO se toma como espacio: es un signo de más. El espacio va
+   como %20. Cuidado: algunas librerías (las de formularios) codifican el
+   espacio como +. Con ellas, "Juan Perez" llegaría como "Juan+Perez", y
+   una Clave con un espacio daría UCI.
+ - El signo % va como %25.
+ - Esto vale para todos los datos, también para la Clave.
 
 
 4) Cómo es una respuesta
@@ -204,6 +217,9 @@ línea y sin salto de línea al final. Hay dos formas:
    o no llega ninguna respuesta (le aconsejamos esperar unos 30 segundos),
    es un fallo de comunicación. La petición se puede repetir. En Registrar
    Envío hay que repetirla con el MISMO idOperacion (se explica en 3.2).
+ - En versiones nuevas de este documento pueden venir datos de más AL FINAL
+   de una respuesta o de un registro. Su aplicación debe ignorar los que no
+   conozca, sin dar error.
 
 
 5) Separadores
@@ -315,11 +331,25 @@ HTTP:
 Agregado
 --------
 
- Primera versión.
+ Versión 0.2 (20/11/2026):
+
+ - Iniciar Sesión devuelve un dato más, al final: Vence, la fecha y hora en
+   que se vence la sesión (1.1).
+ - Tope de 8000 caracteres para la dirección de un GET (Notas Generales, 2).
+ - Regla nueva: en versiones nuevas pueden venir datos de más al final de
+   una respuesta, y hay que ignorarlos (Notas Generales, 4).
+
+ Versión 0.1 (19/11/2026): primera versión.
 
 
 Modificado
 ----------
+
+ Versión 0.2 (20/11/2026):
+
+ - Iniciar Sesión y Registrar Envío se aceptan también por GET. En la 0.1
+   eran solo por POST, y por GET respondían ER con PIN (Notas Generales, 2).
+ - En las preguntas del final cambió la pregunta 4.
 
 
 
@@ -363,9 +393,10 @@ Funcionalidades
  Para qué sirve: el usuario entra con su nombre de usuario y su clave, y la
  central devuelve el idSesion que se usa en todas las demás peticiones.
 
- Pet: /cyp_login          (solo POST; en el cuerpo: Usuario|Clave)
+ Pet: /cyp_login?Usuario|Clave
+      (por POST: /cyp_login, y en el cuerpo: Usuario|Clave)
 
- Res: OK|FechayHora|idSesion|DatosUsuario
+ Res: OK|FechayHora|idSesion|DatosUsuario|Vence
       ER|FechayHora|Código|Mensaje|Dato
 
  Qué se manda:
@@ -377,9 +408,11 @@ Funcionalidades
  Clave: La misma clave con la que esa persona entra en la central. Hasta
         200 caracteres.
 
- El cuerpo se parte SOLO por el primer | (pipe): lo de antes es el Usuario
- y TODO lo de después es la Clave, tal cual, aunque traiga | ! ; @ o
- espacios. No ponga un salto de línea al final.
+ Lo que se manda se parte SOLO por el primer | (pipe): lo de antes es el
+ Usuario y TODO lo de después es la Clave, tal cual, aunque traiga | ! ; @
+ o espacios. Por GET, la Clave va codificada con % como cualquier otro dato
+ (espacio = %20, % = %25, # = %23; el + no es espacio). Por POST va tal
+ cual, sin salto de línea al final.
 
  Qué devuelve:
 
@@ -410,6 +443,14 @@ Funcionalidades
                  0 - No puede. Si lo intenta, la central responde ER con
                      SPE.
 
+ Vence: La fecha y hora en que se vence esta sesión, con el mismo formato
+        de FechayHora (hora de República Dominicana). Desde ese momento
+        las peticiones responden ER con SNA y hay que iniciar sesión otra
+        vez. No la compare con el reloj del teléfono, que puede estar en
+        otra hora: compárela con la FechayHora que trae cada respuesta de
+        la central. La sesión puede terminar ANTES de Vence (vea el punto
+        2 de "A tener en cuenta").
+
  Errores propios:
 
  UCI - Usuario o Clave Incorrectos (también si la cuenta está desactivada).
@@ -427,17 +468,20 @@ Funcionalidades
     PuedeVerEnvios, no el Rol: en la central los permisos se pueden ajustar
     usuario por usuario.
  2- La sesión dura 8 horas, contadas desde que se inició; no se alarga por
-    usarla. Después de ese tiempo, o si la cierran desde la central, o si
-    al usuario le cambian la clave, el rol o lo desactivan, las peticiones
-    responden ER con SNE o SNA y hay que iniciar sesión otra vez.
+    usarla. Vence dice cuándo se cumplen. Después de ese momento, o antes
+    si la cierran desde la central, o si al usuario le cambian la clave, el
+    rol o lo desactivan, las peticiones responden ER con SNE o SNA y hay
+    que iniciar sesión otra vez.
  3- La central admite 10 intentos de inicio de sesión por minuto desde una
     misma dirección IP. Si se pasan, responde ER con DML.
 
  Ejemplo:
 
- Pet: /cyp_login          (en el cuerpo: caja1@empresa.com|MiClave!2026)
+ Pet: /cyp_login?caja1@empresa.com|MiClave!2026
 
- Res: OK|20261119093000|eyJhbGciOi...(sigue)|9d2c7a10-55e1-4f0b-a3c8-6e7f8a9b0c1d;María López;cashier;1;1
+ Res: OK|20261119093000|eyJhbGciOi...(sigue)|9d2c7a10-55e1-4f0b-a3c8-6e7f8a9b0c1d;María López;cashier;1;1|20261119173000
+
+ (La sesión empezó a las 09:30:00 y se vence a las 17:30:00.)
 
 
 1.2- Cerrar Sesión
@@ -725,7 +769,8 @@ Funcionalidades
  Para qué sirve: registra el envío en la central. Es la única petición que
  mueve dinero.
 
- Pet: /cyp_send           (solo POST; en el cuerpo, en una sola línea:)
+ Pet: /cyp_send?          (y a continuación estos 16 datos, en una sola
+                           línea; por POST van en el cuerpo:)
 
       idSesion|idOperacion|idRemitente|idDestinatario|
       idMonedaOrigen|idMonedaDestino|Monto|Modo|
@@ -755,9 +800,9 @@ Funcionalidades
               Cómo funciona:
 
               a- Antes de mandar la petición, su aplicación guarda el
-                 idOperacion y el cuerpo completo, tal como lo va a
-                 mandar. Así puede repetirla idéntica aunque la aplicación
-                 se cierre.
+                 idOperacion y los 16 datos, tal como los va a mandar.
+                 Así puede repetirla idéntica aunque la aplicación se
+                 cierre.
               b- Después de comprobar la sesión y que la petición viene
                  completa, es lo primero que revisa la central. Si ese
                  usuario ya registró un envío con ese idOperacion y los
@@ -766,8 +811,9 @@ Funcionalidades
                  cambiado una tasa, se haya cerrado la caja o la sesión
                  sea otra.
               c- "Los mismos datos" quiere decir todos los datos de la
-                 petición menos el idSesion. Repita el cuerpo igual,
-                 carácter por carácter.
+                 petición menos el idSesion. Repítalos igual, carácter por
+                 carácter. Da lo mismo repetirla por GET o por POST: la
+                 central compara los datos ya decodificados.
               d- Si llega el mismo idOperacion con otros datos, responde
                  ER con OPD, y en el Dato viene el NumEnvio que ya estaba
                  registrado. Quiere decir que el envío YA quedó registrado
@@ -904,15 +950,23 @@ Funcionalidades
 
  Ejemplo con Efectivo (el remitente entrega 120.00 y se le devuelven 15.00):
 
- Pet: /cyp_send           (en el cuerpo, en una sola línea:)
+ Pet: /cyp_send?          (y a continuación, en la misma línea:)
 
  idSesion|5e0b7c1a-4d2f-4b6e-8f90-a1b2c3d4e5f6|3f6c1e0a-9b2d-4c7e-8a51-0d2f6b7c9e14|7b1d9c44-2e6f-4a83-b0c5-91e2d3f4a567|USD|DOP|100.00|0|105.00|5806.50|1|120.00||||
 
  Res: OK|20261119093005|c2a4e6f8-1b3d-4f5a-9c7e-0a1b2c3d4e5f;ENV00000048;REC00000048;AD0B35A22F305CA2;20261119093005;100.00;5.00;105.00;5806.50;15.00
 
- Ejemplo con Transferencia (solo cambia el final del cuerpo):
+ Ejemplo con Transferencia (solo cambia el final):
 
  ...|USD|DOP|100.00|0|105.00|5806.50|3||TRF99812|Banco Popular|1|
+
+ Ejemplo con una Nota, por GET (el espacio va como %20 y la ñ como %C3%B1):
+
+ ...|USD|DOP|100.00|0|105.00|5806.50|1|120.00||||Para%20la%20ni%C3%B1a
+
+ El mismo final, por POST (en el cuerpo va tal cual):
+
+ ...|USD|DOP|100.00|0|105.00|5806.50|1|120.00||||Para la niña
 
  Los 16 datos del primer ejemplo, uno por uno:
 
@@ -1057,10 +1111,9 @@ Errores
  - El Mensaje viene siempre, en español, listo para mostrárselo al usuario.
  - El Dato viene solo en estos: PIN trae el nombre del dato que está mal
    (o la palabra Parametros si lo que está mal es la petición entera: le
-   sobran o le faltan datos, es demasiado grande, o llegó por GET una que
-   es solo por POST); CNE, CIN y CFR traen el idCliente (en el Listado de
-   Clientes, CNE no trae nada); OPD trae el NumEnvio que ya estaba
-   registrado. En los demás viene vacío.
+   sobran o le faltan datos, o es demasiado grande); CNE, CIN y CFR traen
+   el idCliente (en el Listado de Clientes, CNE no trae nada); OPD trae el
+   NumEnvio que ya estaba registrado. En los demás viene vacío.
  - En cada petición pusimos sus errores propios. Además, PIN, DML, PNE, EIC
    y ORC pueden venir en cualquier petición; SNE y SNA en todas las que
    llevan idSesion; y SPE y CBI en todas esas menos Cerrar Sesión.
@@ -1174,9 +1227,13 @@ una versión nueva de este documento.
     agregamos un Mensaje entre el Código y el Dato; ¿le sirve así?
 
  4- Cómo se mandan las peticiones:
-    a) Iniciar Sesión y Registrar Envío van solo por POST. ¿Tiene algún
-       problema para mandar POST con el cuerpo en texto plano UTF-8?
-    b) En GET, ¿su aplicación codifica con % los caracteres especiales?
+    a) Usted nos dijo que trabaja con GET: desde la versión 0.2 todas las
+       peticiones se aceptan por GET. Nos queda una duda, por la Clave:
+       ¿puede su aplicación mandar POST, aunque sea solo en Iniciar Sesión?
+       Si no puede, ¿puede poner una cabecera propia en un GET? (Ya lo hace
+       con X-CyP-Invitacion.)
+    b) En GET, ¿su aplicación codifica con % los caracteres especiales? ¿Y
+       el espacio lo manda como %20? Si lo manda como +, díganoslo.
     c) La central responde HTTP 200 también en los errores. ¿Su aplicación
        lo maneja así?
 
