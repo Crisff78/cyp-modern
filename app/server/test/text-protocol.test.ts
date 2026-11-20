@@ -33,9 +33,9 @@ function fixture() {
   Object.assign(state.clients.find((row) => row.id === "cli-2")!, { identification: "001-1234567-8", cellular: "8295550111", address: "Calle 5 #12, Santiago" });
   return state;
 }
-async function open(state = fixture(), demoAccess?: { code: string; origin: string }, demo = true) {
+async function open(state = fixture(), publicWeb = false, demo = true) {
   const store = new MemoryStore(state);
-  const app = await buildApp({ store, secret, origins: [], collectorUrl: "http://127.0.0.1:5174", ...(demoAccess ? { publicWeb: true, demoAccess } : {}),
+  const app = await buildApp({ store, secret, origins: [], collectorUrl: "http://127.0.0.1:5174", ...(publicWeb ? { publicWeb: true, publicOrigin: "https://demo.example.test" } : {}),
     ...(demo ? { demo: true } : { demo: false, adminEmail: "principal@example.invalid", adminPassword: "Principal-ficticia-2026!" }) });
   type Reply = { statusCode: number; headers: Record<string, unknown>; body: string };
   const check = (reply: Reply) => {
@@ -114,7 +114,7 @@ test("login by GET: the same petition after the ?, with the password encoded as 
 });
 
 test("outside demo mode the sign-in is still POST only (a password does not travel in an address); the rest comes by GET", async () => {
-  const { app, post, get } = await open(fixture(), undefined, false);
+  const { app, post, get } = await open(fixture(), false, false);
   try {
     const refused = await get("login", encodeURIComponent(`supervisora@cyp.local|${DEMO_PASSWORD}`));
     er(refused, "PIN", "Parametros"); assert.match(refused[3], /POST/);
@@ -490,26 +490,24 @@ test("the body is the petition whatever its Content-Type, and the JSON API is th
   } finally { await app.close(); }
 });
 
-test("public demo: the invitation travels in a header, and the gate stays closed for everything else", async () => {
-  const code = "invitacion-sintetica-de-prueba";
-  const { app, post, get } = await open(fixture(), { code, origin: "https://demo.example.test" });
-  const invited = { "x-cyp-invitacion": code };
+test("public demo: no invitation is asked for, and a header X-CyP-Invitacion that still comes is ignored", async () => {
+  const { app, post, get } = await open(fixture(), true);
   try {
-    er(await post("login", `admin@cyp.local|${DEMO_PASSWORD}`), "PIN", "X-CyP-Invitacion");
-    er(await get("clients", "lo-que-sea"), "PIN", "X-CyP-Invitacion");
-    const login = await post("login", `admin@cyp.local|${DEMO_PASSWORD}`, invited);
+    // The invitation of the demo was removed on 20-11-2026: the petitions answer by themselves.
+    const login = await post("login", `admin@cyp.local|${DEMO_PASSWORD}`);
     assert.equal(login[0], "OK");
-    assert.equal((await get("clients", login[2], invited))[0], "OK");
-    er(await get("noexiste", "", invited), "PNE");
-    // The header opens the protocol only: the JSON API and the pages still ask for the invitation of the browser.
-    const api = await app.inject({ url: "/api/snapshot", headers: { ...invited, authorization: `Bearer ${login[2]}` } });
-    assert.equal(api.statusCode, 401); assert.equal(api.json().error.code, "DEMO_INVITATION_REQUIRED");
-    assert.equal((await app.inject({ url: "/", headers: invited })).statusCode, 303);
-    assert.equal((await app.inject({ url: "/cyp_clients/otra-cosa", headers: invited })).statusCode, 303);
-    // Ten wrong invitations in a minute from one address: after that none is looked at, not even the right one.
-    for (let attempt = 0; attempt < 10; attempt++) er(await get("clients", "x", { "x-cyp-invitacion": `mala-${attempt}` }), "PIN", "X-CyP-Invitacion");
-    er(await get("clients", "x", { "x-cyp-invitacion": "mala-11" }), "DML");
-    er(await get("clients", login[2], invited), "DML");
+    assert.equal((await get("clients", login[2]))[0], "OK");
+    er(await get("noexiste"), "PNE");
+    // An application written for the version that asked for it may keep sending the header: nothing changes.
+    for (const invitation of ["la-que-tenia-antes", ""]) {
+      assert.equal((await post("login", `admin@cyp.local|${DEMO_PASSWORD}`, { "x-cyp-invitacion": invitation }))[0], "OK");
+      assert.equal((await get("clients", login[2], { "x-cyp-invitacion": invitation }))[0], "OK");
+    }
+    // Without a session the JSON API answers what it answers everywhere, no longer the error of the invitation.
+    const api = await app.inject({ url: "/api/snapshot" });
+    assert.equal(api.statusCode, 401); assert.equal(api.json().error.code, "UNAUTHORIZED");
+    // Search engines are still asked to leave the demo out, in the petitions too.
+    assert.equal((await app.inject({ url: "/cyp_noexiste" })).headers["x-robots-tag"], "noindex, nofollow");
   } finally { await app.close(); }
 });
 

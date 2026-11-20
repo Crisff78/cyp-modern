@@ -136,11 +136,11 @@ intacta y no se elimina. No se requiere copiarla para iniciar esta nueva demo.
    conexión y sus credenciales en la configuración privada del servicio.
    [Conexiones PostgreSQL y TLS de Supabase](https://supabase.com/docs/guides/database/connecting-to-postgres).
 3. Configura esa conexión en `DATABASE_URL` del servicio Render existente.
-   Conserva su URL, las variables de autenticación e invitación y ambos modos de
+   Conserva su URL, la variable de autenticación y ambos modos de
    demo activados. Al arrancar con la base nueva vacía, el servidor aplica sus
    migraciones y agrega los ejemplos ficticios. No restaures datos de Neon ni
    de la instalación local sobre esta base de pruebas.
-4. Comprueba `GET /api/health`, `/`, `/collector/`, la invitación y el acceso de
+4. Comprueba `GET /api/health`, `/`, `/collector/` y el acceso de
    Administración, Cobrador y Cajero. Verifica que los ejemplos nuevos se cargaron y que
    otro arranque no los duplica. Registra el resultado real del despliegue antes
    de presentarlo como completado.
@@ -190,8 +190,8 @@ esa cifra de tráfico no determina el tamaño de la base.
    interfaz. Conserva el dump de forma privada; una pantalla con algunos
    clientes o envíos no acredita la transferencia completa.
 5. Solo después de restaurar y verificar, cambia `DATABASE_URL` en el servicio
-   Render existente, conservando su URL y las variables de autenticación e
-   invitación. Coordina una ventana sin escrituras para que la copia final sea
+   Render existente, conservando su URL y la variable de autenticación.
+   Coordina una ventana sin escrituras para que la copia final sea
    consistente si Neon vuelve a admitir cambios. Comprueba salud, acceso y
    lecturas de los registros trasladados sin escribir pruebas en la demo
    compartida. No elimines Neon ni el respaldo. Si ya entraron escrituras en
@@ -212,16 +212,14 @@ no necesita otro servicio ni otro dominio.
 3. Antes de confirmar, comprueba que el único recurso es el servicio web `free`.
    Guarda la conexión PostgreSQL de la base dedicada `cyp_demo` de Neon o
    Supabase en `DATABASE_URL`, con TLS verificado. Para Supabase usa el Session
-   pooler y el certificado descritos arriba. Render genera `JWT_SECRET`. Configura
-   `DEMO_ACCESS_CODE` con 9 a 256 caracteres; una invitación más corta es más
-   fácil de adivinar y debe compartirse solo para esta demo de datos ficticios.
+   pooler y el certificado descritos arriba. Render genera `JWT_SECRET`.
    Para validar las estaciones contra RRAA añade `RRAA_ENDPOINT` y `RRAA_CLIENT_ID`
    (ver [RRAA-ESTACIONES.md](RRAA-ESTACIONES.md)); sin ellas responde el control de prueba.
    No introduzcas contraseñas de la instalación local ni publiques estas variables.
 4. Espera el deploy y comprueba `GET /api/health`, `/`, `/collector/`, el login
    de Administración, Cobrador y Cajero, y un envío con su pago (sin cerrar la caja
-   del Cajero de práctica, que comparten los evaluadores). `/` debe pedir
-   primero la invitación.
+   del Cajero de práctica, que comparten los evaluadores). `/` debe mostrar
+   la pantalla de inicio de sesión, sin pedir ningún código antes.
    El enlace público será el dominio
    HTTPS `onrender.com` que muestre Render.
 
@@ -229,15 +227,27 @@ El comando de inicio aplica migraciones idempotentes antes de abrir el puerto.
 Si la migración o la conexión a PostgreSQL fallan, la API no inicia y no usa
 silenciosamente un archivo local.
 
-Comparte el dominio y el código `DEMO_ACCESS_CODE` únicamente con los evaluadores.
-La invitación habilita una cookie segura de ocho horas; después se necesita el
-inicio de sesión del programa. Los visitantes no necesitan cuentas en Render,
-Neon, Supabase ni ChatGPT. Cambiar el código invalida las invitaciones anteriores.
-Las sesiones del programa se pueden consultar y cerrar desde Administración.
+**Sin código de invitación (2026-11-20).** Hasta ese día la demo pedía un código de invitación antes de cualquier
+página o petición. Rardiel ordenó quitarlo: frenaba al equipo y a la aplicación móvil de la otra parte. Ahora la demo
+se abre directamente en el inicio de sesión del programa. Los visitantes no necesitan cuentas en Render, Neon,
+Supabase ni ChatGPT. Las sesiones del programa se pueden consultar y cerrar desde Administración. El plan y lo que
+se avisó están en `designs/2026-11-20-sin-invitacion/`.
 
-Una aplicación móvil que use el protocolo de texto plano (`docs/PROTOCOLO-TEXTO-PLANO.md`) no guarda esa cookie:
-manda el mismo código en la cabecera `X-CyP-Invitacion` de cada petición `/cyp_*`. La cabecera solo abre esas
-peticiones, no las páginas ni la API JSON. Diez cabeceras equivocadas en un minuto bloquean esa dirección un minuto.
+Lo único que protege la demo ahora es el inicio de sesión. Hay que saber esto:
+
+- **La clave inicial de las cuentas de la demo es pública**: está en este repositorio, que es público, y dentro del
+  programa que la propia demo sirve. Quien administre la demo debe cambiar la clave de Administración desde su
+  cuenta (Usuarios; 15 caracteres o más). Desde ese momento la clave inicial deja de abrir Administración.
+  Mientras no se cambie, cualquiera puede entrar como Administración: ver los dispositivos y las licencias de las
+  estaciones, consultar RRAA, cambiar claves y desactivar cuentas.
+- **Sin iniciar sesión se ve la lista de estaciones activas** (número y nombre) del formulario de entrada. El nombre
+  de una estación es su código; los validados contra RRAA son los reales del proveedor.
+- La demo sigue pidiendo a los buscadores que no la indexen (`X-Robots-Tag: noindex, nofollow`).
+- La variable `DEMO_ACCESS_CODE` ya no se usa. Puede quedarse en Render: una versión anterior a este cambio no
+  arranca sin ella.
+
+Una aplicación móvil que use el protocolo de texto plano (`docs/PROTOCOLO-TEXTO-PLANO.md`) tampoco manda ya ninguna
+cabecera de invitación; si la manda, no se mira.
 Al actualizar desde una versión sin sesiones persistidas, hay que iniciar sesión
 de nuevo. Las trazas registran acciones nuevas, sin cuerpos ni contraseñas.
 

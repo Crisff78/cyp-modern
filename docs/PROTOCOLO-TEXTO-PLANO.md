@@ -1,13 +1,14 @@
-# Protocolo de texto plano para la aplicación móvil (CYP 0.2)
+# Protocolo de texto plano para la aplicación móvil (CYP 0.3)
 
 Siete peticiones `/cyp_*` que responden en texto plano, separadas por `|`, para que una aplicación móvil hecha por
 otro equipo haga Envíos de Dinero contra CyP. Orden de Rardiel del 2026-11-19: «Programalo y deja todo listo».
 
-- **El contrato** es [`protocolo-cyp/Protocolo CYP 0.2.txt`](<protocolo-cyp/Protocolo CYP 0.2.txt>): es el documento
+- **El contrato** es [`protocolo-cyp/Protocolo CYP 0.3.txt`](<protocolo-cyp/Protocolo CYP 0.3.txt>): es el documento
   que se le envía a quien programa la aplicación. Si el servidor y ese documento no coinciden, hay un fallo: se
   arregla el servidor o se envía una versión nueva del documento, nunca se deja pasar.
 - **El plan** y su revisión están en `designs/2026-11-19-protocolo-texto-plano/`. La versión 0.2 (GET en todas las
-  peticiones y `Vence`), en `designs/2026-11-20-protocolo-get-y-vence/`.
+  peticiones y `Vence`), en `designs/2026-11-20-protocolo-get-y-vence/`; la 0.3 (sin código de invitación), en
+  `designs/2026-11-20-sin-invitacion/`.
 
 ## Dónde está cada cosa
 
@@ -16,7 +17,6 @@ otro equipo haga Envíos de Dinero contra CyP. Orden de Rardiel del 2026-11-19: 
 | `app/server/src/text-protocol.ts` | Leer una petición, escribir una respuesta, los códigos y sus mensajes. Sin Fastify. |
 | `app/server/src/text-protocol-routes.ts` | Las siete peticiones. Cada una llama a la misma lógica de la API JSON. |
 | `app/server/src/app.ts` | `authenticate` y `signIn`, que usan por igual la web y el protocolo. |
-| `app/server/src/demo-access.ts` | La invitación de la demo pública en una cabecera, solo para `/cyp_*`. |
 | `app/server/test/text-protocol*.test.ts` | Cada ejemplo del documento y cada código de error. |
 
 No hay reglas del negocio nuevas ni migración. El protocolo no aparece en `openapi.json` porque no es JSON.
@@ -57,12 +57,10 @@ No hay reglas del negocio nuevas ni migración. El protocolo no aparece en `open
 
 ## La demo pública
 
-La demo pide un código de invitación en una cookie que una aplicación móvil no tiene. La puerta no se quita: para
-las rutas `/cyp_*` la invitación se acepta también en la cabecera `X-CyP-Invitacion`. Sin ella, la respuesta es
-`ER|FechayHora|PIN|…|X-CyP-Invitacion`. Diez cabeceras equivocadas en un minuto desde una dirección bloquean esa
-dirección un minuto (`DML`), también para la correcta; ese gancho responde antes de que cuente el límite general,
-por eso lleva su propia cuenta. La cabecera no abre la API JSON ni las páginas. Fuera de la demo pública no hay
-puerta y la cabecera no se mira. Es el mismo código de la web: cambiarlo corta también a la aplicación.
+Desde el 2026-11-20 la demo no pide código de invitación (orden de Rardiel; ver `DEMO-PUBLICA.md`). Hasta la versión
+0.2 lo pedía en una cookie y, para las rutas `/cyp_*`, en la cabecera `X-CyP-Invitacion`. Una aplicación que siga
+mandando esa cabecera no nota nada: no se mira. Las peticiones se protegen como en cualquier instalación: con el
+inicio de sesión, sus 10 intentos por minuto y el límite general.
 
 Una aplicación que corra dentro de un navegador o un WebView no podría leer las respuestas: CORS solo admite los
 orígenes de CyP. El protocolo está pensado para una aplicación nativa.
@@ -106,7 +104,7 @@ Hoy esto solo corre en la central de pruebas, con datos ficticios. Antes de pone
   sitio (`Fastify({ logger: false })`, y las trazas guardan la ruta, no la dirección), pero el proxy de la plataforma
   y la red del usuario sí pueden guardarlas. Por eso `passwordByGet` es verdadero solo en modo demo. Según lo que
   responda la otra parte a la pregunta 4a del documento, las salidas son tres: que manden Iniciar Sesión por POST;
-  que manden la clave en una cabecera, como ya hacen con `X-CyP-Invitacion`; o aceptar la clave por GET sabiendo
+  que manden la clave en una cabecera; o aceptar la clave por GET sabiendo
   dónde queda. Es una decisión de Rardiel, no del código.
 - **El `idSesion` en una dirección.** Vale 8 horas y no sirve en la API JSON, así que el daño de que se filtre es
   limitado; la clave no vence.

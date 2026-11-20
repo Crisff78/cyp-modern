@@ -7,7 +7,6 @@ import { enrichCashierDemo } from "./demo-cashier-scenarios.js";
 import { FileStore, PostgresStore, type Store } from "./store.js";
 import { registerPublicWeb } from "./public-web.js";
 import { createDemoStationControl, createRraaValidator, limitRraaCalls, type RraaValidator } from "./rraa.js";
-import { validateDemoAccessCode } from "./demo-access.js";
 import { businessDate } from "./domain.js";
 import { configuredCardVault } from "./card-vault.js";
 import { generateScheduledCharges, nextChargeDate } from "./recurring-charges.js";
@@ -20,7 +19,6 @@ if (publicWeb && !requestedDemo)
   throw new Error("CYP_PUBLIC_DEMO requires DEMO_MODE=true.");
 if (publicWeb && !process.env.DATABASE_URL)
   throw new Error("CYP_PUBLIC_DEMO requires a dedicated DATABASE_URL.");
-if (publicWeb) validateDemoAccessCode(process.env.DEMO_ACCESS_CODE);
 if (publicWeb) {
   let databaseName = "";
   try {
@@ -116,7 +114,7 @@ const app = await buildApp({
   secret: process.env.JWT_SECRET,
   demo,
   publicWeb,
-  demoAccess: publicWeb ? { code: process.env.DEMO_ACCESS_CODE!, origin: publicOrigin } : undefined,
+  publicOrigin: publicWeb ? publicOrigin : undefined,
   origins: (
     process.env.ALLOWED_ORIGINS ?? (publicWeb ? publicOrigin : "http://127.0.0.1:5173,http://127.0.0.1:5174")
   ).split(","),
