@@ -21,11 +21,14 @@ const account = (id: string, email: string, role: User["role"], password = DEMO_
 };
 // A password with what an address cannot carry as it is: by GET it travels encoded with %.
 const SIGNS = "50%+1 #clave&más?";
+// A password whose end reads as the version an application may add: it must come in with and without one after it.
+const PIPE_AND_NUMBER = "Clave-ficticia|2.5";
 function fixture() {
   const state = seed(), now = new Date(), date = businessDate(now);
   enrichCashierDemo(state, now);
   state.accounts.push(account("sup-1", "supervisora@cyp.local", "supervisor"), account("cli-user", "cliente@cyp.local", "client"),
-    account("pipes", "pipes@cyp.local", "cashier", "Clave|con!pipes;y@signos 2026"), account("signos", "signos@cyp.local", "cashier", SIGNS));
+    account("pipes", "pipes@cyp.local", "cashier", "Clave|con!pipes;y@signos 2026"), account("signos", "signos@cyp.local", "cashier", SIGNS),
+    account("version", "version@cyp.local", "cashier", PIPE_AND_NUMBER));
   setCommissionPolicy(state, admin, { transactionCommissionBps: 500, managerCommissionBps: 0, deliveryCommissionBps: 200 }, now);
   setDailyRate(state, admin, { currency: "USD", rate: "59.25", purchaseRate: "59.25", saleRate: "60.00", date }, now);
   for (const operatorId of ["demo-admin", "demo-collector", "demo-cashier"])
@@ -608,5 +611,94 @@ test("recs: the day of a send is the one of the Dominican Republic, not the one 
     assert.equal(fields(found[3])[4], "20260309220000");
     er(await get("recs", `${token}|20260310|20260310`), "RNE");
     er(await get("recs", token), "RNE");
+  } finally { await app.close(); }
+});
+
+test("sign-in as the other party's application calls it: p= before the data and its version after them", async () => {
+  const { app, store, post, get } = await open();
+  const sessions = async () => (await store.read()).adminTools!.sessions.length;
+  try {
+    const before = await sessions();
+    const ok = await get("login", `p=${encodeURIComponent(`admin@cyp.local|${DEMO_PASSWORD}|3.0`)}`);
+    assert.equal(ok.length, 5); assert.equal(ok[0], "OK"); assert.deepEqual(fields(ok[3]), ["demo-admin", "Administración", "admin", "1", "1"]);
+    assert.equal(await sessions(), before + 1, "two readings of the password, one session");
+    assert.equal((await get("clients", `p=${ok[2]}|Colmado|3.0`))[0], "OK", "that session, called the same way");
+    // The version without the prefix, and by POST: it is a datum, not a part of the address.
+    assert.equal((await get("login", encodeURIComponent(`admin@cyp.local|${DEMO_PASSWORD}|1.14`)))[0], "OK");
+    assert.equal((await post("login", `admin@cyp.local|${DEMO_PASSWORD}|10.2.1`))[0], "OK");
+    // A password may hold pipes, with a version after it or with an end that reads as one.
+    assert.equal((await get("login", `p=${encodeURIComponent("pipes@cyp.local|Clave|con!pipes;y@signos 2026|3.0")}`))[0], "OK");
+    assert.equal((await get("login", `p=${encodeURIComponent(`version@cyp.local|${PIPE_AND_NUMBER}`)}`))[0], "OK");
+    assert.equal((await get("login", `p=${encodeURIComponent(`version@cyp.local|${PIPE_AND_NUMBER}|3.0`)}`))[0], "OK");
+    // A wrong password is one answer, UCI, whichever way it is read; a version is not a password.
+    er(await get("login", `p=${encodeURIComponent("admin@cyp.local|otra-clave|3.0")}`), "UCI");
+    er(await get("login", `p=${encodeURIComponent("admin@cyp.local||3.0")}`), "PIN", "Clave");
+    er(await post("login", `p=admin@cyp.local|${DEMO_PASSWORD}`), "PIN", "Parametros");
+  } finally { await app.close(); }
+});
+
+test("a wrong password that is long: the second reading does not fit, and the answer is still UCI", async () => {
+  const { app, get } = await open();
+  try {
+    er(await get("login", `p=${encodeURIComponent(`admin@cyp.local|${"x".repeat(198)}|3.0`)}`), "UCI");
+    er(await get("login", `p=${encodeURIComponent(`admin@cyp.local|${"x".repeat(201)}|3.0`)}`), "PIN", "Clave");
+  } finally { await app.close(); }
+});
+
+test("the other petitions with p= and with the version: the same answers as without them", async () => {
+  const { app, get, login } = await open();
+  const data = (parts: string[]) => parts.slice(2).join("|");
+  try {
+    const token = await login("admin@cyp.local");
+    // Listado de Clientes: optional data left out, some of them, all of them.
+    const all = await get("clients", token), found = await get("clients", `${token}|Colmado`);
+    assert.equal(all[0], "OK"); assert.equal(found[0], "OK"); assert.notEqual(data(found), data(all));
+    assert.equal(data(await get("clients", `p=${token}|3.0`)), data(all));
+    assert.equal(data(await get("clients", `p=${token}|Colmado|3.0`)), data(found));
+    assert.equal(data(await get("clients", `p=${token}|Colmado|1|3.0`)), data(found));
+    assert.equal(data(await get("clients", `p=${token}|Colmado|1|0|3.0`)), data(found));
+    // A text that is a dotted number is searched when it is not the last datum.
+    er(await get("clients", `p=${token}|3.0|1`), "CNE");
+    er(await get("clients", `p=${token}|Colmado|1|0|de más`), "PIN", "Parametros");
+    er(await get("clients", `p=${token}|Colmado|1|0|x|3.0`), "PIN", "Parametros");
+    // Datos del Cliente and Cotizar Envío: the amount in last place is the amount.
+    const client = await get("client", `${token}|cli-2`);
+    assert.equal(client[0], "OK"); assert.equal(data(await get("client", `p=${token}|cli-2|3.0`)), data(client));
+    const quote = await get("quote", `${token}|USD|DOP|100.00`);
+    assert.match(data(quote), /^100\.00;5\.00;105\.00;5806\.50;/);
+    assert.equal(data(await get("quote", `p=${token}|USD|DOP|100.00`)), data(quote));
+    assert.equal(data(await get("quote", `p=${token}|USD|DOP|100.00|3.0`)), data(quote));
+    assert.equal(data(await get("quote", `p=${token}|USD|DOP|100.00|0|3.0`)), data(quote));
+    assert.match(data(await get("quote", `p=${token}|USD|DOP|105.00|1|3.0`)), /^100\.00;5\.00;105\.00;/);
+    // Listado de Recibos and Cerrar Sesión.
+    assert.equal((await get("recs", `p=${token}|3.0`))[2], (await get("recs", token))[2]);
+    assert.equal((await get("logout", `p=${token}|3.0`))[0], "OK");
+    er(await get("clients", `p=${token}`), "SNA");
+  } finally { await app.close(); }
+});
+
+test("send with p= and the version: one send, and without them it is the same petition", async () => {
+  const { app, store, post, get, login } = await open();
+  const sends = async () => (await store.read()).remittances.transfers;
+  try {
+    const token = await login(DEMO_CASHIER_EMAIL);
+    const petition = sendBody(token, { Nota: "Con la versión detrás" });
+    const ok = await get("send", `p=${encodeURIComponent(`${petition}|3.0`)}`);
+    assert.equal(ok.length, 3); assert.equal(ok[0], "OK"); assert.equal(fields(ok[2])[1], "ENV00000001");
+    assert.equal((await sends())[0].note, "Con la versión detrás");
+    // The same data without the prefix, without the version, by POST and with another version: the send registered.
+    assert.equal((await get("send", encodeURIComponent(petition)))[2], ok[2]);
+    assert.equal((await post("send", petition))[2], ok[2]);
+    assert.equal((await post("send", `${petition}|3.1`))[2], ok[2]);
+    assert.equal((await sends()).length, 1);
+    // Sixteen data and nothing else: a Nota that is a number is the Nota.
+    const amount = await post("send", sendBody(token, { Nota: "150.00" }));
+    assert.equal(amount[0], "OK"); assert.equal((await sends())[1].note, "150.00");
+    // The document asks for the sixteen data always. With fifteen and the version there are sixteen again, and the
+    // last one is taken for the Nota: it is seen the first time it is tried, and no amount depends on it.
+    const fifteen = sendBody(token).split("|").slice(0, 15).join("|");
+    assert.equal((await post("send", `${fifteen}|3.0`))[0], "OK"); assert.equal((await sends())[2].note, "3.0");
+    er(await post("send", fifteen), "PIN", "Parametros");
+    er(await post("send", `${petition}|3.0|3.0`), "PIN", "Parametros");
   } finally { await app.close(); }
 });

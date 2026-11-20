@@ -6,7 +6,7 @@ importes son unidades menores de DOP/USD/EUR; las rutas históricas de este
 documento mantienen el libro DOP. El contrato nuevo incluye actividad de clientes.
 
 Ampliación 2026-11-19: las siete peticiones `/cyp_*` de la aplicación móvil no son REST ni JSON. Su contrato es
-[protocolo-cyp/Protocolo CYP 0.3.txt](<protocolo-cyp/Protocolo CYP 0.3.txt>) y su explicación,
+[protocolo-cyp/Protocolo CYP 0.4.txt](<protocolo-cyp/Protocolo CYP 0.4.txt>) y su explicación,
 [PROTOCOLO-TEXTO-PLANO.md](PROTOCOLO-TEXTO-PLANO.md). No aparecen en `openapi.json`.
 
 Base local `http://127.0.0.1:3001/api`. Especificación OpenAPI 3.1 generada desde los esquemas Zod en **GET `/api/openapi.json`**; copia versionada en `docs/openapi.json`. Esa copia es una instantánea anterior (por ejemplo, no incluye el rol `cashier`): la especificación vigente es la que sirve el servidor. Swagger Editor/Swagger UI puede cargarla. Dinero = centavos enteros DOP. JSON UTF-8. CORS limitado por `ALLOWED_ORIGINS`.

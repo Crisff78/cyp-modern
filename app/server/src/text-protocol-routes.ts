@@ -1,4 +1,4 @@
-// Plain-text protocol for the mobile application: the seven petitions of docs/protocolo-cyp/Protocolo CYP 0.3.txt.
+// Plain-text protocol for the mobile application: the seven petitions of docs/protocolo-cyp/Protocolo CYP 0.4.txt.
 // Each one is a thin adapter in front of the same functions the JSON API uses; no rule of the business lives here.
 import { createHash } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -12,9 +12,9 @@ import { canSeeOutgoing, createRemittance, currencies, payoutOf, quoteRemittance
 import { isPaymentTextDraft, totalPaidForTransfer, type RemittancePaymentInput } from "../../shared/remittances/payment.mjs";
 import { boundedId } from "./input-validation.js";
 import {
-  assertOneLine, daysBetween, errorLine, hasLineBreak, invalid, MAX_RECEIPT_DAYS, missing, moneyText, namedParameters, okLine, PAGE_SIZE, parseDate,
-  parseMoney, parsePage, percentText, PROTOCOL_COMMANDS, protocolErrorOf, ProtocolError, protocolStamp, rawParameters, record, typedText,
-  WHOLE_PETITION, type ProtocolCommand,
+  assertOneLine, daysBetween, errorLine, hasLineBreak, invalid, isVersion, MAX_RECEIPT_DAYS, missing, moneyText, namedParameters, okLine, PAGE_SIZE,
+  parseDate, parseMoney, parsePage, percentText, PROTOCOL_COMMANDS, protocolErrorOf, ProtocolError, protocolStamp, rawParameters, record, typedText,
+  WHOLE_PETITION, withoutVersion, type ProtocolCommand,
 } from "./text-protocol.js";
 
 type Claims = User & { authVersion?: string; sid?: string; exp?: number };
@@ -108,16 +108,29 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
     const at = raw.indexOf("|");
     if (raw === "" || at === 0) throw missing("Usuario");
     if (at < 0 || raw.length === at + 1) throw missing("Clave");
-    const body = deps.loginBody.safeParse({ email: raw.slice(0, at), password: raw.slice(at + 1) });
-    if (!body.success) throw invalid(body.error.issues[0]?.path[0] === "email" ? "Usuario" : "Clave");
-    let session: Awaited<ReturnType<TextProtocolDeps["signIn"]>>;
-    try { session = await deps.signIn(body.data.email, body.data.password, TEXT_PROTOCOL_CHANNEL); }
-    catch (error) {
-      // The document gives no SPE at the sign-in: an account whose entry was withdrawn cannot come in, and is told why.
-      if (error instanceof DomainError && error.code === "ACCESS_REVOKED")
-        throw new ProtocolError("UCI", "Su cuenta no tiene permiso para entrar. Pida a Administración que la revise");
-      throw error;
+    // Usuario|Clave, and the application may add its version: Usuario|Clave|3.0. A password may hold pipes, so that
+    // has two readings; both are tried, first without the last datum (what an application that sends its version
+    // means) and, only if that is not the password, whole. An account whose password is right is never tried twice.
+    const email = raw.slice(0, at), rest = raw.slice(at + 1), cut = rest.lastIndexOf("|");
+    const versioned = cut >= 0 && isVersion(rest.slice(cut + 1));
+    if (versioned && cut === 0) throw missing("Clave");
+    let session: Awaited<ReturnType<TextProtocolDeps["signIn"]>> | undefined, refused: unknown;
+    for (const password of versioned ? [rest.slice(0, cut), rest] : [rest]) {
+      const body = deps.loginBody.safeParse({ email, password });
+      if (!body.success) {
+        if (refused) break; // The second reading does not fit: the answer is the one of the first.
+        throw invalid(body.error.issues[0]?.path[0] === "email" ? "Usuario" : "Clave");
+      }
+      try { session = await deps.signIn(body.data.email, body.data.password, TEXT_PROTOCOL_CHANNEL); break; }
+      catch (error) {
+        // The document gives no SPE at the sign-in: an account whose entry was withdrawn cannot come in, and is told why.
+        if (error instanceof DomainError && error.code === "ACCESS_REVOKED")
+          throw new ProtocolError("UCI", "Su cuenta no tiene permiso para entrar. Pida a Administración que la revise");
+        if (!(error instanceof DomainError) || error.code !== "INVALID_CREDENTIALS") throw error;
+        refused = error;
+      }
     }
+    if (!session) throw refused;
     const claims = deps.verifyToken(session.token);
     const can = async ([method, path]: readonly [string, string]) => {
       try { await deps.authenticate(claims, method, path); return "1"; }
@@ -181,7 +194,7 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
     return { method, reference, ...(bank ? { bank } : {}), ...(input.Verificado === "1" ? { verified: true } : {}) };
   }
 
-  async function send(claims: Claims, raw: string, parts: string[], now: Date) {
+  async function send(claims: Claims, parts: string[], now: Date) {
     const input = namedParameters("send", parts);
     if (!/^[A-Za-z0-9-]{8,64}$/.test(input.idOperacion)) throw input.idOperacion === "" ? missing("idOperacion") : invalid("idOperacion");
     const senderClientId = idOf("idRemitente", input.idRemitente), recipientClientId = idOf("idDestinatario", input.idDestinatario);
@@ -191,8 +204,9 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
     const amountMode = AMOUNT_MODES[Number(input.Modo)];
     const total = amountOf("TotalAPagar", input.TotalAPagar), receive = amountOf("MontoARecibir", input.MontoARecibir);
     const payment = paymentOf(input), note = textOf("Nota", input.Nota, 2000);
-    // Everything but the session, character by character: what the document calls «los mismos datos».
-    const fingerprint = createHash("sha256").update(raw.slice(raw.indexOf("|") + 1)).digest("hex");
+    // Everything but the session (and the version of the application, already taken away), character by character:
+    // what the document calls «los mismos datos». Without a version it is the text it always was.
+    const fingerprint = createHash("sha256").update(parts.slice(1).join("|")).digest("hex");
     return deps.store.transaction((state) => {
       assertAuthSession(state, claims, claims.sid);
       const actor = currentAccessUser(state, claims);
@@ -261,7 +275,7 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
     if (name === "login" && request.method !== "POST" && !deps.passwordByGet) throw invalid(WHOLE_PETITION, "En esta central, Iniciar Sesión solo se acepta por POST");
     const raw = rawParameters(request.method, request.url, request.body);
     if (name === "login") return login(raw, now);
-    const parts = raw.split("|");
+    const parts = withoutVersion(name, raw.split("|"));
     assertOneLine(name, parts);
     const claims = sessionOf(parts[0]);
     if (name === "logout") return logout(claims, parts, now);
@@ -269,7 +283,7 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
     // change in the table of paths can never leave these petitions open.
     const actor = await deps.authenticate(claims, ...(name === "recs" ? VIEW : SEND));
     requireRemittancePermission(actor, name === "recs" ? "remittances.view" : "remittances.create");
-    if (name === "send") return send(claims, raw, parts, now);
+    if (name === "send") return send(claims, parts, now);
     const state = await deps.store.read();
     if (name === "clients") return clients(state, actor, parts, now);
     if (name === "client") return client(state, actor, parts, now);
