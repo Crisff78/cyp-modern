@@ -1,35 +1,13 @@
 Protocolo de Intercambio de Datos (CyP)
 
- Versión: 0.4
+ Versión: 0.5
    Fecha: 23/11/2026
 
 
  Aquí le explicamos cómo su aplicación móvil le va a pedir datos a la
 central de CyP (Cobros y Pagos) para hacer Envíos de Dinero.
 
- Usamos el mismo formato del protocolo LSAN (versión 1.14) que usted nos
-mandó de ejemplo. Donde hicimos algo distinto de LSAN se lo decimos ahí
-mismo, y al final está todo junto en una lista.
-
- Cubre lo que hablamos el 19/11/2026: iniciar sesión, listado
-de clientes, datos de un cliente, registrar un envío y listado de recibos.
-Agregamos dos peticiones: cerrar sesión, y cotizar. Cotizar hace falta
-porque las cuentas del envío (la comisión y el cambio de moneda) las hace
-siempre la central.
-
- La central la programamos nosotros y la aplicación la programa usted. Ya
-lo tenemos programado en nuestra central de pruebas, tal como está escrito
-aquí, para que usted pueda probar su aplicación desde el principio (vea
-"Central de pruebas", en las Notas Generales).
-
- Esta es la versión 0.4, la siguiente a la 0.1 que usted tiene. Lo nuevo
-está marcado con (NUEVO), y lo resumimos en "Lo nuevo de esta versión",
-justo antes de las Funcionalidades.
-
- Al final hay 12 puntos que quisiéramos que nos confirme. Si con sus
-respuestas hay que cambiar algo, lo cambiamos en la central y le mandamos
-una versión nueva de este documento. Si además algo no se entiende, díganos
-y lo aclaramos.
+ Usamos el mismo formato del protocolo LSAN (versión 1.14).
 
 
 Cómo se hace un envío, paso a paso
@@ -118,8 +96,7 @@ seguridad se encarga el HTTPS (la dirección empieza por https://).
  - En los ejemplos de este documento ponemos "idSesion" en vez del texto
    completo de la sesión, para que se lean mejor.
 
- (NUEVO, todo lo que sigue hasta el título 2) La central también acepta la
- forma en que llama su aplicación:
+ La central también acepta la forma en que llama su aplicación:
 
  url/cyp_cmd?p=Parámetros|VersionApp
 
@@ -158,7 +135,7 @@ seguridad se encarga el HTTPS (la dirección empieza por https://).
 2) Cómo se manda: GET o POST
 ----------------------------
 
- - (NUEVO) Las siete peticiones se aceptan por GET y por POST. Use la que
+ - Las siete peticiones se aceptan por GET y por POST. Use la que
    prefiera; puede mezclar las dos.
  - Por GET, los Parámetros van después del ? (o después de ?p=), igual que
    en LSAN.
@@ -167,13 +144,13 @@ seguridad se encarga el HTTPS (la dirección empieza por https://).
    final del cuerpo.
  - La misma petición con los mismos Parámetros vale igual por GET que por
    POST.
- - (NUEVO) Una dirección de GET (lo que va después del nombre del servidor)
+ - Una dirección de GET (lo que va después del nombre del servidor)
    puede tener hasta 8000 caracteres, ya codificada. Si pasa de ahí, la
    central responde ER con PIN. Solo puede pasarle en Registrar Envío con
    una Nota muy larga: mande esa petición por POST o, si su aplicación solo
    manda GET, acorte la Nota (al codificarla, cada letra con acento ocupa
    6 caracteres).
- - (NUEVO) Sobre la Clave: en un GET, lo que se manda queda escrito en la
+ - Sobre la Clave: en un GET, lo que se manda queda escrito en la
    dirección, y las direcciones se guardan en los registros de los
    servidores por donde pasan. Por eso es mejor mandar Iniciar Sesión por
    POST, si su aplicación puede. No es obligatorio: en la central de
@@ -198,7 +175,7 @@ seguridad se encarga el HTTPS (la dirección empieza por https://).
  - En GET los caracteres especiales van codificados con %, como en cualquier
    dirección web (espacio = %20, # = %23). La central primero decodifica
    todo lo que sigue al ? (o al ?p=) y DESPUÉS separa por | (pipe).
- - (NUEVO) Una letra con acento o un espacio SIN codificar hacen que el
+ - Una letra con acento o un espacio SIN codificar hacen que el
    servidor rechace la dirección entera: llega un código HTTP 400, sin OK
    ni ER. No repita esa petición tal cual: corrija la dirección. La ñ va
    como %C3%B1 y la í como %C3%AD.
@@ -208,8 +185,8 @@ seguridad se encarga el HTTPS (la dirección empieza por https://).
    como %20. Cuidado: algunas librerías (las de formularios) codifican el
    espacio como +. Con ellas, "Juan Perez" llegaría como "Juan+Perez", y
    una Clave con un espacio daría UCI.
- - (NUEVO) El signo % va como %25.
- - (NUEVO) Las reglas de este apartado valen para todos los datos, también
+ - El signo % va como %25.
+ - Las reglas de este apartado valen para todos los datos, también
    para la Clave.
 
 
@@ -264,10 +241,10 @@ línea y sin salto de línea al final. Hay dos formas:
    o no llega ninguna respuesta (le aconsejamos esperar unos 30 segundos),
    es un fallo de comunicación. La petición se puede repetir. En Registrar
    Envío hay que repetirla con el MISMO idOperacion (se explica en 3.2).
- - (NUEVO) La excepción es el código HTTP 400: quiere decir que la
+ - La excepción es el código HTTP 400: quiere decir que la
    dirección está mal escrita (vea el apartado 3). Repetirla igual no
    sirve: hay que corregirla.
- - (NUEVO) Más adelante la central puede agregar datos AL FINAL de una
+ - Más adelante la central puede agregar datos AL FINAL de una
    respuesta o de un registro. Su aplicación debe ignorar los que no
    conozca, sin dar error.
 
@@ -366,10 +343,10 @@ esperar un minuto.
  Para que pruebe su aplicación le damos una central de pruebas, con datos
 ficticios. Su dirección (url), el usuario y la clave se los damos aparte.
 
- - (NUEVO) Su aplicación no tiene que mandar ninguna cabecera especial:
+ - Su aplicación no tiene que mandar ninguna cabecera especial:
    basta con la dirección y los Parámetros. Si manda alguna de más, no pasa
    nada: la central no la mira.
- - (NUEVO) La central de pruebas se duerme cuando lleva un rato sin uso. La
+ - La central de pruebas se duerme cuando lleva un rato sin uso. La
    primera petición puede tardar un minuto o más: para esa, espere hasta 2
    minutos antes de darla por perdida. Las siguientes van rápido.
 
@@ -377,35 +354,13 @@ ficticios. Su dirección (url), el usuario y la clave se los damos aparte.
 Lo nuevo de esta versión
 ------------------------
 
- Esto es lo nuevo desde la versión 0.1. En el documento, cada parte nueva
-está marcada con (NUEVO).
+ Esto es lo nuevo desde la versión 0.4. En el documento está marcado con
+(NUEVO).
 
- Lo que tiene que revisar en su aplicación:
-
- - Iniciar Sesión devuelve un dato más, al final: Vence, la fecha y hora en
-   que se vence la sesión. La respuesta ahora tiene 5 partes (1.1).
- - Más adelante la central puede agregar datos al final de una respuesta:
-   su aplicación debe ignorar los que no conozca (Notas Generales, 4).
- - En GET, una letra con acento o un espacio sin codificar hacen que el
-   servidor rechace la dirección con un código HTTP 400. Esa petición no
-   se repite tal cual (Notas Generales, 3 y 4).
- - Si alguna vez NO manda VersionApp: en el Listado de Clientes, un Texto
-   que sea solo un número con punto y vaya el último se toma por
-   VersionApp (Notas Generales, 1).
-
- Lo que la central acepta ahora, sin que usted cambie nada:
-
- - Su forma de llamar: p= delante de los Parámetros y VersionApp (hoy,
-   3.0) al final, en las siete peticiones (Notas Generales, 1). En
-   Registrar Envío, VersionApp va después de los 16 datos (3.2).
- - Las siete peticiones por GET y por POST, con un tope de 8000 caracteres
-   para la dirección de un GET (Notas Generales, 2).
- - En la central de pruebas no hay que mandar ninguna cabecera especial.
-   Esa central se duerme si lleva un rato sin uso: la primera petición
-   puede tardar un minuto o más (Notas Generales, 9).
-
- En las preguntas del final tienen parte nueva la 2 y la 4 (a y b). Las
-demás son las mismas.
+ - El idSesion ahora es corto: siempre 32 caracteres, con números y letras
+   de la A a la F en mayúsculas (1.1). Se usa igual que antes.
+ - Si su aplicación tiene guardado un idSesion largo de antes, sigue
+   valiendo hasta que se venza. No tiene que cambiar nada.
 
 
 
@@ -456,9 +411,6 @@ Funcionalidades
  Res: OK|FechayHora|idSesion|DatosUsuario|Vence
       ER|FechayHora|Código|Mensaje|Dato
 
- (NUEVO: se acepta por GET, y la respuesta trae un dato más al final,
- Vence. Ahora tiene 5 partes.)
-
  Qué se manda:
 
  Usuario: El nombre de usuario con el que la persona entra en la central
@@ -472,21 +424,20 @@ Funcionalidades
  Usuario y TODO lo de después es la Clave, tal cual, aunque traiga | ! ; @
  o espacios. Por POST va tal cual, sin salto de línea al final.
 
- (NUEVO) Por GET, la Clave va codificada con % como cualquier otro dato
+ Por GET, la Clave va codificada con % como cualquier otro dato
  (espacio = %20, % = %25, # = %23; el + no es espacio).
 
- (NUEVO) Si al final viene VersionApp (por ejemplo |3.0), la central lo
+ Si al final viene VersionApp (por ejemplo |3.0), la central lo
  aparta y la Clave es lo que queda. Una Clave que termine de forma parecida
  (por ejemplo en |2.5) también entra: la central prueba la Clave con ese
  final y sin él.
 
  Qué devuelve:
 
- idSesion: El identificador de la sesión. Es un texto largo y su tamaño
-           cambia: normalmente tiene entre 300 y 450 caracteres (más si el
-           nombre del usuario es largo), pero reserve espacio para 1000.
-           Lleva letras, números, punto, guion y guion bajo. Se manda tal
-           cual, como primer parámetro, en todas las demás peticiones.
+ idSesion: (NUEVO) El identificador de la sesión. Siempre tiene 32
+           caracteres: números y letras de la A a la F, en mayúsculas. Se
+           manda tal cual, como primer parámetro, en todas las demás
+           peticiones.
 
  DatosUsuario: idUsuario;Nombre;Rol;PuedeEnviar;PuedeVerEnvios
 
@@ -545,7 +496,7 @@ Funcionalidades
 
  Pet: /cyp_login?caja1@empresa.com|MiClave!2026
 
- Res: OK|20261119093000|eyJhbGciOi...(sigue)|9d2c7a10-55e1-4f0b-a3c8-6e7f8a9b0c1d;María López;cashier;1;1|20261119173000
+ Res: OK|20261119093000|7C41D09AE35B4F28A16DC0B97E2F8A13|9d2c7a10-55e1-4f0b-a3c8-6e7f8a9b0c1d;María López;cashier;1;1|20261119173000
 
  (La sesión empezó a las 09:30:00 y se vence a las 17:30:00.)
 
@@ -846,13 +797,11 @@ Funcionalidades
  Res: OK|FechayHora|Envio
       ER|FechayHora|Código|Mensaje|Dato
 
- (NUEVO: se acepta por GET, además de por POST.)
-
  Van SIEMPRE los 16 datos (15 pipes), en ese orden y en una sola línea, sin
  salto de línea al final. Los que no aplican van vacíos, también los del
  final.
 
- (NUEVO) Si su aplicación manda VersionApp, va después de los 16: es el
+ Si su aplicación manda VersionApp, va después de los 16: es el
  dato 17. Ojo: si manda 15 datos y luego VersionApp, la central cuenta 16
  y toma VersionApp por la Nota.
 
@@ -885,7 +834,7 @@ Funcionalidades
               c- "Los mismos datos" quiere decir todos los datos de la
                  petición menos el idSesion. Repítalos igual, carácter por
                  carácter.
-                 (NUEVO) Tampoco cuenta VersionApp, si la manda. Y da lo
+                 Tampoco cuenta VersionApp, si la manda. Y da lo
                  mismo repetirla por GET o por POST: la central compara
                  los datos, no la forma de mandarlos.
               d- Si llega el mismo idOperacion con otros datos, responde
@@ -1030,7 +979,7 @@ Funcionalidades
 
  Res: OK|20261119093005|c2a4e6f8-1b3d-4f5a-9c7e-0a1b2c3d4e5f;ENV00000048;REC00000048;AD0B35A22F305CA2;20261119093005;100.00;5.00;105.00;5806.50;15.00
 
- (NUEVO) La misma petición, como la manda su aplicación (con p= delante y
+ La misma petición, como la manda su aplicación (con p= delante y
  3.0 después de los 16 datos):
 
  /cyp_send?p=idSesion|5e0b7c1a-4d2f-4b6e-8f90-a1b2c3d4e5f6|3f6c1e0a-9b2d-4c7e-8a51-0d2f6b7c9e14|7b1d9c44-2e6f-4a83-b0c5-91e2d3f4a567|USD|DOP|100.00|0|105.00|5806.50|1|120.00|||||3.0
@@ -1039,7 +988,7 @@ Funcionalidades
 
  ...|USD|DOP|100.00|0|105.00|5806.50|3||TRF99812|Banco Popular|1|
 
- (NUEVO) Ejemplo con una Nota, por GET (el espacio va como %20 y la ñ como
+ Ejemplo con una Nota, por GET (el espacio va como %20 y la ñ como
  %C3%B1):
 
  ...|USD|DOP|100.00|0|105.00|5806.50|1|120.00||||Para%20la%20ni%C3%B1a
@@ -1298,7 +1247,7 @@ una versión nueva de este documento.
     alguna regla para nombrarlos, o prefiere otros nombres? Si no, se
     quedan estos.
 
- 2- (NUEVO) Versión: su aplicación manda un número al final de la petición
+ 2- Versión: su aplicación manda un número al final de la petición
     (3.0); la central lo acepta y no lo usa. En las respuestas, el formato
     general de LSAN dice Estado|FechayHora|Versión|Otros Datos, pero en
     LSAN los ejemplos no llevan la Versión, y aquí tampoco la pusimos. ¿Su
@@ -1310,13 +1259,13 @@ una versión nueva de este documento.
     agregamos un Mensaje entre el Código y el Dato; ¿le sirve así?
 
  4- Cómo se mandan las peticiones:
-    a) (NUEVO) Usted nos dijo que trabaja con GET, y todas las peticiones
+    a) Usted nos dijo que trabaja con GET, y todas las peticiones
        se aceptan por GET. Nos queda una duda, por la Clave: ¿puede su
        aplicación mandar POST, aunque sea solo en Iniciar Sesión? Si no
        puede, ¿puede mandar la Clave en una cabecera, en vez de en la
        dirección?
     b) En GET, ¿su aplicación codifica con % los caracteres especiales?
-       (NUEVO) ¿Y el espacio lo manda como %20? Si lo manda como +,
+       ¿Y el espacio lo manda como %20? Si lo manda como +,
        díganoslo.
     c) La central responde HTTP 200 también en los errores. ¿Su aplicación
        lo maneja así?

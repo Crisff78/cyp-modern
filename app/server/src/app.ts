@@ -60,7 +60,8 @@ import {
 } from "./domain.js";
 import type { Store } from "./store.js";
 import { registerRemittanceRoutes } from "./remittance-routes.js";
-import { isTextProtocolRoute, registerTextProtocol } from "./text-protocol-routes.js";
+import { isTextProtocolRoute, registerTextProtocol, TEXT_PROTOCOL_CHANNEL } from "./text-protocol-routes.js";
+import { sessionIdCodec } from "./text-protocol-session.js";
 import { registerCatalogRoutes } from "./catalog-routes.js";
 import { assertAuthSession, createAuthSession, recordMutationTrace, revokeUserSessions } from "./admin-tools.js";
 import { registerAdminToolsRoutes } from "./admin-tools-routes.js";
@@ -591,9 +592,11 @@ export async function buildApp(config: Config) {
     .strict();
   const collectorNotAllowed = (role: string) => new DomainError("COLLECTOR_NOT_ALLOWED",
     role === "admin" ? "Una cuenta de administración no se asocia a un cobrador." : "Una cuenta de Cajero no se asocia a un cobrador.", 422);
-  const touch = (account: Account, now = new Date()) => {
+  // In one step on purpose: the short idSesion of the protocol reads the current version, so it ends by this revocation.
+  const rotateCredentials = (state: State, account: Account, actorId: string, now = new Date()) => {
     account.updatedAt = now.toISOString();
     account.credentialVersion += 1;
+    revokeUserSessions(state, account.id, actorId, now);
   };
   app.get("/api/usuarios", async (req) => {
     assertAdminRead(user(req));
@@ -708,8 +711,7 @@ export async function buildApp(config: Config) {
     if (body.collectorId) account.collectorId = body.collectorId;
     else delete account.collectorId;
     if (authChanged) {
-      touch(account);
-      revokeUserSessions(state, account.id, actor.id);
+      rotateCredentials(state, account, actor.id);
     } else account.updatedAt = new Date().toISOString();
     return publicAccount(account);
   });
@@ -751,8 +753,7 @@ export async function buildApp(config: Config) {
       if (!own) assertManagesAccount(state, u, account.id);
       const { salt: newSalt, passwordHash } = hashPassword(body.password);
       Object.assign(account, { salt: newSalt, passwordHash });
-      touch(account);
-      revokeUserSessions(state, account.id, u.id);
+      rotateCredentials(state, account, u.id);
       return { ok: true, credentialVersion: account.credentialVersion };
     },
   );
@@ -780,8 +781,7 @@ export async function buildApp(config: Config) {
           403,
         );
       account.status = body.status;
-      touch(account);
-      revokeUserSessions(state, account.id, u.id);
+      rotateCredentials(state, account, u.id);
       return publicAccount(account);
     },
   );
@@ -1645,6 +1645,14 @@ export async function buildApp(config: Config) {
   await registerTextProtocol(app, {
     store: config.store, systemOperators, authenticate, signIn, loginBody, passwordByGet: config.demo === true,
     verifyToken: (token) => app.jwt.verify<SessionClaims>(token),
+    sessionIds: sessionIdCodec(config.secret, authVersion),
+    // What a token would carry, from the record of the session. The checks of every petition come after this.
+    claimsOfSession: async (sid) => {
+      const row = await config.store.readSessionIdentity(sid);
+      if (!row) return undefined;
+      return { id: row.userId, name: row.userName, role: row.role, ...(row.collectorId ? { collectorId: row.collectorId } : {}), sid: row.id,
+        authVersion: row.credentialVersion === undefined ? authVersion : String(row.credentialVersion), channel: TEXT_PROTOCOL_CHANNEL };
+    },
   });
   app.get("/api/openapi.json", () => ({
     openapi: "3.1.0",
