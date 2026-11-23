@@ -1,4 +1,4 @@
-// Plain-text protocol for the mobile application: the seven petitions of docs/protocolo-cyp/Protocolo CYP 0.4.txt.
+// Plain-text protocol for the mobile application: the seven petitions of docs/protocolo-cyp/Protocolo CYP 0.5.txt.
 // Each one is a thin adapter in front of the same functions the JSON API uses; no rule of the business lives here.
 import { createHash } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -16,18 +16,22 @@ import {
   parseDate, parseMoney, parsePage, percentText, PROTOCOL_COMMANDS, protocolErrorOf, ProtocolError, protocolStamp, rawParameters, record, typedText,
   WHOLE_PETITION, withoutVersion, type ProtocolCommand,
 } from "./text-protocol.js";
+import { isShortSessionId, type sessionIdCodec } from "./text-protocol-session.js";
 
-type Claims = User & { authVersion?: string; sid?: string; exp?: number };
+type Claims = User & { authVersion?: string; sid?: string; channel?: string };
 /** Marks the session tokens given by this protocol: the JSON API does not take them (see the preHandler of app.ts). */
 export const TEXT_PROTOCOL_CHANNEL = "cyp";
 export type TextProtocolDeps = {
   store: Store;
   systemOperators: User[];
-  /** The session token of the web: `idSesion` is one of them, marked with the channel of the protocol. */
+  /** A session token: of the web, or an idSesion given before version 0.5, marked with the channel of the protocol. */
   verifyToken: (token: string) => Claims;
+  /** The idSesion of 32 characters and what it stands for (text-protocol-session.ts). */
+  sessionIds: ReturnType<typeof sessionIdCodec>;
+  claimsOfSession: (sid: string) => Promise<Claims | undefined>;
   /** The check of every request of the web (session alive, account, role, collector, permission of the path). */
   authenticate: (claims: Claims, method: string, path: string) => Promise<User>;
-  /** `expiresAt`: when the record of the session ends (its token has its own end, in `exp`). */
+  /** `expiresAt`: when the record of the session ends. */
   signIn: (login: string, password: string, channel?: string) => Promise<{ token: string; user: User; expiresAt: string }>;
   loginBody: z.ZodType<{ email: string; password: string }>;
   /**
@@ -97,8 +101,15 @@ function contactOf(state: State, actor: User, id: string, side: "sender" | "reci
 }
 
 export async function registerTextProtocol(app: FastifyInstance, deps: TextProtocolDeps) {
-  const sessionOf = (token: string): Claims => {
+  const sessionOf = async (token: string): Promise<Claims> => {
     if (token === "") throw missing("idSesion");
+    if (isShortSessionId(token)) {
+      const sid = deps.sessionIds.open(token);
+      // Out of any catch: a central that fails is EIC, and the application repeats the petition with this same session.
+      const claims = sid ? await deps.claimsOfSession(sid) : undefined;
+      if (!claims) throw new ProtocolError("SNE");
+      return claims;
+    }
     try { return deps.verifyToken(token); }
     catch (error) { throw new ProtocolError((error as { code?: string }).code === "FAST_JWT_EXPIRED" ? "SNA" : "SNE"); }
   };
@@ -137,9 +148,7 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
       catch (error) { if (error instanceof DomainError) return "0"; throw error; }
     };
     const { id, name, role } = session.user;
-    // Vence: the first of the two ends a session has, the one of its record and the one of its token.
-    const ends = Math.min(Date.parse(session.expiresAt), ...(claims.exp ? [claims.exp * 1000] : []));
-    return okLine(now, session.token, record(id, name, role, await can(SEND), await can(VIEW)), protocolStamp(new Date(ends)));
+    return okLine(now, deps.sessionIds.seal(claims.sid as string), record(id, name, role, await can(SEND), await can(VIEW)), protocolStamp(new Date(session.expiresAt)));
   }
 
   async function logout(claims: Claims, parts: string[], now: Date) {
@@ -277,7 +286,7 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
     if (name === "login") return login(raw, now);
     const parts = withoutVersion(name, raw.split("|"));
     assertOneLine(name, parts);
-    const claims = sessionOf(parts[0]);
+    const claims = await sessionOf(parts[0]);
     if (name === "logout") return logout(claims, parts, now);
     // The permission is asked twice on purpose: by the equivalent path, as the web does, and by its own name, so a
     // change in the table of paths can never leave these petitions open.

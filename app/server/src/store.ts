@@ -10,6 +10,8 @@ import type { StationInstallationRef } from "./station-installation-protocol.js"
 import { readCatalogs, saveCatalogMasters, saveRecurringCharges } from "./catalog-store.js";
 pg.types.setTypeParser(20, Number);
 type SessionStation = { name: string; number: string; linked: boolean };
+/** Who a session belongs to, from its record. `credentialVersion` is absent for an identity without a saved account. */
+export type SessionIdentity = { id: string; userId: string; userName: string; role: User["role"]; collectorId?: string; credentialVersion?: number };
 // The same installation must match the browser reference and the current company for both reads.
 const registeredStationsSql = `
   SELECT DISTINCT i.station_id
@@ -29,6 +31,7 @@ export interface Store {
   readRequest?(): Promise<State>;
   transactionRequest?<T>(fn: (s: State) => T | Promise<T>): Promise<T>;
   readAccess?(actor: User, sessionId: unknown): Promise<State>;
+  readSessionIdentity(id: string): Promise<SessionIdentity | undefined>;
   readStationReceiptFormats?(installations: StationInstallationRef[], rraaClientId?: string): Promise<RecipientReceiptFormat[]>;
   hasDueRecurring?(today: string): Promise<boolean>;
   readIdempotency?(key: string): Promise<State["idempotency"][number] | undefined>;
@@ -57,6 +60,14 @@ export class MemoryStore implements Store {
   async read() {
     await this.tail;
     return structuredClone(this.state);
+  }
+  async readSessionIdentity(id: string): Promise<SessionIdentity | undefined> {
+    const state = await this.read();
+    const row = state.adminTools?.sessions.find((session) => session.id === id);
+    if (!row) return undefined;
+    const version = state.accounts.find((account) => account.id === row.userId)?.credentialVersion;
+    return { id: row.id, userId: row.userId, userName: row.userName, role: row.role, ...(row.collectorId ? { collectorId: row.collectorId } : {}),
+      ...(version === undefined ? {} : { credentialVersion: version }) };
   }
   protected async persist(_state: State) {}
   transaction<T>(fn: (s: State) => T | Promise<T>): Promise<T> {
@@ -738,6 +749,12 @@ export class PostgresStore implements Store {
       await client.query("COMMIT"); return state;
     } catch (error) { await client.query("ROLLBACK"); throw error; }
     finally { client.release(); }
+  }
+  async readSessionIdentity(id: string) {
+    // The account only counts with its login: a row without email is an identity kept for the audit (see ensureUser).
+    const result = await this.pool.query(`SELECT s.id,s.user_id AS "userId",s.user_name AS "userName",s.role,s.collector_id AS "collectorId",
+      u.credential_version AS "credentialVersion" FROM auth_sessions s LEFT JOIN users u ON u.id=s.user_id AND u.email IS NOT NULL WHERE s.id=$1`, [id]);
+    return result.rows[0] ? clean(result.rows[0]) as SessionIdentity : undefined;
   }
   async hasDueRecurring(today: string) {
     const result = await this.pool.query("SELECT EXISTS(SELECT 1 FROM recurring_charges WHERE status='active' AND next_run_date <= $1::date AND generation_from <= $1::date AND frequency <> 'undefined') AS due", [today]);
