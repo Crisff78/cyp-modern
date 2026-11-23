@@ -31,8 +31,8 @@ la base dedicada `cyp_demo`. Las instalaciones locales normales quedan intactas.
 - Tasas y envíos DOP/USD/EUR con recibos pagados, pendientes y cancelaciones.
 - Grupos, PCPs, estaciones, máquinas, plantillas de cargos y solicitudes de
   autorización. Las cuentas ficticias adicionales están deshabilitadas; se
-  conservan los accesos habituales de Administración y Cobrador, y la cuenta de
-  Cajero de práctica descrita abajo.
+  conservan los accesos habituales de Administración y Cobrador, y las cuentas de
+  Cajero de práctica y de la aplicación móvil descritas abajo.
 - Doce comercios de práctica adicionales en la ruta del cobrador habitual,
   con cargos y autorizaciones de pago pendientes. Los límites, fondos, jornadas
   y permisos normales siguen aplicándose al operar.
@@ -45,6 +45,18 @@ con la marca `__demo_seed__:cashier-v1`: si un evaluador la edita, la desactiva,
 la borra o le cambia los permisos, no se repone. El modo real nunca la crea. En
 PostgreSQL necesita la migración 035; el comando de inicio de Render la aplica
 antes de abrir el puerto.
+
+**Cuenta de la aplicación móvil (`mobile-test-v1`).** Por orden de Rardiel del
+2026-11-23, el arranque de la demo pública agrega una sola vez el usuario `cob`
+con clave `cob`, con el rol Cajero y sin cobrador: es con la que prueba quien
+programa la aplicación. Es la única clave de menos de 15 caracteres que se crea
+así; la regla sigue igual para las demás. Queda registrada con la marca
+`__demo_seed__:mobile-test-v1`: si alguien la edita o la borra, no se repone, y
+si ya hay una cuenta con ese usuario, no se toca. Fuera del modo demo la API la
+rechaza. Para registrar envíos necesita su Caja de Remesas abierta ese día, y eso
+no se hace desde la aplicación: se entra en la web con `cob` y se abre en Cuadres
+Diarios → Caja de remesas, en la moneda en que paga el remitente. Si no, la
+central responde `CNA`.
 
 ### Recorrido del Cajero
 
