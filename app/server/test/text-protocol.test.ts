@@ -80,16 +80,15 @@ test("login: the password keeps its separators, each role gets its two permissio
   try {
     const ok = await post("login", `admin@cyp.local|${DEMO_PASSWORD}`);
     assert.equal(ok.length, 5); assert.equal(ok[0], "OK");
-    assert.match(ok[2], /^[A-Za-z0-9._-]{100,1000}$/, "idSesion: letters, digits, dot, hyphen and underscore");
+    assert.match(ok[2], /^[0-9A-F]{32}$/, "idSesion: 32 hexadecimal characters in uppercase");
     assert.deepEqual(fields(ok[3]), ["demo-admin", "Administración", "admin", "1", "1"]);
-    // Vence: the first of the two ends a session has (its token and its record), eight hours after it started.
-    const claims = JSON.parse(Buffer.from(ok[2].split(".")[1], "base64url").toString("utf8")) as { exp: number; sid: string };
-    const saved = (await store.read()).adminTools!.sessions.find((row) => row.id === claims.sid)!;
-    const ends = Math.min(claims.exp * 1000, Date.parse(saved.expiresAt));
+    // Vence: the end of the record of the session, eight hours after it started.
+    const saved = (await store.read()).adminTools!.sessions.at(-1)!;
+    const ends = Date.parse(saved.expiresAt);
     assert.equal(ok[4], protocolStamp(new Date(ends)));
     assert.match(ok[4], /^\d{14}$/); assert.ok(ok[4] > ok[1], "after the FechayHora of the answer");
     const hours = (ends - Date.parse(saved.startedAt)) / 3_600_000;
-    assert.ok(hours > 7.99 && hours <= 8, String(hours));
+    assert.equal(hours, 8);
     assert.deepEqual(fields((await post("login", `  ${DEMO_CASHIER_EMAIL.toUpperCase()} |${DEMO_PASSWORD}`))[3]), ["demo-cashier", "Cajero de práctica", "cashier", "1", "1"]);
     assert.deepEqual(fields((await post("login", `supervisora@cyp.local|${DEMO_PASSWORD}`))[3]), ["sup-1", "Cuenta sup-1", "supervisor", "0", "1"]);
     assert.deepEqual(fields((await post("login", `cliente@cyp.local|${DEMO_PASSWORD}`))[3]), ["cli-user", "Cuenta cli-user", "client", "0", "0"]);
