@@ -5,11 +5,15 @@ otro equipo haga Envíos de Dinero contra CyP. Orden de Rardiel del 2026-11-19: 
 
 - **El contrato** es [`protocolo-cyp/Protocolo CYP 0.4.txt`](<protocolo-cyp/Protocolo CYP 0.4.txt>): es el documento
   que se le envía a quien programa la aplicación. Si el servidor y ese documento no coinciden, hay un fallo: se
-  arregla el servidor o se envía una versión nueva del documento, nunca se deja pasar.
+  arregla el servidor o se envía una versión nueva del documento, nunca se deja pasar. El documento describe solo
+  lo que existe hoy: no cuenta lo que se cambió o se quitó. Lo nuevo desde la última versión que tiene esa persona
+  (hoy, la 0.1) va marcado con `(NUEVO)` y resumido en «Lo nuevo de esta versión». El historial por versión está en
+  git y en los planes de `designs/`.
 - **El plan** y su revisión están en `designs/2026-11-19-protocolo-texto-plano/`. La versión 0.2 (GET en todas las
   peticiones y `Vence`), en `designs/2026-11-20-protocolo-get-y-vence/`; la 0.3 (sin código de invitación), en
   `designs/2026-11-20-sin-invitacion/`; la 0.4 (`p=` y la versión de la aplicación), en
-  `designs/2026-11-20-protocolo-p-y-version/`.
+  `designs/2026-11-20-protocolo-p-y-version/`; y el documento 0.4 limpio, con lo nuevo marcado, en
+  `designs/2026-11-23-protocolo-04-limpio/`.
 
 ## Dónde está cada cosa
 
@@ -119,6 +123,9 @@ Visto en una captura suya del 2026-11-20 y comprobado contra un servidor local, 
   que mirar:** puede estar esperando una Versión en el tercer lugar.
 - Una letra con acento o un espacio **sin codificar** en la dirección no llegan al protocolo: Node responde 400.
   `%ED` (una í en Latin-1) responde `PIN`: los datos van en UTF-8. `+` es un signo de más, no un espacio.
+  Comprobado también en la demo el 2026-11-23, con una sesión que no existe y la dirección escrita byte a byte: con
+  el acento o el espacio sin codificar llega un 400 sin cuerpo (no llega al servidor de CyP); codificados, la
+  petición llega (`SNE`). Por eso el documento dice que un 400 no se repite tal cual.
 
 ## Antes de producción
 
