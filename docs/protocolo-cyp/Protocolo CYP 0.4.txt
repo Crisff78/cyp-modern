@@ -1,7 +1,7 @@
 Protocolo de Intercambio de Datos (CyP)
 
  Versión: 0.4
-   Fecha: 20/11/2026
+   Fecha: 23/11/2026
 
 
  Aquí le explicamos cómo su aplicación móvil le va a pedir datos a la
@@ -22,8 +22,9 @@ lo tenemos programado en nuestra central de pruebas, tal como está escrito
 aquí, para que usted pueda probar su aplicación desde el principio (vea
 "Central de pruebas", en las Notas Generales).
 
- Esta es la versión 0.4. Lo que cambió desde la 0.1 está en "Agregado" y
-"Modificado", justo antes de las Funcionalidades.
+ Esta es la versión 0.4, la siguiente a la 0.1 que usted tiene. Lo nuevo
+está marcado con (NUEVO), y lo resumimos en "Lo nuevo de esta versión",
+justo antes de las Funcionalidades.
 
  Al final hay 12 puntos que quisiéramos que nos confirme. Si con sus
 respuestas hay que cambiar algo, lo cambiamos en la central y le mandamos
@@ -110,7 +111,15 @@ seguridad se encarga el HTTPS (la dirección empieza por https://).
  Parámetros -> Son los datos de la petición, separados por | (pipe) y en el
                orden indicado.
 
- También puede mandarla como la manda su aplicación:
+ - Los parámetros que van entre corchetes [ ] se pueden omitir.
+ - Un dato que no aplica se deja vacío, pero SIN quitar su | (pipe).
+   Ejemplo: para pedir la página 2 del listado de clientes sin poner Texto:
+   /cyp_clients?idSesion||2
+ - En los ejemplos de este documento ponemos "idSesion" en vez del texto
+   completo de la sesión, para que se lean mejor.
+
+ (NUEVO, todo lo que sigue hasta el título 2) La central también acepta la
+ forma en que llama su aplicación:
 
  url/cyp_cmd?p=Parámetros|VersionApp
 
@@ -119,7 +128,8 @@ seguridad se encarga el HTTPS (la dirección empieza por https://).
  p= -> Va justo después del ?, en minúscula. La central lo acepta en las
        siete peticiones y lo quita: con p= o sin él es la misma petición.
        Es solo de las direcciones (GET); por POST el cuerpo son los
-       Parámetros tal cual, sin p=.
+       Parámetros tal cual, sin p=. Si el cuerpo empieza por p=, la
+       central responde ER con PIN.
 
  VersionApp -> El número que su aplicación pone al final (hoy, 3.0). No es
                la versión de este documento: no lo cambie cuando reciba un
@@ -135,26 +145,21 @@ seguridad se encarga el HTTPS (la dirección empieza por https://).
    tres cifras).
  - Va siempre el último, después de todos los datos que mande. En Registrar
    Envío va después de los 16 datos: es el dato 17.
- - Un importe nunca se confunde con él: en Cotizar Envío, 100.00 al final
-   es el Monto.
- - Un caso a tener en cuenta: si el último dato que manda es un Texto que
-   es solo un número con punto (buscar "3.0" en el Listado de Clientes), la
-   central lo toma por VersionApp. Para buscarlo, mande también la Pagina:
-   /cyp_clients?idSesion|3.0|1
-
- - Los parámetros que van entre corchetes [ ] se pueden omitir.
- - Un dato que no aplica se deja vacío, pero SIN quitar su | (pipe).
-   Ejemplo: para pedir la página 2 del listado de clientes sin poner Texto:
-   /cyp_clients?idSesion||2
- - En los ejemplos de este documento ponemos "idSesion" en vez del texto
-   completo de la sesión, para que se lean mejor.
+ - Un importe nunca se confunde con él, porque la central solo aparta
+   VersionApp cuando la petición ya trae todos sus datos obligatorios. En
+   Cotizar Envío, 100.00 al final es el Monto.
+ - Un caso a tener en cuenta, solo si alguna vez NO manda VersionApp: un
+   Texto que sea solo un número con punto (buscar "3.0" en el Listado de
+   Clientes) y vaya el último se toma por VersionApp. Para buscarlo, mande
+   también la Pagina: /cyp_clients?idSesion|3.0|1
+   Si manda VersionApp siempre, este caso no le pasa.
 
 
 2) Cómo se manda: GET o POST
 ----------------------------
 
- - Las siete peticiones se aceptan por GET y por POST. Use la que prefiera;
-   puede mezclar las dos.
+ - (NUEVO) Las siete peticiones se aceptan por GET y por POST. Use la que
+   prefiera; puede mezclar las dos.
  - Por GET, los Parámetros van después del ? (o después de ?p=), igual que
    en LSAN.
  - Por POST, los Parámetros van en el cuerpo como texto plano
@@ -162,16 +167,20 @@ seguridad se encarga el HTTPS (la dirección empieza por https://).
    final del cuerpo.
  - La misma petición con los mismos Parámetros vale igual por GET que por
    POST.
- - Una dirección de GET (lo que va después del nombre del servidor) puede
-   tener hasta 8000 caracteres, ya codificada. Si pasa de ahí, la central
-   responde ER con PIN: mande esa petición por POST. Solo puede pasarle en
-   Registrar Envío con una Nota muy larga.
- - Un consejo, no una obligación: en un GET, lo que se manda queda escrito
-   en la dirección, y las direcciones se guardan en los registros de los
-   servidores por donde pasan. Por eso, si su aplicación puede, mande
-   Iniciar Sesión por POST: ahí viaja la Clave. En la central de pruebas se
-   acepta por GET sin problema, porque los datos son ficticios. Para la
-   central real lo decidimos con usted (punto 4 del final).
+ - (NUEVO) Una dirección de GET (lo que va después del nombre del servidor)
+   puede tener hasta 8000 caracteres, ya codificada. Si pasa de ahí, la
+   central responde ER con PIN. Solo puede pasarle en Registrar Envío con
+   una Nota muy larga: mande esa petición por POST o, si su aplicación solo
+   manda GET, acorte la Nota (al codificarla, cada letra con acento ocupa
+   6 caracteres).
+ - (NUEVO) Sobre la Clave: en un GET, lo que se manda queda escrito en la
+   dirección, y las direcciones se guardan en los registros de los
+   servidores por donde pasan. Por eso es mejor mandar Iniciar Sesión por
+   POST, si su aplicación puede. No es obligatorio: en la central de
+   pruebas se acepta por GET, porque los datos son ficticios. En la central
+   real, por ahora, Iniciar Sesión por GET no está activado (respondería ER
+   con PIN): cómo queda lo decidimos con usted (punto 4 del final). Hasta
+   entonces no tiene que cambiar nada.
 
  La misma petición, de las dos maneras:
 
@@ -189,8 +198,9 @@ seguridad se encarga el HTTPS (la dirección empieza por https://).
  - En GET los caracteres especiales van codificados con %, como en cualquier
    dirección web (espacio = %20, # = %23). La central primero decodifica
    todo lo que sigue al ? (o al ?p=) y DESPUÉS separa por | (pipe).
- - Una letra con acento o un espacio SIN codificar hacen que el servidor
-   rechace la dirección entera (código HTTP 400, sin OK ni ER). La ñ va
+ - (NUEVO) Una letra con acento o un espacio SIN codificar hacen que el
+   servidor rechace la dirección entera: llega un código HTTP 400, sin OK
+   ni ER. No repita esa petición tal cual: corrija la dirección. La ñ va
    como %C3%B1 y la í como %C3%AD.
  - El | (pipe) que separa los parámetros lo puede mandar tal cual o
    codificado como %7C: para la central es lo mismo.
@@ -198,8 +208,9 @@ seguridad se encarga el HTTPS (la dirección empieza por https://).
    como %20. Cuidado: algunas librerías (las de formularios) codifican el
    espacio como +. Con ellas, "Juan Perez" llegaría como "Juan+Perez", y
    una Clave con un espacio daría UCI.
- - El signo % va como %25.
- - Esto vale para todos los datos, también para la Clave.
+ - (NUEVO) El signo % va como %25.
+ - (NUEVO) Las reglas de este apartado valen para todos los datos, también
+   para la Clave.
 
 
 4) Cómo es una respuesta
@@ -253,8 +264,11 @@ línea y sin salto de línea al final. Hay dos formas:
    o no llega ninguna respuesta (le aconsejamos esperar unos 30 segundos),
    es un fallo de comunicación. La petición se puede repetir. En Registrar
    Envío hay que repetirla con el MISMO idOperacion (se explica en 3.2).
- - En versiones nuevas de este documento pueden venir datos de más AL FINAL
-   de una respuesta o de un registro. Su aplicación debe ignorar los que no
+ - (NUEVO) La excepción es el código HTTP 400: quiere decir que la
+   dirección está mal escrita (vea el apartado 3). Repetirla igual no
+   sirve: hay que corregirla.
+ - (NUEVO) Más adelante la central puede agregar datos AL FINAL de una
+   respuesta o de un registro. Su aplicación debe ignorar los que no
    conozca, sin dar error.
 
 
@@ -352,54 +366,46 @@ esperar un minuto.
  Para que pruebe su aplicación le damos una central de pruebas, con datos
 ficticios. Su dirección (url), el usuario y la clave se los damos aparte.
 
- - La central de pruebas NO pide código de invitación (lo pedía hasta la
-   versión 0.2). Su aplicación no tiene que mandar ninguna cabecera: basta
-   con la dirección y los Parámetros.
- - Si su aplicación todavía manda la cabecera X-CyP-Invitacion, no pasa
+ - (NUEVO) Su aplicación no tiene que mandar ninguna cabecera especial:
+   basta con la dirección y los Parámetros. Si manda alguna de más, no pasa
    nada: la central no la mira.
- - La central de pruebas se duerme cuando lleva un rato sin uso. La primera
-   petición puede tardar un minuto o más; las siguientes van rápido.
+ - (NUEVO) La central de pruebas se duerme cuando lleva un rato sin uso. La
+   primera petición puede tardar un minuto o más: para esa, espere hasta 2
+   minutos antes de darla por perdida. Las siguientes van rápido.
 
 
-Agregado
---------
+Lo nuevo de esta versión
+------------------------
 
- Versión 0.4 (20/11/2026):
+ Esto es lo nuevo desde la versión 0.1. En el documento, cada parte nueva
+está marcada con (NUEVO).
 
- - Las peticiones se pueden mandar como las manda su aplicación: con p=
-   delante de los Parámetros y con VersionApp (hoy, 3.0) al final. Vale en
-   las siete (Notas Generales, 1). Mandarlas como hasta ahora sigue
-   valiendo igual.
-
- Versión 0.2 (20/11/2026):
+ Lo que tiene que revisar en su aplicación:
 
  - Iniciar Sesión devuelve un dato más, al final: Vence, la fecha y hora en
-   que se vence la sesión (1.1).
- - Tope de 8000 caracteres para la dirección de un GET (Notas Generales, 2).
- - Regla nueva: en versiones nuevas pueden venir datos de más al final de
-   una respuesta, y hay que ignorarlos (Notas Generales, 4).
+   que se vence la sesión. La respuesta ahora tiene 5 partes (1.1).
+ - Más adelante la central puede agregar datos al final de una respuesta:
+   su aplicación debe ignorar los que no conozca (Notas Generales, 4).
+ - En GET, una letra con acento o un espacio sin codificar hacen que el
+   servidor rechace la dirección con un código HTTP 400. Esa petición no
+   se repite tal cual (Notas Generales, 3 y 4).
+ - Si alguna vez NO manda VersionApp: en el Listado de Clientes, un Texto
+   que sea solo un número con punto y vaya el último se toma por
+   VersionApp (Notas Generales, 1).
 
- Versión 0.1 (19/11/2026): primera versión.
+ Lo que la central acepta ahora, sin que usted cambie nada:
 
+ - Su forma de llamar: p= delante de los Parámetros y VersionApp (hoy,
+   3.0) al final, en las siete peticiones (Notas Generales, 1). En
+   Registrar Envío, VersionApp va después de los 16 datos (3.2).
+ - Las siete peticiones por GET y por POST, con un tope de 8000 caracteres
+   para la dirección de un GET (Notas Generales, 2).
+ - En la central de pruebas no hay que mandar ninguna cabecera especial.
+   Esa central se duerme si lleva un rato sin uso: la primera petición
+   puede tardar un minuto o más (Notas Generales, 9).
 
-Modificado
-----------
-
- Versión 0.4 (20/11/2026):
-
- - En las preguntas del final cambió la pregunta 2.
-
- Versión 0.3 (20/11/2026):
-
- - La central de pruebas ya no pide código de invitación: se quitó la
-   cabecera X-CyP-Invitacion (Notas Generales, 9). No tiene que cambiar
-   nada en su aplicación: si la sigue mandando, la central no la mira.
-
- Versión 0.2 (20/11/2026):
-
- - Iniciar Sesión y Registrar Envío se aceptan también por GET. En la 0.1
-   eran solo por POST, y por GET respondían ER con PIN (Notas Generales, 2).
- - En las preguntas del final cambió la pregunta 4.
+ En las preguntas del final tienen parte nueva la 2 y la 4 (a y b). Las
+demás son las mismas.
 
 
 
@@ -450,6 +456,9 @@ Funcionalidades
  Res: OK|FechayHora|idSesion|DatosUsuario|Vence
       ER|FechayHora|Código|Mensaje|Dato
 
+ (NUEVO: se acepta por GET, y la respuesta trae un dato más al final,
+ Vence. Ahora tiene 5 partes.)
+
  Qué se manda:
 
  Usuario: El nombre de usuario con el que la persona entra en la central
@@ -461,13 +470,15 @@ Funcionalidades
 
  Lo que se manda se parte SOLO por el primer | (pipe): lo de antes es el
  Usuario y TODO lo de después es la Clave, tal cual, aunque traiga | ! ; @
- o espacios. Por GET, la Clave va codificada con % como cualquier otro dato
- (espacio = %20, % = %25, # = %23; el + no es espacio). Por POST va tal
- cual, sin salto de línea al final.
+ o espacios. Por POST va tal cual, sin salto de línea al final.
 
- Si al final viene VersionApp (por ejemplo |3.0), la central lo aparta y
- la Clave es lo que queda. Una Clave que termine de forma parecida (por
- ejemplo en |2.5) también entra: la central prueba las dos lecturas.
+ (NUEVO) Por GET, la Clave va codificada con % como cualquier otro dato
+ (espacio = %20, % = %25, # = %23; el + no es espacio).
+
+ (NUEVO) Si al final viene VersionApp (por ejemplo |3.0), la central lo
+ aparta y la Clave es lo que queda. Una Clave que termine de forma parecida
+ (por ejemplo en |2.5) también entra: la central prueba la Clave con ese
+ final y sin él.
 
  Qué devuelve:
 
@@ -835,11 +846,15 @@ Funcionalidades
  Res: OK|FechayHora|Envio
       ER|FechayHora|Código|Mensaje|Dato
 
+ (NUEVO: se acepta por GET, además de por POST.)
+
  Van SIEMPRE los 16 datos (15 pipes), en ese orden y en una sola línea, sin
  salto de línea al final. Los que no aplican van vacíos, también los del
- final. Si su aplicación manda VersionApp, va después de los 16: es el dato
- 17. Ojo: con 15 datos y VersionApp vuelven a ser 16, y la central tomaría
- VersionApp por la Nota.
+ final.
+
+ (NUEVO) Si su aplicación manda VersionApp, va después de los 16: es el
+ dato 17. Ojo: si manda 15 datos y luego VersionApp, la central cuenta 16
+ y toma VersionApp por la Nota.
 
  Qué se manda:
 
@@ -868,10 +883,11 @@ Funcionalidades
                  cambiado una tasa, se haya cerrado la caja o la sesión
                  sea otra.
               c- "Los mismos datos" quiere decir todos los datos de la
-                 petición menos el idSesion (y menos VersionApp, si la
-                 manda). Repítalos igual, carácter por
-                 carácter. Da lo mismo repetirla por GET o por POST: la
-                 central compara los datos ya decodificados.
+                 petición menos el idSesion. Repítalos igual, carácter por
+                 carácter.
+                 (NUEVO) Tampoco cuenta VersionApp, si la manda. Y da lo
+                 mismo repetirla por GET o por POST: la central compara
+                 los datos, no la forma de mandarlos.
               d- Si llega el mismo idOperacion con otros datos, responde
                  ER con OPD, y en el Dato viene el NumEnvio que ya estaba
                  registrado. Quiere decir que el envío YA quedó registrado
@@ -1014,11 +1030,17 @@ Funcionalidades
 
  Res: OK|20261119093005|c2a4e6f8-1b3d-4f5a-9c7e-0a1b2c3d4e5f;ENV00000048;REC00000048;AD0B35A22F305CA2;20261119093005;100.00;5.00;105.00;5806.50;15.00
 
+ (NUEVO) La misma petición, como la manda su aplicación (con p= delante y
+ 3.0 después de los 16 datos):
+
+ /cyp_send?p=idSesion|5e0b7c1a-4d2f-4b6e-8f90-a1b2c3d4e5f6|3f6c1e0a-9b2d-4c7e-8a51-0d2f6b7c9e14|7b1d9c44-2e6f-4a83-b0c5-91e2d3f4a567|USD|DOP|100.00|0|105.00|5806.50|1|120.00|||||3.0
+
  Ejemplo con Transferencia (solo cambia el final):
 
  ...|USD|DOP|100.00|0|105.00|5806.50|3||TRF99812|Banco Popular|1|
 
- Ejemplo con una Nota, por GET (el espacio va como %20 y la ñ como %C3%B1):
+ (NUEVO) Ejemplo con una Nota, por GET (el espacio va como %20 y la ñ como
+ %C3%B1):
 
  ...|USD|DOP|100.00|0|105.00|5806.50|1|120.00||||Para%20la%20ni%C3%B1a
 
@@ -1170,9 +1192,9 @@ Errores
  - El Dato viene solo en estos: PIN trae el nombre del dato que está mal
    (o la palabra Parametros si lo que está mal es la petición entera: le
    sobran o le faltan datos, o es demasiado grande; VersionApp al final no
-   cuenta como dato de más); CNE, CIN y CFR traen
-   el idCliente (en el Listado de Clientes, CNE no trae nada); OPD trae el
-   NumEnvio que ya estaba registrado. En los demás viene vacío.
+   cuenta como dato de más); CNE, CIN y CFR traen el idCliente (en el
+   Listado de Clientes, CNE no trae nada); OPD trae el NumEnvio que ya
+   estaba registrado. En los demás viene vacío.
  - En cada petición pusimos sus errores propios. Además, PIN, DML, PNE, EIC
    y ORC pueden venir en cualquier petición; SNE y SNA en todas las que
    llevan idSesion; y SPE y CBI en todas esas menos Cerrar Sesión.
@@ -1276,12 +1298,11 @@ una versión nueva de este documento.
     alguna regla para nombrarlos, o prefiere otros nombres? Si no, se
     quedan estos.
 
- 2- Versión: su aplicación manda un número al final de la petición (3.0),
-    y la central ya lo acepta. ¿Qué es ese número: la versión de su
-    aplicación? Y en las respuestas: el formato general de LSAN dice
-    Estado|FechayHora|Versión|Otros Datos, pero en LSAN los ejemplos no
-    llevan la Versión, y aquí tampoco la pusimos. ¿Su aplicación espera
-    recibirla después de la FechayHora?
+ 2- (NUEVO) Versión: su aplicación manda un número al final de la petición
+    (3.0); la central lo acepta y no lo usa. En las respuestas, el formato
+    general de LSAN dice Estado|FechayHora|Versión|Otros Datos, pero en
+    LSAN los ejemplos no llevan la Versión, y aquí tampoco la pusimos. ¿Su
+    aplicación espera recibirla después de la FechayHora?
 
  3- Códigos de error: los de este documento los pusimos nosotros. ¿Nos
     puede mandar el archivo "Errores versión 4_0.txt"? Con él cambiamos
@@ -1289,12 +1310,14 @@ una versión nueva de este documento.
     agregamos un Mensaje entre el Código y el Dato; ¿le sirve así?
 
  4- Cómo se mandan las peticiones:
-    a) Usted nos dijo que trabaja con GET: desde la versión 0.2 todas las
-       peticiones se aceptan por GET. Nos queda una duda, por la Clave:
-       ¿puede su aplicación mandar POST, aunque sea solo en Iniciar Sesión?
-       Si no puede, ¿puede poner una cabecera propia en un GET?
-    b) En GET, ¿su aplicación codifica con % los caracteres especiales? ¿Y
-       el espacio lo manda como %20? Si lo manda como +, díganoslo.
+    a) (NUEVO) Usted nos dijo que trabaja con GET, y todas las peticiones
+       se aceptan por GET. Nos queda una duda, por la Clave: ¿puede su
+       aplicación mandar POST, aunque sea solo en Iniciar Sesión? Si no
+       puede, ¿puede mandar la Clave en una cabecera, en vez de en la
+       dirección?
+    b) En GET, ¿su aplicación codifica con % los caracteres especiales?
+       (NUEVO) ¿Y el espacio lo manda como %20? Si lo manda como +,
+       díganoslo.
     c) La central responde HTTP 200 también en los errores. ¿Su aplicación
        lo maneja así?
 
