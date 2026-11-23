@@ -71,7 +71,7 @@ import { boundedId, fourDecimalNumber, freeText, machineCounter, optionalEmail, 
 import { claimClientIdentity, reserveClientIdentity, SYSTEM_CLIENT_CODE } from "./client-identities.js";
 import { ACCOUNT_ROLES, isCollectorAccountRole, isOperationalRole } from "./account-roles.js";
 import { DEMO_PASSWORD } from "./demo-credentials.js";
-import { DEMO_CASHIER_ID } from "./demo-cashier-scenarios.js";
+import { isPublishedDemoAccount } from "./demo-cashier-scenarios.js";
 import { dropSavedRoleProfile, permissionCatalog, permissionsForAccount, updateAccountPermissions, userPermissionsBody } from "./user-permissions.js";
 import { assertDelegatesAccess, assertDelegatesRole, assertBootstrapManagedBySelf, assertManagesAccount, authorizeRequest, currentAccessUser, filterOperationalSnapshot, guardCatalogChanges, requirePermission } from "./access.js";
 import { effectiveAccess, hasPermission, hasRemittanceAccess, hasRoleExceptions } from "../../shared/access.mjs";
@@ -316,8 +316,8 @@ export async function buildApp(config: Config) {
     if (
       !account ||
       account.status !== "active" ||
-      // The practice Cajero saved by the demo keeps the published password: only demo mode accepts it.
-      (!config.demo && account.id === DEMO_CASHIER_ID) ||
+      // The accounts saved by the demo keep their published password: only demo mode accepts them.
+      (!config.demo && isPublishedDemoAccount(account.id)) ||
       account.role !== u.role ||
       account.collectorId !== u.collectorId ||
       u.authVersion !== String(account.credentialVersion)
@@ -525,7 +525,7 @@ export async function buildApp(config: Config) {
       const account = u ? stored.accounts.find((row) => row.id === u!.id) : findAccount(stored, email);
       if (account) {
         // A base or file that once started in demo mode keeps the practice Cajero with the published password.
-        if (account.status !== "active" || (!config.demo && account.id === DEMO_CASHIER_ID) || !verifyPassword(password, account.salt, account.passwordHash))
+        if (account.status !== "active" || (!config.demo && isPublishedDemoAccount(account.id)) || !verifyPassword(password, account.salt, account.passwordHash))
           throw new DomainError("INVALID_CREDENTIALS", "Usuario o contraseña incorrectos.", 401);
         u = { id: account.id, name: account.name, role: account.role, ...(account.collectorId ? { collectorId: account.collectorId } : {}) };
         version = String(account.credentialVersion);

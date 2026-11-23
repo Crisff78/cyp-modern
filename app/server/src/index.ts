@@ -3,7 +3,7 @@ import { buildApp } from "./app.js";
 import { normalizeDemoCollectorLabel, normalizeDemoCompanyConfig, seed, seedPublicDemo } from "./seed.js";
 import { enrichPublicDemo } from "./demo-scenarios.js";
 import { enrichCollectorDemo } from "./demo-collector-scenarios.js";
-import { enrichCashierDemo } from "./demo-cashier-scenarios.js";
+import { enrichCashierDemo, enrichMobileTestDemo } from "./demo-cashier-scenarios.js";
 import { FileStore, PostgresStore, type Store } from "./store.js";
 import { registerPublicWeb } from "./public-web.js";
 import { createDemoStationControl, createRraaValidator, limitRraaCalls, type RraaValidator } from "./rraa.js";
@@ -53,6 +53,7 @@ async function openStore(): Promise<{
           if (publicWeb) {
             enrichPublicDemo(s);
             enrichCollectorDemo(s);
+            enrichMobileTestDemo(s);
           }
         });
       return {
