@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { buildApp } from "../src/app.js";
 import { enrichPublicDemo } from "../src/demo-scenarios.js";
 import { enrichCollectorDemo } from "../src/demo-collector-scenarios.js";
-import { DEMO_CASHIER_EMAIL, enrichCashierDemo } from "../src/demo-cashier-scenarios.js";
+import { DEMO_CASHIER_EMAIL, enrichCashierDemo, enrichMobileTestDemo } from "../src/demo-cashier-scenarios.js";
 import { DEMO_PASSWORD } from "../src/demo-credentials.js";
 import { DEMO_COMPANY_CONFIG, normalizeDemoCollectorLabel, normalizeDemoCompanyConfig, seed, seedPublicDemo } from "../src/seed.js";
 import { MemoryStore } from "../src/store.js";
@@ -119,13 +119,14 @@ test("first public start on an empty database saves the rate revisions its examp
       enrichCashierDemo(state);
       enrichPublicDemo(state);
       enrichCollectorDemo(state);
+      enrichMobileTestDemo(state);
     });
     const saved = await store.read();
-    assert.equal(saved.idempotency.filter((row) => row.id.startsWith("__demo_seed__:")).length, 3);
+    assert.equal(saved.idempotency.filter((row) => row.id.startsWith("__demo_seed__:")).length, 4);
     // The earlier demo dates must contribute revisions of their own, beyond today's seed.
     assert.ok((saved.remittances.rateHistory ?? []).length > seededRevisions);
     assertRateRevisionsSaved(saved);
-    await store.transaction((state) => { enrichCashierDemo(state); enrichPublicDemo(state); enrichCollectorDemo(state); });
+    await store.transaction((state) => { enrichCashierDemo(state); enrichPublicDemo(state); enrichCollectorDemo(state); enrichMobileTestDemo(state); });
     assert.deepEqual(await store.read(), saved);
   } finally { await store.close(); }
 });

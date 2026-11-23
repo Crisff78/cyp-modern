@@ -33,7 +33,7 @@ Si `.env` ya existe, conserva sus valores. Completa localmente `JWT_SECRET` y `D
 | API / health   | http://127.0.0.1:3001/api/health       |
 | OpenAPI        | http://127.0.0.1:3001/api/openapi.json |
 
-Demo: `admin@cyp.local`, `collector@cyp.local` y `cajero@cyp.local` (Cajero de práctica), los tres con `Demo-CyP-2026!`. Son identidades ficticias: Administración y Cobrador se habilitan únicamente con `DEMO_MODE=true`, y la del cajero se guarda una sola vez en la base o el archivo de la demo al arrancar en modo demo, sin cobrador y con el perfil del rol Cajero (si alguien la edita o la borra, no se repone; con PostgreSQL requiere la migración 035). Esa cuenta queda guardada, pero solo el modo demo la acepta: si la misma base o el mismo archivo arrancan después con `DEMO_MODE=false`, su inicio de sesión y sus sesiones abiertas se rechazan. Con `DATABASE_URL`, estas cuentas acceden a esa base; no uses el modo demo con datos reales. No se importa ningún cliente del respaldo.
+Demo: `admin@cyp.local`, `collector@cyp.local` y `cajero@cyp.local` (Cajero de práctica), los tres con `Demo-CyP-2026!`. La demo pública tiene además `cob` (clave `cob`), la cuenta de Cajero con la que prueba la aplicación móvil. Son identidades ficticias: Administración y Cobrador se habilitan únicamente con `DEMO_MODE=true`, y la del cajero se guarda una sola vez en la base o el archivo de la demo al arrancar en modo demo, sin cobrador y con el perfil del rol Cajero (si alguien la edita o la borra, no se repone; con PostgreSQL requiere la migración 035). Esa cuenta queda guardada, pero solo el modo demo la acepta: si la misma base o el mismo archivo arrancan después con `DEMO_MODE=false`, su inicio de sesión y sus sesiones abiertas se rechazan. Con `DATABASE_URL`, estas cuentas acceden a esa base; no uses el modo demo con datos reales. No se importa ningún cliente del respaldo.
 
 Para empezar una demo nueva, usa una base PostgreSQL dedicada vacía y ejecuta `pnpm --filter @cyp/server db:migrate --apply`. La API rechaza la operación si existe efectivo pendiente de una jornada anterior; no arrastra saldos silenciosamente.
 
@@ -73,7 +73,7 @@ La migración está en `app/server/database/` (`001_initial.sql` más los script
 
 Las identidades `admin@cyp.local`, `collector@cyp.local` y `cajero@cyp.local` son
 ficticias y solo se crean con `DEMO_MODE=true`; fuera del modo demo la clave demo no
-abre ninguna de ellas, tampoco el Cajero de práctica que quedó guardado en la base. Para que el jefe, los cobradores
+abre ninguna de ellas, tampoco el Cajero de práctica ni `cob` si quedaron guardados en la base. Para que el jefe, los cobradores
 y los cajeros entren con su propia cuenta, desde el portal administrativo:
 **Configuración de administración → Usuarios**, botón **Nuevo**. Una cuenta de cobrador se vincula
 a un cobrador existente (y por tanto a su ruta y sus clientes); una de
