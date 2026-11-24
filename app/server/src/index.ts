@@ -4,6 +4,7 @@ import { normalizeDemoCollectorLabel, normalizeDemoCompanyConfig, seed, seedPubl
 import { enrichPublicDemo } from "./demo-scenarios.js";
 import { enrichCollectorDemo } from "./demo-collector-scenarios.js";
 import { enrichCashierDemo, enrichMobileTestDemo } from "./demo-cashier-scenarios.js";
+import { assignMissingClientIdentities } from "./client-identities.js";
 import { FileStore, PostgresStore, type Store } from "./store.js";
 import { registerPublicWeb } from "./public-web.js";
 import { createDemoStationControl, createRraaValidator, limitRraaCalls, type RraaValidator } from "./rraa.js";
@@ -54,6 +55,8 @@ async function openStore(): Promise<{
             enrichPublicDemo(s);
             enrichCollectorDemo(s);
             enrichMobileTestDemo(s);
+            // Every client of the demo has its internal identification: it is the short idCliente of the text protocol.
+            assignMissingClientIdentities(s, { id: "demo-admin", name: "Administración", role: "admin" });
           }
         });
       return {
