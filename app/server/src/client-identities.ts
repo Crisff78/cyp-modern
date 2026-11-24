@@ -31,8 +31,9 @@ export function reserveClientIdentity(state: State, actor: User, now = new Date(
   // The series comes only from codes generated here, which always live in a reservation.
   // A code that a client already uses is skipped below.
   for (const row of reservations) codeNumber = Math.max(codeNumber, seriesNumber(row.code));
+  // The id of a client counts too: the text protocol finds a client by its internal identification or by its id.
   const taken = (field: "code" | "internalIdentification", value: string) =>
-    state.clients.some((row) => row[field] === value) || reservations.some((row) => row[field] === value);
+    state.clients.some((row) => row[field] === value || row.id === value) || reservations.some((row) => row[field] === value);
   let internalIdentification: string;
   do {
     sequence += 1;
@@ -63,4 +64,11 @@ export function claimClientIdentity(state: State, actor: User, clientId: string,
     code: reservation.code === reservation.internalIdentification ? undefined : reservation.code,
     internalIdentification: reservation.internalIdentification,
   };
+}
+
+// The public demo gives an internal identification to every client that has none (those of its seeds), each one by its
+// own reservation, as the web does. With it the idCliente of the text protocol is short for all of them.
+export function assignMissingClientIdentities(state: State, actor: User) {
+  for (const client of state.clients)
+    if (!client.internalIdentification) client.internalIdentification = claimClientIdentity(state, actor, client.id, undefined, false).internalIdentification;
 }

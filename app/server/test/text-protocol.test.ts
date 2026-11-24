@@ -193,10 +193,10 @@ test("clients: what is searched, by pages of 100, in order, and the side of the 
     const token = await login("admin@cyp.local");
     const one = await get("clients", `${token}|paginado`);
     assert.equal(one[2], "1"); assert.equal(one[3].split("!").length, 100);
-    assert.deepEqual(fields(one[3].split("!")[0]), ["pag-149", "PAG-149", "Paginado 000"], "by name, not by code or id");
+    assert.deepEqual(fields(one[3].split("!")[0]), ["pag-149", "PAG-149", "Paginado 000", "8095550100", "Calle El Conde 24"], "by name, not by code or id");
     const two = await get("clients", `${token}|paginado|2`);
     assert.equal(two[2], "0"); assert.equal(two[3].split("!").length, 50);
-    assert.deepEqual(fields(two[3].split("!").at(-1)!), ["pag-000", "PAG-000", "Paginado 149"]);
+    assert.deepEqual(fields(two[3].split("!").at(-1)!), ["pag-000", "PAG-000", "Paginado 149", "8095550100", "Calle El Conde 24"]);
     er(await get("clients", `${token}|paginado|3`), "CNE");
     er(await get("clients", `${token}|nadie se llama así`), "CNE");
     const all = await get("clients", token);
@@ -204,7 +204,7 @@ test("clients: what is searched, by pages of 100, in order, and the side of the 
     assert.equal((await get("clients", `${token}||2`))[3].split("!").length, 59, "8 of the seed, 150 and one with separators, less the first 100");
     // A separator inside a name never moves the fields of the answer.
     const separators = await get("clients", `${token}|hija`);
-    assert.equal(separators.length, 4); assert.deepEqual(fields(separators[3]), ["sep", "SEP 1", "Ana   Pérez  hija   casa"]);
+    assert.equal(separators.length, 4); assert.deepEqual(fields(separators[3]), ["sep", "SEP 1", "Ana   Pérez  hija   casa", "8095550100", "Calle El Conde 24"]);
     // Accents and capitals do not matter; the identification is found with or without hyphens; a phone, only with digits.
     for (const text of ["MARIA rodriguez", "001-1234567-8", "00112345678", "8295550111", "CL-0002"])
       assert.deepEqual(fields((await get("clients", `${token}|${encodeURIComponent(text)}`))[3]).slice(0, 2), ["cli-2", "CL-0002"], text);
@@ -699,5 +699,59 @@ test("send with p= and the version: one send, and without them it is the same pe
     assert.equal((await post("send", `${fifteen}|3.0`))[0], "OK"); assert.equal((await sends())[2].note, "3.0");
     er(await post("send", fifteen), "PIN", "Parametros");
     er(await post("send", `${petition}|3.0|3.0`), "PIN", "Parametros");
+  } finally { await app.close(); }
+});
+
+test("clients 0.6: phone and address in the list, and the short idCliente wherever a client comes in or goes out", async () => {
+  const state = fixture();
+  const long = "7b1d9c44-2e6f-4a83-b0c5-91e2d3f4a567", far = "3f6c1e0a-9b2d-4c7e-8a51-0d2f6b7c9e14";
+  state.clients.push(
+    { ...state.clients[0], id: long, code: "8095551234", name: "Zulema Corta", internalIdentification: "INT00000012", phone: "", cellular: "829-555-0199",
+      address: "Calle 8; casa 3\nSantiago | RD", preferredCurrency: "EUR" },
+    { ...state.clients[0], id: far, code: "CLI00000024", name: "Zoilo Corto", internalIdentification: "INT00000047", phone: "8095550124", cellular: "8295550124", address: "", routeId: "route-3" },
+    { ...state.clients[0], id: randomUUID(), code: "INA-2", name: "Zenón Corto", internalIdentification: "INT00000030", active: false });
+  const { app, store, post, get, login } = await open(state);
+  try {
+    const cashier = await login(DEMO_CASHIER_EMAIL);
+    // The list: five fields, the phone the web shows (the cellular when there is no phone) and the address in one line.
+    assert.deepEqual((await get("clients", `${cashier}|cort`))[3].split("!").map(fields), [
+      ["INT00000047", "CLI00000024", "Zoilo Corto", "8095550124", ""],
+      ["INT00000012", "8095551234", "Zulema Corta", "829-555-0199", "Calle 8  casa 3 Santiago   RD"]]);
+    // A client without an internal identification keeps its id.
+    assert.deepEqual(fields((await get("clients", `${cashier}|CL-0002`))[3]), ["cli-2", "CL-0002", "María Rodríguez", "8095550100", "Calle 5 #12, Santiago"]);
+    // The internal identification is searched too, and it is the idCliente that comes back.
+    assert.equal(fields((await get("clients", `${cashier}|INT00000012`))[3])[0], "INT00000012");
+    // Datos del Cliente: by the short id and by the long one of before; the short one comes back, with the currency of the client.
+    const expected = ["INT00000012", "8095551234", "Zulema Corta", "", "", "829-555-0199", "Calle 8  casa 3 Santiago   RD", "EUR"];
+    assert.deepEqual(fields((await get("client", `${cashier}|INT00000012`))[2]), expected);
+    assert.deepEqual(fields((await get("client", `${cashier}|${long}`))[2]), expected);
+    // The Dato of an error is the idCliente as it came; the idCliente is taken letter by letter.
+    er(await get("client", `${cashier}|INT00000099`), "CNE", "INT00000099");
+    er(await get("client", `${cashier}|INT00000030`), "CIN", "INT00000030");
+    er(await get("client", `${cashier}|int00000012`), "CNE", "int00000012");
+    const collector = await login("collector@cyp.local");
+    er(await get("client", `${collector}|INT00000047`), "CFR", "INT00000047");
+    er(await post("send", sendBody(collector, { idRemitente: "INT00000047", idDestinatario: "cli-1" })), "CFR", "INT00000047");
+    // The same client by its two ids is the same client, and two equal texts that are nobody's are MCL as before.
+    er(await post("send", sendBody(cashier, { idRemitente: "INT00000012", idDestinatario: long })), "MCL");
+    er(await post("send", sendBody(cashier, { idRemitente: "no-existe", idDestinatario: "no-existe" })), "MCL");
+    er(await post("send", sendBody(cashier, { idRemitente: "INT00000012", idDestinatario: "INT00000099" })), "CNE", "INT00000099");
+    // Registering with the short ids registers those two clients, and the receipts give the short ids back.
+    const idOperacion = randomUUID();
+    const body = sendBody(cashier, { idOperacion, idRemitente: "INT00000012", idDestinatario: "INT00000047" });
+    const sent = await post("send", body);
+    assert.equal(sent[0], "OK", sent.join("|"));
+    const transfers = (await store.read()).remittances.transfers;
+    assert.deepEqual([transfers.at(-1)!.senderClientId, transfers.at(-1)!.recipientClientId], [long, far]);
+    const row = fields((await get("recs", cashier))[3]);
+    assert.deepEqual([row[6], row[7], row[8], row[9]], ["INT00000012", "Zulema Corta", "INT00000047", "Zoilo Corto"]);
+    // The same petition again is the same send, also when the recipient has been deactivated since.
+    await store.transaction((saved) => { saved.clients.find((client) => client.id === far)!.active = false; });
+    assert.deepEqual((await post("send", body)).slice(2), sent.slice(2));
+    // The same idOperacion with the other form of the ids is not the same petition: OPD, and no second send.
+    er(await post("send", sendBody(cashier, { idOperacion, idRemitente: long, idDestinatario: far })), "OPD", fields(sent[2])[1]);
+    assert.equal((await store.read()).remittances.transfers.length, transfers.length);
+    // A long id of before 0.6 still registers.
+    assert.equal((await post("send", sendBody(cashier, { idRemitente: long, idDestinatario: "cli-2" })))[0], "OK");
   } finally { await app.close(); }
 });

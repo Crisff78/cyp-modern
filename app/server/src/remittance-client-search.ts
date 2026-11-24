@@ -29,11 +29,14 @@ export function searchRemittanceClients(state: State, actor: User, query: string
 const byName = new Intl.Collator("es", { sensitivity: "base" });
 /**
  * The same clients of the search, or every active one when nothing is typed, in the order of a list that is read by
- * pages: name, then code, then id, so no page repeats or skips a client. Only what is needed to choose one.
+ * pages: name, then code, then id, so no page repeats or skips a client. What is needed to choose one and, since
+ * version 0.6 of the text protocol, the phone the web shows and the address: the mobile application asked for them.
+ * The search of the web, above, still gives ids only.
  */
 export function listRemittanceClients(state: State, actor: User, query: string, side: "sender" | "recipient") {
   return matchingClients(state, actor, query, side)
-    .map(({ id, code, name }) => ({ id, code, name }))
+    .map(({ id, internalIdentification, code, name, phone, cellular, address }) =>
+      ({ id, ...(internalIdentification ? { internalIdentification } : {}), code, name, phone: phone || cellular || "", address: address ?? "" }))
     .sort((a, b) => byName.compare(a.name, b.name) || byName.compare(a.code, b.code) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
 

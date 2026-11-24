@@ -1,5 +1,6 @@
-// Plain-text protocol for the mobile application: the seven petitions of docs/protocolo-cyp/Protocolo CYP 0.5.txt.
+// Plain-text protocol for the mobile application: the seven petitions of docs/protocolo-cyp/Protocolo CYP 0.6.txt.
 // Each one is a thin adapter in front of the same functions the JSON API uses; no rule of the business lives here.
+// The one thing of its own is the idCliente: the internal identification of the client instead of its id (clientIdOf).
 import { createHash } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
@@ -90,12 +91,25 @@ const pageOf = (value: string) => {
 };
 /** One page of a list and whether more are left. */
 const pageRows = <T>(rows: T[], page: number) => ({ rows: rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), more: rows.length > page * PAGE_SIZE ? "1" : "0" });
-/** The client chosen for one side of a send; the error carries its id, as the document says. */
-function contactOf(state: State, actor: User, id: string, side: "sender" | "recipient") {
-  try { return remittanceClientContact(state, actor, id, side); }
+/**
+ * The idCliente of the protocol: the internal identification of the client (INT and digits: short, unique and never
+ * changed). A client without one keeps its id.
+ */
+const clientIdOf = (client: { id: string; internalIdentification?: string }) => client.internalIdentification ?? client.id;
+const INTERNAL_IDENTIFICATION = /^INT[0-9]{8,16}$/;
+/**
+ * The client an idCliente stands for: by its internal identification when the text has that form, or by its id (the
+ * long one of before 0.6 still comes in). It never throws: a text that is nobody's is answered by whoever asks for it.
+ */
+const clientOf = (state: State, idCliente: string) =>
+  (INTERNAL_IDENTIFICATION.test(idCliente) ? state.clients.find((row) => row.internalIdentification === idCliente) : undefined) ??
+  state.clients.find((row) => row.id === idCliente);
+/** The client chosen for one side of a send; the error carries the idCliente as it came, as the document says. */
+function contactOf(state: State, actor: User, idCliente: string, side: "sender" | "recipient") {
+  try { return remittanceClientContact(state, actor, clientOf(state, idCliente)?.id ?? idCliente, side); }
   catch (error) {
     const code = error instanceof DomainError ? CLIENT_ERRORS[error.code] : undefined;
-    if (code) throw new ProtocolError(code, undefined, id);
+    if (code) throw new ProtocolError(code, undefined, idCliente);
     throw error;
   }
 }
@@ -163,15 +177,16 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
     const input = namedParameters("clients", parts), text = textOf("Texto", input.Texto, 160), page = pageOf(input.Pagina);
     const { rows, more } = pageRows(listRemittanceClients(state, actor, text, sideOf(input.Lado)), page);
     if (!rows.length) throw new ProtocolError("CNE", "No hay clientes que mostrar");
-    return okLine(now, more, rows.map((client) => record(client.id, client.code, client.name)).join("!"));
+    return okLine(now, more, rows.map((client) => record(clientIdOf(client), client.code, client.name, client.phone, client.address)).join("!"));
   }
 
   function client(state: State, actor: User, parts: string[], now: Date) {
     const input = namedParameters("client", parts), id = idOf("idCliente", input.idCliente);
     const contact = contactOf(state, actor, id, sideOf(input.Lado));
-    // The contact of a send does not carry the currency; it is the one of the client record.
-    const currency = state.clients.find((row) => row.id === id)?.preferredCurrency ?? "DOP";
-    return okLine(now, record(contact.id, contact.code, contact.name, contact.identification ?? "", contact.phone, contact.cellular, contact.address, currency));
+    // The contact of a send carries neither the currency nor the internal identification: they are in the client record.
+    const saved = state.clients.find((row) => row.id === contact.id);
+    return okLine(now, record(clientIdOf(saved ?? contact), contact.code, contact.name, contact.identification ?? "", contact.phone, contact.cellular, contact.address,
+      saved?.preferredCurrency ?? "DOP"));
   }
 
   function quote(state: State, parts: string[], now: Date) {
@@ -228,7 +243,10 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
         if (existing.fingerprint !== fingerprint) throw new ProtocolError("OPD", undefined, saved.envioReference);
         return okLine(now, saved.envio);
       }
-      if (senderClientId === recipientClientId) throw new ProtocolError("MCL");
+      // After the idOperacion, as always. An idCliente may come short or long: the same client by its two ids is still
+      // the same client, and two equal texts that are nobody's are still MCL.
+      const sender = clientOf(state, senderClientId)?.id ?? senderClientId, recipient = clientOf(state, recipientClientId)?.id ?? recipientClientId;
+      if (sender === recipient) throw new ProtocolError("MCL");
       contactOf(state, actor, senderClientId, "sender");
       contactOf(state, actor, recipientClientId, "recipient");
       const quoted = quoteRemittance(state, { sourceCurrency, destinationCurrency, amount, amountMode }, now);
@@ -236,7 +254,7 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
       const checkCatalogChanges = guardCatalogChanges(state, actor, SEND[1]);
       // The principal is the one of the quote: typed as the total or as what the person receives, the Monto is not it.
       const transfer = createRemittance(state, actor, {
-        sourceCurrency, destinationCurrency, amount: quoted.amount, senderClientId, recipientClientId, quote: quoted.quote, note, payment,
+        sourceCurrency, destinationCurrency, amount: quoted.amount, senderClientId: sender, recipientClientId: recipient, quote: quoted.quote, note, payment,
         ...(amountMode === "total" ? { requestedTotalAmount: amount } : amountMode === "destination" ? { requestedReceiveAmount: amount } : {}),
       }, deps.systemOperators, now);
       checkCatalogChanges();
@@ -268,11 +286,12 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
     }).sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0) || b.sequence - a.sequence);
     const { rows, more } = pageRows(visible, page);
     if (!rows.length) throw new ProtocolError("RNE");
-    return okLine(now, more, rows.map(receipt).join("!"));
+    const ids = new Map(state.clients.map((row) => [row.id, clientIdOf(row)]));
+    return okLine(now, more, rows.map((transfer) => receipt(transfer, (id) => ids.get(id) ?? id)).join("!"));
   }
-  const receipt = (transfer: Remittance) => record(
+  const receipt = (transfer: Remittance, idCliente: (id: string) => string) => record(
     transfer.id, transfer.envioReference, transfer.reciboReference, transfer.operatingCode, protocolStamp(transfer.createdAt), STATUS[transfer.status],
-    transfer.senderClientId, transfer.senderContact?.name ?? "", transfer.recipientClientId, transfer.recipientContact?.name ?? "",
+    idCliente(transfer.senderClientId), transfer.senderContact?.name ?? "", idCliente(transfer.recipientClientId), transfer.recipientContact?.name ?? "",
     transfer.recipientContact?.phone || transfer.recipientContact?.cellular || "",
     transfer.sourceCurrency, moneyText(transfer.amount), moneyText(transfer.commissionAmount), moneyText(totalPaidForTransfer(transfer)),
     transfer.destinationCurrency, moneyText(payoutOf(transfer)), transfer.payment ? METHODS[transfer.payment.method] : "", protocolStamp(transfer.paidAt));
