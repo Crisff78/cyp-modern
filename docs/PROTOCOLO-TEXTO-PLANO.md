@@ -1,20 +1,21 @@
-# Protocolo de texto plano para la aplicación móvil (CYP 0.5)
+# Protocolo de texto plano para la aplicación móvil (CYP 0.6)
 
 Siete peticiones `/cyp_*` que responden en texto plano, separadas por `|`, para que una aplicación móvil hecha por
 otro equipo haga Envíos de Dinero contra CyP. Orden de Rardiel del 2026-11-19: «Programalo y deja todo listo».
 
-- **El contrato** es [`protocolo-cyp/Protocolo CYP 0.5.txt`](<protocolo-cyp/Protocolo CYP 0.5.txt>): es el documento
+- **El contrato** es [`protocolo-cyp/Protocolo CYP 0.6.txt`](<protocolo-cyp/Protocolo CYP 0.6.txt>): es el documento
   que se le envía a quien programa la aplicación. Si el servidor y ese documento no coinciden, hay un fallo: se
   arregla el servidor o se envía una versión nueva del documento, nunca se deja pasar. El documento describe solo
   lo que existe hoy: no cuenta lo que se cambió o se quitó. Lo nuevo desde la última versión que tiene esa persona
-  (hoy, la 0.4) va marcado con `(NUEVO)` y resumido en «Lo nuevo de esta versión». El historial por versión está en
+  (hoy, la 0.5) va marcado con `(NUEVO)` y resumido en «Lo nuevo de esta versión». El historial por versión está en
   git y en los planes de `designs/`.
 - **El plan** y su revisión están en `designs/2026-11-19-protocolo-texto-plano/`. La versión 0.2 (GET en todas las
   peticiones y `Vence`), en `designs/2026-11-20-protocolo-get-y-vence/`; la 0.3 (sin código de invitación), en
   `designs/2026-11-20-sin-invitacion/`; la 0.4 (`p=` y la versión de la aplicación), en
   `designs/2026-11-20-protocolo-p-y-version/`; el documento 0.4 limpio, con lo nuevo marcado, en
-  `designs/2026-11-23-protocolo-04-limpio/`; y la 0.5 (`idSesion` de 32 caracteres), en
-  `designs/2026-11-23-sesion-corta/`.
+  `designs/2026-11-23-protocolo-04-limpio/`; la 0.5 (`idSesion` de 32 caracteres), en
+  `designs/2026-11-23-sesion-corta/`; y la 0.6 (teléfono y dirección en el listado e `idCliente` corto), en
+  `designs/2026-11-24-clientes-telefono-id-corto/`.
 
 ## Dónde está cada cosa
 
@@ -26,7 +27,7 @@ otro equipo haga Envíos de Dinero contra CyP. Orden de Rardiel del 2026-11-19: 
 | `app/server/src/app.ts` | `authenticate` y `signIn`, que usan por igual la web y el protocolo. |
 | `app/server/test/text-protocol*.test.ts` | Cada ejemplo del documento y cada código de error. |
 
-No hay reglas del negocio nuevas ni migración. El protocolo no aparece en `openapi.json` porque no es JSON.
+No hay reglas del negocio nuevas ni migración. Lo único propio del protocolo es su `idCliente` (ver «Clientes»). El protocolo no aparece en `openapi.json` porque no es JSON.
 
 ## Cómo funciona
 
@@ -63,6 +64,16 @@ No hay reglas del negocio nuevas ni migración. El protocolo no aparece en `open
 - **Un `idSesion` no sirve en la API JSON.** Puede viajar en una dirección (GET) y acabar en un registro. El corto no
   es un token, y `jwtVerify` lo rechaza con 401; a los largos de antes los rechaza el `preHandler` porque llevan
   `channel`. Al revés sí: un token de la web sirve en el protocolo.
+- **Clientes (0.6).** El `idCliente` del protocolo es la identificación interna del cliente (`INT` y de 8 a 16 cifras;
+  la recibe todo cliente creado en la web, es única y no cambia: en PostgreSQL lo garantiza la migración 029, y en
+  memoria, `client-identities.ts`). Un cliente sin ella conserva su `id`. `clientOf` resuelve lo que manda la
+  aplicación: por identificación interna si el texto tiene esa forma y, si no, por `id`; el id largo de antes de la 0.6
+  sigue entrando. Ninguna identificación interna nueva repite el `id` de un cliente (`taken`). `MCL` se decide después
+  del `idOperacion` y con los clientes ya resueltos. El Dato de `CNE`, `CIN` y `CFR` es el texto que llegó. La huella
+  del `idOperacion` no se toca: repetir un envío con la otra forma del id es `OPD`. El Listado de Clientes trae además
+  el teléfono que enseña la web (`phone || cellular`) y la dirección: lo pidió la otra parte el 2026-11-24. La búsqueda
+  de la web sigue devolviendo solo ids. **En la demo pública**, cada arranque da identificación interna a los clientes
+  que no la tengan (`assignMissingClientIdentities`), para que todos salgan con el id corto.
 - **`idOperacion`.** Se guarda en la tabla `idempotency` con la clave `cyp:{idUsuario}:{idOperacion}`. La huella es
   el SHA-256 de los parámetros ya decodificados, sin el `idSesion` ni la versión de la aplicación, carácter por carácter (lo mismo por GET que por POST, con `p=` o sin él). Misma huella: se devuelve el envío guardado, aunque
   haya cambiado una tasa o esté cerrada la caja. Otra huella: `OPD` con el `NumEnvio`. Solo se guarda cuando el envío
@@ -134,6 +145,10 @@ Visto en una captura suya del 2026-11-20 y comprobado contra un servidor local, 
   Comprobado también en la demo el 2026-11-23, con una sesión que no existe y la dirección escrita byte a byte: con
   el acento o el espacio sin codificar llega un 400 sin cuerpo (no llega al servidor de CyP); codificados, la
   petición llega (`SNE`). Por eso el documento dice que un 400 no se repite tal cual.
+- El 2026-11-24 pidió el teléfono y la dirección en el Listado de Clientes y un `idCliente` más corto (0.6). El
+  `idEnvio` y el `idUsuario` pueden seguir teniendo 36 caracteres: no los ha pedido y ninguna petición los recibe. Si
+  algún día hay una petición sobre un envío, que use el `NumEnvio` (11 caracteres). Acortar el `idEnvio` más adelante
+  dejaría las repeticiones ya guardadas con la forma vieja.
 
 ## Antes de producción
 
@@ -146,6 +161,13 @@ Hoy esto solo corre en la central de pruebas, con datos ficticios. Antes de pone
   que manden la clave en una cabecera; o aceptar la clave por GET sabiendo
   dónde queda. Es una decisión de Rardiel, no del código. Hay que tomarla antes de una central real: la aplicación
   de la otra parte entra por GET, y fuera del modo demo eso responde `PIN`.
+- **Teléfonos y direcciones en el listado.** Desde la 0.6 el Listado de Clientes trae el teléfono y la dirección de
+  hasta 100 clientes por petición; un Cobrador, con `Lado` 1, los de clientes de otras rutas. Los mismos usuarios ya
+  podían pedirlos uno a uno, pero así se sacan cien veces más rápido, y en la web un Cajero no ve ninguna lista de
+  clientes con esos datos. Antes de una central real hay que decidir si se queda así; una salida barata es dejarlos
+  vacíos para un Cobrador cuando el cliente no es de su ruta.
+- **Clientes sin identificación interna.** Fuera de la demo, un cliente importado o anterior a la migración 029 sale
+  con su `id` de siempre, que puede ser largo. Hay que decidir si se les da identificación interna a todos.
 - **El `idSesion` en una dirección.** Vale 8 horas y no sirve en la API JSON, pero quien lo tenga puede registrar
   envíos con esa cuenta. Si se filtra uno, se cierra con `/cyp_logout?idSesion`. Antes de una central real hay que
   decidir si Registrar Envío queda solo por POST, si la sesión dura menos o vence por inactividad, y si el protocolo

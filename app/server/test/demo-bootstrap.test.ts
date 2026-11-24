@@ -4,6 +4,7 @@ import { buildApp } from "../src/app.js";
 import { enrichPublicDemo } from "../src/demo-scenarios.js";
 import { enrichCollectorDemo } from "../src/demo-collector-scenarios.js";
 import { DEMO_CASHIER_EMAIL, enrichCashierDemo, enrichMobileTestDemo } from "../src/demo-cashier-scenarios.js";
+import { assignMissingClientIdentities } from "../src/client-identities.js";
 import { DEMO_PASSWORD } from "../src/demo-credentials.js";
 import { DEMO_COMPANY_CONFIG, normalizeDemoCollectorLabel, normalizeDemoCompanyConfig, seed, seedPublicDemo } from "../src/seed.js";
 import { MemoryStore } from "../src/store.js";
@@ -120,13 +121,20 @@ test("first public start on an empty database saves the rate revisions its examp
       enrichPublicDemo(state);
       enrichCollectorDemo(state);
       enrichMobileTestDemo(state);
+      assignMissingClientIdentities(state, { id: "demo-admin", name: "Administración", role: "admin" });
     });
     const saved = await store.read();
     assert.equal(saved.idempotency.filter((row) => row.id.startsWith("__demo_seed__:")).length, 4);
+    // Every client of the demo has its internal identification: the short idCliente of the text protocol.
+    assert.ok(saved.clients.length > 8 && saved.clients.every((row) => /^INT\d{8}$/.test(row.internalIdentification ?? "")));
+    assert.equal(new Set(saved.clients.map((row) => row.internalIdentification)).size, saved.clients.length);
     // The earlier demo dates must contribute revisions of their own, beyond today's seed.
     assert.ok((saved.remittances.rateHistory ?? []).length > seededRevisions);
     assertRateRevisionsSaved(saved);
-    await store.transaction((state) => { enrichCashierDemo(state); enrichPublicDemo(state); enrichCollectorDemo(state); enrichMobileTestDemo(state); });
+    await store.transaction((state) => {
+      enrichCashierDemo(state); enrichPublicDemo(state); enrichCollectorDemo(state); enrichMobileTestDemo(state);
+      assignMissingClientIdentities(state, { id: "demo-admin", name: "Administración", role: "admin" });
+    });
     assert.deepEqual(await store.read(), saved);
   } finally { await store.close(); }
 });
