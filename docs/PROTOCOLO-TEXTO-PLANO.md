@@ -1,33 +1,37 @@
-# Protocolo de texto plano para la aplicación móvil (CYP 0.6)
+# Protocolo de texto plano para la aplicación móvil (CYP 0.7)
 
-Siete peticiones `/cyp_*` que responden en texto plano, separadas por `|`, para que una aplicación móvil hecha por
-otro equipo haga Envíos de Dinero contra CyP. Orden de Rardiel del 2026-11-19: «Programalo y deja todo listo».
+Nueve peticiones `/cyp_*` que responden en texto plano, separadas por `|`, para que una aplicación móvil hecha por
+otro equipo haga Envíos de Dinero contra CyP y los entregue. Orden de Rardiel del 2026-11-19: «Programalo y deja todo
+listo».
 
-- **El contrato** es [`protocolo-cyp/Protocolo CYP 0.6.txt`](<protocolo-cyp/Protocolo CYP 0.6.txt>): es el documento
+- **El contrato** es [`protocolo-cyp/Protocolo CYP 0.7.txt`](<protocolo-cyp/Protocolo CYP 0.7.txt>): es el documento
   que se le envía a quien programa la aplicación. Si el servidor y ese documento no coinciden, hay un fallo: se
   arregla el servidor o se envía una versión nueva del documento, nunca se deja pasar. El documento describe solo
   lo que existe hoy: no cuenta lo que se cambió o se quitó. Lo nuevo desde la última versión que tiene esa persona
-  (hoy, la 0.5) va marcado con `(NUEVO)` y resumido en «Lo nuevo de esta versión». El historial por versión está en
-  git y en los planes de `designs/`.
+  (hoy, la 0.6) va marcado con `(NUEVO)` y resumido en «Lo nuevo de esta versión». No consta que la 0.6 se le mandara
+  (Rardiel dijo el 2026-11-25 que la otra parte «va ir probandolo»): por eso ese resumen dice también, en una frase,
+  qué trajo la 0.6. El historial por versión está en git y en los planes de `designs/`.
 - **El plan** y su revisión están en `designs/2026-11-19-protocolo-texto-plano/`. La versión 0.2 (GET en todas las
   peticiones y `Vence`), en `designs/2026-11-20-protocolo-get-y-vence/`; la 0.3 (sin código de invitación), en
   `designs/2026-11-20-sin-invitacion/`; la 0.4 (`p=` y la versión de la aplicación), en
   `designs/2026-11-20-protocolo-p-y-version/`; el documento 0.4 limpio, con lo nuevo marcado, en
   `designs/2026-11-23-protocolo-04-limpio/`; la 0.5 (`idSesion` de 32 caracteres), en
-  `designs/2026-11-23-sesion-corta/`; y la 0.6 (teléfono y dirección en el listado e `idCliente` corto), en
-  `designs/2026-11-24-clientes-telefono-id-corto/`.
+  `designs/2026-11-23-sesion-corta/`; la 0.6 (teléfono y dirección en el listado e `idCliente` corto), en
+  `designs/2026-11-24-clientes-telefono-id-corto/`; y la 0.7 (entregar un envío: `pend` y `pay`), en
+  `designs/2026-11-25-protocolo-entregar/`.
 
 ## Dónde está cada cosa
 
 | Archivo | Qué hace |
 | --- | --- |
 | `app/server/src/text-protocol.ts` | Leer una petición, escribir una respuesta, los códigos y sus mensajes. Sin Fastify. |
-| `app/server/src/text-protocol-routes.ts` | Las siete peticiones. Cada una llama a la misma lógica de la API JSON. |
+| `app/server/src/text-protocol-routes.ts` | Las nueve peticiones. Cada una llama a la misma lógica de la API JSON. |
+| `app/server/src/remittance-delivery-search.ts` | Los envíos pendientes que una cuenta puede entregar, con su búsqueda (`pend`). |
 | `app/server/src/text-protocol-session.ts` | El `idSesion` de 32 caracteres: cifrar y descifrar el id de la sesión. |
 | `app/server/src/app.ts` | `authenticate` y `signIn`, que usan por igual la web y el protocolo. |
 | `app/server/test/text-protocol*.test.ts` | Cada ejemplo del documento y cada código de error. |
 
-No hay reglas del negocio nuevas ni migración. Lo único propio del protocolo es su `idCliente` (ver «Clientes»). El protocolo no aparece en `openapi.json` porque no es JSON.
+No hay reglas del negocio nuevas ni migración. Lo propio del protocolo es su `idCliente` (ver «Clientes») y, al entregar, el orden de las comprobaciones y el `idOperacion` (ver «Entregar»). El protocolo no aparece en `openapi.json` porque no es JSON.
 
 ## Cómo funciona
 
@@ -35,7 +39,7 @@ No hay reglas del negocio nuevas ni migración. Lo único propio del protocolo e
   que no existe responde `PNE`. Viven en un complemento encapsulado de Fastify con su propio manejador de errores:
   todo sale con HTTP 200, `text/plain; charset=utf-8`, en una línea y sin salto final. El cuerpo de un POST se toma
   tal cual, venga con el `Content-Type` que venga.
-- **GET o POST.** Desde la 0.2 las siete peticiones llegan por GET (los parámetros después del `?`, decodificados
+- **GET o POST.** Desde la 0.2 todas las peticiones llegan por GET (los parámetros después del `?`, decodificados
   enteros y después partidos por `|`) o por POST. Una dirección de más de 8000 caracteres responde `PIN`
   (`MAX_ADDRESS_LENGTH`): más larga, Node o el proxy la rechazarían sin el formato del protocolo. **Excepción:**
   fuera del modo demo, Iniciar Sesión sigue siendo solo por POST (`passwordByGet`; ver «Antes de producción»).
@@ -59,8 +63,10 @@ No hay reglas del negocio nuevas ni migración. Lo único propio del protocolo e
   las sesiones en un solo paso. Los `idSesion` largos de antes siguen valiendo hasta vencer. Cerrar Sesión solo
   comprueba la fila; las demás peticiones pasan por `authenticate`, la comprobación de toda petición de la web, con
   una ruta equivalente para los permisos: `POST /api/envios` para `clients`, `client`, `quote` y `send` (es `PuedeEnviar`) y `GET /api/envios`
-  para `recs` (es `PuedeVerEnvios`). Después pide el permiso también por su nombre (`remittances.create` o
-  `remittances.view`), para que un cambio en la tabla de rutas de `access.ts` nunca deje abiertas estas peticiones.
+  para `recs` (es `PuedeVerEnvios`); desde la 0.7, `GET /api/envios/recibos` para `pend` y `POST /api/envios/x/pagar`
+  para `pay` (es `PuedeEntregar`). Después pide el permiso también por su nombre (`remittances.create`,
+  `remittances.view`, `remittances.receipts` o `remittances.pay`; la tabla `ACCESS`), para que un cambio en la tabla de
+  rutas de `access.ts` nunca deje abiertas estas peticiones.
 - **Un `idSesion` no sirve en la API JSON.** Puede viajar en una dirección (GET) y acabar en un registro. El corto no
   es un token, y `jwtVerify` lo rechaza con 401; a los largos de antes los rechaza el `preHandler` porque llevan
   `channel`. Al revés sí: un token de la web sirve en el protocolo.
@@ -79,6 +85,19 @@ No hay reglas del negocio nuevas ni migración. Lo único propio del protocolo e
   haya cambiado una tasa o esté cerrada la caja. Otra huella: `OPD` con el `NumEnvio`. Solo se guarda cuando el envío
   se registró. No caduca. **El documento promete 7 días como mínimo:** si algún día se depura la tabla `idempotency`,
   las filas `cyp:` de menos de 7 días no se tocan. (La clave supone que ninguna cuenta tiene el id literal `cyp`.)
+- **Entregar (0.7).** `pend` lista los envíos pendientes que la cuenta ve en Entregas de dinero (`canSeeReceipt`), de
+  cualquier fecha, con búsqueda sobre la copia de los contactos guardada en el envío (`remittance-delivery-search.ts`).
+  `pay` es un adaptador delante de `payRemittance`, la función de `POST /api/envios/:id/pagar`, con tres cosas suyas:
+  (1) nombra el envío por su `NumEnvio` (`envio_reference`, única) y no por el `idEnvio`; (2) compara el
+  `MontoARecibir` que manda la aplicación con `payoutOf` y responde `MNC` si no es el del envío; (3) lleva
+  `idOperacion`, en la misma tabla y con la misma clave que `send`, con la huella precedida de `pay`: la misma petición
+  repetida devuelve la respuesta guardada sin tocar la caja, y otro `idOperacion` sobre un envío ya entregado es `ENP`.
+  `ENE` solo cuando el envío no existe o la cuenta no lo vería ni pendiente (`deliverableByReference`): así un Cajero
+  que intenta entregar lo que otro ya entregó recibe `ENP` y no «no existe». **Orden:** sesión → permiso (`SPE`) →
+  datos (`PIN`) → `idOperacion` (`OK` u `OPD`) → `ENE` → `MNC` → `ENP` → `CFR` → `CNA` → `CSF`. La caja es la de quien
+  entrega **en la moneda de destino**, abierta ese día y con fondos. El registro de un envío (el de `recs`, `pend` y
+  `pay`) gana el dato 20: la identificación del destinatario guardada en el envío. Una entrega deja traza (`/cyp_pay`)
+  y su evento `paid`; una repetición respondida con la respuesta guardada no deja nada.
 - **Importes.** El texto `1500.00` es `150000` centavos. El servidor vuelve a cotizar al registrar y compara
   `TotalAPagar` y `MontoARecibir` con lo que mandó la aplicación; si no coinciden, `CCA`.
 - **Orden de los errores al registrar:** datos mal escritos (`PIN`) → `idOperacion` ya usada → mismo cliente (`MCL`)
@@ -114,7 +133,7 @@ orígenes de CyP. El protocolo está pensado para una aplicación nativa.
 | Comando que no existe | `PNE` |
 | `CLIENT_NOT_FOUND`; listado de clientes vacío | `CNE` |
 | `CLIENT_INACTIVE` | `CIN` |
-| Remitente fuera de la ruta del Cobrador | `CFR` |
+| Remitente fuera de la ruta del Cobrador; al entregar, el destinatario | `CFR` |
 | `SAME_CLIENT` | `MCL` |
 | `RATE_MISSING` | `TNE` |
 | `AMOUNT_TOO_SMALL`, `INVALID_AMOUNT`; monto `0.00` | `MIN` |
@@ -123,7 +142,11 @@ orígenes de CyP. El protocolo está pensado para una aplicación nativa.
 | `INSUFFICIENT_TENDERED` | `EIS` |
 | `PAYMENT_NOT_VERIFIED` | `PNV` |
 | Misma `idOperacion` con otros datos | `OPD` |
-| Listado de recibos vacío | `RNE` |
+| Listado de recibos vacío; ningún envío por entregar | `RNE` |
+| `TRANSFER_NOT_FOUND`; al entregar, el envío no existe o la cuenta no lo vería ni pendiente | `ENE` |
+| `TRANSFER_NOT_PENDING`; al entregar, el envío ya está entregado o cancelado | `ENP` |
+| Al entregar, el `MontoARecibir` no es el del envío | `MNC` |
+| `INSUFFICIENT_CASH` | `CSF` |
 | Otra regla del negocio sin código propio (por ejemplo, de configuración) | `ORC`, con su mensaje |
 | Cualquier otro fallo | `EIC`, con la referencia de soporte; la causa queda en el registro del servidor |
 
@@ -147,8 +170,12 @@ Visto en una captura suya del 2026-11-20 y comprobado contra un servidor local, 
   petición llega (`SNE`). Por eso el documento dice que un 400 no se repite tal cual.
 - El 2026-11-24 pidió el teléfono y la dirección en el Listado de Clientes y un `idCliente` más corto (0.6). El
   `idEnvio` y el `idUsuario` pueden seguir teniendo 36 caracteres: no los ha pedido y ninguna petición los recibe. Si
-  algún día hay una petición sobre un envío, que use el `NumEnvio` (11 caracteres). Acortar el `idEnvio` más adelante
-  dejaría las repeticiones ya guardadas con la forma vieja.
+  algún día hay una petición sobre un envío, que use el `NumEnvio` (11 caracteres): así lo hace `pay`. Acortar el
+  `idEnvio` más adelante dejaría las repeticiones ya guardadas con la forma vieja.
+- El 2026-11-25 Rardiel contó que la otra parte, mientras prueba, pide «lo del procesamiento de pago vía url» para
+  cuando llegue a ese punto; preguntado a cuál de los dos pagos que el contrato dejaba fuera se refería, Rardiel
+  eligió «Pagarle al destinatario» (0.7). La otra parte no dio formato para esa petición: el de `pend` y `pay` lo puso
+  CyP, y puede que pida cambios cuando lo vea.
 
 ## Antes de producción
 
@@ -173,6 +200,21 @@ Hoy esto solo corre en la central de pruebas, con datos ficticios. Antes de pone
   decidir si Registrar Envío queda solo por POST, si la sesión dura menos o vence por inactividad, y si el protocolo
   deja de aceptar tokens de la web (uno filtrado en una dirección abre toda la API).
 
+- **Entregar por GET.** `pay` saca dinero de una caja, y la dirección de un GET queda en registros ajenos. No puede
+  entregar dos veces, pero quien tenga un `idSesion` vivo puede dar por entregados los envíos pendientes que esa cuenta
+  ve (un Cajero, todos los de la empresa), mientras su caja esté abierta y con fondos. No se lleva efectivo: inutiliza
+  envíos y descuadra cajas. `MNC` no lo frena, porque `pend` da el `NumEnvio` y el importe. Dejar `pay` solo por POST
+  tampoco lo cierra (el `idSesion` se filtra igual por el GET de un listado): la salida es sacar el `idSesion` de las
+  direcciones o acortar la sesión, lo mismo que para Registrar Envío. `pay` no tiene límite propio: comparte el de 120
+  por minuto.
+- **La caja de quien entrega.** El protocolo no abre ni cierra cajas. Para entregar hace falta la de ese día en la
+  moneda de destino, con fondos; si quien entrega no la tiene, toda entrega responde `CNA` o `CSF`. Hay que decidir
+  quién se la abre cada día a los usuarios de la aplicación (en la web la abre Administración; un Cajero, la suya).
+- **Lo que no hay.** La aplicación no puede ver lo que el usuario ya entregó (solo la respuesta de cada entrega), ni
+  saber antes del error si la caja está abierta y con fondos, ni imprimir el recibo de quien recibe. Una entrega no se
+  deshace (la central no tiene «anular una entrega»), y la central no guarda qué documento enseñó quien recibió. Si
+  entre una página y otra de `pend` se entrega un envío, la página siguiente se salta una fila.
+
 ## Para probarlo a mano
 
 Con el servidor local en modo demo (`pnpm dev`):
@@ -188,4 +230,5 @@ con `%`). La respuesta trae el `idSesion` en el tercer dato y `Vence` en el quin
 curl -s "http://127.0.0.1:3001/cyp_quote?ID_SESION|USD|DOP|100.00"
 ```
 
-Para registrar un envío, ese usuario tiene que tener abierta su Caja de Remesas de hoy en la moneda de origen.
+Para registrar un envío, ese usuario tiene que tener abierta su Caja de Remesas de hoy en la moneda de origen. Para
+entregarlo (`/cyp_pend?ID_SESION` y `/cyp_pay?ID_SESION|ID_OPERACION|ENV00000001|5806.50`), la de la moneda de destino.
