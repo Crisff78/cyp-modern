@@ -356,7 +356,7 @@ export async function buildApp(config: Config) {
     )
       return;
     await req.jwtVerify();
-    // A session given by the plain-text protocol serves its seven petitions only: its token may travel in an address,
+    // A session given by the plain-text protocol serves the petitions of that protocol only: its token may travel in an address,
     // and one that leaks must not open the rest of the API.
     if ((req.user as SessionClaims).channel !== undefined)
       throw new DomainError("UNAUTHORIZED", "Inicia sesión para continuar.", 401);
