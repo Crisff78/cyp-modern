@@ -81,7 +81,7 @@ test("login: the password keeps its separators, each role gets its two permissio
     const ok = await post("login", `admin@cyp.local|${DEMO_PASSWORD}`);
     assert.equal(ok.length, 5); assert.equal(ok[0], "OK");
     assert.match(ok[2], /^[0-9A-F]{32}$/, "idSesion: 32 hexadecimal characters in uppercase");
-    assert.deepEqual(fields(ok[3]), ["demo-admin", "Administración", "admin", "1", "1"]);
+    assert.deepEqual(fields(ok[3]), ["demo-admin", "Administración", "admin", "1", "1", "1"]);
     // Vence: the end of the record of the session, eight hours after it started.
     const saved = (await store.read()).adminTools!.sessions.at(-1)!;
     const ends = Date.parse(saved.expiresAt);
@@ -89,9 +89,9 @@ test("login: the password keeps its separators, each role gets its two permissio
     assert.match(ok[4], /^\d{14}$/); assert.ok(ok[4] > ok[1], "after the FechayHora of the answer");
     const hours = (ends - Date.parse(saved.startedAt)) / 3_600_000;
     assert.equal(hours, 8);
-    assert.deepEqual(fields((await post("login", `  ${DEMO_CASHIER_EMAIL.toUpperCase()} |${DEMO_PASSWORD}`))[3]), ["demo-cashier", "Cajero de práctica", "cashier", "1", "1"]);
-    assert.deepEqual(fields((await post("login", `supervisora@cyp.local|${DEMO_PASSWORD}`))[3]), ["sup-1", "Cuenta sup-1", "supervisor", "0", "1"]);
-    assert.deepEqual(fields((await post("login", `cliente@cyp.local|${DEMO_PASSWORD}`))[3]), ["cli-user", "Cuenta cli-user", "client", "0", "0"]);
+    assert.deepEqual(fields((await post("login", `  ${DEMO_CASHIER_EMAIL.toUpperCase()} |${DEMO_PASSWORD}`))[3]), ["demo-cashier", "Cajero de práctica", "cashier", "1", "1", "1"]);
+    assert.deepEqual(fields((await post("login", `supervisora@cyp.local|${DEMO_PASSWORD}`))[3]), ["sup-1", "Cuenta sup-1", "supervisor", "0", "1", "0"]);
+    assert.deepEqual(fields((await post("login", `cliente@cyp.local|${DEMO_PASSWORD}`))[3]), ["cli-user", "Cuenta cli-user", "client", "0", "0", "0"]);
     assert.equal((await post("login", "pipes@cyp.local|Clave|con!pipes;y@signos 2026"))[0], "OK");
     assert.equal((await post("login", `signos@cyp.local|${SIGNS}`))[0], "OK");
   } finally { await app.close(); }
@@ -102,7 +102,7 @@ test("login by GET: the same petition after the ?, with the password encoded as 
   try {
     const ok = await get("login", encodeURIComponent(`admin@cyp.local|${DEMO_PASSWORD}`));
     assert.equal(ok.length, 5); assert.equal(ok[0], "OK");
-    assert.deepEqual(fields(ok[3]), ["demo-admin", "Administración", "admin", "1", "1"]);
+    assert.deepEqual(fields(ok[3]), ["demo-admin", "Administración", "admin", "1", "1", "1"]);
     assert.match(ok[4], /^\d{14}$/);
     assert.equal((await get("quote", `${ok[2]}|USD|DOP|100.00`))[0], "OK", "the session of a GET is a session");
     assert.equal((await get("login", encodeURIComponent("pipes@cyp.local|Clave|con!pipes;y@signos 2026")))[0], "OK");
@@ -405,7 +405,7 @@ test("send: each error of the document, and a failed attempt leaves the idOperac
   } finally { await app.close(); }
 });
 
-test("recs: the nineteen fields, by date and status, newest first, and each user sees what is his", async () => {
+test("recs: the twenty fields, by date and status, newest first, and each user sees what is his", async () => {
   const { app, store, post, get, login } = await open();
   try {
     const cashier = await login(DEMO_CASHIER_EMAIL), boss = await login("admin@cyp.local");
@@ -415,9 +415,9 @@ test("recs: the nineteen fields, by date and status, newest first, and each user
     const own = await get("recs", cashier);
     assert.equal(own.length, 4); assert.equal(own[2], "0");
     const row = fields(own[3]);
-    assert.equal(row.length, 19);
+    assert.equal(row.length, 20);
     assert.deepEqual(row, [first[0], "ENV00000001", "REC00000001", first[3], first[4], "0", "cli-1", "Colmado La Esquina", "cli-2", "María Rodríguez", "8095550100",
-      "USD", "100.00", "5.00", "105.00", "DOP", "5806.50", "1", ""]);
+      "USD", "100.00", "5.00", "105.00", "DOP", "5806.50", "1", "", "001-1234567-8"]);
     const everything = (await get("recs", boss))[3].split("!").map(fields);
     assert.deepEqual(everything.map((item) => item[1]), ["ENV00000002", "ENV00000001"], "newest first");
     assert.equal(everything[0][17], "3"); assert.equal(everything[0][0], second[0]);
@@ -557,9 +557,9 @@ test("permissions: asked by name too, so a personalised account gets exactly wha
   state.accounts.push(custom("solo-ver", ["remittances.view"]), custom("solo-entregar", ["remittances.receipts"]), account("sin-rol", "sinrol@cyp.local", "undefined"));
   const { app, post, get, login } = await open(state);
   try {
-    assert.deepEqual(fields((await post("login", `solo-ver@cyp.local|${DEMO_PASSWORD}`))[3]).slice(2), ["cashier", "0", "1"]);
-    assert.deepEqual(fields((await post("login", `solo-entregar@cyp.local|${DEMO_PASSWORD}`))[3]).slice(2), ["cashier", "0", "0"]);
-    assert.deepEqual(fields((await post("login", `sinrol@cyp.local|${DEMO_PASSWORD}`))[3]).slice(2), ["undefined", "0", "0"]);
+    assert.deepEqual(fields((await post("login", `solo-ver@cyp.local|${DEMO_PASSWORD}`))[3]).slice(2), ["cashier", "0", "1", "0"]);
+    assert.deepEqual(fields((await post("login", `solo-entregar@cyp.local|${DEMO_PASSWORD}`))[3]).slice(2), ["cashier", "0", "0", "0"]);
+    assert.deepEqual(fields((await post("login", `sinrol@cyp.local|${DEMO_PASSWORD}`))[3]).slice(2), ["undefined", "0", "0", "0"]);
     const viewer = await login("solo-ver@cyp.local"), payer = await login("solo-entregar@cyp.local");
     er(await get("clients", viewer), "SPE");
     er(await get("client", `${viewer}|cli-1`), "SPE");
@@ -619,7 +619,7 @@ test("sign-in as the other party's application calls it: p= before the data and 
   try {
     const before = await sessions();
     const ok = await get("login", `p=${encodeURIComponent(`admin@cyp.local|${DEMO_PASSWORD}|3.0`)}`);
-    assert.equal(ok.length, 5); assert.equal(ok[0], "OK"); assert.deepEqual(fields(ok[3]), ["demo-admin", "Administración", "admin", "1", "1"]);
+    assert.equal(ok.length, 5); assert.equal(ok[0], "OK"); assert.deepEqual(fields(ok[3]), ["demo-admin", "Administración", "admin", "1", "1", "1"]);
     assert.equal(await sessions(), before + 1, "two readings of the password, one session");
     assert.equal((await get("clients", `p=${ok[2]}|Colmado|3.0`))[0], "OK", "that session, called the same way");
     // The version without the prefix, and by POST: it is a datum, not a part of the address.
@@ -753,5 +753,91 @@ test("clients 0.6: phone and address in the list, and the short idCliente wherev
     assert.equal((await store.read()).remittances.transfers.length, transfers.length);
     // A long id of before 0.6 still registers.
     assert.equal((await post("send", sendBody(cashier, { idRemitente: long, idDestinatario: "cli-2" })))[0], "OK");
+  } finally { await app.close(); }
+});
+
+test("pend and pay 0.7: the pending sends an account may deliver, and a delivery that is made once", async () => {
+  const state = fixture(), now = new Date();
+  state.accounts.push(account("caja-2", "caja2@cyp.local", "cashier"), account("caja-3", "caja3@cyp.local", "cashier"), account("caja-4", "caja4@cyp.local", "cashier"));
+  // Who delivers needs his box in the currency the recipient receives, with funds: caja-3 has none and caja-4 has it empty.
+  for (const [operatorId, openingAmount] of [["demo-admin", 2_000_000], ["demo-collector", 2_000_000], ["demo-cashier", 2_000_000], ["caja-2", 2_000_000], ["caja-4", 0]] as const)
+    openRemittanceCash(state, admin, { operatorId, currency: "DOP", openingAmount }, operators, now);
+  const { app, store, post, get, login } = await open(state);
+  try {
+    const cashier = await login(DEMO_CASHIER_EMAIL), boss = await login("admin@cyp.local"), second = await login("caja2@cyp.local");
+    er(await get("pend", second), "RNE");
+    const one = fields((await post("send", sendBody(cashier, { idRemitente: "cli-1", idDestinatario: "cli-2" })))[2]);
+    const sendOperation = randomUUID();
+    assert.equal((await post("send", sendBody(boss, { idOperacion: sendOperation })))[0], "OK");
+    // Envíos por Entregar: a Cajero sees every pending send, newest first, with the record of Listado de Recibos.
+    const all = (await get("pend", second))[3].split("!").map(fields);
+    assert.deepEqual(all.map((row) => row[1]), ["ENV00000002", "ENV00000001"]);
+    assert.ok(all.every((row) => row.length === 20 && row[5] === "0" && row[18] === ""));
+    assert.equal(all[1][19], "001-1234567-8", "the identification of the recipient, from the copy saved in the send");
+    for (const text of ["ENV00000001", "rec00000001", one[3], "maria RODRIGUEZ", "001-1234567-8", "00112345678"])
+      assert.deepEqual((await get("pend", `${second}|${encodeURIComponent(text)}`))[3].split("!").map((row) => fields(row)[1]), ["ENV00000001"], text);
+    assert.equal((await get("pend", `${second}|8095550100`))[3].split("!").length, 2, "the phone of the recipient, with digits only");
+    er(await get("pend", `${second}|nadie`), "RNE");
+    er(await get("pend", `${second}||2`), "RNE");
+    er(await get("pend", `${second}|x|0`), "PIN", "Pagina");
+    er(await get("pend", `${second}|x|1|de más`), "PIN", "Parametros");
+    // Supervision sees them and cannot deliver; a collector sees those whose recipient is of his route.
+    const supervisor = await login("supervisora@cyp.local"), collector = await login("collector@cyp.local");
+    assert.equal((await get("pend", supervisor))[3].split("!").length, 2);
+    assert.deepEqual((await get("pend", collector))[3].split("!").map((row) => fields(row)[1]), ["ENV00000001"]);
+    er(await get("pend", await login("cliente@cyp.local")), "SPE");
+    const payBody = (token: string, numEnvio: string, amount = "5806.50", idOperacion: string = randomUUID()) => `${token}|${idOperacion}|${numEnvio}|${amount}`;
+    const paidEvents = async () => (await store.read()).remittances.events.filter((event) => event.type === "paid").length;
+    er(await post("pay", payBody(supervisor, "ENV00000001")), "SPE");
+    // Entregar Envío: what is written wrong, a send that is not there and an amount that is not the one of the send.
+    er(await post("pay", `${second}||ENV00000001|5806.50`), "PIN", "idOperacion");
+    er(await post("pay", payBody(second, "")), "PIN", "NumEnvio");
+    er(await post("pay", payBody(second, "env00000001")), "PIN", "NumEnvio");
+    er(await post("pay", payBody(second, "ENV00000001", "5806,50")), "PIN", "MontoARecibir");
+    er(await post("pay", `${second}|${randomUUID()}|ENV00000001`), "PIN", "MontoARecibir");
+    er(await post("pay", `${payBody(second, "ENV00000001")}|de más`), "PIN", "Parametros");
+    er(await post("pay", payBody(second, "ENV00000099")), "ENE", "ENV00000099");
+    // An idOperacion is used up only by an OK: the one of a refused delivery serves for the delivery that follows.
+    const idOperacion = randomUUID();
+    er(await post("pay", payBody(second, "ENV00000001", "5806.51", idOperacion)), "MNC", "ENV00000001");
+    // The idOperacion of a send is never taken for a delivery: the answer names the send it registered.
+    er(await post("pay", payBody(boss, "ENV00000001", "5806.50", sendOperation)), "OPD", "ENV00000002");
+    assert.equal(await paidEvents(), 0, "a petition that is refused delivers nothing");
+    // The delivery: the send is paid by who asked, and what the recipient receives leaves his box.
+    const delivered = await post("pay", payBody(second, "ENV00000001", "5806.50", idOperacion));
+    assert.equal(delivered.length, 3); assert.equal(delivered[0], "OK", delivered.join("|"));
+    const row = fields(delivered[2]);
+    assert.equal(row.length, 20);
+    assert.deepEqual([row[0], row[1], row[5], row[16]], [one[0], "ENV00000001", "1", "5806.50"]); assert.match(row[18], /^\d{14}$/);
+    const after = await store.read(), paid = after.remittances.transfers.find((transfer) => transfer.envioReference === "ENV00000001")!;
+    assert.deepEqual([paid.status, paid.paidBy], ["paid", "caja-2"]);
+    const box = after.remittances.cashSessions.find((cash) => cash.operatorId === "caja-2" && cash.currency === "DOP")!;
+    assert.equal(cashBalance(after, box).expected, 2_000_000 - 580_650);
+    assert.ok(after.adminTools!.traces.some((trace) => trace.resource === "/cyp_pay" && trace.resourceId === paid.id));
+    // The same petition again, because its answer was lost: the same answer, by POST or as the application calls.
+    assert.deepEqual((await post("pay", payBody(second, "ENV00000001", "5806.50", idOperacion))).slice(2), delivered.slice(2));
+    assert.deepEqual((await get("pay", `p=${payBody(second, "ENV00000001", "5806.50", idOperacion)}|3.0`)).slice(2), delivered.slice(2));
+    assert.equal(await paidEvents(), 1, "nothing leaves the box twice");
+    // Another attempt is not a repetition: the send is no longer pending, whoever asks.
+    er(await post("pay", payBody(second, "ENV00000001")), "ENP", "1");
+    er(await post("pay", payBody(cashier, "ENV00000001")), "ENP", "1");
+    // The idOperacion of a delivery is of that delivery only, also against a send.
+    er(await post("pay", payBody(second, "ENV00000002", "5806.50", idOperacion)), "OPD", "ENV00000001");
+    er(await post("send", sendBody(second, { idOperacion })), "OPD", "ENV00000001");
+    // A Cajero stops seeing a send another one delivered: he is told it is delivered, not that it does not exist.
+    assert.equal((await get("pay", `${payBody(cashier, "ENV00000002")}`))[0], "OK");
+    er(await post("pay", payBody(second, "ENV00000002")), "ENP", "1");
+    er(await get("pend", second), "RNE");
+    // A collector delivers to the recipients of his route only; the box is the one of the currency that is received.
+    const three = fields((await post("send", sendBody(collector, { idRemitente: "cli-1", idDestinatario: "cli-5" })))[2]);
+    er(await post("pay", payBody(collector, three[1])), "CFR", "cli-5");
+    er(await post("pay", payBody(await login("caja3@cyp.local"), three[1])), "CNA", "DOP");
+    er(await post("pay", payBody(await login("caja4@cyp.local"), three[1])), "CSF", "DOP");
+    await store.transaction((draft) => {
+      const cancelled = draft.remittances.transfers.find((transfer) => transfer.envioReference === three[1])!;
+      cancelled.status = "cancelled"; cancelled.cancelledAt = new Date().toISOString(); cancelled.cancelledBy = "demo-admin";
+    });
+    er(await post("pay", payBody(second, three[1])), "ENP", "2");
+    assert.equal(await paidEvents(), 2);
   } finally { await app.close(); }
 });

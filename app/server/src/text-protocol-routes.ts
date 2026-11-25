@@ -1,6 +1,7 @@
-// Plain-text protocol for the mobile application: the seven petitions of docs/protocolo-cyp/Protocolo CYP 0.6.txt.
+// Plain-text protocol for the mobile application: the petitions of docs/protocolo-cyp/Protocolo CYP 0.7.txt.
 // Each one is a thin adapter in front of the same functions the JSON API uses; no rule of the business lives here.
-// The one thing of its own is the idCliente: the internal identification of the client instead of its id (clientIdOf).
+// Two things are its own: the idCliente (the internal identification of the client instead of its id, clientIdOf) and,
+// in Entregar Envío, the order of its checks and the idOperacion that tells a repetition from another attempt (pay).
 import { createHash } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
@@ -9,7 +10,11 @@ import type { Store } from "./store.js";
 import { assertAuthSession, endOwnAuthSession, recordMutationTrace } from "./admin-tools.js";
 import { authorizeRequest, currentAccessUser, guardCatalogChanges, requireRemittancePermission } from "./access.js";
 import { listRemittanceClients, remittanceClientContact } from "./remittance-client-search.js";
-import { canSeeOutgoing, createRemittance, currencies, payoutOf, quoteRemittance, type AmountMode, type Currency, type Remittance } from "./remittances.js";
+import { pendingDeliveries } from "./remittance-delivery-search.js";
+import {
+  canSeeOutgoing, createRemittance, currencies, deliverableByReference, payoutOf, payRemittance, quoteRemittance,
+  type AmountMode, type Currency, type Remittance,
+} from "./remittances.js";
 import { isPaymentTextDraft, totalPaidForTransfer, type RemittancePaymentInput } from "../../shared/remittances/payment.mjs";
 import { boundedId } from "./input-validation.js";
 import {
@@ -47,6 +52,13 @@ export const isTextProtocolRoute = (url: string | undefined) => url !== undefine
 
 // What the document calls PuedeEnviar and PuedeVerEnvios, as the paths of the JSON API that ask for the same.
 const SEND: readonly [string, string] = ["POST", "/api/envios"], VIEW: readonly [string, string] = ["GET", "/api/envios"];
+// Envíos por Entregar and Entregar Envío, and what the document calls PuedeEntregar, by the paths that ask for the same.
+const PENDING: readonly [string, string] = ["GET", "/api/envios/recibos"], PAY: readonly [string, string] = ["POST", "/api/envios/x/pagar"];
+/** The check of each petition that needs more than a session: the equivalent path and the permission by its own name. */
+const ACCESS: Record<Exclude<ProtocolCommand, "login" | "logout">, readonly [readonly [string, string], Parameters<typeof requireRemittancePermission>[1]]> = {
+  clients: [SEND, "remittances.create"], client: [SEND, "remittances.create"], quote: [SEND, "remittances.create"], send: [SEND, "remittances.create"],
+  recs: [VIEW, "remittances.view"], pend: [PENDING, "remittances.receipts"], pay: [PAY, "remittances.pay"],
+};
 const METHODS = { cash: "1", card: "2", transfer: "3", deposit: "4" } as const;
 const STATUS = { pending: "0", paid: "1", cancelled: "2" } as const;
 const AMOUNT_MODES: readonly AmountMode[] = ["source", "total", "destination"];
@@ -162,7 +174,7 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
       catch (error) { if (error instanceof DomainError) return "0"; throw error; }
     };
     const { id, name, role } = session.user;
-    return okLine(now, deps.sessionIds.seal(claims.sid as string), record(id, name, role, await can(SEND), await can(VIEW)), protocolStamp(new Date(session.expiresAt)));
+    return okLine(now, deps.sessionIds.seal(claims.sid as string), record(id, name, role, await can(SEND), await can(VIEW), await can(PAY)), protocolStamp(new Date(session.expiresAt)));
   }
 
   async function logout(claims: Claims, parts: string[], now: Date) {
@@ -286,15 +298,74 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
     }).sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0) || b.sequence - a.sequence);
     const { rows, more } = pageRows(visible, page);
     if (!rows.length) throw new ProtocolError("RNE");
-    const ids = new Map(state.clients.map((row) => [row.id, clientIdOf(row)]));
-    return okLine(now, more, rows.map((transfer) => receipt(transfer, (id) => ids.get(id) ?? id)).join("!"));
+    return okLine(now, more, rows.map(receiptOf(state)).join("!"));
   }
+  /** The record of a send in Listado de Recibos, Envíos por Entregar and Entregar Envío, with the clients by their short id. */
+  const receiptOf = (state: State) => {
+    const ids = new Map(state.clients.map((row) => [row.id, clientIdOf(row)]));
+    return (transfer: Remittance) => receipt(transfer, (id) => ids.get(id) ?? id);
+  };
   const receipt = (transfer: Remittance, idCliente: (id: string) => string) => record(
     transfer.id, transfer.envioReference, transfer.reciboReference, transfer.operatingCode, protocolStamp(transfer.createdAt), STATUS[transfer.status],
     idCliente(transfer.senderClientId), transfer.senderContact?.name ?? "", idCliente(transfer.recipientClientId), transfer.recipientContact?.name ?? "",
     transfer.recipientContact?.phone || transfer.recipientContact?.cellular || "",
     transfer.sourceCurrency, moneyText(transfer.amount), moneyText(transfer.commissionAmount), moneyText(totalPaidForTransfer(transfer)),
-    transfer.destinationCurrency, moneyText(payoutOf(transfer)), transfer.payment ? METHODS[transfer.payment.method] : "", protocolStamp(transfer.paidAt));
+    transfer.destinationCurrency, moneyText(payoutOf(transfer)), transfer.payment ? METHODS[transfer.payment.method] : "", protocolStamp(transfer.paidAt),
+    // The identification the recipient is asked for at the delivery: the copy saved in the send, not the client record of today.
+    transfer.recipientContact?.identification ?? "");
+
+  function pending(state: State, actor: User, parts: string[], now: Date) {
+    const input = namedParameters("pend", parts), text = textOf("Texto", input.Texto, 160), page = pageOf(input.Pagina);
+    const { rows, more } = pageRows(pendingDeliveries(state, actor, text), page);
+    if (!rows.length) throw new ProtocolError("RNE", "No hay envíos por entregar");
+    return okLine(now, more, rows.map(receiptOf(state)).join("!"));
+  }
+
+  async function pay(claims: Claims, parts: string[], now: Date) {
+    const input = namedParameters("pay", parts);
+    if (!/^[A-Za-z0-9-]{8,64}$/.test(input.idOperacion)) throw input.idOperacion === "" ? missing("idOperacion") : invalid("idOperacion");
+    if (!/^ENV\d{8}$/.test(input.NumEnvio)) throw input.NumEnvio === "" ? missing("NumEnvio") : invalid("NumEnvio");
+    const receive = amountOf("MontoARecibir", input.MontoARecibir);
+    // With «pay» in front: an idOperacion that was of a send, used again here, is never taken for the same operation.
+    const fingerprint = createHash("sha256").update(["pay", ...parts.slice(1)].join("|")).digest("hex");
+    return deps.store.transaction((state) => {
+      assertAuthSession(state, claims, claims.sid);
+      const actor = currentAccessUser(state, claims);
+      authorizeRequest(actor, ...PAY);
+      requireRemittancePermission(actor, "remittances.pay");
+      // The same idOperacion with the same data is the petition whose answer was lost: the saved answer, and nothing
+      // leaves the box again. Any other attempt on a send that is already delivered is answered ENP below.
+      const scope = `${TEXT_PROTOCOL_CHANNEL}:${actor.id}:${input.idOperacion}`;
+      const existing = state.idempotency.find((row) => row.id === scope);
+      if (existing) {
+        const saved = existing.response as { envioReference: string; envio: string };
+        if (existing.fingerprint !== fingerprint) throw new ProtocolError("OPD", "Ese idOperacion ya se usó con otros datos", saved.envioReference);
+        return okLine(now, saved.envio);
+      }
+      const transfer = deliverableByReference(state, actor, input.NumEnvio);
+      if (!transfer) throw new ProtocolError("ENE", undefined, input.NumEnvio);
+      // What the application showed is what leaves the box: a wrong NumEnvio never delivers the money of another send.
+      if (payoutOf(transfer) !== receive) throw new ProtocolError("MNC", undefined, input.NumEnvio);
+      if (transfer.status !== "pending") throw new ProtocolError("ENP", undefined, STATUS[transfer.status]);
+      const checkCatalogChanges = guardCatalogChanges(state, actor, PAY[1]), currency = transfer.destinationCurrency;
+      try { payRemittance(state, actor, transfer.id, now); }
+      catch (error) {
+        // Only around the delivery itself: here FORBIDDEN is the recipient out of the route of a collector, and the
+        // box is the one of the currency the recipient receives.
+        const code = error instanceof DomainError ? error.code : "";
+        if (code === "FORBIDDEN")
+          throw new ProtocolError("CFR", "El destinatario no es de su ruta", clientIdOf(state.clients.find((row) => row.id === transfer.recipientClientId) ?? { id: transfer.recipientClientId }));
+        if (code === "CASH_NOT_OPEN") throw new ProtocolError("CNA", `No tiene abierta hoy su Caja de Remesas en ${currency}`, currency);
+        if (code === "INSUFFICIENT_CASH") throw new ProtocolError("CSF", `Su Caja de Remesas en ${currency} no tiene fondos para esta entrega`, currency);
+        throw error;
+      }
+      checkCatalogChanges();
+      recordMutationTrace(state, actor, "/cyp_pay", {}, transfer, now);
+      const envio = receiptOf(state)(transfer);
+      state.idempotency.push({ id: scope, fingerprint, response: { protocol: TEXT_PROTOCOL_CHANNEL, transferId: transfer.id, envioReference: transfer.envioReference, envio }, createdAt: now.toISOString() });
+      return okLine(now, envio);
+    });
+  }
 
   async function answer(command: string, request: FastifyRequest, now: Date) {
     if (!(PROTOCOL_COMMANDS as readonly string[]).includes(command)) throw new ProtocolError("PNE");
@@ -309,13 +380,16 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
     if (name === "logout") return logout(claims, parts, now);
     // The permission is asked twice on purpose: by the equivalent path, as the web does, and by its own name, so a
     // change in the table of paths can never leave these petitions open.
-    const actor = await deps.authenticate(claims, ...(name === "recs" ? VIEW : SEND));
-    requireRemittancePermission(actor, name === "recs" ? "remittances.view" : "remittances.create");
+    const [path, permission] = ACCESS[name];
+    const actor = await deps.authenticate(claims, ...path);
+    requireRemittancePermission(actor, permission);
     if (name === "send") return send(claims, parts, now);
+    if (name === "pay") return pay(claims, parts, now);
     const state = await deps.store.read();
     if (name === "clients") return clients(state, actor, parts, now);
     if (name === "client") return client(state, actor, parts, now);
     if (name === "quote") return quote(state, parts, now);
+    if (name === "pend") return pending(state, actor, parts, now);
     return receipts(state, actor, parts, now);
   }
 

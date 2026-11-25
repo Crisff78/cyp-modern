@@ -436,6 +436,15 @@ export function canReportTransfer(state: State, user: User, transfer: Remittance
   if (isRemittanceDesk(user.role)) return transfer.sendingUserId === user.id || transfer.paidBy === user.id;
   return readsAllOperations(user) || transfer.sendingUserId === user.id || clientInRoute(state, user, transfer.senderClientId) || clientInRoute(state, user, transfer.recipientClientId);
 }
+/**
+ * The send with that number, for the account that asks to deliver it: one it sees, or one it would see if the send
+ * were still pending (a Cajero stops seeing a send that another one delivered or that was cancelled). So «it is no
+ * longer pending» can be told apart from «it is not yours to see».
+ */
+export function deliverableByReference(state: State, user: User, envioReference: string) {
+  const transfer = state.remittances.transfers.find((row) => row.envioReference === envioReference);
+  return transfer && (canSeeOutgoing(state, user, transfer) || canSeeReceipt(state, user, { ...transfer, status: "pending" })) ? transfer : undefined;
+}
 export function visibleRemittanceResult<T>(user: User, value: T): T {
   if (hasRemittancePermission(user, "remittances.commissions.view") || !value || typeof value !== "object" || Array.isArray(value)) return value;
   const result = structuredClone(value) as Record<string, unknown>;
