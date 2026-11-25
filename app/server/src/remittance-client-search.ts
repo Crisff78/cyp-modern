@@ -1,8 +1,8 @@
 import { DomainError, type State, type User } from "./domain.js";
 import { remittanceOperators, type RemittanceContact } from "./remittances.js";
 
-const normalized = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/·/g, " ").toLocaleLowerCase("es").trim();
-function phoneMatches(value: string | undefined, digits: string) {
+export const normalized = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/·/g, " ").toLocaleLowerCase("es").trim();
+export function phoneMatches(value: string | undefined, digits: string) {
   return (value?.match(/\+?\d[\d\t ().-]*\d|\d/g) ?? []).flatMap((run) => run.split(/(?<=\d{7})[\t ().-]+(?=\d{7})/))
     .some((run) => { const number = run.replace(/\D/g, ""); return number.length >= 7 && number.length <= 15 && number.includes(digits); });
 }

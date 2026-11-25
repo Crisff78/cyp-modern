@@ -1,8 +1,8 @@
-// Plain-text protocol for the mobile application (docs/protocolo-cyp/Protocolo CYP 0.6.txt).
+// Plain-text protocol for the mobile application (docs/protocolo-cyp/Protocolo CYP 0.7.txt).
 // This file has no Fastify in it: how a petition is read, how an answer is written and which code an error gets.
 import { DomainError } from "./domain.js";
 
-export const PROTOCOL_COMMANDS = ["login", "logout", "clients", "client", "quote", "send", "recs"] as const;
+export const PROTOCOL_COMMANDS = ["login", "logout", "clients", "client", "quote", "send", "recs", "pend", "pay"] as const;
 export type ProtocolCommand = (typeof PROTOCOL_COMMANDS)[number];
 /** The names of the parameters, as the document writes them; a PIN error names the one that is wrong. */
 export const PROTOCOL_PARAMETERS: Record<Exclude<ProtocolCommand, "login">, readonly string[]> = {
@@ -13,6 +13,8 @@ export const PROTOCOL_PARAMETERS: Record<Exclude<ProtocolCommand, "login">, read
   send: ["idSesion", "idOperacion", "idRemitente", "idDestinatario", "idMonedaOrigen", "idMonedaDestino", "Monto", "Modo",
     "TotalAPagar", "MontoARecibir", "idForma_Pago", "Recibido", "Referencia", "Banco", "Verificado", "Nota"],
   recs: ["idSesion", "FechaInicial", "FechaFinal", "idEstado", "Pagina"],
+  pend: ["idSesion", "Texto", "Pagina"],
+  pay: ["idSesion", "idOperacion", "NumEnvio", "MontoARecibir"],
 };
 export const PAGE_SIZE = 100;
 export const MAX_RECEIPT_DAYS = 31;
@@ -45,6 +47,10 @@ const MESSAGES: Record<string, string> = {
   PNV: "Falta confirmar que el pago ya llegó",
   OPD: "Ese envío ya estaba registrado con otros datos",
   RNE: "No hay recibos que mostrar",
+  ENE: "Envío no encontrado",
+  ENP: "Ese envío ya no está pendiente: ya se entregó o se canceló",
+  MNC: "El monto no es el de ese envío. No se entregó nada",
+  CSF: "Su Caja de Remesas no tiene fondos para esta entrega",
 };
 export class ProtocolError extends Error {
   constructor(public code: string, message?: string, public dato = "") {
@@ -63,6 +69,7 @@ const DOMAIN_CODES: Record<string, string> = {
   CLIENT_NOT_FOUND: "CNE", CLIENT_INACTIVE: "CIN", SAME_CLIENT: "MCL", RATE_MISSING: "TNE",
   AMOUNT_TOO_SMALL: "MIN", INVALID_AMOUNT: "MIN", QUOTE_CHANGED: "CCA", CASH_NOT_OPEN: "CNA",
   INSUFFICIENT_TENDERED: "EIS", PAYMENT_NOT_VERIFIED: "PNV",
+  TRANSFER_NOT_FOUND: "ENE", TRANSFER_NOT_PENDING: "ENP", INSUFFICIENT_CASH: "CSF",
 };
 // What only Administración can fix in the central, said to the person at the application.
 const commissions = "La central tiene que revisar su configuración de comisiones. Avise al Administrador";
@@ -164,7 +171,7 @@ export function rawParameters(method: string, url: string, body: unknown) {
 const VERSION = /^\d{1,3}(\.\d{1,3}){1,2}$/;
 export const isVersion = (value: string) => VERSION.test(value);
 /** The data a petition cannot go without. Whatever comes after them is optional. */
-const REQUIRED: Record<Exclude<ProtocolCommand, "login">, number> = { logout: 1, clients: 1, client: 2, quote: 4, send: 16, recs: 1 };
+const REQUIRED: Record<Exclude<ProtocolCommand, "login">, number> = { logout: 1, clients: 1, client: 2, quote: 4, send: 16, recs: 1, pend: 1, pay: 4 };
 /**
  * The data without the version of the application, when it comes. It is always one datum more: it is taken away only
  * when the petition already has the data it cannot go without, so an amount in last place (100.00, written as a
