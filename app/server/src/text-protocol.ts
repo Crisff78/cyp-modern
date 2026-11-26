@@ -1,4 +1,4 @@
-// Plain-text protocol for the mobile application (docs/protocolo-cyp/Protocolo CYP 0.9.txt).
+// Plain-text protocol for the mobile application (docs/protocolo-cyp/Protocolo CYP 0.10.txt).
 // This file has no Fastify in it: how a petition is read, how an answer is written and which code an error gets.
 import { DomainError } from "./domain.js";
 

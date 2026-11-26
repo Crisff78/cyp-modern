@@ -1,10 +1,10 @@
-# Protocolo de texto plano para la aplicación móvil (CYP 0.9)
+# Protocolo de texto plano para la aplicación móvil (CYP 0.10)
 
 Once peticiones `/cyp_*` que responden en texto plano, separadas por `|`, para que una aplicación móvil hecha por
 otro equipo haga Envíos de Dinero contra CyP y los entregue. Orden de Rardiel del 2026-11-19: «Programalo y deja todo
 listo».
 
-- **El contrato** es [`protocolo-cyp/Protocolo CYP 0.9.txt`](<protocolo-cyp/Protocolo CYP 0.9.txt>): es el documento
+- **El contrato** es [`protocolo-cyp/Protocolo CYP 0.10.txt`](<protocolo-cyp/Protocolo CYP 0.10.txt>): es el documento
   que se le envía a quien programa la aplicación. Si el servidor y ese documento no coinciden, hay un fallo: se
   arregla el servidor o se envía una versión nueva del documento, nunca se deja pasar. El documento describe solo
   lo que existe hoy: no cuenta lo que se cambió o se quitó. Lo nuevo desde la última versión que tiene esa persona
@@ -19,8 +19,9 @@ listo».
   `designs/2026-11-24-clientes-telefono-id-corto/`; la 0.7 (entregar un envío: `pend` y `pay`), en
   `designs/2026-11-25-protocolo-entregar/`; la 0.8 (el `idCliente` como número e `idDestinatario` en `pend`), en
   `designs/2026-11-26-id-cliente-numero/`; y la 0.9 (búsqueda exacta, Monedas y Tasas), en
-  `designs/2026-11-26-tasas-y-busqueda/`. No consta que la 0.8 se le mandara: la 0.9 marca con `(NUEVO)` todo lo
-  nuevo desde la 0.7.
+  `designs/2026-11-26-tasas-y-busqueda/`; y la 0.10 (la identificación en el Listado de Clientes), en
+  `designs/2026-11-26-listado-identificacion/`. No consta que la 0.8 ni la 0.9 se le mandaran: la 0.10 marca con
+  `(NUEVO)` todo lo nuevo desde la 0.7.
 
 ## Dónde está cada cosa
 
@@ -207,6 +208,12 @@ Visto en una captura suya del 2026-11-20 y comprobado contra un servidor local, 
   busca por trozos, en el nombre y el código. Envíos por Entregar (`pendingDeliveries`) sigue la misma regla con los
   números del envío y los datos del destinatario. **La búsqueda de la web no cambia**: con el mismo texto puede traer
   otros clientes (con `0000` sigue trayendo a todos).
+- **La identificación en el listado (0.10).** La otra parte lo pidió el 2026-11-26 con el formato exacto
+  `ID CLIENTE;CODIGO;NOMBRE;IDENTIFICACION;TELEFONO;DIRECCION`: la Identificacion va en el cuarto lugar y el teléfono y
+  la dirección se corren (no se añadió al final, como las otras veces, porque así lo pidió). `identityOf` deja vacía
+  una identificación con forma de identificación interna: la web la copia en la cédula al crear un cliente sin cédula.
+  Solo la del mismo cliente: otro texto con esa forma puede ser un documento real. Vale en el listado, en Datos del
+  Cliente y en el dato 20 de un envío (comparada con la del destinatario).
 - **Monedas y Tasas (0.9).** Las pidió la otra parte el 2026-11-26, separadas. `currencies` da las tres monedas con los
   nombres de `collector-assignments.ts`. `rates` sale de `ratesInForce` (`remittances.ts`), que usa `effectiveRate` con
   el día de negocio de Cotizar: lo que enseña es lo que usa Cotizar. Trae compra, venta, el día de la tasa (puede ser
@@ -234,6 +241,10 @@ Hoy esto solo corre en la central de pruebas, con datos ficticios. Antes de pone
   un número: **antes de una central real hay que darles identificación interna a todos** (como hace la demo con
   `assignMissingClientIdentities`). Y si alguna vez se importan clientes, que la identificación interna la siga dando la
   central: dos con el mismo número (`INT00000031` e `INT000000031`) saldrían con la `INT` entera.
+- **Cédulas en el listado.** Desde la 0.10 el Listado de Clientes trae la cédula o el pasaporte de hasta 100 clientes
+  por petición, además de teléfonos y direcciones. Lo pidió la otra parte. Antes de una central real hay que decidir si
+  se queda así (por ejemplo, solo cuando se busca un cliente concreto). Un Cobrador, con `Lado` 1, recibe también las
+  de clientes de otras rutas.
 - **Cédulas repetidas.** La base no impide que dos clientes tengan la misma cédula y el alta de la web no lo comprueba
   (solo el alta desde un envío). Con datos reales, buscar por una cédula puede traer varios clientes.
 - **El `idSesion` en una dirección.** Vale 8 horas y no sirve en la API JSON, pero quien lo tenga puede registrar
