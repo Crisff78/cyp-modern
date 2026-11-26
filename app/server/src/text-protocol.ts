@@ -1,4 +1,4 @@
-// Plain-text protocol for the mobile application (docs/protocolo-cyp/Protocolo CYP 0.7.txt).
+// Plain-text protocol for the mobile application (docs/protocolo-cyp/Protocolo CYP 0.8.txt).
 // This file has no Fastify in it: how a petition is read, how an answer is written and which code an error gets.
 import { DomainError } from "./domain.js";
 
@@ -13,7 +13,7 @@ export const PROTOCOL_PARAMETERS: Record<Exclude<ProtocolCommand, "login">, read
   send: ["idSesion", "idOperacion", "idRemitente", "idDestinatario", "idMonedaOrigen", "idMonedaDestino", "Monto", "Modo",
     "TotalAPagar", "MontoARecibir", "idForma_Pago", "Recibido", "Referencia", "Banco", "Verificado", "Nota"],
   recs: ["idSesion", "FechaInicial", "FechaFinal", "idEstado", "Pagina"],
-  pend: ["idSesion", "Texto", "Pagina"],
+  pend: ["idSesion", "Texto", "Pagina", "idDestinatario"],
   pay: ["idSesion", "idOperacion", "NumEnvio", "MontoARecibir"],
 };
 export const PAGE_SIZE = 100;
