@@ -1,7 +1,7 @@
 Protocolo de Intercambio de Datos (CyP)
 
- Versión: 0.7
-   Fecha: 25/11/2026
+ Versión: 0.8
+   Fecha: 26/11/2026
 
 
  Aquí le explicamos cómo su aplicación móvil le va a pedir datos a la
@@ -31,13 +31,15 @@ Cómo se hace un envío, paso a paso
  6- Cerrar Sesión: cuando el usuario termina.
 
 
-Cómo se entrega un envío, paso a paso (NUEVO)
-=============================================
+Cómo se entrega un envío, paso a paso
+=====================================
 
  1- Iniciar Sesión, igual que para enviar.
- 2- Envíos por Entregar: se busca el envío que viene a cobrar el
-    destinatario: por su número, por el nombre o la cédula del
-    destinatario, o por su teléfono.
+ 2- Envíos por Entregar: se buscan los envíos que viene a cobrar el
+    destinatario. (NUEVO) Lo más sencillo es buscarlo en el Listado de
+    Clientes y pedir sus envíos con su idCliente (idDestinatario).
+    También se puede buscar por el número del envío, por el nombre o la
+    cédula del destinatario, o por su teléfono.
  3- El usuario comprueba que la persona es el destinatario (el envío trae
     su identificación) y confirma en pantalla.
  4- Entregar Envío: se mandan el número del envío y lo que hay que
@@ -239,7 +241,7 @@ línea y sin salto de línea al final. Hay dos formas:
  (Distinto de LSAN: aquí no va la Versión, y en los errores viene un
  Mensaje entre el Código y el Dato.)
 
- Ejemplo: ER|20261119093000|CNE|Cliente no encontrado|INT00000099
+ Ejemplo: ER|20261119093000|CNE|Cliente no encontrado|99
 
  donde:
 
@@ -303,13 +305,21 @@ línea y sin salto de línea al final. Hay dos formas:
 6) Formato de los datos
 -----------------------
 
- Identificadores (idUsuario, idCliente, idEnvio)
-             -> Son TEXTOS, no números, de hasta 80 caracteres. No los
+ idCliente   -> (NUEVO) Un número entero, sin ceros delante. Ejemplo: 31
+                Hoy tiene hasta 8 cifras y nunca tendrá más de 16. Si lo
+                guarda como número, use un entero de 64 bits; también
+                puede guardarlo como texto. No lo arme: use siempre el que
+                devuelve la central.
+                OJO: el idCliente no es la Identificacion del cliente (su
+                cédula o pasaporte) ni su Codigo. La Identificacion sirve
+                para buscar al cliente y para comprobar a quién se le
+                entrega; en las transacciones se manda el idCliente.
+
+ idUsuario, idEnvio
+             -> Son TEXTOS de hasta 80 caracteres; hoy tienen 36. No los
                 interprete ni los arme: use siempre los que devuelve la
-                central, tal como vienen.
-                El idCliente es corto: normalmente tiene 11
-                caracteres. Ejemplo: INT00000031
-                El idUsuario y el idEnvio pueden tener 36.
+                central, tal como vienen. Su aplicación nunca tiene que
+                mandarlos de vuelta.
                 Ejemplo: c2a4e6f8-1b3d-4f5a-9c7e-0a1b2c3d4e5f
 
  Fechas      -> YYYYMMDD
@@ -382,29 +392,27 @@ ficticios. Su dirección (url), el usuario y la clave se los damos aparte.
 Lo nuevo de esta versión
 ------------------------
 
- Esto es lo nuevo desde la versión 0.6. En el documento está marcado con
+ Esto es lo nuevo desde la versión 0.7. En el documento está marcado con
 (NUEVO).
 
- - Ya se puede entregar (pagar) un envío al destinatario desde la
-   aplicación. Son dos peticiones nuevas (sección 5): Envíos por Entregar
-   (pend), para encontrar el envío, y Entregar Envío (pay), para
-   entregarlo.
- - Iniciar Sesión trae un dato más al final de DatosUsuario:
-   PuedeEntregar (1.1). Ahora son 6.
- - El registro de un envío trae un dato más al final: la Identificacion
-   del destinatario (4.1). Ahora son 20.
- - Hay cuatro códigos de error nuevos, los de las entregas: ENE, ENP, MNC
-   y CSF. Además, CFR, CNA y OPD pueden venir también al entregar (vea
-   "Errores").
- - En las preguntas del final cambia la 1.
+ - El idCliente ahora es un número entero, sin ceros delante: 31 (vea
+   "Formato de los datos"). Así viene en el Listado de Clientes, en Datos
+   del Cliente y en el registro de cada envío, y así se manda en todas
+   las peticiones.
+ - Un idCliente de antes, con INT delante (INT00000031) o largo, sigue
+   valiendo. Para repetir un envío ya mandado, repítalo con la misma
+   forma que usó la primera vez (3.2).
+ - Envíos por Entregar acepta un dato más al final, idDestinatario: los
+   envíos pendientes de un cliente, por su idCliente (5.1). Así no hace
+   falta buscarlos por la cédula.
+ - Una aclaración: Envíos por Entregar trae un registro por envío. Una
+   persona con varios envíos pendientes sale varias veces, una por envío,
+   cada una con su remitente (5.1).
+ - En las preguntas del final cambia la 7.
 
- Lo que ya tiene hecho sigue funcionando igual: las siete peticiones de
-antes no cambian, y los dos datos nuevos vienen al final, donde su
-aplicación puede ignorarlos.
-
- (La versión 0.6 trajo el Telefono y la Direccion en el Listado de
-Clientes y el idCliente corto, de 11 caracteres. Si no llegó a recibirla,
-no le falta nada: este documento ya lo trae todo.)
+ Lo que ya tiene hecho sigue funcionando: las peticiones son las mismas y
+un idCliente de antes se sigue aceptando. Lo que cambia es la forma del
+idCliente que trae cada respuesta.
 
 
 
@@ -438,8 +446,8 @@ Funcionalidades
 4.1- Listado de Recibos (recs)
 
 
-5- Entregas (NUEVO)
--------------------
+5- Entregas
+-----------
 
 5.1- Envíos por Entregar (pend)
 5.2- Entregar Envío (pay)
@@ -492,8 +500,6 @@ Funcionalidades
  DatosUsuario: idUsuario;Nombre;Rol;PuedeEnviar;PuedeVerEnvios;
                PuedeEntregar
 
- (NUEVO: viene un dato más al final, PuedeEntregar. Ahora son 6.)
-
  idUsuario: El identificador del usuario.
 
  Nombre: El nombre del usuario, para mostrarlo.
@@ -513,8 +519,7 @@ Funcionalidades
                  0 - No puede. Si lo intenta, la central responde ER con
                      SPE.
 
- PuedeEntregar: (NUEVO)
-                1 - El usuario puede entregar envíos (Entregar Envío, 5.2)
+ PuedeEntregar: 1 - El usuario puede entregar envíos (Entregar Envío, 5.2)
                 0 - No puede. Si lo intenta, la central responde ER con
                     SPE.
 
@@ -639,11 +644,10 @@ Funcionalidades
 
  ClienteX: idCliente;Codigo;Nombre;Telefono;Direccion
 
- idCliente: El identificador del cliente. Es el que se manda en las
-            demás peticiones. No se le muestra al usuario. Es corto:
-            normalmente las letras INT y 8 cifras. Ejemplo: INT00000031
-            Sigue siendo un texto: no lo arme ni lo saque del Codigo (no
-            tienen relación). Se manda tal como viene, con sus mayúsculas.
+ idCliente: (NUEVO) El identificador del cliente: un número entero.
+            Ejemplo: 31. Es el que se manda en las demás peticiones. No
+            lo saque del Codigo, porque no tienen relación: el cliente
+            del Codigo CLI00000012 puede tener el idCliente 31.
 
  Codigo: El código del cliente, el que conoce el usuario.
          Ejemplo: CLI00000012
@@ -671,17 +675,21 @@ Funcionalidades
  4- Cada búsqueda cuenta para el límite de 120 peticiones por minuto. No
     busque con cada letra que escribe el usuario: espere a que termine de
     escribir.
- 5- Un idCliente largo de antes (36 caracteres), si su aplicación
-    lo tiene guardado, sigue valiendo en Datos del Cliente y en Registrar
-    Envío. Las respuestas traen siempre el corto: si la central le
-    devuelve para un cliente un idCliente distinto del que tenía guardado,
-    use el nuevo.
+ 5- (NUEVO) Si su aplicación tiene guardado un idCliente de antes, con
+    INT delante (INT00000031) o largo (36 caracteres), sigue valiendo en
+    las peticiones. Las respuestas traen siempre el número: el de
+    INT00000031 es 31 (sin la INT ni los ceros de delante). Si la central
+    le devuelve para un cliente un idCliente distinto del que tenía
+    guardado, use el nuevo.
+ 6- (NUEVO) Una búsqueda trae todos los clientes que tienen ese texto:
+    buscar 31 trae también los que tienen 31 en su código o en otro dato.
+    Para pedir un cliente por su idCliente, use Datos del Cliente (2.2).
 
  Ejemplos:
 
  Pet: /cyp_clients?idSesion|perez
 
- Res: OK|20261119093000|0|INT00000047;CLI00000024;Ana Pérez;8095550124;Av. Duarte 45, Santiago!INT00000031;CLI00000012;Juan Pérez;8095550100;Calle 5 #12, Santiago
+ Res: OK|20261119093000|0|47;CLI00000024;Ana Pérez;8095550124;Av. Duarte 45, Santiago!31;CLI00000012;Juan Pérez;8095550100;Calle 5 #12, Santiago
 
  Buscar "perez" para el destinatario:   /cyp_clients?idSesion|perez|1|1
 
@@ -743,14 +751,14 @@ Funcionalidades
     para el que recibe (destinatario, Lado 1).
  2- Para buscar un cliente por su cédula o su pasaporte se usa el Listado
     de Clientes (2.1), con ese dato en Texto.
- 3- La respuesta trae el idCliente corto, aunque se haya pedido
-    con uno largo de antes.
+ 3- (NUEVO) La respuesta trae el idCliente como número, aunque se haya
+    pedido con uno de antes (INT00000031 o largo).
 
  Ejemplo:
 
- Pet: /cyp_client?idSesion|INT00000031
+ Pet: /cyp_client?idSesion|31
 
- Res: OK|20261119093000|INT00000031;CLI00000012;Juan Pérez;00112345678;8095550100;;Calle 5 #12, Santiago;DOP
+ Res: OK|20261119093000|31;CLI00000012;Juan Pérez;00112345678;8095550100;;Calle 5 #12, Santiago;DOP
 
  (En el ejemplo el Celular viene vacío: por eso hay dos ; seguidos.)
 
@@ -913,9 +921,10 @@ Funcionalidades
                  mismo repetirla por GET o por POST: la central compara
                  los datos, no la forma de mandarlos.
                  El idRemitente y el idDestinatario son datos
-                 como los demás: si la primera vez mandó el idCliente
-                 corto, repita el corto. Si repite con el largo de antes,
-                 la central responde OPD.
+                 como los demás: repítalos en la misma forma en que los
+                 mandó la primera vez. (NUEVO) Si la primera vez mandó
+                 INT00000031, repita INT00000031 y no 31: si cambia la
+                 forma, la central responde OPD.
               d- Si llega el mismo idOperacion con otros datos, responde
                  ER con OPD, y en el Dato viene el NumEnvio que ya estaba
                  registrado. Quiere decir que el envío YA quedó registrado
@@ -1054,14 +1063,14 @@ Funcionalidades
 
  Pet: /cyp_send?          (y a continuación, en la misma línea:)
 
- idSesion|5e0b7c1a-4d2f-4b6e-8f90-a1b2c3d4e5f6|INT00000031|INT00000047|USD|DOP|100.00|0|105.00|5806.50|1|120.00||||
+ idSesion|5e0b7c1a-4d2f-4b6e-8f90-a1b2c3d4e5f6|31|47|USD|DOP|100.00|0|105.00|5806.50|1|120.00||||
 
  Res: OK|20261119093005|c2a4e6f8-1b3d-4f5a-9c7e-0a1b2c3d4e5f;ENV00000048;REC00000048;AD0B35A22F305CA2;20261119093005;100.00;5.00;105.00;5806.50;15.00
 
  La misma petición, como la manda su aplicación (con p= delante y
  3.0 después de los 16 datos):
 
- /cyp_send?p=idSesion|5e0b7c1a-4d2f-4b6e-8f90-a1b2c3d4e5f6|INT00000031|INT00000047|USD|DOP|100.00|0|105.00|5806.50|1|120.00|||||3.0
+ /cyp_send?p=idSesion|5e0b7c1a-4d2f-4b6e-8f90-a1b2c3d4e5f6|31|47|USD|DOP|100.00|0|105.00|5806.50|1|120.00|||||3.0
 
  Ejemplo con Transferencia (solo cambia el final):
 
@@ -1080,8 +1089,8 @@ Funcionalidades
 
   1 idSesion          idSesion
   2 idOperacion       5e0b7c1a-4d2f-4b6e-8f90-a1b2c3d4e5f6
-  3 idRemitente       INT00000031
-  4 idDestinatario    INT00000047
+  3 idRemitente       31
+  4 idDestinatario    47
   5 idMonedaOrigen    USD
   6 idMonedaDestino   DOP
   7 Monto             100.00
@@ -1136,8 +1145,6 @@ Funcionalidades
           idMonedaDestino;MontoARecibir;idForma_Pago;Fecha_Pago;
           Identificacion
 
- (NUEVO: viene un dato más al final, Identificacion. Ahora son 20.)
-
  idEnvio, NumEnvio, NumRecibo, CodOperacion: Los mismos que devuelve
           Registrar Envío.
 
@@ -1145,8 +1152,9 @@ Funcionalidades
 
  idEstado: 0, 1 o 2, con el mismo significado de arriba.
 
- idRemitente, idDestinatario: El idCliente de cada uno. Viene el
-              corto, aunque el envío se haya registrado con el largo.
+ idRemitente, idDestinatario: El idCliente de cada uno. (NUEVO) Viene
+              el número, aunque el envío se haya registrado con otra
+              forma.
 
  Remitente, Destinatario: Sus nombres. En envíos antiguos pueden venir
           vacíos.
@@ -1175,7 +1183,7 @@ Funcionalidades
              destinatario (YYYYMMDDHHMMSS). Vacía si todavía no se ha
              entregado. OJO: no es cuándo pagó el remitente; eso es Fecha.
 
- Identificacion: (NUEVO) La cédula o el pasaporte del destinatario, como
+ Identificacion: La cédula o el pasaporte del destinatario, como
                  quedó guardado al registrar el envío. Puede venir vacía.
 
  Errores propios:
@@ -1199,7 +1207,7 @@ Funcionalidades
     Supervisor reciben los de todos. (Un usuario al que la central le dio
     permisos especiales puede recibir además los de otros.)
  6- Vienen ordenados del más reciente al más antiguo.
- 7- (NUEVO) Para encontrar un envío que hay que entregar no use este
+ 7- Para encontrar un envío que hay que entregar no use este
     listado: use Envíos por Entregar (5.1). Aquí un Cajero recibe solo los
     envíos que registró él.
 
@@ -1207,7 +1215,7 @@ Funcionalidades
 
  Pet: /cyp_recs?idSesion|||0
 
- Res: OK|20261119100000|0|c2a4e6f8-1b3d-4f5a-9c7e-0a1b2c3d4e5f;ENV00000048;REC00000048;AD0B35A22F305CA2;20261119093005;0;INT00000031;Juan Pérez;INT00000047;Ana Pérez;8295550111;USD;100.00;5.00;105.00;DOP;5806.50;1;;40212345678
+ Res: OK|20261119100000|0|c2a4e6f8-1b3d-4f5a-9c7e-0a1b2c3d4e5f;ENV00000048;REC00000048;AD0B35A22F305CA2;20261119093005;0;31;Juan Pérez;47;Ana Pérez;8295550111;USD;100.00;5.00;105.00;DOP;5806.50;1;;40212345678
 
  (El penúltimo campo, Fecha_Pago, viene vacío porque no se ha entregado:
  por eso hay dos ; seguidos. El último es la Identificacion del
@@ -1224,8 +1232,6 @@ Funcionalidades
 5- Entregas
 ===========
 
- (NUEVO: toda esta sección es nueva.)
-
 5.1- Envíos por Entregar
 ------------------------
 
@@ -1233,7 +1239,7 @@ Funcionalidades
  la sesión puede entregar, todos o los que coinciden con lo que se busca.
  Es para encontrar el envío que viene a cobrar el destinatario.
 
- Pet: /cyp_pend?idSesion[|Texto[|Pagina]]
+ Pet: /cyp_pend?idSesion[|Texto[|Pagina[|idDestinatario]]]
 
  Res: OK|FechayHora|HayMas|Envios
       ER|FechayHora|Código|Mensaje|Dato
@@ -1256,6 +1262,11 @@ Funcionalidades
 
  Pagina: El número de página, empezando por 1. Si no se manda se asume 1.
          Cada página trae 100 envíos como máximo.
+
+ idDestinatario: (NUEVO) El idCliente del destinatario, el que vino en el
+                 Listado de Clientes. Si se manda, vienen solo los envíos
+                 pendientes a ese cliente. Se puede mandar junto con el
+                 Texto, o solo: /cyp_pend?idSesion|||47
 
  Qué devuelve:
 
@@ -1281,6 +1292,8 @@ Funcionalidades
 
  RNE - No hay ningún envío por entregar que mostrar. No es un fallo: su
        aplicación muestra la lista vacía.
+ CNE - (NUEVO) El idDestinatario no es de ningún cliente. El Dato es el
+       idDestinatario.
 
  A tener en cuenta:
 
@@ -1300,17 +1313,26 @@ Funcionalidades
  5- Cada búsqueda cuenta para el límite de 120 peticiones por minuto. No
     busque con cada letra que escribe el usuario: espere a que termine de
     escribir.
+ 6- (NUEVO) Viene un registro por envío, no uno por persona. Una misma
+    persona puede tener varios envíos pendientes, de remitentes
+    distintos: buscando por su cédula o por su idDestinatario vienen
+    todos, uno por envío. Cada uno se entrega aparte, con su NumEnvio.
+ 7- (NUEVO) Para los envíos de un destinatario, use idDestinatario. Si
+    pone su idCliente en el Texto (por ejemplo 31), el Texto también
+    encuentra envíos que tienen esas cifras en su número.
 
  Ejemplos:
 
  Pet: /cyp_pend?idSesion|ENV00000048
 
- Res: OK|20261119100500|0|c2a4e6f8-1b3d-4f5a-9c7e-0a1b2c3d4e5f;ENV00000048;REC00000048;AD0B35A22F305CA2;20261119093005;0;INT00000031;Juan Pérez;INT00000047;Ana Pérez;8295550111;USD;100.00;5.00;105.00;DOP;5806.50;1;;40212345678
+ Res: OK|20261119100500|0|c2a4e6f8-1b3d-4f5a-9c7e-0a1b2c3d4e5f;ENV00000048;REC00000048;AD0B35A22F305CA2;20261119093005;0;31;Juan Pérez;47;Ana Pérez;8295550111;USD;100.00;5.00;105.00;DOP;5806.50;1;;40212345678
 
  (El penúltimo campo, Fecha_Pago, viene vacío. El último es la
  Identificacion del destinatario.)
 
  Todos los que el usuario puede entregar:  /cyp_pend?idSesion
+
+ Por su idCliente (NUEVO):                 /cyp_pend?idSesion|||47
 
  Por la cédula del destinatario:           /cyp_pend?idSesion|402-1234567-8
 
@@ -1433,7 +1455,7 @@ Funcionalidades
 
  Pet: /cyp_pay?idSesion|8a1f3c5e-7b9d-4e2f-a6c8-0d1e2f3a4b5c|ENV00000048|5806.50
 
- Res: OK|20261119101500|c2a4e6f8-1b3d-4f5a-9c7e-0a1b2c3d4e5f;ENV00000048;REC00000048;AD0B35A22F305CA2;20261119093005;1;INT00000031;Juan Pérez;INT00000047;Ana Pérez;8295550111;USD;100.00;5.00;105.00;DOP;5806.50;1;20261119101500;40212345678
+ Res: OK|20261119101500|c2a4e6f8-1b3d-4f5a-9c7e-0a1b2c3d4e5f;ENV00000048;REC00000048;AD0B35A22F305CA2;20261119093005;1;31;Juan Pérez;47;Ana Pérez;8295550111;USD;100.00;5.00;105.00;DOP;5806.50;1;20261119101500;40212345678
 
  La misma petición, como la manda su aplicación (con p= delante y 3.0
  después de los 4 datos):
@@ -1463,7 +1485,7 @@ Errores
    sobran o le faltan datos, o es demasiado grande; VersionApp al final no
    cuenta como dato de más); CNE, CIN y CFR traen el idCliente (en el
    Listado de Clientes, CNE no trae nada); OPD trae el NumEnvio que ya
-   estaba registrado. (NUEVO) En las entregas: ENE y MNC traen el
+   estaba registrado. En las entregas: ENE y MNC traen el
    NumEnvio; ENP, el idEstado del envío (1 o 2); CNA y CSF, la moneda de
    la caja. En los demás viene vacío.
  - En cada petición pusimos sus errores propios. Además, PIN, DML, PNE, EIC
@@ -1510,7 +1532,7 @@ Errores
  CNE - Cliente No Encontrado (o ningún cliente que mostrar en el listado).
  CIN - Cliente INactivo.
  CFR - Cliente Fuera de Ruta: el usuario es Cobrador y el remitente no es
-       de su ruta. (NUEVO) Al entregar, es el destinatario el que no es de
+       de su ruta. Al entregar, es el destinatario el que no es de
        su ruta.
  MCL - Mismo CLiente: el remitente y el destinatario son el mismo.
 
@@ -1521,16 +1543,16 @@ Errores
  CCA - Cotización CAmbiada: los importes ya no coinciden. Hay que cotizar
        otra vez.
  CNA - Caja No Abierta: el usuario no tiene abierta su Caja de Remesas.
-       (NUEVO) Al entregar, es la caja de la moneda que recibe el
+       Al entregar, es la caja de la moneda que recibe el
        destinatario.
  EIS - Efectivo InSuficiente: lo Recibido es menos que el TotalAPagar.
  PNV - Pago No Verificado: falta Verificado = 1 en Transferencia o
        Depósito.
  OPD - OPeración Duplicada: ese idOperacion ya se usó con otros datos. El
-       envío ya estaba registrado; no hay que mandarlo de nuevo. (NUEVO)
+       envío ya estaba registrado; no hay que mandarlo de nuevo.
        Puede venir también al entregar.
 
- De las entregas: (NUEVO)
+ De las entregas:
 
  ENE - Envío No Encontrado: no hay ningún envío con ese NumEnvio, o el
        usuario no lo puede ver.
@@ -1581,7 +1603,7 @@ una versión nueva de este documento.
  Sobre el formato:
 
  1- PlugIn y comandos: pusimos "cyp" y los comandos de este documento
-    (login, logout, clients, client, quote, send, recs y, (NUEVO), pend y
+    (login, logout, clients, client, quote, send, recs, pend y
     pay). ¿Tiene usted alguna regla para nombrarlos, o prefiere otros
     nombres? Si no, se quedan estos.
 
@@ -1618,10 +1640,10 @@ una versión nueva de este documento.
     suya. El Banco va con su nombre, como texto, porque CyP no tiene
     idBanco. ¿Le sirve?
 
- 7- Identificadores: son textos, no números. El idCliente ya es
-    corto (11 caracteres). El idUsuario y el idEnvio pueden tener 36, pero
-    su aplicación nunca tiene que mandarlos de vuelta. ¿Le dan algún
-    problema así?
+ 7- (NUEVO) Identificadores: el idCliente ya es un número entero (31),
+    como nos pidió. El idUsuario y el idEnvio siguen siendo textos de
+    hasta 36 caracteres, que su aplicación nunca tiene que mandar de
+    vuelta. ¿Le sirve así?
 
  8- Importes: los pusimos con punto y dos decimales (1500.00). ¿Así los
     usa usted?
@@ -1634,10 +1656,9 @@ una versión nueva de este documento.
 
  Sobre el contenido:
 
- 11- Datos del Cliente: en la reunión se habló de pedirlo con la
-     identificación (la cédula). En CyP hay clientes sin cédula; por eso
-     aquí se pide por idCliente, y por la cédula se busca en el Listado de
-     Clientes (con la cédula en Texto). ¿Le sirve?
+ 11- Datos del Cliente se pide con el idCliente. Para encontrar a alguien
+     por su cédula se usa el Listado de Clientes, con la cédula en Texto
+     (en CyP hay clientes sin cédula). ¿Le sirve?
 
  12- idOperacion: en LSAN no existe. ¿Puede su aplicación generarlo,
      guardarlo y repetirlo cuando no llegue la respuesta?

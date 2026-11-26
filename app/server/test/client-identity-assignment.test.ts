@@ -4,7 +4,7 @@ import { assignMissingClientIdentities, reserveClientIdentity } from "../src/cli
 import type { User } from "../src/domain.js";
 import { seed } from "../src/seed.js";
 
-// The internal identification is the short idCliente of the text protocol (version 0.6). Synthetic data only.
+// The number of the internal identification is the idCliente of the text protocol (version 0.8). Synthetic data only.
 const admin: User = { id: "demo-admin", name: "Administración", role: "admin" };
 
 test("every client without an internal identification gets its own, once, and the one that had it keeps it", () => {
@@ -30,5 +30,11 @@ test("every client without an internal identification gets its own, once, and th
 test("a new internal identification never repeats the id of a client", () => {
   const state = seed();
   state.clients.push({ ...state.clients[0], id: "INT00000001", code: "SINT-1" });
+  assert.equal(reserveClientIdentity(state, admin).internalIdentification, "INT00000002");
+});
+
+test("a new internal identification never has as its number the id of a client", () => {
+  const state = seed();
+  state.clients.push({ ...state.clients[0], id: "1", code: "NUM-1" });
   assert.equal(reserveClientIdentity(state, admin).internalIdentification, "INT00000002");
 });

@@ -1,7 +1,8 @@
-// Plain-text protocol for the mobile application: the petitions of docs/protocolo-cyp/Protocolo CYP 0.7.txt.
+// Plain-text protocol for the mobile application: the petitions of docs/protocolo-cyp/Protocolo CYP 0.8.txt.
 // Each one is a thin adapter in front of the same functions the JSON API uses; no rule of the business lives here.
-// Two things are its own: the idCliente (the internal identification of the client instead of its id, clientIdOf) and,
-// in Entregar Envío, the order of its checks and the idOperacion that tells a repetition from another attempt (pay).
+// Two things are its own: the idCliente (the number of the internal identification of the client instead of its id,
+// clientIds and clientOf) and, in Entregar Envío, the order of its checks and the idOperacion that tells a repetition
+// from another attempt (pay).
 import { createHash } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
@@ -103,19 +104,42 @@ const pageOf = (value: string) => {
 };
 /** One page of a list and whether more are left. */
 const pageRows = <T>(rows: T[], page: number) => ({ rows: rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), more: rows.length > page * PAGE_SIZE ? "1" : "0" });
+// The number as it goes out: 0, or up to 16 digits without zeros in front. 0031 is not one: it is looked for as an id.
+const INTERNAL_IDENTIFICATION = /^INT[0-9]{8,16}$/, CLIENT_NUMBER = /^(0|[1-9][0-9]{0,15})$/;
+/** The number of an internal identification, as text (16 digits do not fit in a Number): INT00000031 is 31. */
+const numberOf = (internalIdentification?: string) =>
+  internalIdentification && INTERNAL_IDENTIFICATION.test(internalIdentification) ? internalIdentification.slice(3).replace(/^0+(?=[0-9])/, "") : undefined;
 /**
- * The idCliente of the protocol: the internal identification of the client (INT and digits: short, unique and never
- * changed). A client without one keeps its id.
+ * The idCliente of each client, by its id, built once per petition with every client (also the inactive ones and those
+ * of other routes). Since 0.8 it is the number of its internal identification (INT00000031 is 31). The central makes
+ * that number unique and no id is only digits, so it is always a number for a client that has one. Only if data came
+ * that broke it (two internal identifications with the same number) does the internal identification go out as it is.
+ * A client without one keeps its id; in the public demo every client has one. What goes out comes in as the same client.
  */
-const clientIdOf = (client: { id: string; internalIdentification?: string }) => client.internalIdentification ?? client.id;
-const INTERNAL_IDENTIFICATION = /^INT[0-9]{8,16}$/;
+function clientIds(state: State) {
+  const owners = new Map<string, number>();
+  for (const row of state.clients) {
+    const number = numberOf(row.internalIdentification);
+    if (number !== undefined) owners.set(number, (owners.get(number) ?? 0) + 1);
+  }
+  return new Map(state.clients.map((row) => {
+    const number = numberOf(row.internalIdentification);
+    return [row.id, number !== undefined && owners.get(number) === 1 ? number : row.internalIdentification ?? row.id] as const;
+  }));
+}
 /**
- * The client an idCliente stands for: by its internal identification when the text has that form, or by its id (the
- * long one of before 0.6 still comes in). It never throws: a text that is nobody's is answered by whoever asks for it.
+ * The client an idCliente stands for. A number: the only client with that number (with two, nobody), or else the client
+ * with that id. INT and digits: by the internal identification, as in 0.6. Anything else: by the id (the long one of
+ * before 0.6 still comes in). It never throws: a text that is nobody's is answered by whoever asks for it.
  */
-const clientOf = (state: State, idCliente: string) =>
-  (INTERNAL_IDENTIFICATION.test(idCliente) ? state.clients.find((row) => row.internalIdentification === idCliente) : undefined) ??
-  state.clients.find((row) => row.id === idCliente);
+function clientOf(state: State, idCliente: string) {
+  if (CLIENT_NUMBER.test(idCliente)) {
+    const owners = state.clients.filter((row) => numberOf(row.internalIdentification) === idCliente);
+    if (owners.length) return owners.length === 1 ? owners[0] : undefined;
+  }
+  return (INTERNAL_IDENTIFICATION.test(idCliente) ? state.clients.find((row) => row.internalIdentification === idCliente) : undefined) ??
+    state.clients.find((row) => row.id === idCliente);
+}
 /** The client chosen for one side of a send; the error carries the idCliente as it came, as the document says. */
 function contactOf(state: State, actor: User, idCliente: string, side: "sender" | "recipient") {
   try { return remittanceClientContact(state, actor, clientOf(state, idCliente)?.id ?? idCliente, side); }
@@ -189,7 +213,8 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
     const input = namedParameters("clients", parts), text = textOf("Texto", input.Texto, 160), page = pageOf(input.Pagina);
     const { rows, more } = pageRows(listRemittanceClients(state, actor, text, sideOf(input.Lado)), page);
     if (!rows.length) throw new ProtocolError("CNE", "No hay clientes que mostrar");
-    return okLine(now, more, rows.map((client) => record(clientIdOf(client), client.code, client.name, client.phone, client.address)).join("!"));
+    const ids = clientIds(state);
+    return okLine(now, more, rows.map((client) => record(ids.get(client.id) ?? client.id, client.code, client.name, client.phone, client.address)).join("!"));
   }
 
   function client(state: State, actor: User, parts: string[], now: Date) {
@@ -197,7 +222,7 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
     const contact = contactOf(state, actor, id, sideOf(input.Lado));
     // The contact of a send carries neither the currency nor the internal identification: they are in the client record.
     const saved = state.clients.find((row) => row.id === contact.id);
-    return okLine(now, record(clientIdOf(saved ?? contact), contact.code, contact.name, contact.identification ?? "", contact.phone, contact.cellular, contact.address,
+    return okLine(now, record(clientIds(state).get(contact.id) ?? contact.id, contact.code, contact.name, contact.identification ?? "", contact.phone, contact.cellular, contact.address,
       saved?.preferredCurrency ?? "DOP"));
   }
 
@@ -255,8 +280,8 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
         if (existing.fingerprint !== fingerprint) throw new ProtocolError("OPD", undefined, saved.envioReference);
         return okLine(now, saved.envio);
       }
-      // After the idOperacion, as always. An idCliente may come short or long: the same client by its two ids is still
-      // the same client, and two equal texts that are nobody's are still MCL.
+      // After the idOperacion, as always. An idCliente may come as the number, the internal identification or the long id:
+      // the same client by two of them is still the same client, and two equal texts that are nobody's are still MCL.
       const sender = clientOf(state, senderClientId)?.id ?? senderClientId, recipient = clientOf(state, recipientClientId)?.id ?? recipientClientId;
       if (sender === recipient) throw new ProtocolError("MCL");
       contactOf(state, actor, senderClientId, "sender");
@@ -300,9 +325,9 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
     if (!rows.length) throw new ProtocolError("RNE");
     return okLine(now, more, rows.map(receiptOf(state)).join("!"));
   }
-  /** The record of a send in Listado de Recibos, Envíos por Entregar and Entregar Envío, with the clients by their short id. */
+  /** The record of a send in Listado de Recibos, Envíos por Entregar and Entregar Envío, with the clients by their idCliente. */
   const receiptOf = (state: State) => {
-    const ids = new Map(state.clients.map((row) => [row.id, clientIdOf(row)]));
+    const ids = clientIds(state);
     return (transfer: Remittance) => receipt(transfer, (id) => ids.get(id) ?? id);
   };
   const receipt = (transfer: Remittance, idCliente: (id: string) => string) => record(
@@ -316,7 +341,11 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
 
   function pending(state: State, actor: User, parts: string[], now: Date) {
     const input = namedParameters("pend", parts), text = textOf("Texto", input.Texto, 160), page = pageOf(input.Pagina);
-    const { rows, more } = pageRows(pendingDeliveries(state, actor, text), page);
+    // Since 0.8, the sends to one recipient by its idCliente: the application does not have to look for them by the cédula.
+    const recipient = input.idDestinatario === "" ? undefined : clientOf(state, idOf("idDestinatario", input.idDestinatario));
+    if (input.idDestinatario !== "" && !recipient) throw new ProtocolError("CNE", undefined, input.idDestinatario);
+    const found = pendingDeliveries(state, actor, text).filter((transfer) => !recipient || transfer.recipientClientId === recipient.id);
+    const { rows, more } = pageRows(found, page);
     if (!rows.length) throw new ProtocolError("RNE", "No hay envíos por entregar");
     return okLine(now, more, rows.map(receiptOf(state)).join("!"));
   }
@@ -338,9 +367,12 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
       const scope = `${TEXT_PROTOCOL_CHANNEL}:${actor.id}:${input.idOperacion}`;
       const existing = state.idempotency.find((row) => row.id === scope);
       if (existing) {
-        const saved = existing.response as { envioReference: string; envio: string };
+        const saved = existing.response as { envioReference: string; envio: string; transferId?: string };
         if (existing.fingerprint !== fingerprint) throw new ProtocolError("OPD", "Ese idOperacion ya se usó con otros datos", saved.envioReference);
-        return okLine(now, saved.envio);
+        // The same record again, made now: a delivery is never undone, so only the idCliente may have changed its form
+        // (a delivery of 0.7 repeated after 0.8 does not bring the INT back).
+        const delivered = state.remittances.transfers.find((row) => row.id === saved.transferId);
+        return okLine(now, delivered ? receiptOf(state)(delivered) : saved.envio);
       }
       const transfer = deliverableByReference(state, actor, input.NumEnvio);
       if (!transfer) throw new ProtocolError("ENE", undefined, input.NumEnvio);
@@ -354,7 +386,7 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
         // box is the one of the currency the recipient receives.
         const code = error instanceof DomainError ? error.code : "";
         if (code === "FORBIDDEN")
-          throw new ProtocolError("CFR", "El destinatario no es de su ruta", clientIdOf(state.clients.find((row) => row.id === transfer.recipientClientId) ?? { id: transfer.recipientClientId }));
+          throw new ProtocolError("CFR", "El destinatario no es de su ruta", clientIds(state).get(transfer.recipientClientId) ?? transfer.recipientClientId);
         if (code === "CASH_NOT_OPEN") throw new ProtocolError("CNA", `No tiene abierta hoy su Caja de Remesas en ${currency}`, currency);
         if (code === "INSUFFICIENT_CASH") throw new ProtocolError("CSF", `Su Caja de Remesas en ${currency} no tiene fondos para esta entrega`, currency);
         throw error;
