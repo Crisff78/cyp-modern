@@ -1,6 +1,6 @@
 Protocolo de Intercambio de Datos (CyP)
 
- Versión: 0.8
+ Versión: 0.9
    Fecha: 26/11/2026
 
 
@@ -21,7 +21,8 @@ Cómo se hace un envío, paso a paso
     falta ver su cédula, se pide Datos del Cliente.
  3- Cotizar Envío: se mandan el monto y las monedas, y la central devuelve
     la comisión, el total que paga el remitente y lo que va a recibir el
-    destinatario.
+    destinatario. (NUEVO) Para que el usuario elija las monedas y vea sus
+    tasas están Listado de Monedas y Tasas Vigentes (6).
  4- Registrar Envío: se mandan los dos clientes, lo cotizado y la forma de
     pago, junto con un idOperacion que inventa su aplicación para que el
     envío no se registre dos veces. Para registrar, el usuario tiene que
@@ -334,7 +335,7 @@ línea y sin salto de línea al final. Hay dos formas:
                 decimal y seis decimales. Ejemplo: 59.250000
 
  idMoneda    -> Código de tres letras, en mayúsculas: DOP (Peso
-                Dominicano), USD (Dólar), EUR (Euro). OJO: no es el número
+                Dominicano), USD (Dólar Americano), EUR (Euro). OJO: no es el número
                 que usa LSAN (1 = Peso Dominicano). En esta versión solo
                 existen estas tres.
 
@@ -408,11 +409,18 @@ Lo nuevo de esta versión
  - Una aclaración: Envíos por Entregar trae un registro por envío. Una
    persona con varios envíos pendientes sale varias veces, una por envío,
    cada una con su remitente (5.1).
- - En las preguntas del final cambia la 7.
+ - El Listado de Clientes busca de forma exacta los números y los
+   códigos (2.1): un texto de solo cifras ya no encuentra por trozos.
+   Por eso antes "0000" traía todos los clientes: estaba dentro de cada
+   INT00000031. Envíos por Entregar busca igual (5.1).
+ - Dos peticiones nuevas, en la sección 6: Listado de Monedas
+   (currencies) y Tasas Vigentes (rates).
+ - En las preguntas del final cambian la 1 y la 7.
 
- Lo que ya tiene hecho sigue funcionando: las peticiones son las mismas y
-un idCliente de antes se sigue aceptando. Lo que cambia es la forma del
-idCliente que trae cada respuesta.
+ Lo que ya tiene hecho sigue funcionando: las peticiones de antes son las
+mismas y un idCliente de antes se sigue aceptando. Lo que cambia es la
+forma del idCliente que trae cada respuesta, y que una búsqueda por un
+trozo de número ya no encuentra nada.
 
 
 
@@ -451,6 +459,13 @@ Funcionalidades
 
 5.1- Envíos por Entregar (pend)
 5.2- Entregar Envío (pay)
+
+
+6- Monedas y Tasas (NUEVO)
+--------------------------
+
+6.1- Listado de Monedas (currencies)
+6.2- Tasas Vigentes (rates)
 
 
 
@@ -512,7 +527,8 @@ Funcionalidades
       undefined  - No definido (sin acceso: no puede enviar ni ver envíos)
 
  PuedeEnviar: 1 - El usuario puede buscar clientes, cotizar y registrar
-                  envíos
+                  envíos. (NUEVO) También puede pedir las Tasas Vigentes
+                  (6.2).
               0 - No puede. Si lo intenta, la central responde ER con SPE.
 
  PuedeVerEnvios: 1 - El usuario puede pedir el Listado de Recibos
@@ -611,17 +627,26 @@ Funcionalidades
  Texto: Lo que se quiere buscar (hasta 160 caracteres, sin | ni saltos de
         línea). Si no se manda, vienen todos. Si se manda, vienen:
 
-        - Los clientes que tienen TODAS las palabras del texto entre su
-          código, su nombre y su identificación (cada palabra puede estar
-          en un dato distinto). Da igual mayúsculas y acentos.
-        - Los que tienen el texto dentro de su identificación. Da igual si
-          se escribe con guiones o sin ellos: 001-1234567-8 y 00112345678
-          encuentran lo mismo.
-        - Si el texto es solo números (con o sin guiones o espacios) y trae
-          3 o más, también los que lo tienen en su teléfono o en su
-          celular.
-        - Puede venir además algún cliente que tenga ese texto en otro
-          dato de su ficha en la central.
+        (NUEVO) Los números y los códigos se buscan enteros:
+
+        - El cliente cuyo idCliente es ese texto (31; también
+          INT00000031).
+        - El cliente cuyo Codigo es ese texto, entero: CLI00000012. Da
+          igual mayúsculas.
+        - El cliente cuya identificación (cédula o pasaporte) es ese
+          texto, entera. Da igual si se escribe con guiones o sin ellos:
+          001-1234567-8 y 00112345678 encuentran lo mismo.
+        - Si el texto es un teléfono (7 cifras o más, con o sin guiones o
+          espacios), los clientes cuyo teléfono o celular termina en esas
+          cifras: 8095550100 encuentra también +1 809 555 0100.
+        - Solo si el texto tiene alguna letra: los clientes que tienen
+          TODAS las palabras del texto dentro de su nombre o de su código
+          (cada palabra puede estar en parte: perez encuentra a Pérez). Da
+          igual mayúsculas y acentos.
+
+        Un texto de solo cifras nunca encuentra por trozos: 0000 no trae a
+        nadie, y una cédula a la que le falta una cifra tampoco. Para traer
+        a todos, deje el Texto vacío.
 
  Pagina: El número de página, empezando por 1. Si no se manda se asume 1.
          Cada página trae 100 clientes como máximo.
@@ -681,9 +706,12 @@ Funcionalidades
     INT00000031 es 31 (sin la INT ni los ceros de delante). Si la central
     le devuelve para un cliente un idCliente distinto del que tenía
     guardado, use el nuevo.
- 6- (NUEVO) Una búsqueda trae todos los clientes que tienen ese texto:
-    buscar 31 trae también los que tienen 31 en su código o en otro dato.
-    Para pedir un cliente por su idCliente, use Datos del Cliente (2.2).
+ 6- (NUEVO) Con solo cifras pueden venir dos clientes distintos: el de ese
+    idCliente y el de ese Codigo, si el Codigo de alguno es solo cifras.
+    Elija por el nombre. Para pedir un cliente por su idCliente, lo
+    directo es Datos del Cliente (2.2).
+ 7- (NUEVO) Con letras se sigue buscando por trozos: "cl" trae a todos los
+    clientes que tienen "cl" en su código o en su nombre.
 
  Ejemplos:
 
@@ -1249,16 +1277,19 @@ Funcionalidades
  Texto: Lo que se quiere buscar (hasta 160 caracteres, sin | ni saltos de
         línea). Si no se manda, vienen todos. Si se manda, vienen:
 
-        - Los envíos que tienen TODAS las palabras del texto entre su
-          NumEnvio, su NumRecibo, su CodOperacion, el nombre del
-          destinatario, el del remitente y la identificación del
-          destinatario (cada palabra puede estar en un dato distinto). Da
-          igual mayúsculas y acentos.
-        - Los que tienen el texto dentro de la identificación del
-          destinatario. Da igual si se escribe con guiones o sin ellos.
-        - Si el texto es solo números (con o sin guiones o espacios) y trae
-          3 o más, también los que lo tienen en el teléfono o en el
-          celular del destinatario.
+        (NUEVO) Los números se buscan enteros, como en el Listado de
+        Clientes:
+
+        - El envío cuyo NumEnvio, NumRecibo o CodOperacion es ese texto,
+          entero. Da igual mayúsculas.
+        - Los envíos cuyo destinatario tiene esa identificación, entera,
+          con o sin guiones.
+        - Si el texto es un teléfono (7 cifras o más), los envíos cuyo
+          destinatario tiene un teléfono o un celular que termina en esas
+          cifras.
+        - Solo si el texto tiene alguna letra: los envíos que tienen TODAS
+          las palabras del texto dentro del nombre del destinatario o del
+          remitente. Da igual mayúsculas y acentos.
 
  Pagina: El número de página, empezando por 1. Si no se manda se asume 1.
          Cada página trae 100 envíos como máximo.
@@ -1317,9 +1348,8 @@ Funcionalidades
     persona puede tener varios envíos pendientes, de remitentes
     distintos: buscando por su cédula o por su idDestinatario vienen
     todos, uno por envío. Cada uno se entrega aparte, con su NumEnvio.
- 7- (NUEVO) Para los envíos de un destinatario, use idDestinatario. Si
-    pone su idCliente en el Texto (por ejemplo 31), el Texto también
-    encuentra envíos que tienen esas cifras en su número.
+ 7- (NUEVO) Para los envíos de un destinatario, use idDestinatario: su
+    idCliente en el Texto (por ejemplo 31) no encuentra nada.
 
  Ejemplos:
 
@@ -1471,6 +1501,123 @@ Funcionalidades
  Res: ER|20261119101500|CNA|No tiene abierta hoy su Caja de Remesas en DOP|DOP
 
 
+6- Monedas y Tasas (NUEVO)
+==========================
+
+ (NUEVO: toda esta sección es nueva.)
+
+6.1- Listado de Monedas
+-----------------------
+
+ Para qué sirve: trae las monedas con las que trabaja la central, para
+ que el usuario elija en qué moneda paga el remitente y en cuál recibe el
+ destinatario.
+
+ Pet: /cyp_currencies?idSesion
+
+ Res: OK|FechayHora|Monedas
+      ER|FechayHora|Código|Mensaje|Dato
+
+ Qué devuelve:
+
+ Monedas: Moneda1!Moneda2!...!MonedaN
+
+ MonedaX: idMoneda;Nombre
+
+ idMoneda: El código de tres letras (vea "Formato de los datos"). Es el
+           que se manda en Cotizar Envío, Registrar Envío y Tasas
+           Vigentes.
+
+ Nombre: El nombre de la moneda, para mostrarlo.
+
+ Errores propios: ninguno.
+
+ A tener en cuenta:
+
+ 1- Vienen siempre en el mismo orden: DOP, USD, EUR.
+ 2- La puede pedir cualquier usuario que pueda enviar, ver envíos o
+    entregar.
+ 3- Que una moneda venga aquí no quiere decir que hoy se pueda cotizar con
+    ella: para eso tiene que tener tasa vigente (6.2).
+
+ Ejemplo:
+
+ Pet: /cyp_currencies?idSesion
+
+ Res: OK|20261126100000|DOP;Peso Dominicano!USD;Dólar Americano!EUR;Euro
+
+
+6.2- Tasas Vigentes
+-------------------
+
+ Para qué sirve: trae la tasa de cambio vigente de cada moneda: la que
+ usa Cotizar Envío en este momento. Es para mostrársela al usuario.
+
+ Pet: /cyp_rates?idSesion[|idMoneda]
+
+ Res: OK|FechayHora|Tasas
+      ER|FechayHora|Código|Mensaje|Dato
+
+ Qué se manda:
+
+ idMoneda: Si se manda, viene solo la tasa de esa moneda. Si no, vienen
+           todas las que tienen tasa vigente.
+
+ Qué devuelve:
+
+ Tasas: Tasa1!Tasa2!...!TasaN
+
+ TasaX: idMoneda;TasaCompra;TasaVenta;Fecha;Actualizada
+
+ TasaCompra: Los pesos dominicanos que la central da por una unidad de
+             esa moneda. Es la que se usa cuando el REMITENTE paga en esa
+             moneda: la TasaOrigen de Cotizar Envío.
+
+ TasaVenta: Los pesos dominicanos que la central cobra por una unidad de
+            esa moneda. Es la que se usa cuando el DESTINATARIO recibe en
+            esa moneda: la TasaDestino de Cotizar Envío.
+
+ Fecha: El día de la tasa vigente (YYYYMMDD). Puede ser un día anterior:
+        la central usa la última tasa registrada.
+
+ Actualizada: La fecha y la hora en que se registró o se cambió esa tasa
+              (YYYYMMDDHHMMSS). Del peso puede venir vacía.
+
+ Errores propios:
+
+ TNE - Solo con idMoneda: esa moneda no tiene tasa vigente, y hoy no se
+       puede cotizar con ella. El Dato es el idMoneda.
+
+ A tener en cuenta:
+
+ 1- Las tasas son para mostrar. Los importes de un envío salen siempre de
+    Cotizar Envío, y son esos los que se mandan en Registrar Envío. No
+    calcule los importes con estas tasas: si no coinciden con los de la
+    central, la respuesta es ER con CCA.
+ 2- Una tasa puede cambiar durante el día (Actualizada lo dice). Pídala
+    justo antes de mostrarla; no la guarde para más tarde.
+ 3- El peso dominicano (DOP) viene siempre, con 1.000000 en las dos: la
+    lista nunca está vacía. Vienen en el orden DOP, USD, EUR, y una moneda
+    sin tasa vigente no viene.
+ 4- Si una tasa se registró con un solo valor, la compra y la venta
+    vienen iguales.
+ 5- La pueden pedir los mismos usuarios que pueden cotizar (PuedeEnviar).
+
+ Ejemplos:
+
+ Pet: /cyp_rates?idSesion
+
+ Res: OK|20261126100000|DOP;1.000000;1.000000;20261126;!USD;59.250000;60.000000;20261126;20261126080512!EUR;64.100000;64.900000;20261125;20261125171503
+
+ (El peso no tiene una tasa registrada: su Actualizada viene vacía y por
+ eso hay un ; al final de su registro. El euro trae la tasa de ayer, que
+ sigue vigente.)
+
+ Una sola moneda:   /cyp_rates?idSesion|USD
+
+ Res: OK|20261126100000|USD;59.250000;60.000000;20261126;20261126080512
+
+
 
 Errores
 =======
@@ -1487,7 +1634,8 @@ Errores
    Listado de Clientes, CNE no trae nada); OPD trae el NumEnvio que ya
    estaba registrado. En las entregas: ENE y MNC traen el
    NumEnvio; ENP, el idEstado del envío (1 o 2); CNA y CSF, la moneda de
-   la caja. En los demás viene vacío.
+   la caja. (NUEVO) En Tasas Vigentes, TNE trae el idMoneda. En los demás
+   viene vacío.
  - En cada petición pusimos sus errores propios. Además, PIN, DML, PNE, EIC
    y ORC pueden venir en cualquier petición; SNE y SNA en todas las que
    llevan idSesion; y SPE y CBI en todas esas menos Cerrar Sesión.
@@ -1539,6 +1687,7 @@ Errores
  Del envío:
 
  TNE - Tasa No Encontrada: no hay tasa registrada para una de las monedas.
+       (NUEVO) En Tasas Vigentes: la moneda pedida no tiene tasa vigente.
  MIN - Monto INsuficiente: el Monto es demasiado pequeño.
  CCA - Cotización CAmbiada: los importes ya no coinciden. Hay que cotizar
        otra vez.
@@ -1603,9 +1752,9 @@ una versión nueva de este documento.
  Sobre el formato:
 
  1- PlugIn y comandos: pusimos "cyp" y los comandos de este documento
-    (login, logout, clients, client, quote, send, recs, pend y
-    pay). ¿Tiene usted alguna regla para nombrarlos, o prefiere otros
-    nombres? Si no, se quedan estos.
+    (login, logout, clients, client, quote, send, recs, pend, pay y,
+    (NUEVO), currencies y rates). ¿Tiene usted alguna regla para
+    nombrarlos, o prefiere otros nombres? Si no, se quedan estos.
 
  2- Versión: su aplicación manda un número al final de la petición
     (3.0); la central lo acepta y no lo usa. En las respuestas, el formato
