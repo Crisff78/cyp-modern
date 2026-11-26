@@ -895,3 +895,76 @@ test("idCliente 0.8: the number of the internal identification out and in, and t
     assert.deepEqual((await post("pay", payment)).slice(2), paid.slice(2));
   } finally { await app.close(); }
 });
+
+test("0.9: the exact search of clients and of sends to deliver, and Monedas and Tasas apart, the rates Cotizar uses", async () => {
+  const state = fixture(), now = new Date(), date = businessDate(now), day = date.replace(/-/g, "");
+  state.clients.push(
+    { ...state.clients[0], id: randomUUID(), code: "CLI00000012", name: "Exacta Uno", internalIdentification: "INT00000031", identification: "402-1234567-8",
+      phone: "+1 (809) 777-4321", cellular: "" },
+    { ...state.clients[0], id: randomUUID(), code: "EX-2", name: "Exacta Dos", internalIdentification: "INT00000012", identification: "PA123456",
+      phone: "", cellular: "829-333-1111" });
+  // A former single rate: it is the purchase and the sale.
+  setDailyRate(state, admin, { currency: "EUR", rate: "64.10", date }, now);
+  const { app, post, get, login } = await open(state);
+  try {
+    const cashier = await login(DEMO_CASHIER_EMAIL);
+    const names = async (text: string) => {
+      const parts = await get("clients", `${cashier}|${encodeURIComponent(text)}`);
+      return parts[0] === "OK" ? parts[3].split("!").map((row) => fields(row)[2]) : parts[2];
+    };
+    // Only digits never bring clients by pieces: 0000 is inside every INT000000xx, and now it brings nobody.
+    assert.equal(await names("0000"), "CNE");
+    // An idCliente whole: 12 is the client whose idCliente is 12, not the one whose code ends in 12; the code, whole.
+    for (const [text, name] of [["31", "Exacta Uno"], ["12", "Exacta Dos"], ["INT00000031", "Exacta Uno"], ["cli00000012", "Exacta Uno"]])
+      assert.deepEqual(await names(text), [name], text);
+    // The cédula or the passport, whole, with or without hyphens, in any case; a piece of it, nothing.
+    for (const [text, name] of [["402-1234567-8", "Exacta Uno"], ["40212345678", "Exacta Uno"], ["pa123456", "Exacta Dos"]])
+      assert.deepEqual(await names(text), [name], text);
+    assert.equal(await names("4021234567"), "CNE");
+    // A phone, by its end and from 7 digits, with or without the country code on either side; fewer digits, nothing.
+    for (const text of ["8097774321", "7774321", "18097774321", "809-777-4321"]) assert.deepEqual(await names(text), ["Exacta Uno"], text);
+    assert.deepEqual(await names("+1 829 333 1111"), ["Exacta Dos"]);
+    assert.equal(await names("4321"), "CNE");
+    // With a letter, every word inside the code or the name, as before.
+    assert.deepEqual(await names("exacta"), ["Exacta Dos", "Exacta Uno"]);
+    assert.deepEqual(await names("ex-"), ["Exacta Dos"]);
+    assert.deepEqual(await names("exacta cli00000012"), ["Exacta Uno"]);
+    // Envíos por Entregar, the same rule: the numbers of a send whole, and 0000 brings nothing.
+    const sent = fields((await post("send", sendBody(cashier, { idRemitente: "cli-1", idDestinatario: "31" })))[2]);
+    const sends = async (text: string) => {
+      const parts = await get("pend", `${cashier}|${encodeURIComponent(text)}`);
+      return parts[0] === "OK" ? parts[3].split("!").map((row) => fields(row)[1]) : parts[2];
+    };
+    for (const text of [sent[1], sent[2].toLowerCase(), sent[3], "40212345678", "7774321", "exacta uno"]) assert.deepEqual(await sends(text), [sent[1]], text);
+    for (const text of ["0000", sent[1].slice(0, 8), "4021234567"]) assert.equal(await sends(text), "RNE", text);
+    // Listado de Monedas: the three, in the order of the central.
+    assert.deepEqual((await get("currencies", cashier))[2].split("!").map(fields), [["DOP", "Peso Dominicano"], ["USD", "Dólar Americano"], ["EUR", "Euro"]]);
+    assert.equal((await get("currencies", `p=${cashier}|3.0`))[2].split("!").length, 3);
+    // Tasas Vigentes: purchase, sale and the date of each rate in force, and when it was changed; the peso is 1.
+    const listed = (await get("rates", cashier))[2].split("!").map(fields);
+    assert.deepEqual(listed.map((row) => row.slice(0, 4)), [["DOP", "1.000000", "1.000000", day], ["USD", "59.250000", "60.000000", day], ["EUR", "64.100000", "64.100000", day]]);
+    assert.deepEqual(listed.map((row) => /^\d{14}$/.test(row[4])), [false, true, true]);
+    assert.equal(listed[0][4], "", "the peso without a rate of its own was never changed");
+    assert.deepEqual(fields((await get("rates", `p=${cashier}|USD|3.0`))[2]), listed[1]);
+    // The same rates Cotizar uses: the purchase of the currency the sender pays, the sale of the one the recipient receives.
+    const quoted = fields((await get("quote", `${cashier}|USD|EUR|100.00`))[2]);
+    assert.deepEqual([quoted[6], quoted[7]], ["59.250000", "64.100000"]);
+    er(await get("rates", `${cashier}|GBP`), "PIN", "idMoneda");
+    er(await get("rates", `${cashier}|usd`), "PIN", "idMoneda");
+    er(await get("rates", `${cashier}|USD|x`), "PIN", "Parametros");
+    er(await get("currencies", `${cashier}|x`), "PIN", "Parametros");
+    // Supervision may read the currencies (it sees sends) and not the rates (it does not quote); a client role, neither.
+    const supervisor = await login("supervisora@cyp.local"), client = await login("cliente@cyp.local");
+    assert.equal((await get("currencies", supervisor))[0], "OK");
+    er(await get("rates", supervisor), "SPE");
+    er(await get("currencies", client), "SPE");
+    er(await get("currencies", "esto-no-es-una-sesion"), "SNE");
+  } finally { await app.close(); }
+  // A currency without a rate in force is left out of the list, and asked for alone it is TNE with the currency.
+  const plain = await open();
+  try {
+    const cashier = await plain.login(DEMO_CASHIER_EMAIL);
+    assert.deepEqual((await plain.get("rates", cashier))[2].split("!").map((row) => fields(row)[0]), ["DOP", "USD"]);
+    er(await plain.get("rates", `${cashier}|EUR`), "TNE", "EUR");
+  } finally { await plain.app.close(); }
+});

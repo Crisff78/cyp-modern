@@ -1,10 +1,10 @@
-# Protocolo de texto plano para la aplicación móvil (CYP 0.8)
+# Protocolo de texto plano para la aplicación móvil (CYP 0.9)
 
-Nueve peticiones `/cyp_*` que responden en texto plano, separadas por `|`, para que una aplicación móvil hecha por
+Once peticiones `/cyp_*` que responden en texto plano, separadas por `|`, para que una aplicación móvil hecha por
 otro equipo haga Envíos de Dinero contra CyP y los entregue. Orden de Rardiel del 2026-11-19: «Programalo y deja todo
 listo».
 
-- **El contrato** es [`protocolo-cyp/Protocolo CYP 0.8.txt`](<protocolo-cyp/Protocolo CYP 0.8.txt>): es el documento
+- **El contrato** es [`protocolo-cyp/Protocolo CYP 0.9.txt`](<protocolo-cyp/Protocolo CYP 0.9.txt>): es el documento
   que se le envía a quien programa la aplicación. Si el servidor y ese documento no coinciden, hay un fallo: se
   arregla el servidor o se envía una versión nueva del documento, nunca se deja pasar. El documento describe solo
   lo que existe hoy: no cuenta lo que se cambió o se quitó. Lo nuevo desde la última versión que tiene esa persona
@@ -17,15 +17,17 @@ listo».
   `designs/2026-11-23-protocolo-04-limpio/`; la 0.5 (`idSesion` de 32 caracteres), en
   `designs/2026-11-23-sesion-corta/`; la 0.6 (teléfono y dirección en el listado e `idCliente` corto), en
   `designs/2026-11-24-clientes-telefono-id-corto/`; la 0.7 (entregar un envío: `pend` y `pay`), en
-  `designs/2026-11-25-protocolo-entregar/`; y la 0.8 (el `idCliente` como número e `idDestinatario` en `pend`), en
-  `designs/2026-11-26-id-cliente-numero/`.
+  `designs/2026-11-25-protocolo-entregar/`; la 0.8 (el `idCliente` como número e `idDestinatario` en `pend`), en
+  `designs/2026-11-26-id-cliente-numero/`; y la 0.9 (búsqueda exacta, Monedas y Tasas), en
+  `designs/2026-11-26-tasas-y-busqueda/`. No consta que la 0.8 se le mandara: la 0.9 marca con `(NUEVO)` todo lo
+  nuevo desde la 0.7.
 
 ## Dónde está cada cosa
 
 | Archivo | Qué hace |
 | --- | --- |
 | `app/server/src/text-protocol.ts` | Leer una petición, escribir una respuesta, los códigos y sus mensajes. Sin Fastify. |
-| `app/server/src/text-protocol-routes.ts` | Las nueve peticiones. Cada una llama a la misma lógica de la API JSON. |
+| `app/server/src/text-protocol-routes.ts` | Las once peticiones. Cada una llama a la misma lógica de la API JSON. |
 | `app/server/src/remittance-delivery-search.ts` | Los envíos pendientes que una cuenta puede entregar, con su búsqueda (`pend`). |
 | `app/server/src/text-protocol-session.ts` | El `idSesion` de 32 caracteres: cifrar y descifrar el id de la sesión. |
 | `app/server/src/app.ts` | `authenticate` y `signIn`, que usan por igual la web y el protocolo. |
@@ -66,7 +68,10 @@ No hay reglas del negocio nuevas ni migración. Lo propio del protocolo es su `i
   para `recs` (es `PuedeVerEnvios`); desde la 0.7, `GET /api/envios/recibos` para `pend` y `POST /api/envios/x/pagar`
   para `pay` (es `PuedeEntregar`). Después pide el permiso también por su nombre (`remittances.create`,
   `remittances.view`, `remittances.receipts` o `remittances.pay`; la tabla `ACCESS`), para que un cambio en la tabla de
-  rutas de `access.ts` nunca deje abiertas estas peticiones.
+  rutas de `access.ts` nunca deje abiertas estas peticiones. Desde la 0.9, `rates` pide lo mismo que Cotizar (la web ya le
+  enseña a un Cajero las tasas vigentes en el resumen de remesas; `remittances.rates.view` es para la ventana que las
+  registra y las lista todas), y `currencies` vale con cualquiera de `PuedeEnviar`, `PuedeVerEnvios` o `PuedeEntregar`
+  (`CURRENCY_ACCESS`).
 - **Un `idSesion` no sirve en la API JSON.** Puede viajar en una dirección (GET) y acabar en un registro. El corto no
   es un token, y `jwtVerify` lo rechaza con 401; a los largos de antes los rechaza el `preHandler` porque llevan
   `channel`. Al revés sí: un token de la web sirve en el protocolo.
@@ -144,7 +149,7 @@ orígenes de CyP. El protocolo está pensado para una aplicación nativa.
 | `CLIENT_INACTIVE` | `CIN` |
 | Remitente fuera de la ruta del Cobrador; al entregar, el destinatario | `CFR` |
 | `SAME_CLIENT` | `MCL` |
-| `RATE_MISSING` | `TNE` |
+| `RATE_MISSING`; en `rates`, la moneda pedida no tiene tasa vigente | `TNE` |
 | `AMOUNT_TOO_SMALL`, `INVALID_AMOUNT`; monto `0.00` | `MIN` |
 | `QUOTE_CHANGED`; los importes no coinciden con la cotización | `CCA` |
 | `CASH_NOT_OPEN` | `CNA` |
@@ -190,11 +195,23 @@ Visto en una captura suya del 2026-11-20 y comprobado contra un servidor local, 
   identificación; y al mandar la identificación les llegan varios registros. Lo comprobado en la demo: en `cyp_clients`
   una cédula da siempre un cliente; en `cyp_pend`, la cédula de un destinatario da un registro por envío (en la demo,
   los 52 pendientes eran de 6 destinatarios). De ahí la 0.8: el `idCliente` como número e `idDestinatario` en `pend`.
-  No se sabe qué petición exacta les dio varios registros; el mensaje se lo pregunta.
+  Después llegaron dos fotos suyas: la búsqueda era `cyp_clients` con `Texto` `0000` (de antes de la 0.8), y traía a
+  todos porque `0000` está dentro de cada `INT000000xx`, que entraba en la búsqueda por trozos. De ahí la 0.9.
 - **Entregar con el `idCliente` (0.8).** `cyp_pend` acepta un cuarto dato, `idDestinatario`, resuelto con `clientOf`:
   solo los envíos pendientes a ese cliente, y se combina con `Texto`; si no es de nadie, `CNE`. La repetición de `pay`
   (mismo `idOperacion` y datos) vuelve a armar el registro del envío, que no cambia, para que traiga el `idCliente` de
   hoy y no el texto guardado la primera vez.
+- **Búsqueda exacta (0.9).** El Listado de Clientes del protocolo ya no usa la búsqueda de la web: `listRemittanceClients`
+  con `protocolMatch` encuentra el cliente cuyo `idCliente` es el texto (resuelto con `clientOf`), cuyo código o cuya
+  cédula (sin guiones) es el texto, o cuyo teléfono termina en él (7 cifras o más, `phoneEnds`); solo un texto con letras
+  busca por trozos, en el nombre y el código. Envíos por Entregar (`pendingDeliveries`) sigue la misma regla con los
+  números del envío y los datos del destinatario. **La búsqueda de la web no cambia**: con el mismo texto puede traer
+  otros clientes (con `0000` sigue trayendo a todos).
+- **Monedas y Tasas (0.9).** Las pidió la otra parte el 2026-11-26, separadas. `currencies` da las tres monedas con los
+  nombres de `collector-assignments.ts`. `rates` sale de `ratesInForce` (`remittances.ts`), que usa `effectiveRate` con
+  el día de negocio de Cotizar: lo que enseña es lo que usa Cotizar. Trae compra, venta, el día de la tasa (puede ser
+  anterior) y cuándo se cambió; el peso, siempre. Con `idMoneda` y sin tasa, `TNE` con la moneda en el Dato. Las tasas
+  son para mostrar: los importes salen de Cotizar.
 
 ## Antes de producción
 
