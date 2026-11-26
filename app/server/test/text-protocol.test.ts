@@ -702,7 +702,7 @@ test("send with p= and the version: one send, and without them it is the same pe
   } finally { await app.close(); }
 });
 
-test("clients 0.6: phone and address in the list, and the short idCliente wherever a client comes in or goes out", async () => {
+test("clients 0.6 and 0.8: phone and address in the list, and the idCliente wherever a client comes in or goes out", async () => {
   const state = fixture();
   const long = "7b1d9c44-2e6f-4a83-b0c5-91e2d3f4a567", far = "3f6c1e0a-9b2d-4c7e-8a51-0d2f6b7c9e14";
   state.clients.push(
@@ -715,14 +715,16 @@ test("clients 0.6: phone and address in the list, and the short idCliente wherev
     const cashier = await login(DEMO_CASHIER_EMAIL);
     // The list: five fields, the phone the web shows (the cellular when there is no phone) and the address in one line.
     assert.deepEqual((await get("clients", `${cashier}|cort`))[3].split("!").map(fields), [
-      ["INT00000047", "CLI00000024", "Zoilo Corto", "8095550124", ""],
-      ["INT00000012", "8095551234", "Zulema Corta", "829-555-0199", "Calle 8  casa 3 Santiago   RD"]]);
+      ["47", "CLI00000024", "Zoilo Corto", "8095550124", ""],
+      ["12", "8095551234", "Zulema Corta", "829-555-0199", "Calle 8  casa 3 Santiago   RD"]]);
     // A client without an internal identification keeps its id.
     assert.deepEqual(fields((await get("clients", `${cashier}|CL-0002`))[3]), ["cli-2", "CL-0002", "María Rodríguez", "8095550100", "Calle 5 #12, Santiago"]);
-    // The internal identification is searched too, and it is the idCliente that comes back.
-    assert.equal(fields((await get("clients", `${cashier}|INT00000012`))[3])[0], "INT00000012");
-    // Datos del Cliente: by the short id and by the long one of before; the short one comes back, with the currency of the client.
-    const expected = ["INT00000012", "8095551234", "Zulema Corta", "", "", "829-555-0199", "Calle 8  casa 3 Santiago   RD", "EUR"];
+    // The internal identification is searched too, and its number is the idCliente that comes back (0.8).
+    assert.equal(fields((await get("clients", `${cashier}|INT00000012`))[3])[0], "12");
+    // Datos del Cliente: by the number, the internal identification and the long id of before; the number comes back, with
+    // the currency of the client.
+    const expected = ["12", "8095551234", "Zulema Corta", "", "", "829-555-0199", "Calle 8  casa 3 Santiago   RD", "EUR"];
+    assert.deepEqual(fields((await get("client", `${cashier}|12`))[2]), expected);
     assert.deepEqual(fields((await get("client", `${cashier}|INT00000012`))[2]), expected);
     assert.deepEqual(fields((await get("client", `${cashier}|${long}`))[2]), expected);
     // The Dato of an error is the idCliente as it came; the idCliente is taken letter by letter.
@@ -744,7 +746,7 @@ test("clients 0.6: phone and address in the list, and the short idCliente wherev
     const transfers = (await store.read()).remittances.transfers;
     assert.deepEqual([transfers.at(-1)!.senderClientId, transfers.at(-1)!.recipientClientId], [long, far]);
     const row = fields((await get("recs", cashier))[3]);
-    assert.deepEqual([row[6], row[7], row[8], row[9]], ["INT00000012", "Zulema Corta", "INT00000047", "Zoilo Corto"]);
+    assert.deepEqual([row[6], row[7], row[8], row[9]], ["12", "Zulema Corta", "47", "Zoilo Corto"]);
     // The same petition again is the same send, also when the recipient has been deactivated since.
     await store.transaction((saved) => { saved.clients.find((client) => client.id === far)!.active = false; });
     assert.deepEqual((await post("send", body)).slice(2), sent.slice(2));
@@ -780,7 +782,7 @@ test("pend and pay 0.7: the pending sends an account may deliver, and a delivery
     er(await get("pend", `${second}|nadie`), "RNE");
     er(await get("pend", `${second}||2`), "RNE");
     er(await get("pend", `${second}|x|0`), "PIN", "Pagina");
-    er(await get("pend", `${second}|x|1|de más`), "PIN", "Parametros");
+    er(await get("pend", `${second}|x|1|cli-2|de más`), "PIN", "Parametros");
     // Supervision sees them and cannot deliver; a collector sees those whose recipient is of his route.
     const supervisor = await login("supervisora@cyp.local"), collector = await login("collector@cyp.local");
     assert.equal((await get("pend", supervisor))[3].split("!").length, 2);
@@ -839,5 +841,57 @@ test("pend and pay 0.7: the pending sends an account may deliver, and a delivery
     });
     er(await post("pay", payBody(second, three[1])), "ENP", "2");
     assert.equal(await paidEvents(), 2);
+  } finally { await app.close(); }
+});
+
+test("idCliente 0.8: the number of the internal identification out and in, and the sends to one recipient", async () => {
+  const state = fixture(), now = new Date(), long = randomUUID();
+  state.clients.push(
+    { ...state.clients[0], id: long, code: "CLI00000012", name: "Numa Uno", internalIdentification: "INT00000031", identification: "402-1234567-8" },
+    { ...state.clients[0], id: randomUUID(), code: "NUM-0", name: "Numa Dos", internalIdentification: "INT00000000" },
+    // Two with the same number cannot be made by the central: if they came, each goes out as it is and the number is nobody's.
+    { ...state.clients[0], id: randomUUID(), code: "DUP-A", name: "Numa Tres", internalIdentification: "INT00000077" },
+    { ...state.clients[0], id: randomUUID(), code: "DUP-B", name: "Numa Cuatro", internalIdentification: "INT000000077" });
+  openRemittanceCash(state, admin, { operatorId: "demo-cashier", currency: "DOP", openingAmount: 2_000_000 }, operators, now);
+  const { app, store, post, get, login } = await open(state);
+  try {
+    const cashier = await login(DEMO_CASHIER_EMAIL);
+    assert.deepEqual((await get("clients", `${cashier}|numa`))[3].split("!").map((row) => [fields(row)[2], fields(row)[0]]),
+      [["Numa Cuatro", "INT000000077"], ["Numa Dos", "0"], ["Numa Tres", "INT00000077"], ["Numa Uno", "31"]]);
+    // The same client by its number, its internal identification and its long id; the number always comes back.
+    for (const id of ["31", "INT00000031", long]) assert.equal(fields((await get("client", `${cashier}|${id}`))[2])[0], "31", id);
+    assert.equal(fields((await get("client", `${cashier}|0`))[2])[2], "Numa Dos");
+    // Only as it goes out: with zeros in front it is no number; a number of nobody, an ambiguous one and the digits of the
+    // Codigo are CNE, with the text as it came.
+    for (const id of ["0031", "99", "77", "12"]) er(await get("client", `${cashier}|${id}`), "CNE", id);
+    assert.equal(fields((await get("client", `${cashier}|INT000000077`))[2])[2], "Numa Cuatro");
+    // Registering with the number registers that client; the same idOperacion with the INT is another petition: OPD.
+    const idOperacion = randomUUID();
+    const sent = await post("send", sendBody(cashier, { idOperacion, idRemitente: "31", idDestinatario: "cli-2" }));
+    assert.equal(sent[0], "OK", sent.join("|"));
+    assert.equal((await store.read()).remittances.transfers.at(-1)!.senderClientId, long);
+    er(await post("send", sendBody(cashier, { idOperacion, idRemitente: "INT00000031", idDestinatario: "cli-2" })), "OPD", fields(sent[2])[1]);
+    er(await post("send", sendBody(cashier, { idRemitente: "31", idDestinatario: long })), "MCL");
+    const receipt = fields((await get("recs", cashier))[3]);
+    assert.deepEqual([receipt[6], receipt[8]], ["31", "cli-2"]);
+    // Envíos por Entregar by the idCliente of the recipient: only the sends to that person, one record each.
+    for (const sender of ["cli-2", "cli-1"]) assert.equal((await post("send", sendBody(cashier, { idRemitente: sender, idDestinatario: "31" })))[0], "OK");
+    const toHim = (await get("pend", `${cashier}||1|31`))[3].split("!").map(fields);
+    assert.deepEqual(toHim.map((row) => [row[1], row[8], row[19]]), [["ENV00000003", "31", "402-1234567-8"], ["ENV00000002", "31", "402-1234567-8"]]);
+    assert.equal((await get("pend", `${cashier}|${encodeURIComponent("402-1234567-8")}`))[3].split("!").length, 2, "by the cédula, the same two sends");
+    assert.equal((await get("pend", `${cashier}|ENV00000003|1|INT00000031`))[3].split("!").length, 1, "Texto and idDestinatario together");
+    assert.equal((await get("pend", `${cashier}||1|31|3.0`))[3].split("!").length, 2, "with the version of the application after it");
+    er(await get("pend", `${cashier}||1|99`), "CNE", "99");
+    er(await get("pend", `${cashier}||1|cli-1`), "RNE");
+    // A delivery repeated gives the record made again, with the idCliente of today, not the text saved the first time.
+    const payOperation = randomUUID(), payment = `${cashier}|${payOperation}|ENV00000002|5806.50`;
+    const paid = await post("pay", payment);
+    assert.equal(paid[0], "OK", paid.join("|"));
+    assert.equal(fields(paid[2])[8], "31");
+    await store.transaction((draft) => {
+      const row = draft.idempotency.find((item) => item.id.endsWith(`:${payOperation}`))!;
+      (row.response as { envio: string }).envio = "de-antes";
+    });
+    assert.deepEqual((await post("pay", payment)).slice(2), paid.slice(2));
   } finally { await app.close(); }
 });
