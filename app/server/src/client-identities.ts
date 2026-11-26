@@ -31,15 +31,17 @@ export function reserveClientIdentity(state: State, actor: User, now = new Date(
   // The series comes only from codes generated here, which always live in a reservation.
   // A code that a client already uses is skipped below.
   for (const row of reservations) codeNumber = Math.max(codeNumber, seriesNumber(row.code));
-  // The id of a client counts too: the text protocol finds a client by its internal identification or by its id.
+  // The id of a client counts too: the text protocol finds a client by its internal identification or by its id, and
+  // since its version 0.8 by the number of the internal identification (INT00000031 is 31), so neither may be an id.
   const taken = (field: "code" | "internalIdentification", value: string) =>
     state.clients.some((row) => row[field] === value || row.id === value) || reservations.some((row) => row[field] === value);
+  const numberTaken = (value: string) => state.clients.some((row) => row.id === value.slice(3).replace(/^0+(?=[0-9])/, ""));
   let internalIdentification: string;
   do {
     sequence += 1;
     if (!Number.isSafeInteger(sequence)) throw new DomainError("CLIENT_SEQUENCE_EXHAUSTED", "La secuencia de clientes requiere revisión.", 409);
     internalIdentification = `INT${String(sequence).padStart(8, "0")}`;
-  } while (taken("internalIdentification", internalIdentification) || taken("code", internalIdentification));
+  } while (taken("internalIdentification", internalIdentification) || taken("code", internalIdentification) || numberTaken(internalIdentification));
   let code = withCode ? "" : internalIdentification;
   while (withCode && (!code || taken("code", code))) {
     codeNumber += 1;
