@@ -236,8 +236,8 @@ test("client: the eight fields, and CNE, CIN and CFR with the idCliente", async 
     const token = await login("admin@cyp.local");
     const ok = await get("client", `${token}|cli-2`);
     assert.equal(ok.length, 3);
-    assert.deepEqual(fields(ok[2]), ["cli-2", "CL-0002", "María Rodríguez", "001-1234567-8", "8095550100", "8295550111", "Calle 5 #12, Santiago", "DOP"]);
-    assert.equal(fields((await get("client", `${token}|euros|1`))[2])[7], "EUR");
+    assert.deepEqual(fields(ok[2]), ["cli-2", "CL-0002", "María Rodríguez", "001-1234567-8", "8095550100", "8295550111", "Calle 5 #12, Santiago", "1"]);
+    assert.equal(fields((await get("client", `${token}|euros|1`))[2])[7], "3");
     assert.equal(fields((await get("client", `${token}|cli-1`))[2]).length, 8, "empty fields keep their place");
     er(await get("client", `${token}|no-existe`), "CNE", "no-existe");
     er(await get("client", `${token}|inactivo`), "CIN", "inactivo");
@@ -271,7 +271,7 @@ test("quote: the example of the document, asked in its three ways", async () => 
     for (const amount of ["100", "100.5", "100,00", "-100.00", "1e2"]) er(await get("quote", `${token}|USD|DOP|${amount}`), "PIN", "Monto");
     er(await get("quote", `${token}|USD|DOP`), "PIN", "Monto");
     er(await get("quote", `${token}|usd|DOP|100.00`), "PIN", "idMonedaOrigen");
-    er(await get("quote", `${token}|USD|1|100.00`), "PIN", "idMonedaDestino");
+    er(await get("quote", `${token}|USD|4|100.00`), "PIN", "idMonedaDestino");
     er(await get("quote", `${token}|USD|DOP|100.00|3`), "PIN", "Modo");
     er(await get("quote", await login("supervisora@cyp.local") + "|USD|DOP|100.00"), "SPE");
   } finally { await app.close(); }
@@ -417,7 +417,7 @@ test("recs: the twenty fields, by date and status, newest first, and each user s
     const row = fields(own[3]);
     assert.equal(row.length, 20);
     assert.deepEqual(row, [first[0], "ENV00000001", "REC00000001", first[3], first[4], "0", "cli-1", "Colmado La Esquina", "cli-2", "María Rodríguez", "8095550100",
-      "USD", "100.00", "5.00", "105.00", "DOP", "5806.50", "1", "", "001-1234567-8"]);
+      "2", "100.00", "5.00", "105.00", "1", "5806.50", "1", "", "001-1234567-8"]);
     const everything = (await get("recs", boss))[3].split("!").map(fields);
     assert.deepEqual(everything.map((item) => item[1]), ["ENV00000002", "ENV00000001"], "newest first");
     assert.equal(everything[0][17], "3"); assert.equal(everything[0][0], second[0]);
@@ -723,7 +723,7 @@ test("clients 0.6 and 0.8: phone and address in the list, and the idCliente wher
     assert.equal(fields((await get("clients", `${cashier}|INT00000012`))[3])[0], "12");
     // Datos del Cliente: by the number, the internal identification and the long id of before; the number comes back, with
     // the currency of the client.
-    const expected = ["12", "8095551234", "Zulema Corta", "", "", "829-555-0199", "Calle 8  casa 3 Santiago   RD", "EUR"];
+    const expected = ["12", "8095551234", "Zulema Corta", "", "", "829-555-0199", "Calle 8  casa 3 Santiago   RD", "3"];
     assert.deepEqual(fields((await get("client", `${cashier}|12`))[2]), expected);
     assert.deepEqual(fields((await get("client", `${cashier}|INT00000012`))[2]), expected);
     assert.deepEqual(fields((await get("client", `${cashier}|${long}`))[2]), expected);
@@ -811,6 +811,7 @@ test("pend and pay 0.7: the pending sends an account may deliver, and a delivery
     const row = fields(delivered[2]);
     assert.equal(row.length, 20);
     assert.deepEqual([row[0], row[1], row[5], row[16]], [one[0], "ENV00000001", "1", "5806.50"]); assert.match(row[18], /^\d{14}$/);
+    assert.deepEqual([row[11], row[15]], ["2", "1"], "the currencies by their number (0.11)");
     const after = await store.read(), paid = after.remittances.transfers.find((transfer) => transfer.envioReference === "ENV00000001")!;
     assert.deepEqual([paid.status, paid.paidBy], ["paid", "caja-2"]);
     const box = after.remittances.cashSessions.find((cash) => cash.operatorId === "caja-2" && cash.currency === "DOP")!;
@@ -833,8 +834,8 @@ test("pend and pay 0.7: the pending sends an account may deliver, and a delivery
     // A collector delivers to the recipients of his route only; the box is the one of the currency that is received.
     const three = fields((await post("send", sendBody(collector, { idRemitente: "cli-1", idDestinatario: "cli-5" })))[2]);
     er(await post("pay", payBody(collector, three[1])), "CFR", "cli-5");
-    er(await post("pay", payBody(await login("caja3@cyp.local"), three[1])), "CNA", "DOP");
-    er(await post("pay", payBody(await login("caja4@cyp.local"), three[1])), "CSF", "DOP");
+    er(await post("pay", payBody(await login("caja3@cyp.local"), three[1])), "CNA", "1");
+    er(await post("pay", payBody(await login("caja4@cyp.local"), three[1])), "CSF", "1");
     await store.transaction((draft) => {
       const cancelled = draft.remittances.transfers.find((transfer) => transfer.envioReference === three[1])!;
       cancelled.status = "cancelled"; cancelled.cancelledAt = new Date().toISOString(); cancelled.cancelledBy = "demo-admin";
@@ -938,11 +939,11 @@ test("0.9: the exact search of clients and of sends to deliver, and Monedas and 
     for (const text of [sent[1], sent[2].toLowerCase(), sent[3], "40212345678", "7774321", "exacta uno"]) assert.deepEqual(await sends(text), [sent[1]], text);
     for (const text of ["0000", sent[1].slice(0, 8), "4021234567"]) assert.equal(await sends(text), "RNE", text);
     // Listado de Monedas: the three, in the order of the central.
-    assert.deepEqual((await get("currencies", cashier))[2].split("!").map(fields), [["DOP", "Peso Dominicano"], ["USD", "Dólar Americano"], ["EUR", "Euro"]]);
+    assert.deepEqual((await get("currencies", cashier))[2].split("!").map(fields), [["1", "Peso Dominicano", "DOP"], ["2", "Dólar Americano", "USD"], ["3", "Euro", "EUR"]]);
     assert.equal((await get("currencies", `p=${cashier}|3.0`))[2].split("!").length, 3);
     // Tasas Vigentes: purchase, sale and the date of each rate in force, and when it was changed; the peso is 1.
     const listed = (await get("rates", cashier))[2].split("!").map(fields);
-    assert.deepEqual(listed.map((row) => row.slice(0, 4)), [["DOP", "1.000000", "1.000000", day], ["USD", "59.250000", "60.000000", day], ["EUR", "64.100000", "64.100000", day]]);
+    assert.deepEqual(listed.map((row) => row.slice(0, 4)), [["1", "1.000000", "1.000000", day], ["2", "59.250000", "60.000000", day], ["3", "64.100000", "64.100000", day]]);
     assert.deepEqual(listed.map((row) => /^\d{14}$/.test(row[4])), [false, true, true]);
     assert.equal(listed[0][4], "", "the peso without a rate of its own was never changed");
     assert.deepEqual(fields((await get("rates", `p=${cashier}|USD|3.0`))[2]), listed[1]);
@@ -964,7 +965,7 @@ test("0.9: the exact search of clients and of sends to deliver, and Monedas and 
   const plain = await open();
   try {
     const cashier = await plain.login(DEMO_CASHIER_EMAIL);
-    assert.deepEqual((await plain.get("rates", cashier))[2].split("!").map((row) => fields(row)[0]), ["DOP", "USD"]);
+    assert.deepEqual((await plain.get("rates", cashier))[2].split("!").map((row) => fields(row)[0]), ["1", "2"]);
     er(await plain.get("rates", `${cashier}|EUR`), "TNE", "EUR");
   } finally { await plain.app.close(); }
 });
@@ -995,4 +996,55 @@ test("0.10: the Identificacion in the fourth place of the Listado de Clientes, a
     assert.equal((await post("send", sendBody(cashier, { idRemitente: "cli-1", idDestinatario: "10" })))[0], "OK");
     assert.equal(fields((await get("recs", cashier))[3])[19], "");
   } finally { await app.close(); }
+});
+
+test("0.11: the idMoneda is a number, 1 DOP, 2 USD and 3 EUR, out everywhere, and in with the code of before too", async () => {
+  const state = fixture(), now = new Date();
+  setDailyRate(state, admin, { currency: "EUR", rate: "64.10", date: businessDate(now) }, now);
+  Object.assign(state.clients.find((row) => row.id === "cli-5")!, { preferredCurrency: "EUR" });
+  const { app, post, get, login } = await open(state);
+  try {
+    const cashier = await login(DEMO_CASHIER_EMAIL);
+    // Listado de Monedas: the number first, the Nombre where it was, the code at the end.
+    assert.deepEqual((await get("currencies", cashier))[2].split("!").map(fields),
+      [["1", "Peso Dominicano", "DOP"], ["2", "Dólar Americano", "USD"], ["3", "Euro", "EUR"]]);
+    // Tasas Vigentes: by the number or by the code, the same answer, with the number first.
+    const rates = (await get("rates", cashier))[2].split("!").map(fields);
+    assert.deepEqual(rates.map((row) => row[0]), ["1", "2", "3"]);
+    for (const [id, code, at] of [["1", "DOP", 0], ["2", "USD", 1], ["3", "EUR", 2]] as const) {
+      assert.deepEqual(fields((await get("rates", `${cashier}|${id}`))[2]), rates[at], id);
+      assert.deepEqual(fields((await get("rates", `p=${cashier}|${id}|3.0`))[2]), rates[at], id);
+      assert.deepEqual(fields((await get("rates", `${cashier}|${code}`))[2]), rates[at], code);
+    }
+    // Cotizar: by the numbers or by the codes, the same quote.
+    const byCode = (await get("quote", `${cashier}|USD|EUR|100.00`))[2];
+    assert.equal((await get("quote", `${cashier}|2|3|100.00`))[2], byCode);
+    assert.equal((await get("quote", `p=${cashier}|2|EUR|100.00|0|3.0`))[2], byCode);
+    // Anything else is no currency: PIN with the name of the datum. An empty idMoneda is still all the rates.
+    for (const value of ["01", "0", "4", "usd", "constructor", "__proto__", "toString"]) {
+      er(await get("quote", `${cashier}|${value}|1|100.00`), "PIN", "idMonedaOrigen");
+      er(await get("rates", `${cashier}|${value}`), "PIN", "idMoneda");
+    }
+    assert.equal((await get("rates", `${cashier}|`))[2].split("!").length, 3);
+    // Registrar Envío with numbers, and repeated with the codes or with one of each: the same send. Other data, OPD.
+    const idOperacion = randomUUID();
+    const sent = await post("send", sendBody(cashier, { idOperacion, idMonedaOrigen: "2", idMonedaDestino: "1" }));
+    assert.equal(sent[0], "OK", sent.join("|"));
+    assert.equal((await post("send", sendBody(cashier, { idOperacion })))[2], sent[2]);
+    assert.equal((await get("send", `p=${sendBody(cashier, { idOperacion, idMonedaOrigen: "2" })}|3.0`))[2], sent[2]);
+    er(await post("send", sendBody(cashier, { idOperacion, idMonedaOrigen: "2", Nota: "otra" })), "OPD", fields(sent[2])[1]);
+    // The send comes back with the numbers: 12 is the currency the sender pays in, 16 the one the recipient receives.
+    const row = fields((await get("recs", cashier))[3]);
+    assert.deepEqual([row[1], row[11], row[15]], [fields(sent[2])[1], "2", "1"]);
+    // Datos del Cliente: the currency of the client as a number; without one, 1.
+    assert.equal(fields((await get("client", `${cashier}|cli-5`))[2])[7], "3");
+    assert.equal(fields((await get("client", `${cashier}|cli-2`))[2])[7], "1");
+  } finally { await app.close(); }
+  // TNE of Tasas Vigentes: the currency as it came, as the Dato of an error with an idCliente.
+  const plain = await open();
+  try {
+    const cashier = await plain.login(DEMO_CASHIER_EMAIL);
+    er(await plain.get("rates", `${cashier}|3`), "TNE", "3");
+    er(await plain.get("rates", `${cashier}|EUR`), "TNE", "EUR");
+  } finally { await plain.app.close(); }
 });
