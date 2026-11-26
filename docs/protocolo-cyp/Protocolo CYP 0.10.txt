@@ -1,6 +1,6 @@
 Protocolo de Intercambio de Datos (CyP)
 
- Versión: 0.9
+ Versión: 0.10
    Fecha: 26/11/2026
 
 
@@ -17,8 +17,8 @@ Cómo se hace un envío, paso a paso
  1- Iniciar Sesión: el usuario pone su nombre de usuario y su clave, y la
     central devuelve un idSesion. Ese idSesion se manda en todo lo demás.
  2- Listado de Clientes: se busca al que envía (remitente) y al que recibe
-    (destinatario). El listado trae su teléfono y su dirección. Si hace
-    falta ver su cédula, se pide Datos del Cliente.
+    (destinatario). (NUEVO) El listado trae su identificación (cédula o
+    pasaporte), su teléfono y su dirección.
  3- Cotizar Envío: se mandan el monto y las monedas, y la central devuelve
     la comisión, el total que paga el remitente y lo que va a recibir el
     destinatario. (NUEVO) Para que el usuario elija las monedas y vea sus
@@ -415,12 +415,17 @@ Lo nuevo de esta versión
    INT00000031. Envíos por Entregar busca igual (5.1).
  - Dos peticiones nuevas, en la sección 6: Listado de Monedas
    (currencies) y Tasas Vigentes (rates).
+ - El Listado de Clientes trae la Identificacion (cédula o pasaporte) en
+   el cuarto lugar, como la pidió (2.1):
+   idCliente;Codigo;Nombre;Identificacion;Telefono;Direccion
+   OJO: el Telefono y la Direccion pasan al quinto y al sexto lugar.
  - En las preguntas del final cambian la 1 y la 7.
 
  Lo que ya tiene hecho sigue funcionando: las peticiones de antes son las
 mismas y un idCliente de antes se sigue aceptando. Lo que cambia es la
-forma del idCliente que trae cada respuesta, y que una búsqueda por un
-trozo de número ya no encuentra nada.
+forma del idCliente que trae cada respuesta, el lugar del Telefono y la
+Direccion en el Listado de Clientes, y que una búsqueda por un trozo de
+número ya no encuentra nada.
 
 
 
@@ -614,8 +619,8 @@ Funcionalidades
 ------------------------
 
  Para qué sirve: trae los clientes, todos o los que coinciden con lo que se
- busca. De cada uno trae lo necesario para elegirlo, su teléfono y su
- dirección.
+ busca. De cada uno trae lo necesario para elegirlo: (NUEVO) su
+ identificación, su teléfono y su dirección.
 
  Pet: /cyp_clients?idSesion[|Texto[|Pagina[|Lado]]]
 
@@ -667,7 +672,10 @@ Funcionalidades
 
  Clientes: Cliente1!Cliente2!...!ClienteN
 
- ClienteX: idCliente;Codigo;Nombre;Telefono;Direccion
+ ClienteX: idCliente;Codigo;Nombre;Identificacion;Telefono;Direccion
+
+ (NUEVO: la Identificacion viene en el cuarto lugar. El Telefono y la
+ Direccion pasan al quinto y al sexto. Ahora son 6 datos.)
 
  idCliente: (NUEVO) El identificador del cliente: un número entero.
             Ejemplo: 31. Es el que se manda en las demás peticiones. No
@@ -678,6 +686,9 @@ Funcionalidades
          Ejemplo: CLI00000012
 
  Nombre: El nombre del cliente.
+
+ Identificacion: (NUEVO) La cédula o el pasaporte del cliente, como está
+                 en la central. Puede venir vacía.
 
  Telefono: El teléfono del cliente; si no tiene, su celular. Puede
            venir vacío.
@@ -692,9 +703,9 @@ Funcionalidades
  A tener en cuenta:
 
  1- Solo vienen clientes activos, ordenados por Nombre.
- 2- El teléfono y la dirección ya vienen en el listado. La
-    identificación (cédula o pasaporte), el celular por separado y la
-    moneda del cliente se piden con Datos del Cliente (2.2).
+ 2- (NUEVO) La identificación, el teléfono y la dirección ya vienen en el
+    listado. El celular por separado y la moneda del cliente se piden con
+    Datos del Cliente (2.2).
  3- Para buscar a alguien por su cédula o su pasaporte, se manda ese dato
     en Texto.
  4- Cada búsqueda cuenta para el límite de 120 peticiones por minuto. No
@@ -717,7 +728,7 @@ Funcionalidades
 
  Pet: /cyp_clients?idSesion|perez
 
- Res: OK|20261119093000|0|47;CLI00000024;Ana Pérez;8095550124;Av. Duarte 45, Santiago!31;CLI00000012;Juan Pérez;8095550100;Calle 5 #12, Santiago
+ Res: OK|20261119093000|0|47;CLI00000024;Ana Pérez;40212345678;8095550124;Av. Duarte 45, Santiago!31;CLI00000012;Juan Pérez;00112345678;8095550100;Calle 5 #12, Santiago
 
  Buscar "perez" para el destinatario:   /cyp_clients?idSesion|perez|1|1
 
@@ -756,7 +767,9 @@ Funcionalidades
  Cliente: idCliente;Codigo;Nombre;Identificacion;Telefono;Celular;Direccion;
           idMoneda
 
- Identificacion: Cédula o pasaporte. Puede venir vacía.
+ Identificacion: Cédula o pasaporte. Puede venir vacía. (NUEVO) Viene
+                 vacía también si en la central solo tiene su
+                 identificación interna (INT...), que no es una cédula.
 
  Telefono, Celular, Direccion: Pueden venir vacíos.
 
@@ -1212,7 +1225,8 @@ Funcionalidades
              entregado. OJO: no es cuándo pagó el remitente; eso es Fecha.
 
  Identificacion: La cédula o el pasaporte del destinatario, como
-                 quedó guardado al registrar el envío. Puede venir vacía.
+                 quedó guardado al registrar el envío. Puede venir vacía
+                 (también si era solo su identificación interna).
 
  Errores propios:
 

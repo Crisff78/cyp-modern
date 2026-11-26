@@ -193,10 +193,10 @@ test("clients: what is searched, by pages of 100, in order, and the side of the 
     const token = await login("admin@cyp.local");
     const one = await get("clients", `${token}|paginado`);
     assert.equal(one[2], "1"); assert.equal(one[3].split("!").length, 100);
-    assert.deepEqual(fields(one[3].split("!")[0]), ["pag-149", "PAG-149", "Paginado 000", "8095550100", "Calle El Conde 24"], "by name, not by code or id");
+    assert.deepEqual(fields(one[3].split("!")[0]), ["pag-149", "PAG-149", "Paginado 000", "", "8095550100", "Calle El Conde 24"], "by name, not by code or id");
     const two = await get("clients", `${token}|paginado|2`);
     assert.equal(two[2], "0"); assert.equal(two[3].split("!").length, 50);
-    assert.deepEqual(fields(two[3].split("!").at(-1)!), ["pag-000", "PAG-000", "Paginado 149", "8095550100", "Calle El Conde 24"]);
+    assert.deepEqual(fields(two[3].split("!").at(-1)!), ["pag-000", "PAG-000", "Paginado 149", "", "8095550100", "Calle El Conde 24"]);
     er(await get("clients", `${token}|paginado|3`), "CNE");
     er(await get("clients", `${token}|nadie se llama así`), "CNE");
     const all = await get("clients", token);
@@ -204,7 +204,7 @@ test("clients: what is searched, by pages of 100, in order, and the side of the 
     assert.equal((await get("clients", `${token}||2`))[3].split("!").length, 59, "8 of the seed, 150 and one with separators, less the first 100");
     // A separator inside a name never moves the fields of the answer.
     const separators = await get("clients", `${token}|hija`);
-    assert.equal(separators.length, 4); assert.deepEqual(fields(separators[3]), ["sep", "SEP 1", "Ana   Pérez  hija   casa", "8095550100", "Calle El Conde 24"]);
+    assert.equal(separators.length, 4); assert.deepEqual(fields(separators[3]), ["sep", "SEP 1", "Ana   Pérez  hija   casa", "", "8095550100", "Calle El Conde 24"]);
     // Accents and capitals do not matter; the identification is found with or without hyphens; a phone, only with digits.
     for (const text of ["MARIA rodriguez", "001-1234567-8", "00112345678", "8295550111", "CL-0002"])
       assert.deepEqual(fields((await get("clients", `${token}|${encodeURIComponent(text)}`))[3]).slice(0, 2), ["cli-2", "CL-0002"], text);
@@ -713,12 +713,12 @@ test("clients 0.6 and 0.8: phone and address in the list, and the idCliente wher
   const { app, store, post, get, login } = await open(state);
   try {
     const cashier = await login(DEMO_CASHIER_EMAIL);
-    // The list: five fields, the phone the web shows (the cellular when there is no phone) and the address in one line.
+    // The list: six fields since 0.10, the phone the web shows (the cellular when there is no phone) and the address in one line.
     assert.deepEqual((await get("clients", `${cashier}|cort`))[3].split("!").map(fields), [
-      ["47", "CLI00000024", "Zoilo Corto", "8095550124", ""],
-      ["12", "8095551234", "Zulema Corta", "829-555-0199", "Calle 8  casa 3 Santiago   RD"]]);
+      ["47", "CLI00000024", "Zoilo Corto", "", "8095550124", ""],
+      ["12", "8095551234", "Zulema Corta", "", "829-555-0199", "Calle 8  casa 3 Santiago   RD"]]);
     // A client without an internal identification keeps its id.
-    assert.deepEqual(fields((await get("clients", `${cashier}|CL-0002`))[3]), ["cli-2", "CL-0002", "María Rodríguez", "8095550100", "Calle 5 #12, Santiago"]);
+    assert.deepEqual(fields((await get("clients", `${cashier}|CL-0002`))[3]), ["cli-2", "CL-0002", "María Rodríguez", "001-1234567-8", "8095550100", "Calle 5 #12, Santiago"]);
     // The internal identification is searched too, and its number is the idCliente that comes back (0.8).
     assert.equal(fields((await get("clients", `${cashier}|INT00000012`))[3])[0], "12");
     // Datos del Cliente: by the number, the internal identification and the long id of before; the number comes back, with
@@ -967,4 +967,32 @@ test("0.9: the exact search of clients and of sends to deliver, and Monedas and 
     assert.deepEqual((await plain.get("rates", cashier))[2].split("!").map((row) => fields(row)[0]), ["DOP", "USD"]);
     er(await plain.get("rates", `${cashier}|EUR`), "TNE", "EUR");
   } finally { await plain.app.close(); }
+});
+
+test("0.10: the Identificacion in the fourth place of the Listado de Clientes, and never an internal identification", async () => {
+  const state = fixture();
+  state.clients.push(
+    { ...state.clients[0], id: randomUUID(), code: "ID-1", name: "Ident Uno", internalIdentification: "INT00000009", identification: "054-2205445-1",
+      phone: "8092201111", cellular: "", address: "Calle Las Damas 18" },
+    // The web copies the internal identification into the cédula of a client created without one: it is not a cédula.
+    { ...state.clients[0], id: randomUUID(), code: "ID-2", name: "Ident Dos", internalIdentification: "INT00000010", identification: "INT00000010",
+      phone: "", cellular: "", address: "" },
+    // A real document that only looks like one stays.
+    { ...state.clients[0], id: randomUUID(), code: "ID-3", name: "Ident Tres", internalIdentification: "INT00000011", identification: "INT12345678",
+      phone: "", cellular: "", address: "" });
+  const { app, post, get, login } = await open(state);
+  try {
+    const cashier = await login(DEMO_CASHIER_EMAIL);
+    // As the application asked: ID CLIENTE;CODIGO;NOMBRE;IDENTIFICACION;TELEFONO;DIRECCION.
+    assert.deepEqual((await get("clients", `${cashier}|ident`))[3].split("!").map(fields), [
+      ["10", "ID-2", "Ident Dos", "", "", ""],
+      ["11", "ID-3", "Ident Tres", "INT12345678", "", ""],
+      ["9", "ID-1", "Ident Uno", "054-2205445-1", "8092201111", "Calle Las Damas 18"]]);
+    assert.ok((await get("clients", cashier))[3].split("!").every((row) => fields(row).length === 6), "every record with six fields");
+    // Datos del Cliente and the record of a send say the same.
+    assert.equal(fields((await get("client", `${cashier}|10`))[2])[3], "");
+    assert.equal(fields((await get("client", `${cashier}|9`))[2])[3], "054-2205445-1");
+    assert.equal((await post("send", sendBody(cashier, { idRemitente: "cli-1", idDestinatario: "10" })))[0], "OK");
+    assert.equal(fields((await get("recs", cashier))[3])[19], "");
+  } finally { await app.close(); }
 });
