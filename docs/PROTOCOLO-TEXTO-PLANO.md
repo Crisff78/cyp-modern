@@ -1,10 +1,10 @@
-# Protocolo de texto plano para la aplicación móvil (CYP 0.10)
+# Protocolo de texto plano para la aplicación móvil (CYP 0.11)
 
 Once peticiones `/cyp_*` que responden en texto plano, separadas por `|`, para que una aplicación móvil hecha por
 otro equipo haga Envíos de Dinero contra CyP y los entregue. Orden de Rardiel del 2026-11-19: «Programalo y deja todo
 listo».
 
-- **El contrato** es [`protocolo-cyp/Protocolo CYP 0.10.txt`](<protocolo-cyp/Protocolo CYP 0.10.txt>): es el documento
+- **El contrato** es [`protocolo-cyp/Protocolo CYP 0.11.txt`](<protocolo-cyp/Protocolo CYP 0.11.txt>): es el documento
   que se le envía a quien programa la aplicación. Si el servidor y ese documento no coinciden, hay un fallo: se
   arregla el servidor o se envía una versión nueva del documento, nunca se deja pasar. El documento describe solo
   lo que existe hoy: no cuenta lo que se cambió o se quitó. Lo nuevo desde la última versión que tiene esa persona
@@ -19,9 +19,10 @@ listo».
   `designs/2026-11-24-clientes-telefono-id-corto/`; la 0.7 (entregar un envío: `pend` y `pay`), en
   `designs/2026-11-25-protocolo-entregar/`; la 0.8 (el `idCliente` como número e `idDestinatario` en `pend`), en
   `designs/2026-11-26-id-cliente-numero/`; y la 0.9 (búsqueda exacta, Monedas y Tasas), en
-  `designs/2026-11-26-tasas-y-busqueda/`; y la 0.10 (la identificación en el Listado de Clientes), en
-  `designs/2026-11-26-listado-identificacion/`. No consta que la 0.8 ni la 0.9 se le mandaran: la 0.10 marca con
-  `(NUEVO)` todo lo nuevo desde la 0.7.
+  `designs/2026-11-26-tasas-y-busqueda/`; la 0.10 (la identificación en el Listado de Clientes), en
+  `designs/2026-11-26-listado-identificacion/`; y la 0.11 (el `idMoneda` como número), en
+  `designs/2026-11-26-moneda-numero/`. No consta que de la 0.8 a la 0.10 se le mandaran: la 0.11 marca con `(NUEVO)`
+  todo lo nuevo desde la 0.7.
 
 ## Dónde está cada cosa
 
@@ -208,6 +209,15 @@ Visto en una captura suya del 2026-11-20 y comprobado contra un servidor local, 
   busca por trozos, en el nombre y el código. Envíos por Entregar (`pendingDeliveries`) sigue la misma regla con los
   números del envío y los datos del destinatario. **La búsqueda de la web no cambia**: con el mismo texto puede traer
   otros clientes (con `0000` sigue trayendo a todos).
+- **El `idMoneda` como número (0.11).** La otra parte, el 2026-11-26, con la respuesta de `currencies` delante: «No
+  mandas el ID de la moneda». En LSAN `idMoneda` es un número («Si idMoneda no se especifica se asumirá 1 por
+  defecto»). `CURRENCY_IDS` fija 1 = DOP, 2 = USD, 3 = EUR (decisión de Claude: la otra parte no ha dado los suyos; el
+  contrato se lo pregunta en la 5). Sale el número en todo lo que el contrato llama `idMoneda…`: el Listado de Monedas
+  (`idMoneda;Nombre;Codigo`, el código al final para no mover el Nombre), Tasas, Datos del Cliente, los datos 12 y 16
+  de un envío y el Dato de `CNA` y `CSF`. Entra el número o el código (`CURRENCY_BY_ID` es un `Map`: «constructor» no
+  es una moneda). El Dato de `TNE` es lo que llegó. La huella de Registrar Envío cuenta la moneda por su código: antes
+  solo entraban códigos, así que las huellas guardadas siguen valiendo y `USD` o `2` es el mismo envío. **Una vez que
+  la otra parte use los números, no se cambian:** un envío repetido entraría en otra moneda.
 - **La identificación en el listado (0.10).** La otra parte lo pidió el 2026-11-26 con el formato exacto
   `ID CLIENTE;CODIGO;NOMBRE;IDENTIFICACION;TELEFONO;DIRECCION`: la Identificacion va en el cuarto lugar y el teléfono y
   la dirección se corren (no se añadió al final, como las otras veces, porque así lo pidió). `identityOf` deja vacía
@@ -279,7 +289,7 @@ En modo demo también vale por GET: `curl -s "http://127.0.0.1:3001/cyp_login?US
 con `%`). La respuesta trae el `idSesion` en el tercer dato y `Vence` en el quinto. Con el `idSesion`:
 
 ```bash
-curl -s "http://127.0.0.1:3001/cyp_quote?ID_SESION|USD|DOP|100.00"
+curl -s "http://127.0.0.1:3001/cyp_quote?ID_SESION|2|1|100.00"
 ```
 
 Para registrar un envío, ese usuario tiene que tener abierta su Caja de Remesas de hoy en la moneda de origen. Para
