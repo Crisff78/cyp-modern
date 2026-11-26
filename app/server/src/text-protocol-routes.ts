@@ -1,4 +1,4 @@
-// Plain-text protocol for the mobile application: the petitions of docs/protocolo-cyp/Protocolo CYP 0.8.txt.
+// Plain-text protocol for the mobile application: the petitions of docs/protocolo-cyp/Protocolo CYP 0.9.txt.
 // Each one is a thin adapter in front of the same functions the JSON API uses; no rule of the business lives here.
 // Two things are its own: the idCliente (the number of the internal identification of the client instead of its id,
 // clientIds and clientOf) and, in Entregar Envío, the order of its checks and the idOperacion that tells a repetition
@@ -13,7 +13,7 @@ import { authorizeRequest, currentAccessUser, guardCatalogChanges, requireRemitt
 import { listRemittanceClients, remittanceClientContact } from "./remittance-client-search.js";
 import { pendingDeliveries } from "./remittance-delivery-search.js";
 import {
-  canSeeOutgoing, createRemittance, currencies, deliverableByReference, payoutOf, payRemittance, quoteRemittance,
+  canSeeOutgoing, createRemittance, currencies, deliverableByReference, payoutOf, payRemittance, quoteRemittance, ratesInForce,
   type AmountMode, type Currency, type Remittance,
 } from "./remittances.js";
 import { isPaymentTextDraft, totalPaidForTransfer, type RemittancePaymentInput } from "../../shared/remittances/payment.mjs";
@@ -56,12 +56,19 @@ const SEND: readonly [string, string] = ["POST", "/api/envios"], VIEW: readonly 
 // Envíos por Entregar and Entregar Envío, and what the document calls PuedeEntregar, by the paths that ask for the same.
 const PENDING: readonly [string, string] = ["GET", "/api/envios/recibos"], PAY: readonly [string, string] = ["POST", "/api/envios/x/pagar"];
 /** The check of each petition that needs more than a session: the equivalent path and the permission by its own name. */
-const ACCESS: Record<Exclude<ProtocolCommand, "login" | "logout">, readonly [readonly [string, string], Parameters<typeof requireRemittancePermission>[1]]> = {
+const ACCESS: Record<Exclude<ProtocolCommand, "login" | "logout" | "currencies">, readonly [readonly [string, string], Parameters<typeof requireRemittancePermission>[1]]> = {
   clients: [SEND, "remittances.create"], client: [SEND, "remittances.create"], quote: [SEND, "remittances.create"], send: [SEND, "remittances.create"],
   recs: [VIEW, "remittances.view"], pend: [PENDING, "remittances.receipts"], pay: [PAY, "remittances.pay"],
+  // Tasas Vigentes, as Cotizar: whoever may quote sees the rates in force, as the web shows them to a cashier in the
+  // snapshot of remittances. remittances.rates.view is for the window that registers and lists every rate.
+  rates: [SEND, "remittances.create"],
 };
+// Listado de Monedas is for whoever may send, see sends or deliver: the names of the currencies of a record.
+const CURRENCY_ACCESS = [[SEND, "remittances.create"], [VIEW, "remittances.view"], [PENDING, "remittances.receipts"]] as const;
 const METHODS = { cash: "1", card: "2", transfer: "3", deposit: "4" } as const;
 const STATUS = { pending: "0", paid: "1", cancelled: "2" } as const;
+// The names the central gives the currencies (collector-assignments.ts), for Listado de Monedas.
+const CURRENCY_NAMES: Record<Currency, string> = { DOP: "Peso Dominicano", USD: "Dólar Americano", EUR: "Euro" };
 const AMOUNT_MODES: readonly AmountMode[] = ["source", "total", "destination"];
 const CLIENT_ERRORS: Record<string, string> = { CLIENT_NOT_FOUND: "CNE", CLIENT_INACTIVE: "CIN", FORBIDDEN: "CFR" };
 
@@ -211,7 +218,9 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
 
   function clients(state: State, actor: User, parts: string[], now: Date) {
     const input = namedParameters("clients", parts), text = textOf("Texto", input.Texto, 160), page = pageOf(input.Pagina);
-    const { rows, more } = pageRows(listRemittanceClients(state, actor, text, sideOf(input.Lado)), page);
+    // An idCliente is matched as the protocol resolves it (clientOf): the number, the internal identification or the id.
+    const exactId = text ? clientOf(state, text)?.id : undefined;
+    const { rows, more } = pageRows(listRemittanceClients(state, actor, text, sideOf(input.Lado), exactId), page);
     if (!rows.length) throw new ProtocolError("CNE", "No hay clientes que mostrar");
     const ids = clientIds(state);
     return okLine(now, more, rows.map((client) => record(ids.get(client.id) ?? client.id, client.code, client.name, client.phone, client.address)).join("!"));
@@ -234,6 +243,27 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
     const result = quoteRemittance(state, { sourceCurrency, destinationCurrency, amount, amountMode: AMOUNT_MODES[Number(input.Modo)] }, now);
     return okLine(now, record(moneyText(result.amount), moneyText(result.commissionAmount), moneyText(result.totalAmount), moneyText(result.calculation.payoutAmount),
       percentText(result.commissionBps), moneyText(result.calculation.deliveryCommissionAmount), result.quote.sourceRate, result.quote.destinationRate));
+  }
+
+  /** Listado de Monedas: the currencies of the central, in its order, for whoever may send, see sends or deliver. */
+  async function currencyList(claims: Claims, parts: string[], now: Date) {
+    let refused: unknown = new ProtocolError("SPE");
+    for (const [path, permission] of CURRENCY_ACCESS) {
+      try { requireRemittancePermission(await deps.authenticate(claims, ...path), permission); refused = undefined; break; }
+      catch (error) { refused = error; }
+    }
+    if (refused) throw refused;
+    namedParameters("currencies", parts);
+    return okLine(now, currencies.map((currency) => record(currency, CURRENCY_NAMES[currency])).join("!"));
+  }
+
+  /** Tasas Vigentes: the rates a quote made now uses (ratesInForce), all of them or one currency. */
+  function rates(state: State, parts: string[], now: Date) {
+    const input = namedParameters("rates", parts);
+    const currency = input.idMoneda === "" ? undefined : currencyOf("idMoneda", input.idMoneda);
+    const rows = ratesInForce(state, now).filter((row) => !currency || row.currency === currency);
+    if (currency && !rows.length) throw new ProtocolError("TNE", `No hay tasa vigente de ${currency}`, currency);
+    return okLine(now, rows.map((row) => record(row.currency, row.purchaseRate, row.saleRate, row.date.replace(/-/g, ""), protocolStamp(row.changedAt))).join("!"));
   }
 
   /** The payment as the JSON API takes it. What must be empty with each way of paying is checked here: it is PIN. */
@@ -410,6 +440,7 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
     assertOneLine(name, parts);
     const claims = await sessionOf(parts[0]);
     if (name === "logout") return logout(claims, parts, now);
+    if (name === "currencies") return currencyList(claims, parts, now);
     // The permission is asked twice on purpose: by the equivalent path, as the web does, and by its own name, so a
     // change in the table of paths can never leave these petitions open.
     const [path, permission] = ACCESS[name];
@@ -422,7 +453,9 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
     if (name === "client") return client(state, actor, parts, now);
     if (name === "quote") return quote(state, parts, now);
     if (name === "pend") return pending(state, actor, parts, now);
-    return receipts(state, actor, parts, now);
+    if (name === "rates") return rates(state, parts, now);
+    if (name === "recs") return receipts(state, actor, parts, now);
+    throw new ProtocolError("PNE");
   }
 
   // Always HTTP 200 and one line of text: the result is in OK or ER, never in the HTTP code.

@@ -135,6 +135,11 @@ test("the version of the application after the last datum is taken away, and onl
   assert.deepEqual(withoutVersion("pay", ["s", "operacion", "ENV00000001", "980.00"]), ["s", "operacion", "ENV00000001", "980.00"]);
   assert.deepEqual(withoutVersion("pay", ["s", "operacion", "ENV00000001", "980.00", "3.0"]), ["s", "operacion", "ENV00000001", "980.00"]);
   assert.deepEqual(withoutVersion("pend", ["s", "3.0"]), ["s"]);
+  // Listado de Monedas and Tasas Vigentes: the session alone is enough, and a currency is never taken for a version.
+  assert.deepEqual(withoutVersion("currencies", ["s", "3.0"]), ["s"]);
+  assert.deepEqual(withoutVersion("rates", ["s", "USD", "3.0"]), ["s", "USD"]);
+  assert.deepEqual(withoutVersion("rates", ["s", "USD"]), ["s", "USD"]);
+  assert.deepEqual(withoutVersion("rates", ["s", "", "3.0"]), ["s", ""]);
   assert.deepEqual(withoutVersion("pend", ["s", "perez", "2", "3.0"]), ["s", "perez", "2"]);
   // What is not shaped as a version is left: one datum too many is still PIN.
   assert.deepEqual(withoutVersion("clients", ["s", "perez", "1", "0", "de más"]), ["s", "perez", "1", "0", "de más"]);
