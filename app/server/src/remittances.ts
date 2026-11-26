@@ -271,6 +271,21 @@ function effectiveRate(state: State, currency: Currency, date: string, side: "so
     purchaseRate: rate.purchaseRate === undefined ? undefined : normalizeRate(rate.purchaseRate), saleRate: rate.saleRate === undefined ? undefined : normalizeRate(rate.saleRate) };
 }
 /**
+ * Tasas Vigentes of the text protocol (version 0.9): the rate of each currency that a quote made now would use, by
+ * effectiveRate itself and with the business date of quoteRemittance, so it is always what Cotizar uses. The purchase
+ * rate is used when the sender pays in that currency and the sale rate when the recipient receives it (a former single
+ * rate is both). With the date of the rate in force (it may be of an earlier day) and when it was last changed. A
+ * currency without a rate in force is left out; the peso is always 1, dated today when it has no rate of its own.
+ */
+export function ratesInForce(state: State, now = new Date()) {
+  const date = businessDate(now);
+  return currencies.flatMap((currency) => {
+    if (currency !== "DOP" && !latestRate(state, currency, date)) return [];
+    const bought = effectiveRate(state, currency, date, "source"), sold = effectiveRate(state, currency, date, "destination");
+    return [{ currency, purchaseRate: normalizeRate(bought.rate), saleRate: normalizeRate(sold.rate), date: bought.date, changedAt: bought.changedAt }];
+  });
+}
+/**
  * The company's gain with the exchange, in pesos (meeting of 29-10-2026): it buys the sender's currency at the purchase
  * rate and sells the recipient's at the sale rate. Each leg earns the difference between sale and purchase registered for
  * that rate. Pesos and a former single rate earn nothing on that leg; dollars to dollars earn on both (Rardiel, 30-10-2026).

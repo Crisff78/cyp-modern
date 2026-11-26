@@ -1,8 +1,8 @@
-// Plain-text protocol for the mobile application (docs/protocolo-cyp/Protocolo CYP 0.8.txt).
+// Plain-text protocol for the mobile application (docs/protocolo-cyp/Protocolo CYP 0.9.txt).
 // This file has no Fastify in it: how a petition is read, how an answer is written and which code an error gets.
 import { DomainError } from "./domain.js";
 
-export const PROTOCOL_COMMANDS = ["login", "logout", "clients", "client", "quote", "send", "recs", "pend", "pay"] as const;
+export const PROTOCOL_COMMANDS = ["login", "logout", "clients", "client", "quote", "send", "recs", "pend", "pay", "currencies", "rates"] as const;
 export type ProtocolCommand = (typeof PROTOCOL_COMMANDS)[number];
 /** The names of the parameters, as the document writes them; a PIN error names the one that is wrong. */
 export const PROTOCOL_PARAMETERS: Record<Exclude<ProtocolCommand, "login">, readonly string[]> = {
@@ -15,6 +15,8 @@ export const PROTOCOL_PARAMETERS: Record<Exclude<ProtocolCommand, "login">, read
   recs: ["idSesion", "FechaInicial", "FechaFinal", "idEstado", "Pagina"],
   pend: ["idSesion", "Texto", "Pagina", "idDestinatario"],
   pay: ["idSesion", "idOperacion", "NumEnvio", "MontoARecibir"],
+  currencies: ["idSesion"],
+  rates: ["idSesion", "idMoneda"],
 };
 export const PAGE_SIZE = 100;
 export const MAX_RECEIPT_DAYS = 31;
@@ -171,7 +173,7 @@ export function rawParameters(method: string, url: string, body: unknown) {
 const VERSION = /^\d{1,3}(\.\d{1,3}){1,2}$/;
 export const isVersion = (value: string) => VERSION.test(value);
 /** The data a petition cannot go without. Whatever comes after them is optional. */
-const REQUIRED: Record<Exclude<ProtocolCommand, "login">, number> = { logout: 1, clients: 1, client: 2, quote: 4, send: 16, recs: 1, pend: 1, pay: 4 };
+const REQUIRED: Record<Exclude<ProtocolCommand, "login">, number> = { logout: 1, clients: 1, client: 2, quote: 4, send: 16, recs: 1, pend: 1, pay: 4, currencies: 1, rates: 1 };
 /**
  * The data without the version of the application, when it comes. It is always one datum more: it is taken away only
  * when the petition already has the data it cannot go without, so an amount in last place (100.00, written as a
