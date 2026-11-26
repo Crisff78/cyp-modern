@@ -125,6 +125,10 @@ test("the version of the application after the last datum is taken away, and onl
   assert.deepEqual(withoutVersion("quote", ["s", "USD", "DOP", "100.00"]), ["s", "USD", "DOP", "100.00"]);
   assert.deepEqual(withoutVersion("quote", ["s", "USD", "DOP", "100.00", "3.0"]), ["s", "USD", "DOP", "100.00"]);
   assert.deepEqual(withoutVersion("quote", ["s", "USD", "DOP", "100.00", "1", "3.0"]), ["s", "USD", "DOP", "100.00", "1"]);
+  // A currency by its number (0.11) is no version: it has no point.
+  assert.deepEqual(withoutVersion("quote", ["s", "2", "1", "100.00"]), ["s", "2", "1", "100.00"]);
+  assert.deepEqual(withoutVersion("rates", ["s", "2"]), ["s", "2"]);
+  assert.deepEqual(withoutVersion("rates", ["s", "3", "3.0"]), ["s", "3"]);
   assert.deepEqual(withoutVersion("client", ["s", "3.0"]), ["s", "3.0"]);
   assert.deepEqual(withoutVersion("logout", ["3.0"]), ["3.0"]);
   // Registrar Envío: sixteen data always, so the version can only be the seventeenth. A Nota that is a number stays.
