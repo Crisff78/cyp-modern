@@ -1,6 +1,6 @@
 Protocolo de Intercambio de Datos (CyP)
 
- Versión: 0.10
+ Versión: 0.11
    Fecha: 26/11/2026
 
 
@@ -334,10 +334,12 @@ línea y sin salto de línea al final. Hay dos formas:
  Tasas       -> Pesos dominicanos por una unidad de la moneda, con punto
                 decimal y seis decimales. Ejemplo: 59.250000
 
- idMoneda    -> Código de tres letras, en mayúsculas: DOP (Peso
-                Dominicano), USD (Dólar Americano), EUR (Euro). OJO: no es el número
-                que usa LSAN (1 = Peso Dominicano). En esta versión solo
-                existen estas tres.
+ idMoneda    -> (NUEVO) Un número, como en LSAN: 1 (Peso Dominicano),
+                2 (Dólar Americano), 3 (Euro). En esta versión solo existen
+                estas tres. No lo arme: use el del Listado de Monedas (6.1),
+                que trae también el código de tres letras para mostrarlo
+                (DOP, USD, EUR). En las peticiones se acepta también ese
+                código, como en las versiones anteriores.
 
  Sí / No     -> 1 / 0
 
@@ -419,13 +421,24 @@ Lo nuevo de esta versión
    el cuarto lugar, como la pidió (2.1):
    idCliente;Codigo;Nombre;Identificacion;Telefono;Direccion
    OJO: el Telefono y la Direccion pasan al quinto y al sexto lugar.
- - En las preguntas del final cambian la 1 y la 7.
+ - El idMoneda ahora es un número, como en LSAN: 1 = DOP, 2 = USD,
+   3 = EUR (vea "Formato de los datos"). El Listado de Monedas lo trae
+   delante, y el código al final (6.1):
+   idMoneda;Nombre;Codigo
+   Así viene también en Tasas Vigentes, en Datos del Cliente, en el
+   registro de cada envío (datos 12 y 16) y en el Dato de CNA y CSF, y así
+   se manda en Cotizar Envío, Registrar Envío y Tasas Vigentes. El código
+   de antes (USD) se sigue aceptando en las peticiones.
+   OJO: donde su aplicación mostraba DOP o USD (por ejemplo, la moneda de
+   un envío por entregar), ahora llega 1 o 2. Muéstrelo con el Nombre o el
+   Codigo del Listado de Monedas.
+ - En las preguntas del final cambian la 1, la 5 y la 7.
 
  Lo que ya tiene hecho sigue funcionando: las peticiones de antes son las
-mismas y un idCliente de antes se sigue aceptando. Lo que cambia es la
-forma del idCliente que trae cada respuesta, el lugar del Telefono y la
-Direccion en el Listado de Clientes, y que una búsqueda por un trozo de
-número ya no encuentra nada.
+mismas, y un idCliente o un idMoneda de antes se siguen aceptando. Lo que
+cambia es la forma del idCliente y del idMoneda que trae cada respuesta,
+el lugar del Telefono y la Direccion en el Listado de Clientes, y que una
+búsqueda por un trozo de número ya no encuentra nada.
 
 
 
@@ -773,7 +786,7 @@ Funcionalidades
 
  Telefono, Celular, Direccion: Pueden venir vacíos.
 
- idMoneda: La moneda preferida del cliente. Si no tiene, viene DOP. Sirve
+ idMoneda: La moneda preferida del cliente. Si no tiene, viene 1 (DOP). Sirve
            para proponer la moneda en pantalla; el usuario la puede
            cambiar.
 
@@ -799,7 +812,7 @@ Funcionalidades
 
  Pet: /cyp_client?idSesion|31
 
- Res: OK|20261119093000|31;CLI00000012;Juan Pérez;00112345678;8095550100;;Calle 5 #12, Santiago;DOP
+ Res: OK|20261119093000|31;CLI00000012;Juan Pérez;00112345678;8095550100;;Calle 5 #12, Santiago;1
 
  (En el ejemplo el Celular viene vacío: por eso hay dos ; seguidos.)
 
@@ -886,7 +899,7 @@ Funcionalidades
 
  Ejemplo (comisión del 5 %, cargo de entrega del 2 %, dólar a 59.25):
 
- Pet: /cyp_quote?idSesion|USD|DOP|100.00
+ Pet: /cyp_quote?idSesion|2|1|100.00          (2 = USD, 1 = DOP)
 
  Res: OK|20261119093000|100.00;5.00;105.00;5806.50;5.00;118.50;59.250000;1.000000
 
@@ -899,9 +912,9 @@ Funcionalidades
 
  La misma cotización pedida de las otras dos maneras:
 
- Por el total que paga el remitente:     /cyp_quote?idSesion|USD|DOP|105.00|1
+ Por el total que paga el remitente:     /cyp_quote?idSesion|2|1|105.00|1
 
- Por lo que recibe el destinatario:      /cyp_quote?idSesion|USD|DOP|5806.50|2
+ Por lo que recibe el destinatario:      /cyp_quote?idSesion|2|1|5806.50|2
 
 
 3.2- Registrar Envío
@@ -966,6 +979,9 @@ Funcionalidades
                  mandó la primera vez. (NUEVO) Si la primera vez mandó
                  INT00000031, repita INT00000031 y no 31: si cambia la
                  forma, la central responde OPD.
+                 (NUEVO) La moneda es la excepción: 2 y USD cuentan como
+                 el mismo dato, y repetir con una u otra forma es la misma
+                 petición.
               d- Si llega el mismo idOperacion con otros datos, responde
                  ER con OPD, y en el Dato viene el NumEnvio que ya estaba
                  registrado. Quiere decir que el envío YA quedó registrado
@@ -1104,27 +1120,27 @@ Funcionalidades
 
  Pet: /cyp_send?          (y a continuación, en la misma línea:)
 
- idSesion|5e0b7c1a-4d2f-4b6e-8f90-a1b2c3d4e5f6|31|47|USD|DOP|100.00|0|105.00|5806.50|1|120.00||||
+ idSesion|5e0b7c1a-4d2f-4b6e-8f90-a1b2c3d4e5f6|31|47|2|1|100.00|0|105.00|5806.50|1|120.00||||
 
  Res: OK|20261119093005|c2a4e6f8-1b3d-4f5a-9c7e-0a1b2c3d4e5f;ENV00000048;REC00000048;AD0B35A22F305CA2;20261119093005;100.00;5.00;105.00;5806.50;15.00
 
  La misma petición, como la manda su aplicación (con p= delante y
  3.0 después de los 16 datos):
 
- /cyp_send?p=idSesion|5e0b7c1a-4d2f-4b6e-8f90-a1b2c3d4e5f6|31|47|USD|DOP|100.00|0|105.00|5806.50|1|120.00|||||3.0
+ /cyp_send?p=idSesion|5e0b7c1a-4d2f-4b6e-8f90-a1b2c3d4e5f6|31|47|2|1|100.00|0|105.00|5806.50|1|120.00|||||3.0
 
  Ejemplo con Transferencia (solo cambia el final):
 
- ...|USD|DOP|100.00|0|105.00|5806.50|3||TRF99812|Banco Popular|1|
+ ...|2|1|100.00|0|105.00|5806.50|3||TRF99812|Banco Popular|1|
 
  Ejemplo con una Nota, por GET (el espacio va como %20 y la ñ como
  %C3%B1):
 
- ...|USD|DOP|100.00|0|105.00|5806.50|1|120.00||||Para%20la%20ni%C3%B1a
+ ...|2|1|100.00|0|105.00|5806.50|1|120.00||||Para%20la%20ni%C3%B1a
 
  El mismo final, por POST (en el cuerpo va tal cual):
 
- ...|USD|DOP|100.00|0|105.00|5806.50|1|120.00||||Para la niña
+ ...|2|1|100.00|0|105.00|5806.50|1|120.00||||Para la niña
 
  Los 16 datos del primer ejemplo, uno por uno:
 
@@ -1132,8 +1148,8 @@ Funcionalidades
   2 idOperacion       5e0b7c1a-4d2f-4b6e-8f90-a1b2c3d4e5f6
   3 idRemitente       31
   4 idDestinatario    47
-  5 idMonedaOrigen    USD
-  6 idMonedaDestino   DOP
+  5 idMonedaOrigen    2             (USD)
+  6 idMonedaDestino   1             (DOP)
   7 Monto             100.00
   8 Modo              0             (obligatorio aquí)
   9 TotalAPagar       105.00
@@ -1203,12 +1219,13 @@ Funcionalidades
  Telefono: El teléfono del destinatario. Puede venir vacío.
 
  idMonedaOrigen, MontoAEnviar, Comision, TotalAPagar: La moneda en que pagó
-          el remitente, lo que envió, la comisión y lo que pagó en total.
+          el remitente ((NUEVO) su número: 2, no USD), lo que envió, la
+          comisión y lo que pagó en total.
           Con Tarjeta, el TotalAPagar incluye además el recargo de tarjeta:
           en esos recibos no es igual a MontoAEnviar + Comision.
 
  idMonedaDestino, MontoARecibir: La moneda en que se le entrega al
-          destinatario y lo que recibe.
+          destinatario ((NUEVO) su número) y lo que recibe.
 
  idForma_Pago: Cómo pagó el remitente:
 
@@ -1257,7 +1274,7 @@ Funcionalidades
 
  Pet: /cyp_recs?idSesion|||0
 
- Res: OK|20261119100000|0|c2a4e6f8-1b3d-4f5a-9c7e-0a1b2c3d4e5f;ENV00000048;REC00000048;AD0B35A22F305CA2;20261119093005;0;31;Juan Pérez;47;Ana Pérez;8295550111;USD;100.00;5.00;105.00;DOP;5806.50;1;;40212345678
+ Res: OK|20261119100000|0|c2a4e6f8-1b3d-4f5a-9c7e-0a1b2c3d4e5f;ENV00000048;REC00000048;AD0B35A22F305CA2;20261119093005;0;31;Juan Pérez;47;Ana Pérez;8295550111;2;100.00;5.00;105.00;1;5806.50;1;;40212345678
 
  (El penúltimo campo, Fecha_Pago, viene vacío porque no se ha entregado:
  por eso hay dos ; seguidos. El último es la Identificacion del
@@ -1329,7 +1346,9 @@ Funcionalidades
          Telefono (dato 11)       - Su teléfono.
          idMonedaDestino (dato 16) y MontoARecibir (dato 17)
                                   - En qué moneda y cuánto hay que
-                                    entregarle.
+                                    entregarle. (NUEVO) La moneda llega
+                                    como número: muéstrela con el
+                                    Codigo o el Nombre de 6.1.
          Identificacion (dato 20) - Su cédula o pasaporte, para comprobar
                                     que es esa persona.
 
@@ -1369,7 +1388,7 @@ Funcionalidades
 
  Pet: /cyp_pend?idSesion|ENV00000048
 
- Res: OK|20261119100500|0|c2a4e6f8-1b3d-4f5a-9c7e-0a1b2c3d4e5f;ENV00000048;REC00000048;AD0B35A22F305CA2;20261119093005;0;31;Juan Pérez;47;Ana Pérez;8295550111;USD;100.00;5.00;105.00;DOP;5806.50;1;;40212345678
+ Res: OK|20261119100500|0|c2a4e6f8-1b3d-4f5a-9c7e-0a1b2c3d4e5f;ENV00000048;REC00000048;AD0B35A22F305CA2;20261119093005;0;31;Juan Pérez;47;Ana Pérez;8295550111;2;100.00;5.00;105.00;1;5806.50;1;;40212345678
 
  (El penúltimo campo, Fecha_Pago, viene vacío. El último es la
  Identificacion del destinatario.)
@@ -1459,9 +1478,10 @@ Funcionalidades
  CFR - Cliente Fuera de Ruta: el usuario es Cobrador y el destinatario no
        es de su ruta. El Dato es el idCliente del destinatario.
  CNA - Caja No Abierta: el usuario no tiene abierta hoy su Caja de Remesas
-       en la moneda que recibe el destinatario. El Dato es esa moneda.
+       en la moneda que recibe el destinatario. El Dato es el idMoneda de
+       esa moneda ((NUEVO) su número).
  CSF - Caja Sin Fondos: esa caja no tiene dinero suficiente para la
-       entrega. El Dato es la moneda.
+       entrega. El Dato es el idMoneda ((NUEVO) su número).
  OPD - OPeración Duplicada: ese idOperacion ya se usó con otros datos. El
        Dato es el NumEnvio de la primera vez.
 
@@ -1499,7 +1519,7 @@ Funcionalidades
 
  Pet: /cyp_pay?idSesion|8a1f3c5e-7b9d-4e2f-a6c8-0d1e2f3a4b5c|ENV00000048|5806.50
 
- Res: OK|20261119101500|c2a4e6f8-1b3d-4f5a-9c7e-0a1b2c3d4e5f;ENV00000048;REC00000048;AD0B35A22F305CA2;20261119093005;1;31;Juan Pérez;47;Ana Pérez;8295550111;USD;100.00;5.00;105.00;DOP;5806.50;1;20261119101500;40212345678
+ Res: OK|20261119101500|c2a4e6f8-1b3d-4f5a-9c7e-0a1b2c3d4e5f;ENV00000048;REC00000048;AD0B35A22F305CA2;20261119093005;1;31;Juan Pérez;47;Ana Pérez;8295550111;2;100.00;5.00;105.00;1;5806.50;1;20261119101500;40212345678
 
  La misma petición, como la manda su aplicación (con p= delante y 3.0
  después de los 4 datos):
@@ -1512,7 +1532,7 @@ Funcionalidades
 
  Si el usuario no tiene abierta hoy su caja de pesos:
 
- Res: ER|20261119101500|CNA|No tiene abierta hoy su Caja de Remesas en DOP|DOP
+ Res: ER|20261119101500|CNA|No tiene abierta hoy su Caja de Remesas en DOP|1
 
 
 6- Monedas y Tasas (NUEVO)
@@ -1536,19 +1556,22 @@ Funcionalidades
 
  Monedas: Moneda1!Moneda2!...!MonedaN
 
- MonedaX: idMoneda;Nombre
+ MonedaX: idMoneda;Nombre;Codigo
 
- idMoneda: El código de tres letras (vea "Formato de los datos"). Es el
-           que se manda en Cotizar Envío, Registrar Envío y Tasas
-           Vigentes.
+ idMoneda: (NUEVO) El número de la moneda (vea "Formato de los datos").
+           Es el que se manda en Cotizar Envío, Registrar Envío y Tasas
+           Vigentes, y el que viene en las demás respuestas.
 
  Nombre: El nombre de la moneda, para mostrarlo.
+
+ Codigo: (NUEVO) El código de tres letras (DOP, USD, EUR), para
+         mostrarlo.
 
  Errores propios: ninguno.
 
  A tener en cuenta:
 
- 1- Vienen siempre en el mismo orden: DOP, USD, EUR.
+ 1- Vienen siempre en el mismo orden: 1 (DOP), 2 (USD), 3 (EUR).
  2- La puede pedir cualquier usuario que pueda enviar, ver envíos o
     entregar.
  3- Que una moneda venga aquí no quiere decir que hoy se pueda cotizar con
@@ -1558,7 +1581,7 @@ Funcionalidades
 
  Pet: /cyp_currencies?idSesion
 
- Res: OK|20261126100000|DOP;Peso Dominicano!USD;Dólar Americano!EUR;Euro
+ Res: OK|20261126100000|1;Peso Dominicano;DOP!2;Dólar Americano;USD!3;Euro;EUR
 
 
 6.2- Tasas Vigentes
@@ -1575,13 +1598,16 @@ Funcionalidades
  Qué se manda:
 
  idMoneda: Si se manda, viene solo la tasa de esa moneda. Si no, vienen
-           todas las que tienen tasa vigente.
+           todas las que tienen tasa vigente. (NUEVO) Va el número; el
+           código (USD) también se acepta.
 
  Qué devuelve:
 
  Tasas: Tasa1!Tasa2!...!TasaN
 
  TasaX: idMoneda;TasaCompra;TasaVenta;Fecha;Actualizada
+
+ idMoneda: (NUEVO) El número de la moneda, como en el Listado de Monedas.
 
  TasaCompra: Los pesos dominicanos que la central da por una unidad de
              esa moneda. Es la que se usa cuando el REMITENTE paga en esa
@@ -1600,7 +1626,7 @@ Funcionalidades
  Errores propios:
 
  TNE - Solo con idMoneda: esa moneda no tiene tasa vigente, y hoy no se
-       puede cotizar con ella. El Dato es el idMoneda.
+       puede cotizar con ella. El Dato es el idMoneda, tal como se mandó.
 
  A tener en cuenta:
 
@@ -1610,9 +1636,9 @@ Funcionalidades
     central, la respuesta es ER con CCA.
  2- Una tasa puede cambiar durante el día (Actualizada lo dice). Pídala
     justo antes de mostrarla; no la guarde para más tarde.
- 3- El peso dominicano (DOP) viene siempre, con 1.000000 en las dos: la
-    lista nunca está vacía. Vienen en el orden DOP, USD, EUR, y una moneda
-    sin tasa vigente no viene.
+ 3- El peso dominicano (1) viene siempre, con 1.000000 en las dos: la
+    lista nunca está vacía. Vienen en el orden 1, 2, 3, y una moneda sin
+    tasa vigente no viene.
  4- Si una tasa se registró con un solo valor, la compra y la venta
     vienen iguales.
  5- La pueden pedir los mismos usuarios que pueden cotizar (PuedeEnviar).
@@ -1621,15 +1647,15 @@ Funcionalidades
 
  Pet: /cyp_rates?idSesion
 
- Res: OK|20261126100000|DOP;1.000000;1.000000;20261126;!USD;59.250000;60.000000;20261126;20261126080512!EUR;64.100000;64.900000;20261125;20261125171503
+ Res: OK|20261126100000|1;1.000000;1.000000;20261126;!2;59.250000;60.000000;20261126;20261126080512!3;64.100000;64.900000;20261125;20261125171503
 
  (El peso no tiene una tasa registrada: su Actualizada viene vacía y por
  eso hay un ; al final de su registro. El euro trae la tasa de ayer, que
  sigue vigente.)
 
- Una sola moneda:   /cyp_rates?idSesion|USD
+ Una sola moneda:   /cyp_rates?idSesion|2
 
- Res: OK|20261126100000|USD;59.250000;60.000000;20261126;20261126080512
+ Res: OK|20261126100000|2;59.250000;60.000000;20261126;20261126080512
 
 
 
@@ -1647,8 +1673,9 @@ Errores
    cuenta como dato de más); CNE, CIN y CFR traen el idCliente (en el
    Listado de Clientes, CNE no trae nada); OPD trae el NumEnvio que ya
    estaba registrado. En las entregas: ENE y MNC traen el
-   NumEnvio; ENP, el idEstado del envío (1 o 2); CNA y CSF, la moneda de
-   la caja. (NUEVO) En Tasas Vigentes, TNE trae el idMoneda. En los demás
+   NumEnvio; ENP, el idEstado del envío (1 o 2); CNA y CSF, el idMoneda
+   de la caja ((NUEVO) su número). (NUEVO) En Tasas Vigentes, TNE trae el
+   idMoneda tal como se mandó. En los demás
    viene vacío.
  - En cada petición pusimos sus errores propios. Además, PIN, DML, PNE, EIC
    y ORC pueden venir en cualquier petición; SNE y SNA en todas las que
@@ -1793,9 +1820,10 @@ una versión nueva de este documento.
     c) La central responde HTTP 200 también en los errores. ¿Su aplicación
        lo maneja así?
 
- 5- Monedas: LSAN usa idMoneda con número (1 = Peso Dominicano). Aquí
-    pusimos DOP, USD y EUR. Si prefiere números, ¿cuáles usa para Dólar y
-    para Euro?
+ 5- (NUEVO) Monedas: ya usamos números, como LSAN: 1 = Peso Dominicano,
+    2 = Dólar Americano y 3 = Euro. ¿Su aplicación usa esos mismos? Si
+    usa otros para el dólar o el euro, díganos cuáles antes de usarlos
+    con datos reales: después ya no se pueden cambiar.
 
  6- Forma de pago: aquí pusimos 1 = Efectivo, 2 = Tarjeta,
     3 = Transferencia y 4 = Depósito. ¿Coinciden con los valores de

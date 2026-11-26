@@ -1,4 +1,4 @@
-// Plain-text protocol for the mobile application: the petitions of docs/protocolo-cyp/Protocolo CYP 0.10.txt.
+// Plain-text protocol for the mobile application: the petitions of docs/protocolo-cyp/Protocolo CYP 0.11.txt.
 // Each one is a thin adapter in front of the same functions the JSON API uses; no rule of the business lives here.
 // Two things are its own: the idCliente (the number of the internal identification of the client instead of its id,
 // clientIds and clientOf) and, in Entregar Envío, the order of its checks and the idOperacion that tells a repetition
@@ -69,12 +69,18 @@ const METHODS = { cash: "1", card: "2", transfer: "3", deposit: "4" } as const;
 const STATUS = { pending: "0", paid: "1", cancelled: "2" } as const;
 // The names the central gives the currencies (collector-assignments.ts), for Listado de Monedas.
 const CURRENCY_NAMES: Record<Currency, string> = { DOP: "Peso Dominicano", USD: "Dólar Americano", EUR: "Euro" };
+// Since 0.11 the idMoneda of the protocol is a number, as in LSAN, where 1 is the peso; the code still comes in. Never
+// renumbered once the application uses them: a repeated send would go in another currency.
+const CURRENCY_IDS: Record<Currency, string> = { DOP: "1", USD: "2", EUR: "3" };
+// A Map, not an object: a text such as «constructor» is no currency.
+const CURRENCY_BY_ID: ReadonlyMap<string, Currency> = new Map(currencies.map((currency) => [CURRENCY_IDS[currency], currency]));
 const AMOUNT_MODES: readonly AmountMode[] = ["source", "total", "destination"];
 const CLIENT_ERRORS: Record<string, string> = { CLIENT_NOT_FOUND: "CNE", CLIENT_INACTIVE: "CIN", FORBIDDEN: "CFR" };
 
 const currencyOf = (name: string, value: string): Currency => {
-  if (!(currencies as readonly string[]).includes(value)) throw value === "" ? missing(name) : invalid(name);
-  return value as Currency;
+  const currency = CURRENCY_BY_ID.get(value) ?? ((currencies as readonly string[]).includes(value) ? value as Currency : undefined);
+  if (!currency) throw value === "" ? missing(name) : invalid(name);
+  return currency;
 };
 const idOf = (name: string, value: string) => {
   if (value === "") throw missing(name);
@@ -240,7 +246,7 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
     // The contact of a send carries neither the currency nor the internal identification: they are in the client record.
     const saved = state.clients.find((row) => row.id === contact.id);
     return okLine(now, record(clientIds(state).get(contact.id) ?? contact.id, contact.code, contact.name, identityOf(contact.identification, saved?.internalIdentification), contact.phone, contact.cellular, contact.address,
-      saved?.preferredCurrency ?? "DOP"));
+      CURRENCY_IDS[saved?.preferredCurrency ?? "DOP"]));
   }
 
   function quote(state: State, parts: string[], now: Date) {
@@ -262,7 +268,8 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
     }
     if (refused) throw refused;
     namedParameters("currencies", parts);
-    return okLine(now, currencies.map((currency) => record(currency, CURRENCY_NAMES[currency])).join("!"));
+    // Since 0.11 idMoneda;Nombre;Codigo: the number first, the Nombre where it was, the code at the end.
+    return okLine(now, currencies.map((currency) => record(CURRENCY_IDS[currency], CURRENCY_NAMES[currency], currency)).join("!"));
   }
 
   /** Tasas Vigentes: the rates a quote made now uses (ratesInForce), all of them or one currency. */
@@ -270,8 +277,9 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
     const input = namedParameters("rates", parts);
     const currency = input.idMoneda === "" ? undefined : currencyOf("idMoneda", input.idMoneda);
     const rows = ratesInForce(state, now).filter((row) => !currency || row.currency === currency);
-    if (currency && !rows.length) throw new ProtocolError("TNE", `No hay tasa vigente de ${currency}`, currency);
-    return okLine(now, rows.map((row) => record(row.currency, row.purchaseRate, row.saleRate, row.date.replace(/-/g, ""), protocolStamp(row.changedAt))).join("!"));
+    // The Dato of an error that comes from the petition is what came, as with an idCliente.
+    if (currency && !rows.length) throw new ProtocolError("TNE", `No hay tasa vigente de ${currency}`, input.idMoneda);
+    return okLine(now, rows.map((row) => record(CURRENCY_IDS[row.currency], row.purchaseRate, row.saleRate, row.date.replace(/-/g, ""), protocolStamp(row.changedAt))).join("!"));
   }
 
   /** The payment as the JSON API takes it. What must be empty with each way of paying is checked here: it is PIN. */
@@ -304,8 +312,9 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
     const total = amountOf("TotalAPagar", input.TotalAPagar), receive = amountOf("MontoARecibir", input.MontoARecibir);
     const payment = paymentOf(input), note = textOf("Nota", input.Nota, 2000);
     // Everything but the session (and the version of the application, already taken away), character by character:
-    // what the document calls «los mismos datos». Without a version it is the text it always was.
-    const fingerprint = createHash("sha256").update(parts.slice(1).join("|")).digest("hex");
+    // what the document calls «los mismos datos». Without a version it is the text it always was. The currencies count
+    // by their code: before 0.11 only codes came in, so the saved fingerprints still hold, and USD or 2 is the same send.
+    const fingerprint = createHash("sha256").update([...parts.slice(1, 4), sourceCurrency, destinationCurrency, ...parts.slice(6)].join("|")).digest("hex");
     return deps.store.transaction((state) => {
       assertAuthSession(state, claims, claims.sid);
       const actor = currentAccessUser(state, claims);
@@ -372,8 +381,8 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
     transfer.id, transfer.envioReference, transfer.reciboReference, transfer.operatingCode, protocolStamp(transfer.createdAt), STATUS[transfer.status],
     idCliente(transfer.senderClientId), transfer.senderContact?.name ?? "", idCliente(transfer.recipientClientId), transfer.recipientContact?.name ?? "",
     transfer.recipientContact?.phone || transfer.recipientContact?.cellular || "",
-    transfer.sourceCurrency, moneyText(transfer.amount), moneyText(transfer.commissionAmount), moneyText(totalPaidForTransfer(transfer)),
-    transfer.destinationCurrency, moneyText(payoutOf(transfer)), transfer.payment ? METHODS[transfer.payment.method] : "", protocolStamp(transfer.paidAt),
+    CURRENCY_IDS[transfer.sourceCurrency], moneyText(transfer.amount), moneyText(transfer.commissionAmount), moneyText(totalPaidForTransfer(transfer)),
+    CURRENCY_IDS[transfer.destinationCurrency], moneyText(payoutOf(transfer)), transfer.payment ? METHODS[transfer.payment.method] : "", protocolStamp(transfer.paidAt),
     // The identification the recipient is asked for at the delivery: the copy saved in the send, not the client record of today.
     identityOf(transfer.recipientContact?.identification, recipientInternal));
 
@@ -425,8 +434,8 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
         const code = error instanceof DomainError ? error.code : "";
         if (code === "FORBIDDEN")
           throw new ProtocolError("CFR", "El destinatario no es de su ruta", clientIds(state).get(transfer.recipientClientId) ?? transfer.recipientClientId);
-        if (code === "CASH_NOT_OPEN") throw new ProtocolError("CNA", `No tiene abierta hoy su Caja de Remesas en ${currency}`, currency);
-        if (code === "INSUFFICIENT_CASH") throw new ProtocolError("CSF", `Su Caja de Remesas en ${currency} no tiene fondos para esta entrega`, currency);
+        if (code === "CASH_NOT_OPEN") throw new ProtocolError("CNA", `No tiene abierta hoy su Caja de Remesas en ${currency}`, CURRENCY_IDS[currency]);
+        if (code === "INSUFFICIENT_CASH") throw new ProtocolError("CSF", `Su Caja de Remesas en ${currency} no tiene fondos para esta entrega`, CURRENCY_IDS[currency]);
         throw error;
       }
       checkCatalogChanges();
