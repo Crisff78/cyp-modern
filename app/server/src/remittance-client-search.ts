@@ -67,14 +67,15 @@ const byName = new Intl.Collator("es", { sensitivity: "base" });
 /**
  * The clients of the search of the text protocol (protocolMatch), or every active one when nothing is typed, in the
  * order of a list that is read by pages: name, then code, then id, so no page repeats or skips a client. What is needed
- * to choose one and, since version 0.6 of the text protocol, the phone the web shows and the address: the mobile
+ * to choose one and, since version 0.6 of the text protocol, the phone the web shows and the address (and since 0.10,
+ * the identification): the mobile
  * application asked for them. The search of the web, above, does not change and still gives ids only.
  */
 export function listRemittanceClients(state: State, actor: User, query: string, side: "sender" | "recipient", exactId?: string) {
   remittanceOperators(state, actor);
   return state.clients.filter((client) => choosable(state, actor, client, side) && protocolMatch(client, query, exactId))
-    .map(({ id, internalIdentification, code, name, phone, cellular, address }) =>
-      ({ id, ...(internalIdentification ? { internalIdentification } : {}), code, name, phone: phone || cellular || "", address: address ?? "" }))
+    .map(({ id, internalIdentification, code, name, identification, phone, cellular, address }) =>
+      ({ id, ...(internalIdentification ? { internalIdentification } : {}), code, name, identification: identification ?? "", phone: phone || cellular || "", address: address ?? "" }))
     .sort((a, b) => byName.compare(a.name, b.name) || byName.compare(a.code, b.code) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
 
