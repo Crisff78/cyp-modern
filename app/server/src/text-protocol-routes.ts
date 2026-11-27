@@ -1,4 +1,4 @@
-// Plain-text protocol for the mobile application: the petitions of docs/protocolo-cyp/Protocolo CYP 0.13.txt.
+// Plain-text protocol for the mobile application: the petitions of docs/protocolo-cyp/Protocolo CYP 0.14.txt.
 // Each one is a thin adapter in front of the same functions the JSON API uses; no rule of the business lives here.
 // Two things are its own: the idCliente (the number of the internal identification of the client instead of its id,
 // clientIds and clientOf) and, in Entregar Envío, the order of its checks and the idOperacion that tells a repetition
@@ -70,7 +70,9 @@ const ACCESS: Record<Exclude<ProtocolCommand, "login" | "logout" | "currencies">
   // Tasas Vigentes, as Cotizar: whoever may quote sees the rates in force, as the web shows them to a cashier in the
   // snapshot of remittances. remittances.rates.view is for the window that registers and lists every rate.
   rates: [SEND, "remittances.create"],
-  // Porcentajes, as Cotizar: the percentages a quote uses. The web gives them to whoever quotes, too.
+  // Porcentajes, as Cotizar: the percentages a quote uses, and since 0.14 the sixth part of Iniciar Sesión. The web
+  // gives them to whoever quotes, and also to a supervisor (commissions.view), who cannot quote: here, as in Cotizar,
+  // only whoever quotes gets them.
   fees: [SEND, "remittances.create"],
 };
 // Listado de Monedas is for whoever may send, see sends or deliver: the names of the currencies of a record.
@@ -95,6 +97,11 @@ const cardChargeOf = (total: number, cardType: CardType | undefined, bps: number
     throw error;
   }
 };
+/** Por_Comision;Por_CargoEntrega;Por_RecargoTarjeta: the answer of Porcentajes and, since 0.14, the end of Iniciar Sesión. */
+function feesRecord(state: State) {
+  const policy = getCommissionPolicy(state);
+  return record(percentText(policy.transactionCommissionBps), percentText(policy.deliveryCommissionBps ?? 0), percentText(policy.creditCardCommissionBps ?? 0));
+}
 const CLIENT_ERRORS: Record<string, string> = { CLIENT_NOT_FOUND: "CNE", CLIENT_INACTIVE: "CIN", FORBIDDEN: "CFR" };
 
 const currencyOf = (name: string, value: string): Currency => {
@@ -233,12 +240,16 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
     }
     if (!session) throw refused;
     const claims = deps.verifyToken(session.token);
-    const can = async ([method, path]: readonly [string, string]) => {
-      try { await deps.authenticate(claims, method, path); return "1"; }
+    // By the equivalent path, as the web asks; with a permission, also by its name, as the dispatcher asks.
+    const can = async ([method, path]: readonly [string, string], permission?: Parameters<typeof requireRemittancePermission>[1]) => {
+      try { const actor = await deps.authenticate(claims, method, path); if (permission) requireRemittancePermission(actor, permission); return "1"; }
       catch (error) { if (error instanceof DomainError) return "0"; throw error; }
     };
     const { id, name, role } = session.user;
-    return okLine(now, deps.sessionIds.seal(claims.sid as string), record(id, name, role, await can(SEND), await can(VIEW), await can(PAY)), protocolStamp(new Date(session.expiresAt)));
+    // Since 0.14, at the end, the percentages of Porcentajes, as the other party asked for them: with the same check, so
+    // they come empty (never 0.00) exactly when Porcentajes would answer SPE. The state is read only then.
+    const fees = await can(...ACCESS.fees) === "1" ? feesRecord(await deps.store.read()) : record("", "", "");
+    return okLine(now, deps.sessionIds.seal(claims.sid as string), record(id, name, role, await can(SEND), await can(VIEW), await can(PAY)), protocolStamp(new Date(session.expiresAt)), fees);
   }
 
   async function logout(claims: Claims, parts: string[], now: Date) {
@@ -285,8 +296,7 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
   /** Porcentajes: the commission, the delivery charge and the surcharge of a credit card, as the central has them. */
   function fees(state: State, parts: string[], now: Date) {
     namedParameters("fees", parts);
-    const policy = getCommissionPolicy(state);
-    return okLine(now, record(percentText(policy.transactionCommissionBps), percentText(policy.deliveryCommissionBps ?? 0), percentText(policy.creditCardCommissionBps ?? 0)));
+    return okLine(now, feesRecord(state));
   }
 
   /** Listado de Monedas: the currencies of the central, in its order, for whoever may send, see sends or deliver. */
