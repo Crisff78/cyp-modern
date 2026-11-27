@@ -82,7 +82,9 @@ test("login: the password keeps its separators, each role gets its two permissio
   const { app, store, post } = await open();
   try {
     const ok = await post("login", `admin@cyp.local|${DEMO_PASSWORD}`);
-    assert.equal(ok.length, 5); assert.equal(ok[0], "OK");
+    assert.equal(ok.length, 6); assert.equal(ok[0], "OK");
+    // Porcentajes at the end (0.14): those of the example, with no surcharge for a credit card.
+    assert.equal(ok[5], "5.00;2.00;0.00");
     assert.match(ok[2], /^[0-9A-F]{32}$/, "idSesion: 32 hexadecimal characters in uppercase");
     assert.deepEqual(fields(ok[3]), ["demo-admin", "Administración", "admin", "1", "1", "1"]);
     // Vence: the end of the record of the session, eight hours after it started.
@@ -104,7 +106,7 @@ test("login by GET: the same petition after the ?, with the password encoded as 
   const { app, get } = await open();
   try {
     const ok = await get("login", encodeURIComponent(`admin@cyp.local|${DEMO_PASSWORD}`));
-    assert.equal(ok.length, 5); assert.equal(ok[0], "OK");
+    assert.equal(ok.length, 6); assert.equal(ok[0], "OK");
     assert.deepEqual(fields(ok[3]), ["demo-admin", "Administración", "admin", "1", "1", "1"]);
     assert.match(ok[4], /^\d{14}$/);
     assert.equal((await get("quote", `${ok[2]}|USD|DOP|100.00`))[0], "OK", "the session of a GET is a session");
@@ -124,7 +126,7 @@ test("outside demo mode the sign-in is still POST only (a password does not trav
     const refused = await get("login", encodeURIComponent(`supervisora@cyp.local|${DEMO_PASSWORD}`));
     er(refused, "PIN", "Parametros"); assert.match(refused[3], /POST/);
     const ok = await post("login", `supervisora@cyp.local|${DEMO_PASSWORD}`);
-    assert.equal(ok.length, 5); assert.equal(ok[0], "OK");
+    assert.equal(ok.length, 6); assert.equal(ok[0], "OK"); assert.equal(ok[5], ";;", "a supervisor does not quote");
     assert.equal((await get("recs", ok[2]))[2], "RNE", "the other petitions are taken by GET everywhere");
     assert.equal((await get("logout", ok[2]))[0], "OK");
   } finally { await app.close(); }
@@ -600,6 +602,9 @@ test("a failure of the central that is not a rule answers EIC with a reference, 
     const parts = reply.body.split("|");
     er(parts, "EIC"); assert.match(parts[3], /Referencia para soporte: [A-Za-z0-9_-]+$/); assert.ok(!reply.body.includes("10.0.0.7"));
     assert.equal(logged.length, 1, "the cause stays in the log of the server");
+    // The sign-in too, with the percentages it reads at the end.
+    const login = (await app.inject({ method: "POST", url: "/cyp_login", payload: `admin@cyp.local|${DEMO_PASSWORD}` })).body.split("|");
+    er(login, "EIC"); assert.ok(!login.join("|").includes("10.0.0.7"));
   } finally { console.error = original; await app.close(); }
 });
 
@@ -623,7 +628,8 @@ test("sign-in as the other party's application calls it: p= before the data and 
   try {
     const before = await sessions();
     const ok = await get("login", `p=${encodeURIComponent(`admin@cyp.local|${DEMO_PASSWORD}|3.0`)}`);
-    assert.equal(ok.length, 5); assert.equal(ok[0], "OK"); assert.deepEqual(fields(ok[3]), ["demo-admin", "Administración", "admin", "1", "1", "1"]);
+    assert.equal(ok.length, 6); assert.equal(ok[0], "OK"); assert.deepEqual(fields(ok[3]), ["demo-admin", "Administración", "admin", "1", "1", "1"]);
+    assert.equal(ok[5], "5.00;2.00;0.00");
     assert.equal(await sessions(), before + 1, "two readings of the password, one session");
     assert.equal((await get("clients", `p=${ok[2]}|Colmado|3.0`))[0], "OK", "that session, called the same way");
     // The version without the prefix, and by POST: it is a datum, not a part of the address.
@@ -632,7 +638,8 @@ test("sign-in as the other party's application calls it: p= before the data and 
     // A password may hold pipes, with a version after it or with an end that reads as one.
     assert.equal((await get("login", `p=${encodeURIComponent("pipes@cyp.local|Clave|con!pipes;y@signos 2026|3.0")}`))[0], "OK");
     assert.equal((await get("login", `p=${encodeURIComponent(`version@cyp.local|${PIPE_AND_NUMBER}`)}`))[0], "OK");
-    assert.equal((await get("login", `p=${encodeURIComponent(`version@cyp.local|${PIPE_AND_NUMBER}|3.0`)}`))[0], "OK");
+    const second = await get("login", `p=${encodeURIComponent(`version@cyp.local|${PIPE_AND_NUMBER}|3.0`)}`);
+    assert.equal(second[0], "OK"); assert.equal(second.length, 6); assert.equal(second[5], "5.00;2.00;0.00");
     // A wrong password is one answer, UCI, whichever way it is read; a version is not a password.
     er(await get("login", `p=${encodeURIComponent("admin@cyp.local|otra-clave|3.0")}`), "UCI");
     er(await get("login", `p=${encodeURIComponent("admin@cyp.local||3.0")}`), "PIN", "Clave");
@@ -1163,4 +1170,31 @@ test("0.13: a card in Registrar Envío with its surcharge, the surcharge in Coti
     er(await vaulted.post("send", debit(cashier, "2|Ana Pérez|4242")), "ORC");
     assert.equal((await vaulted.post("send", debit(cashier, "2||")))[0], "OK");
   } finally { await vaulted.app.close(); }
+});
+
+test("0.14: Iniciar Sesión ends with the percentages of Porcentajes, empty exactly when Porcentajes answers SPE", async () => {
+  const state = fixture(), now = new Date();
+  setCommissionPolicy(state, admin, { transactionCommissionBps: 500, managerCommissionBps: 0, deliveryCommissionBps: 200, creditCardCommissionBps: 350 }, now);
+  const { app, post, get } = await open(state);
+  // Whoever quotes gets them; the supervisor (who sees them in the web but cannot quote) and a client do not.
+  const expected: Record<string, string> = { "admin@cyp.local": "5.00;2.00;3.50", [DEMO_CASHIER_EMAIL]: "5.00;2.00;3.50",
+    "collector@cyp.local": "5.00;2.00;3.50", "supervisora@cyp.local": ";;", "cliente@cyp.local": ";;" };
+  try {
+    for (const [email, percentages] of Object.entries(expected)) {
+      const ok = await post("login", `${email}|${DEMO_PASSWORD}`);
+      assert.equal(ok.length, 6, email); assert.equal(ok[0], "OK", email);
+      assert.equal(ok[5], percentages, email);
+      const fees = await get("fees", ok[2]);
+      if (ok[5] === ";;") er(fees, "SPE"); else assert.deepEqual(fees.slice(2), [ok[5]], email);
+      assert.equal((await get("logout", ok[2]))[0], "OK");
+    }
+  } finally { await app.close(); }
+  // With no percentages saved they are 0.00, which is not the same as empty.
+  const bare = fixture(); delete bare.remittances.commissionPolicy;
+  const plain = await open(bare);
+  try {
+    const ok = await plain.post("login", `${DEMO_CASHIER_EMAIL}|${DEMO_PASSWORD}`);
+    assert.equal(ok[5], "0.00;0.00;0.00");
+    assert.equal((await plain.get("fees", ok[2]))[2], ok[5]);
+  } finally { await plain.app.close(); }
 });

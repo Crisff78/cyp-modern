@@ -56,7 +56,7 @@ test("with the way the application calls, the account signs in, quotes and regis
 
   const login = await text(`/cyp_login?p=${credentials}|3.0`);
   assert.equal(login[0], "OK", login.join("|"));
-  assert.equal(login.length, 5);
+  assert.equal(login.length, 6);
   const [id, , role, canSend, canSee] = login[3].split(";");
   assert.deepEqual([id, role, canSend, canSee], [DEMO_MOBILE_TEST_ID, "cashier", "1", "1"]);
   const session = login[2];
