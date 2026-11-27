@@ -1,15 +1,15 @@
-# Protocolo de texto plano para la aplicación móvil (CYP 0.13)
+# Protocolo de texto plano para la aplicación móvil (CYP 0.14)
 
 Once peticiones `/cyp_*` que responden en texto plano, separadas por `|`, para que una aplicación móvil hecha por
 otro equipo haga Envíos de Dinero contra CyP y los entregue. Orden de Rardiel del 2026-11-19: «Programalo y deja todo
 listo».
 
-- **El contrato** es [`protocolo-cyp/Protocolo CYP 0.13.txt`](<protocolo-cyp/Protocolo CYP 0.13.txt>): es el documento
+- **El contrato** es [`protocolo-cyp/Protocolo CYP 0.14.txt`](<protocolo-cyp/Protocolo CYP 0.14.txt>): es el documento
   que se le envía a quien programa la aplicación. Si el servidor y ese documento no coinciden, hay un fallo: se
   arregla el servidor o se envía una versión nueva del documento, nunca se deja pasar. El documento describe solo
   lo que existe hoy: no cuenta lo que se cambió o se quitó. Lo nuevo desde la última versión que tiene esa persona
-  (hoy, la 0.7: Rardiel dijo el 2026-11-25 «Yo le llegué a mandar el 0.7») va marcado con `(NUEVO)` y resumido en «Lo
-  nuevo de esta versión». El historial por versión está en git y en los planes de `designs/`.
+  (hoy, la 0.12: Rardiel dijo el 2026-11-27 «el último mensaje que le mandé fue este y el protocolo 0.12») va marcado
+  con `(NUEVO)` y resumido en «Lo nuevo de esta versión». El historial por versión está en git y en los planes de `designs/`.
 - **El plan** y su revisión están en `designs/2026-11-19-protocolo-texto-plano/`. La versión 0.2 (GET en todas las
   peticiones y `Vence`), en `designs/2026-11-20-protocolo-get-y-vence/`; la 0.3 (sin código de invitación), en
   `designs/2026-11-20-sin-invitacion/`; la 0.4 (`p=` y la versión de la aplicación), en
@@ -22,8 +22,9 @@ listo».
   `designs/2026-11-26-tasas-y-busqueda/`; la 0.10 (la identificación en el Listado de Clientes), en
   `designs/2026-11-26-listado-identificacion/`; la 0.11 (el `idMoneda` como número), en
   `designs/2026-11-26-moneda-numero/`; la 0.12 (`-1` en Tasas Vigentes), en `designs/2026-11-27-tasas-menos-uno/`; y la
-  0.13 (pago con tarjeta y porcentajes), en `designs/2026-11-27-tarjeta-y-porcentajes/`. No consta que de la 0.8 a la
-  0.12 se le mandaran: la 0.13 marca con `(NUEVO)` todo lo nuevo desde la 0.7.
+  0.13 (pago con tarjeta y porcentajes), en `designs/2026-11-27-tarjeta-y-porcentajes/`; y la 0.14 (los porcentajes al
+  iniciar sesión), en `designs/2026-11-27-porcentajes-inicio-sesion/`. La 0.13 no le llegó: la 0.14 marca con `(NUEVO)`
+  lo nuevo desde la 0.12, que es lo de la 0.13 y lo de la 0.14.
 
 ## Dónde está cada cosa
 
@@ -60,6 +61,12 @@ No hay reglas del negocio nuevas ni migración. Lo propio del protocolo es su `i
   versión como `Nota`; y una `Nota` con un pipe sin limpiar que termine en `|2.5` pierde ese final.
 - **`Vence`.** El inicio de sesión devuelve cuándo se vence la sesión: el final de su registro (`expiresAt`). No hay
   otro «8 horas» escrito en el protocolo.
+- **`Porcentajes` al iniciar sesión (0.14).** La otra parte los pidió en el inicio de sesión; Rardiel, 2026-11-27: «Sí,
+  hazlo como él lo pide». La respuesta trae una sexta parte, la misma de `fees` (`feesRecord`). Se llena si la cuenta
+  pasa el permiso de `fees` como lo pregunta el despachador (por la ruta y por el nombre: `can()` acepta el nombre);
+  si no, va `;;` (vacío, nunca `0.00`), justo cuando `fees` daría `SPE`. Así, el supervisor, que en la web ve los
+  porcentajes (`commissions.view`) pero no cotiza, recibe `;;`. El estado se lee solo después de entrar y solo en ese
+  caso. Una aplicación que exija 5 partes falla; el contrato admite partes de más desde la 0.2.
 - **Sesión.** Desde la 0.5, `idSesion` son 32 caracteres hexadecimales en mayúsculas: el `id` de su fila de
   `auth_sessions`, cifrado en un bloque AES-256 (`text-protocol-session.ts`). Ese `id` se ve en Administración y en las
   trazas, así que por sí solo no abre nada. La clave sale de `JWT_SECRET` y de `authVersion`: cambiar `JWT_SECRET`,
@@ -312,7 +319,7 @@ curl -s -X POST http://127.0.0.1:3001/cyp_login -H "Content-Type: text/plain; ch
 ```
 
 En modo demo también vale por GET: `curl -s "http://127.0.0.1:3001/cyp_login?USUARIO|CLAVE"` (la clave, codificada
-con `%`). La respuesta trae el `idSesion` en el tercer dato y `Vence` en el quinto. Con el `idSesion`:
+con `%`). La respuesta trae el `idSesion` en el tercer dato, `Vence` en el quinto y los porcentajes en el sexto. Con el `idSesion`:
 
 ```bash
 curl -s "http://127.0.0.1:3001/cyp_quote?ID_SESION|2|1|100.00"
