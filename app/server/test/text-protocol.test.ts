@@ -1048,3 +1048,28 @@ test("0.11: the idMoneda is a number, 1 DOP, 2 USD and 3 EUR, out everywhere, an
     er(await plain.get("rates", `${cashier}|EUR`), "TNE", "EUR");
   } finally { await plain.app.close(); }
 });
+
+test("0.12: an idMoneda of -1 in Tasas Vigentes is all the currencies, and only there", async () => {
+  const state = fixture(), now = new Date();
+  setDailyRate(state, admin, { currency: "EUR", rate: "64.10", date: businessDate(now) }, now);
+  const { app, post, get, login } = await open(state);
+  try {
+    const cashier = await login(DEMO_CASHIER_EMAIL);
+    const all = (await get("rates", cashier))[2];
+    assert.equal(all.split("!").length, 3);
+    // -1 is the same as nothing: by GET with and without p= and the version, and by POST with and without it.
+    for (const parameters of [`${cashier}|-1`, `p=${cashier}|-1`, `p=${cashier}|-1|3.0`, `${cashier}|-1|3.0`]) assert.equal((await get("rates", parameters))[2], all, parameters);
+    for (const body of [`${cashier}|-1`, `${cashier}|-1|3.0`]) assert.equal((await post("rates", body))[2], all, body);
+    // Only -1 exactly: other negative numbers, -01 and -1 with a space are no currency.
+    for (const value of ["-01", "-2", "%20-1", "1-"]) er(await get("rates", `${cashier}|${value}`), "PIN", "idMoneda");
+    // Cotizar and Registrar Envío need a currency: -1 is still PIN there.
+    er(await get("quote", `${cashier}|-1|1|100.00`), "PIN", "idMonedaOrigen");
+    er(await post("send", sendBody(cashier, { idMonedaDestino: "-1" })), "PIN", "idMonedaDestino");
+  } finally { await app.close(); }
+  // Without a rate of the euro, -1 is the currencies that have one, never TNE: the peso always comes.
+  const plain = await open();
+  try {
+    const cashier = await plain.login(DEMO_CASHIER_EMAIL);
+    assert.deepEqual((await plain.get("rates", `${cashier}|-1`))[2].split("!").map((row) => fields(row)[0]), ["1", "2"]);
+  } finally { await plain.app.close(); }
+});
