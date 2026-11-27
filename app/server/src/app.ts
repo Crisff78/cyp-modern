@@ -1643,7 +1643,7 @@ export async function buildApp(config: Config) {
   registerRemittanceRoutes(app, config.store, user, mutate, describe, systemOperators, config.cardVault, config.demo);
   // Plain-text protocol for the mobile application (docs/PROTOCOLO-TEXTO-PLANO.md). It is not part of the OpenAPI.
   await registerTextProtocol(app, {
-    store: config.store, systemOperators, authenticate, signIn, loginBody, passwordByGet: config.demo === true,
+    store: config.store, systemOperators, authenticate, signIn, loginBody, passwordByGet: config.demo === true, cardArchiveRequired: Boolean(config.cardVault),
     verifyToken: (token) => app.jwt.verify<SessionClaims>(token),
     sessionIds: sessionIdCodec(config.secret, authVersion),
     // What a token would carry, from the record of the session. The checks of every petition come after this.

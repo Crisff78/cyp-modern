@@ -1,6 +1,6 @@
 Protocolo de Intercambio de Datos (CyP)
 
- Versión: 0.12
+ Versión: 0.13
    Fecha: 27/11/2026
 
 
@@ -22,7 +22,9 @@ Cómo se hace un envío, paso a paso
  3- Cotizar Envío: se mandan el monto y las monedas, y la central devuelve
     la comisión, el total que paga el remitente y lo que va a recibir el
     destinatario. (NUEVO) Para que el usuario elija las monedas y vea sus
-    tasas están Listado de Monedas y Tasas Vigentes (6).
+    tasas están Listado de Monedas y Tasas Vigentes (6). (NUEVO) Si paga
+    con tarjeta de crédito, la cotización trae también su recargo, y los
+    porcentajes se pueden ver con Porcentajes (6.3).
  4- Registrar Envío: se mandan los dos clientes, lo cotizado y la forma de
     pago, junto con un idOperacion que inventa su aplicación para que el
     envío no se registre dos veces. Para registrar, el usuario tiene que
@@ -76,6 +78,10 @@ Palabras que usamos
 
  Cargo de entrega -> Lo que la central le descuenta al destinatario de lo
                      que recibe. Puede ser cero.
+
+ Recargo de tarjeta -> (NUEVO) Lo que paga de más el remitente cuando paga
+                       con tarjeta de crédito. Con débito no hay recargo.
+                       Puede ser cero.
 
  Caja de Remesas -> (Remesa es otro nombre del envío de dinero.) Es la
                     caja donde la central lleva el dinero de los envíos de
@@ -143,8 +149,9 @@ seguridad se encarga el HTTPS (la dirección empieza por https://).
  - Es un número con punto: 3.0, 1.14, 10.2.1 (hasta tres grupos de hasta
    tres cifras).
  - Va siempre el último, después de todos los datos que mande. En Registrar
-   Envío va después de los 16 datos: es el dato 17. En Entregar Envío va
-   después de los 4: es el dato 5.
+   Envío va después de los 16 datos: es el dato 17 ((NUEVO) o el 20, si
+   manda los 19 de un pago con tarjeta). En Entregar Envío va después de
+   los 4: es el dato 5.
  - Un importe nunca se confunde con él, porque la central solo aparta
    VersionApp cuando la petición ya trae todos sus datos obligatorios. En
    Cotizar Envío, 100.00 al final es el Monto.
@@ -436,13 +443,21 @@ Lo nuevo de esta versión
    Codigo del Listado de Monedas.
  - Tasas Vigentes acepta -1 como idMoneda: trae las tasas de todas las
    monedas, igual que si no lo manda (6.2).
- - En las preguntas del final cambian la 1, la 5 y la 7.
+ - Pago con tarjeta en Registrar Envío (3.2): idForma_Pago 2, con tres
+   datos más al final (idTipoTarjeta, Titular y Ultimos4), que van solo
+   con tarjeta. Con tarjeta de crédito, el TotalAPagar lleva el recargo.
+ - Cotizar Envío trae tres datos más al final, para tarjeta de crédito:
+   Por_RecargoTarjeta, RecargoTarjeta y TotalConTarjeta (3.1).
+ - Una petición nueva, Porcentajes (fees), con los porcentajes de la
+   comisión, del cargo de entrega y del recargo de tarjeta (6.3).
+ - En las preguntas del final cambian la 1, la 5, la 6 y la 7.
 
  Lo que ya tiene hecho sigue funcionando: las peticiones de antes son las
 mismas, y un idCliente o un idMoneda de antes se siguen aceptando. Lo que
 cambia es la forma del idCliente y del idMoneda que trae cada respuesta,
 el lugar del Telefono y la Direccion en el Listado de Clientes, y que una
-búsqueda por un trozo de número ya no encuentra nada.
+búsqueda por un trozo de número ya no encuentra nada. Registrar Envío
+sigue aceptando sus 16 datos de siempre; los 19 son solo para tarjeta.
 
 
 
@@ -488,6 +503,7 @@ Funcionalidades
 
 6.1- Listado de Monedas (currencies)
 6.2- Tasas Vigentes (rates)
+6.3- Porcentajes (fees) (NUEVO)
 
 
 
@@ -849,14 +865,18 @@ Funcionalidades
  Modo: 0 - Monto es lo que se quiere enviar, en la moneda de origen (se
            asume si no se manda)
        1 - Monto es el total que paga el remitente, con la comisión dentro,
-           en la moneda de origen
+           en la moneda de origen (sin el recargo de tarjeta)
        2 - Monto es lo que debe recibir el destinatario, en la moneda de
            destino
 
  Qué devuelve:
 
  Cotizacion: MontoAEnviar;Comision;TotalAPagar;MontoARecibir;
-             Por_Comision;CargoEntrega;TasaOrigen;TasaDestino
+             Por_Comision;CargoEntrega;TasaOrigen;TasaDestino;
+             Por_RecargoTarjeta;RecargoTarjeta;TotalConTarjeta
+
+ (NUEVO: los tres últimos datos son nuevos. Son para cuando el remitente
+ paga con tarjeta de crédito.)
 
  MontoAEnviar: Lo que se envía, en la moneda de origen.
 
@@ -864,6 +884,9 @@ Funcionalidades
            Es el Por_Comision % de MontoAEnviar.
 
  TotalAPagar: Lo que paga en total el remitente: MontoAEnviar + Comision.
+              Es lo que paga con efectivo, transferencia, depósito o
+              tarjeta de débito. (NUEVO) Con tarjeta de crédito paga el
+              TotalConTarjeta.
 
  MontoARecibir: Lo que se le entrega al destinatario, en la moneda de
                 destino, con el cargo de entrega ya descontado.
@@ -876,6 +899,17 @@ Funcionalidades
  TasaOrigen: La tasa a la que la central compra la moneda de origen.
 
  TasaDestino: La tasa a la que la central vende la moneda de destino.
+
+ Por_RecargoTarjeta: (NUEVO) El porcentaje del recargo de tarjeta de
+                     crédito. Ejemplo: 3.50. Puede ser 0.00
+
+ RecargoTarjeta: (NUEVO) Lo que paga de más el remitente si paga con
+                 tarjeta de crédito, en la moneda de origen. Es el
+                 Por_RecargoTarjeta % del TotalAPagar. Puede ser 0.00
+
+ TotalConTarjeta: (NUEVO) Lo que paga en total el remitente con tarjeta de
+                  crédito: TotalAPagar + RecargoTarjeta. Es el TotalAPagar
+                  que se manda en Registrar Envío con tarjeta de crédito.
 
  Errores propios:
 
@@ -905,11 +939,12 @@ Funcionalidades
 
  Pet: /cyp_quote?idSesion|2|1|100.00          (2 = USD, 1 = DOP)
 
- Res: OK|20261119093000|100.00;5.00;105.00;5806.50;5.00;118.50;59.250000;1.000000
+ Res: OK|20261119093000|100.00;5.00;105.00;5806.50;5.00;118.50;59.250000;1.000000;3.50;3.68;108.68
 
  En el ejemplo: 100.00 USD a 59.25 son 5925.00 DOP; se descuentan 118.50
  de cargo de entrega y el destinatario recibe 5806.50 DOP. El remitente
- paga 105.00 USD (100.00 + 5.00 de comisión).
+ paga 105.00 USD (100.00 + 5.00 de comisión). Si paga con tarjeta de
+ crédito, con un recargo del 3.5 %, paga 108.68 USD (105.00 + 3.68).
 
  (La Comision y el Por_Comision valen 5.00 los dos por casualidad: el
  segundo dato es la comisión en dinero y el quinto es el porcentaje.)
@@ -935,16 +970,22 @@ Funcionalidades
       TotalAPagar|MontoARecibir|
       idForma_Pago|Recibido|Referencia|Banco|Verificado|Nota
 
+      (NUEVO) Con tarjeta van 19 datos: los 16 y, al final, estos tres:
+
+      ...|Nota|idTipoTarjeta|Titular|Ultimos4
+
  Res: OK|FechayHora|Envio
       ER|FechayHora|Código|Mensaje|Dato
 
  Van SIEMPRE los 16 datos (15 pipes), en ese orden y en una sola línea, sin
  salto de línea al final. Los que no aplican van vacíos, también los del
- final.
+ final. (NUEVO) Con tarjeta van los 19 (18 pipes). Con las demás formas de
+ pago puede mandar los 16 o los 19 con los tres últimos vacíos: es lo
+ mismo. Con 17 o 18 datos, la central responde ER con PIN.
 
  Si su aplicación manda VersionApp, va después de los 16: es el
- dato 17. Ojo: si manda 15 datos y luego VersionApp, la central cuenta 16
- y toma VersionApp por la Nota.
+ dato 17 (o el 20, después de los 19). Ojo: si manda 15 datos y luego
+ VersionApp, la central cuenta 16 y toma VersionApp por la Nota.
 
  Qué se manda:
 
@@ -985,7 +1026,8 @@ Funcionalidades
                  forma, la central responde OPD.
                  (NUEVO) La moneda es la excepción: 2 y USD cuentan como
                  el mismo dato, y repetir con una u otra forma es la misma
-                 petición.
+                 petición. (NUEVO) Y los 16 datos y los mismos con los tres
+                 de tarjeta vacíos también son la misma petición.
               d- Si llega el mismo idOperacion con otros datos, responde
                  ER con OPD, y en el Dato viene el NumEnvio que ya estaba
                  registrado. Quiere decir que el envío YA quedó registrado
@@ -1026,13 +1068,14 @@ Funcionalidades
               usuario. Si al registrar ya no coinciden (porque cambió una
               tasa o un porcentaje), la central no registra nada y
               responde ER con CCA: hay que cotizar otra vez.
+              (NUEVO) El TotalAPagar es lo que paga en total el
+              remitente: con tarjeta de crédito es el TotalConTarjeta de
+              Cotizar Envío, con el recargo dentro.
 
  idForma_Pago: 1 - Efectivo
+               2 - Tarjeta (NUEVO)
                3 - Transferencia
                4 - Depósito
-
-               (El 2 es Tarjeta, que no entra en esta versión. Si se manda
-               un 2, la central responde ER con PIN.)
 
  Recibido: Solo con Efectivo: el dinero que entrega el remitente, en la
            moneda de origen. No puede ser menos que el TotalAPagar. Si va
@@ -1040,26 +1083,54 @@ Funcionalidades
            formas de pago va vacío.
 
  Referencia: El número del comprobante de la transferencia o del depósito,
-             el que da el banco (hasta 160 caracteres, sin | ni saltos de
-             línea). Obligatoria con Transferencia y Depósito; con Efectivo
-             va vacía.
+             el que da el banco ((NUEVO) con tarjeta, el número de
+             autorización del comprobante), hasta 160 caracteres, sin | ni
+             saltos de línea. Obligatoria con Transferencia, Depósito y
+             Tarjeta; con Efectivo va vacía.
 
  Banco: El nombre del banco o del proveedor, como texto (hasta 160
         caracteres, sin | ni saltos de línea; no es un idBanco). Opcional
-        con Transferencia y Depósito; con Efectivo va vacío.
+        con Transferencia, Depósito y Tarjeta; con Efectivo va vacío.
 
- Verificado: Con Transferencia y Depósito, su aplicación le pregunta al
-             usuario si ya comprobó que el pago llegó (por ejemplo, con una
-             casilla que tiene que marcar). Solo si dice que sí, manda 1.
-             Si no va 1, la central responde ER con PNV. La central no hace
-             la transferencia ni el depósito: solo anota que ya se
-             hicieron. Con Efectivo va vacío.
+ Verificado: Con Transferencia, Depósito y Tarjeta, su aplicación le
+             pregunta al usuario si ya comprobó que el pago llegó (por
+             ejemplo, con una casilla que tiene que marcar). Solo si dice
+             que sí, manda 1. Si no va 1, la central responde ER con PNV.
+             La central no hace la transferencia, el depósito ni el cobro
+             de la tarjeta: solo anota que ya se hicieron. Con Efectivo va
+             vacío.
 
- Nota (el último dato): Texto libre que escribe el usuario (hasta 2000
+ Nota (el dato 16): Texto libre que escribe el usuario (hasta 2000
        caracteres, sin | ni saltos de línea). Opcional.
 
+ (NUEVO) Los tres datos siguientes van solo con Tarjeta. Con las demás
+ formas de pago no se mandan, o van vacíos.
+
+ idTipoTarjeta: 1 - Crédito (lleva el recargo de tarjeta)
+                2 - Débito  (sin recargo)
+                Obligatorio con Tarjeta.
+
+ Titular: El nombre del titular de la tarjeta, como sale en ella (hasta
+          120 caracteres: letras, espacios, tildes, guiones, puntos y
+          apóstrofes). Obligatorio con crédito. Por GET, el espacio va
+          como %20, no como +.
+
+ Ultimos4: Solo los ÚLTIMOS 4 dígitos del número de la tarjeta. Ejemplo:
+           4242. Obligatorio con crédito.
+
+           Con débito, el Titular y los Ultimos4 van los dos o ninguno.
+
+ OJO con los datos de la tarjeta: el número completo de la tarjeta, su
+ fecha de vencimiento y su código de seguridad (CVV) NO se mandan nunca,
+ en ningún dato (tampoco en la Referencia ni en la Nota). La central no los
+ pide y no los guarda. Le recomendamos mandar por POST los envíos con
+ tarjeta, para que el Titular y los Ultimos4 no queden escritos en la
+ dirección. Ninguna respuesta de la central devuelve el Titular ni los
+ Ultimos4.
+
  Si se manda un dato que debía ir vacío (por ejemplo, Recibido con
- Transferencia, o Referencia con Efectivo), la central responde ER con PIN.
+ Transferencia, Referencia con Efectivo o (NUEVO) un Titular sin
+ Tarjeta), la central responde ER con PIN.
 
  Qué devuelve:
 
@@ -1083,6 +1154,8 @@ Funcionalidades
 
  MontoAEnviar, Comision, TotalAPagar, MontoARecibir: Los importes con que
                quedó registrado. Significan lo mismo que en Cotizar Envío.
+               (NUEVO) Con tarjeta de crédito, el TotalAPagar es lo que
+               pagó en total, con el recargo dentro (el TotalConTarjeta).
 
  Devuelta: Con Efectivo, lo que hay que devolverle al remitente:
            Recibido - TotalAPagar. Con las demás formas de pago, 0.00
@@ -1101,7 +1174,7 @@ Funcionalidades
        coinciden. Hay que cotizar otra vez.
  CNA - Caja No Abierta: el usuario no tiene abierta su Caja de Remesas.
  EIS - Efectivo InSuficiente: lo Recibido es menos que el TotalAPagar.
- PNV - Pago No Verificado: con Transferencia o Depósito no vino
+ PNV - Pago No Verificado: con Transferencia, Depósito o Tarjeta no vino
        Verificado = 1.
  OPD - OPeración Duplicada: ese idOperacion ya se usó con otros datos. El
        envío ya estaba registrado; el Dato es su NumEnvio. No lo mande de
@@ -1117,8 +1190,12 @@ Funcionalidades
  2- Los dos clientes tienen que estar ya registrados en la central. Crear
     (registrar) un cliente nuevo desde la aplicación no entra en esta
     versión.
- 3- El pago con Tarjeta no entra en esta versión (por eso no hay
-    idForma_Pago 2).
+ 3- (NUEVO) Con Tarjeta también hace falta la Caja de Remesas abierta,
+    aunque no entre efectivo en ella.
+ 4- (NUEVO) Si la central guarda las tarjetas cifradas (en la central de
+    pruebas no lo hace), un pago con tarjeta de crédito, o de débito con
+    sus Ultimos4, se registra desde la central: la respuesta es ER con ORC
+    y no se registra nada. La aplicación no manda nunca el número completo.
 
  Ejemplo con Efectivo (el remitente entrega 120.00 y se le devuelven 15.00):
 
@@ -1136,6 +1213,18 @@ Funcionalidades
  Ejemplo con Transferencia (solo cambia el final):
 
  ...|2|1|100.00|0|105.00|5806.50|3||TRF99812|Banco Popular|1|
+
+ (NUEVO) Ejemplo con tarjeta de crédito (recargo del 3.5 %: el TotalAPagar
+ es el TotalConTarjeta, 108.68). Por POST, en el cuerpo:
+
+ ...|2|1|100.00|0|108.68|5806.50|2||AUT48213|Banco Popular|1||1|Ana Pérez|4242
+
+ Res: OK|20261119093005|d3b5f7a9-2c4e-4a6b-8d0f-1b2c3d4e5f60;ENV00000049;REC00000049;5F2C91D0A3B47E16;20261119093005;100.00;5.00;108.68;5806.50;0.00
+
+ El mismo envío con tarjeta de débito (sin recargo; aquí sin Titular ni
+ Ultimos4):
+
+ ...|2|1|100.00|0|105.00|5806.50|2||AUT48213|Banco Popular|1||2||
 
  Ejemplo con una Nota, por GET (el espacio va como %20 y la ñ como
  %C3%B1):
@@ -1238,8 +1327,7 @@ Funcionalidades
                3 - Transferencia
                4 - Depósito
 
-               Viene vacío si no se registró. (Tarjeta solo aparece en
-               envíos hechos en la central.)
+               Viene vacío si no se registró.
 
  Fecha_Pago: La fecha y la hora en que se le entregó el dinero al
              destinatario (YYYYMMDDHHMMSS). Vacía si todavía no se ha
@@ -1666,6 +1754,50 @@ Funcionalidades
  Res: OK|20261126100000|2;59.250000;60.000000;20261126;20261126080512
 
 
+6.3- Porcentajes (NUEVO)
+------------------------
+
+ (NUEVO: toda esta sección es nueva.)
+
+ Para qué sirve: trae los porcentajes con que la central calcula los
+ cargos de un envío, para mostrárselos al usuario.
+
+ Pet: /cyp_fees?idSesion
+
+ Res: OK|FechayHora|Porcentajes
+      ER|FechayHora|Código|Mensaje|Dato
+
+ Qué devuelve:
+
+ Porcentajes: Por_Comision;Por_CargoEntrega;Por_RecargoTarjeta
+
+ Por_Comision: El porcentaje de la comisión, sobre el monto que se envía.
+
+ Por_CargoEntrega: El porcentaje del cargo de entrega, sobre lo que recibe
+                   el destinatario antes de descontarlo.
+
+ Por_RecargoTarjeta: El porcentaje del recargo de tarjeta de crédito,
+                     sobre el TotalAPagar.
+
+ Los tres con dos decimales: 5.00. Pueden ser 0.00
+
+ Errores propios: ninguno.
+
+ A tener en cuenta:
+
+ 1- Los porcentajes son para mostrar. Los importes de un envío salen
+    siempre de Cotizar Envío: no los calcule con estos porcentajes.
+ 2- Son los mismos para todas las monedas y todos los montos. Los cambia
+    el Administrador en la central; pídalos de nuevo antes de mostrarlos.
+ 3- La pueden pedir los mismos usuarios que pueden cotizar (PuedeEnviar).
+
+ Ejemplo:
+
+ Pet: /cyp_fees?idSesion
+
+ Res: OK|20261127100000|5.00;2.00;3.50
+
+
 
 Errores
 =======
@@ -1779,7 +1911,6 @@ la central:
  - Cancelar un envío.
  - Crear (registrar) un cliente nuevo.
  - Abrir y cerrar la Caja de Remesas.
- - Pagar con Tarjeta.
 
  Si necesita alguna de estas cosas, díganos y la agregamos en la próxima
 versión.
@@ -1802,7 +1933,7 @@ una versión nueva de este documento.
 
  1- PlugIn y comandos: pusimos "cyp" y los comandos de este documento
     (login, logout, clients, client, quote, send, recs, pend, pay y,
-    (NUEVO), currencies y rates). ¿Tiene usted alguna regla para
+    (NUEVO), currencies, rates y fees). ¿Tiene usted alguna regla para
     nombrarlos, o prefiere otros nombres? Si no, se quedan estos.
 
  2- Versión: su aplicación manda un número al final de la petición
@@ -1834,10 +1965,10 @@ una versión nueva de este documento.
     con datos reales: después ya no se pueden cambiar.
 
  6- Forma de pago: aquí pusimos 1 = Efectivo, 2 = Tarjeta,
-    3 = Transferencia y 4 = Depósito. ¿Coinciden con los valores de
-    idForma_Pago que usted ya usa? Si no, mándenos su lista y usamos la
-    suya. El Banco va con su nombre, como texto, porque CyP no tiene
-    idBanco. ¿Le sirve?
+    3 = Transferencia y 4 = Depósito, y (NUEVO) para el tipo de tarjeta
+    1 = Crédito y 2 = Débito. ¿Coinciden con los valores que usted ya usa?
+    Si no, mándenos su lista y usamos la suya. El Banco va con su nombre,
+    como texto, porque CyP no tiene idBanco. ¿Le sirve?
 
  7- (NUEVO) Identificadores: el idCliente ya es un número entero (31),
     como nos pidió. El idUsuario y el idEnvio siguen siendo textos de

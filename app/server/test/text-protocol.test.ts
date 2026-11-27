@@ -9,6 +9,7 @@ import { DEMO_PASSWORD } from "../src/demo-credentials.js";
 import { DEMO_CASHIER_EMAIL, enrichCashierDemo } from "../src/demo-cashier-scenarios.js";
 import { cashBalance, closeRemittanceCash, openRemittanceCash, setCommissionPolicy, setDailyRate } from "../src/remittances.js";
 import { MAX_ADDRESS_LENGTH, protocolStamp } from "../src/text-protocol.js";
+import type { CardVault } from "../src/card-vault.js";
 
 // Synthetic data only. The figures are those of the example of the document: 5 % of commission, 2 % of delivery
 // charge and the dollar bought at 59.25.
@@ -36,10 +37,12 @@ function fixture() {
   Object.assign(state.clients.find((row) => row.id === "cli-2")!, { identification: "001-1234567-8", cellular: "8295550111", address: "Calle 5 #12, Santiago" });
   return state;
 }
-async function open(state = fixture(), publicWeb = false, demo = true) {
+async function open(state = fixture(), publicWeb = false, demo = true, cardVault = false) {
   const store = new MemoryStore(state);
   const app = await buildApp({ store, secret, origins: [], collectorUrl: "http://127.0.0.1:5174", ...(publicWeb ? { publicWeb: true, publicOrigin: "https://demo.example.test" } : {}),
-    ...(demo ? { demo: true } : { demo: false, adminEmail: "principal@example.invalid", adminPassword: "Principal-ficticia-2026!" }) });
+    ...(demo ? { demo: true } : { demo: false, adminEmail: "principal@example.invalid", adminPassword: "Principal-ficticia-2026!" }),
+    // Only whether the central keeps cards encrypted is looked at by the protocol: no card is archived here.
+    ...(cardVault ? { cardVault: {} as unknown as CardVault } : {}) });
   type Reply = { statusCode: number; headers: Record<string, unknown>; body: string };
   const check = (reply: Reply) => {
     assert.equal(reply.statusCode, 200, reply.body);
@@ -255,7 +258,8 @@ test("quote: the example of the document, asked in its three ways", async () => 
   const { app, post, get, login } = await open();
   try {
     const token = await login(DEMO_CASHIER_EMAIL);
-    const example = "100.00;5.00;105.00;5806.50;5.00;118.50;59.250000;1.000000";
+    // Since 0.13 three data more at the end: the percentage, the surcharge and the total of a credit card (0 % here).
+    const example = "100.00;5.00;105.00;5806.50;5.00;118.50;59.250000;1.000000;0.00;0.00;105.00";
     const ok = await get("quote", `${token}|USD|DOP|100.00`);
     assert.equal(ok.length, 3); assert.equal(ok[2], example);
     assert.equal((await get("quote", `${token}|USD|DOP|100.00|0`))[2], example);
@@ -263,8 +267,8 @@ test("quote: the example of the document, asked in its three ways", async () => 
     assert.equal((await get("quote", `${token}|USD|DOP|5806.50|2`))[2], example);
     assert.equal((await post("quote", `${token}|USD|DOP|100.00`))[2], example);
     // Dollars to dollars: bought at 59.25 and sold at 60.00.
-    assert.deepEqual(fields((await get("quote", `${token}|USD|USD|100.00`))[2]).slice(6), ["59.250000", "60.000000"]);
-    assert.deepEqual(fields((await get("quote", `${token}|DOP|DOP|1000.00`))[2]), ["1000.00", "50.00", "1050.00", "980.00", "5.00", "20.00", "1.000000", "1.000000"]);
+    assert.deepEqual(fields((await get("quote", `${token}|USD|USD|100.00`))[2]).slice(6, 8), ["59.250000", "60.000000"]);
+    assert.deepEqual(fields((await get("quote", `${token}|DOP|DOP|1000.00`))[2]), ["1000.00", "50.00", "1050.00", "980.00", "5.00", "20.00", "1.000000", "1.000000", "0.00", "0.00", "1050.00"]);
     er(await get("quote", `${token}|EUR|DOP|100.00`), "TNE");
     er(await get("quote", `${token}|USD|DOP|0.00`), "MIN");
     er(await get("quote", `${token}|DOP|USD|0.10`), "MIN");
@@ -364,7 +368,7 @@ test("send: each error of the document, and a failed attempt leaves the idOperac
     er(await send({ Modo: "" }), "PIN", "Modo");
     er(await send({ TotalAPagar: "" }), "PIN", "TotalAPagar");
     er(await send({ MontoARecibir: "5806.5" }), "PIN", "MontoARecibir");
-    er(await send({ idForma_Pago: "2" }), "PIN", "idForma_Pago");
+    er(await send({ idForma_Pago: "5" }), "PIN", "idForma_Pago");
     er(await send({ idForma_Pago: "" }), "PIN", "idForma_Pago");
     er(await send({ Recibido: "120" }), "PIN", "Recibido");
     er(await send({ Referencia: "no va con efectivo" }), "PIN", "Referencia");
@@ -1072,4 +1076,91 @@ test("0.12: an idMoneda of -1 in Tasas Vigentes is all the currencies, and only 
     const cashier = await plain.login(DEMO_CASHIER_EMAIL);
     assert.deepEqual((await plain.get("rates", `${cashier}|-1`))[2].split("!").map((row) => fields(row)[0]), ["1", "2"]);
   } finally { await plain.app.close(); }
+});
+
+test("0.13: a card in Registrar Envío with its surcharge, the surcharge in Cotizar, and Porcentajes", async () => {
+  const state = fixture(), now = new Date();
+  // 3.5 % of surcharge for a credit card: on the 105.00 of the example, 3.675 rounds to 3.68.
+  setCommissionPolicy(state, admin, { transactionCommissionBps: 500, managerCommissionBps: 0, deliveryCommissionBps: 200, creditCardCommissionBps: 350 }, now);
+  const { app, store, post, get, login } = await open(state);
+  const credit = (token: string, change: Partial<Send> = {}, card = "1|Ana Pérez|4242") =>
+    `${sendBody(token, { idForma_Pago: "2", Recibido: "", Referencia: "AUT-123", Verificado: "1", TotalAPagar: "108.68", ...change })}|${card}`;
+  const debit = (token: string, card: string, change: Partial<Send> = {}) =>
+    `${sendBody(token, { idForma_Pago: "2", Recibido: "", Referencia: "AUT-9", Verificado: "1", ...change })}|${card}`;
+  let after: State, creditOperation = "", creditAnswer = "";
+  try {
+    const cashier = await login(DEMO_CASHIER_EMAIL);
+    // Porcentajes: the three of the configuration, as Cotizar uses them.
+    assert.deepEqual(fields((await get("fees", cashier))[2]), ["5.00", "2.00", "3.50"]);
+    assert.deepEqual(fields((await get("fees", `p=${cashier}|3.0`))[2]), ["5.00", "2.00", "3.50"]);
+    er(await get("fees", `${cashier}|x`), "PIN", "Parametros");
+    er(await get("fees", await login("supervisora@cyp.local")), "SPE");
+    er(await get("fees", "esto-no-es-una-sesion"), "SNE");
+    // Cotizar: the percentage, the surcharge and the total of a credit card at the end; the 8 data of before stay.
+    const quoted = fields((await get("quote", `${cashier}|2|1|100.00`))[2]);
+    assert.deepEqual(quoted, ["100.00", "5.00", "105.00", "5806.50", "5.00", "118.50", "59.250000", "1.000000", "3.50", "3.68", "108.68"]);
+    // Credit: TotalAPagar is the TotalConTarjeta of Cotizar. The answer keeps its 10 data, with the total paid.
+    creditOperation = randomUUID();
+    const sent = await post("send", credit(cashier, { idOperacion: creditOperation }));
+    assert.equal(sent[0], "OK", sent.join("|"));
+    creditAnswer = sent[2];
+    const envio = fields(sent[2]);
+    assert.equal(envio.length, 10);
+    assert.deepEqual(envio.slice(5), ["100.00", "5.00", "108.68", "5806.50", "0.00"]);
+    // Repeated, by POST or with the version, the same send.
+    assert.equal((await post("send", credit(cashier, { idOperacion: creditOperation })))[2], sent[2]);
+    assert.equal((await get("send", `p=${credit(cashier, { idOperacion: creditOperation }).replace("Ana Pérez", "Ana%20P%C3%A9rez")}|3.0`))[2], sent[2]);
+    const saved = (await store.read()).remittances.transfers.find((transfer) => transfer.envioReference === envio[1])!;
+    assert.deepEqual([saved.totalAmount, saved.payment?.method, saved.payment?.cardType, saved.payment?.cardSurchargeAmount, saved.payment?.cardholderName, saved.payment?.last4],
+      [10_500, "card", "credit", 368, "Ana Pérez", "4242"]);
+    // Listado de Recibos: the form of payment 2 and the same total paid; no answer gives the holder or the 4 digits back.
+    const listed = await get("recs", cashier);
+    const row = listed[3].split("!").map(fields).find((item) => item[1] === envio[1])!;
+    assert.deepEqual([row[14], row[17]], ["108.68", "2"]);
+    assert.ok(!listed.join("|").includes("4242") && !listed.join("|").includes("Ana P"));
+    // The total without the surcharge is not what the person pays: CCA.
+    er(await post("send", credit(cashier, { TotalAPagar: "105.00" })), "CCA");
+    // Debit: no surcharge; the holder and the 4 digits, both or neither.
+    const plainDebit = await post("send", debit(cashier, "2||"));
+    assert.equal(plainDebit[0], "OK", plainDebit.join("|")); assert.equal(fields(plainDebit[2])[7], "105.00");
+    assert.equal((await post("send", debit(cashier, "2|Ana Pérez|4242")))[0], "OK");
+    er(await post("send", debit(cashier, "2|Ana Pérez|")), "PIN", "Ultimos4");
+    er(await post("send", debit(cashier, "2||4242")), "PIN", "Titular");
+    // The data of a card, each with its name. Never the full number: only the last 4 digits.
+    er(await post("send", credit(cashier, {}, "|Ana Pérez|4242")), "PIN", "idTipoTarjeta");
+    er(await post("send", credit(cashier, {}, "3|Ana Pérez|4242")), "PIN", "idTipoTarjeta");
+    er(await post("send", credit(cashier, {}, "1||4242")), "PIN", "Titular");
+    er(await post("send", credit(cashier, {}, "1|12345|4242")), "PIN", "Titular");
+    er(await post("send", credit(cashier, {}, `1|Ana${String.fromCharCode(0x200b)} Pérez|4242`)), "PIN", "Titular");
+    er(await post("send", credit(cashier, {}, "1|Ana Pérez|")), "PIN", "Ultimos4");
+    er(await post("send", credit(cashier, {}, "1|Ana Pérez|424")), "PIN", "Ultimos4");
+    er(await post("send", credit(cashier, {}, "1|Ana Pérez|4242424242424242")), "PIN", "Ultimos4");
+    er(await post("send", credit(cashier, { Recibido: "120.00" })), "PIN", "Recibido");
+    er(await post("send", credit(cashier, { Referencia: "" })), "PIN", "Referencia");
+    er(await post("send", credit(cashier, { Verificado: "0" })), "PNV");
+    // A card needs the box open too, though no cash comes in.
+    er(await post("send", credit(await login("signos@cyp.local", SIGNS))), "CNA");
+    // 16 data or 19: 17 or 18 is PIN. With the other forms of payment the three of the card go empty.
+    er(await post("send", `${sendBody(cashier)}|1`), "PIN", "Parametros");
+    er(await post("send", `${sendBody(cashier)}|1|Ana`), "PIN", "Parametros");
+    er(await post("send", `${sendBody(cashier)}|1||`), "PIN", "idTipoTarjeta");
+    er(await post("send", `${sendBody(cashier)}||Ana Pérez|`), "PIN", "Titular");
+    // Cash with the three empty is the same petition as with 16 data: the same send when it is repeated.
+    const cashOperation = randomUUID();
+    const cash = await post("send", sendBody(cashier, { idOperacion: cashOperation }));
+    assert.equal(cash[0], "OK");
+    assert.equal((await post("send", `${sendBody(cashier, { idOperacion: cashOperation })}|||`))[2], cash[2]);
+    after = await store.read();
+  } finally { await app.close(); }
+  // A central that keeps the card encrypted: a credit, or a debit with the 4 digits, is registered from the central (ORC);
+  // a debit without them is not affected, and a send already registered is still answered.
+  const vaulted = await open(after, false, true, true);
+  try {
+    const cashier = await vaulted.login(DEMO_CASHIER_EMAIL);
+    assert.equal((await vaulted.post("send", credit(cashier, { idOperacion: creditOperation })))[2], creditAnswer);
+    const refused = await vaulted.post("send", credit(cashier));
+    er(refused, "ORC"); assert.match(refused[3], /desde la central/);
+    er(await vaulted.post("send", debit(cashier, "2|Ana Pérez|4242")), "ORC");
+    assert.equal((await vaulted.post("send", debit(cashier, "2||")))[0], "OK");
+  } finally { await vaulted.app.close(); }
 });

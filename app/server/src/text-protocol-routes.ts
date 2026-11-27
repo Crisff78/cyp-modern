@@ -1,4 +1,4 @@
-// Plain-text protocol for the mobile application: the petitions of docs/protocolo-cyp/Protocolo CYP 0.12.txt.
+// Plain-text protocol for the mobile application: the petitions of docs/protocolo-cyp/Protocolo CYP 0.13.txt.
 // Each one is a thin adapter in front of the same functions the JSON API uses; no rule of the business lives here.
 // Two things are its own: the idCliente (the number of the internal identification of the client instead of its id,
 // clientIds and clientOf) and, in Entregar Envío, the order of its checks and the idOperacion that tells a repetition
@@ -13,10 +13,13 @@ import { authorizeRequest, currentAccessUser, guardCatalogChanges, requireRemitt
 import { listRemittanceClients, remittanceClientContact } from "./remittance-client-search.js";
 import { pendingDeliveries } from "./remittance-delivery-search.js";
 import {
-  canSeeOutgoing, createRemittance, currencies, deliverableByReference, payoutOf, payRemittance, quoteRemittance, ratesInForce,
+  canSeeOutgoing, createRemittance, currencies, deliverableByReference, getCommissionPolicy, payoutOf, payRemittance, quoteRemittance, ratesInForce,
   type AmountMode, type Currency, type Remittance,
 } from "./remittances.js";
-import { isPaymentTextDraft, totalPaidForTransfer, type RemittancePaymentInput } from "../../shared/remittances/payment.mjs";
+import {
+  cardArchiveApplies, cardPaymentCharge, isCardholderNameDraft, isPaymentTextDraft, PaymentValidationError, totalPaidForTransfer,
+  type CardType, type RemittancePaymentInput,
+} from "../../shared/remittances/payment.mjs";
 import { boundedId } from "./input-validation.js";
 import {
   assertOneLine, daysBetween, errorLine, hasLineBreak, invalid, isVersion, MAX_RECEIPT_DAYS, missing, moneyText, namedParameters, okLine, PAGE_SIZE,
@@ -47,6 +50,11 @@ export type TextProtocolDeps = {
    * decided (docs/PROTOCOLO-TEXTO-PLANO.md, «Antes de producción»).
    */
   passwordByGet: boolean;
+  /**
+   * Whether the central keeps the card encrypted (card-vault.ts). Then a payment that would need it (cardArchiveApplies)
+   * is registered from the web, which takes the full number; this protocol never does.
+   */
+  cardArchiveRequired?: boolean;
 };
 export const TEXT_PROTOCOL_ROUTES = ["/cyp_login", "/cyp_:cmd"];
 export const isTextProtocolRoute = (url: string | undefined) => url !== undefined && TEXT_PROTOCOL_ROUTES.includes(url);
@@ -62,6 +70,8 @@ const ACCESS: Record<Exclude<ProtocolCommand, "login" | "logout" | "currencies">
   // Tasas Vigentes, as Cotizar: whoever may quote sees the rates in force, as the web shows them to a cashier in the
   // snapshot of remittances. remittances.rates.view is for the window that registers and lists every rate.
   rates: [SEND, "remittances.create"],
+  // Porcentajes, as Cotizar: the percentages a quote uses. The web gives them to whoever quotes, too.
+  fees: [SEND, "remittances.create"],
 };
 // Listado de Monedas is for whoever may send, see sends or deliver: the names of the currencies of a record.
 const CURRENCY_ACCESS = [[SEND, "remittances.create"], [VIEW, "remittances.view"], [PENDING, "remittances.receipts"]] as const;
@@ -75,6 +85,16 @@ const CURRENCY_IDS: Record<Currency, string> = { DOP: "1", USD: "2", EUR: "3" };
 // A Map, not an object: a text such as «constructor» is no currency.
 const CURRENCY_BY_ID: ReadonlyMap<string, Currency> = new Map(currencies.map((currency) => [CURRENCY_IDS[currency], currency]));
 const AMOUNT_MODES: readonly AmountMode[] = ["source", "total", "destination"];
+const CARD_TYPES: Record<string, CardType> = { "1": "credit", "2": "debit" };
+const CARD_DATA = ["idTipoTarjeta", "Titular", "Ultimos4"] as const;
+/** The surcharge of a card on a total, as the web computes it; an amount too large for it is PIN, never EIC. */
+const cardChargeOf = (total: number, cardType: CardType | undefined, bps: number) => {
+  try { return cardPaymentCharge(total, cardType, bps); }
+  catch (error) {
+    if (error instanceof PaymentValidationError) throw invalid("Monto", "El importe con el recargo de tarjeta no está dentro de lo que admite la central");
+    throw error;
+  }
+};
 const CLIENT_ERRORS: Record<string, string> = { CLIENT_NOT_FOUND: "CNE", CLIENT_INACTIVE: "CIN", FORBIDDEN: "CFR" };
 
 const currencyOf = (name: string, value: string): Currency => {
@@ -255,8 +275,18 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
     const amount = sentAmountOf(input.Monto);
     if (!["", "0", "1", "2"].includes(input.Modo)) throw invalid("Modo");
     const result = quoteRemittance(state, { sourceCurrency, destinationCurrency, amount, amountMode: AMOUNT_MODES[Number(input.Modo)] }, now);
+    // Since 0.13, what a credit card adds: its percentage, the surcharge and the total with it (debit adds nothing).
+    const card = cardChargeOf(result.totalAmount, "credit", result.quote.creditCardCommissionBps ?? 0);
     return okLine(now, record(moneyText(result.amount), moneyText(result.commissionAmount), moneyText(result.totalAmount), moneyText(result.calculation.payoutAmount),
-      percentText(result.commissionBps), moneyText(result.calculation.deliveryCommissionAmount), result.quote.sourceRate, result.quote.destinationRate));
+      percentText(result.commissionBps), moneyText(result.calculation.deliveryCommissionAmount), result.quote.sourceRate, result.quote.destinationRate,
+      percentText(card.cardSurchargeBps), moneyText(card.cardSurchargeAmount), moneyText(card.totalAmount)));
+  }
+
+  /** Porcentajes: the commission, the delivery charge and the surcharge of a credit card, as the central has them. */
+  function fees(state: State, parts: string[], now: Date) {
+    namedParameters("fees", parts);
+    const policy = getCommissionPolicy(state);
+    return okLine(now, record(percentText(policy.transactionCommissionBps), percentText(policy.deliveryCommissionBps ?? 0), percentText(policy.creditCardCommissionBps ?? 0)));
   }
 
   /** Listado de Monedas: the currencies of the central, in its order, for whoever may send, see sends or deliver. */
@@ -286,9 +316,10 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
 
   /** The payment as the JSON API takes it. What must be empty with each way of paying is checked here: it is PIN. */
   function paymentOf(input: Record<string, string>): RemittancePaymentInput {
-    const method = ({ "1": "cash", "3": "transfer", "4": "deposit" } as const)[input.idForma_Pago as "1" | "3" | "4"];
+    const method = ({ "1": "cash", "2": "card", "3": "transfer", "4": "deposit" } as const)[input.idForma_Pago as "1" | "2" | "3" | "4"];
     if (!method) throw input.idForma_Pago === "" ? missing("idForma_Pago") : invalid("idForma_Pago");
     const empty = (name: string) => { if (input[name] !== "") throw invalid(name, `El dato ${name} va vacío con esta forma de pago`); };
+    if (method !== "card") for (const name of CARD_DATA) empty(name);
     if (method === "cash") {
       for (const name of ["Referencia", "Banco", "Verificado"]) empty(name);
       return input.Recibido === "" ? { method } : { method, tenderedAmount: amountOf("Recibido", input.Recibido) };
@@ -300,7 +331,19 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
     if (!isPaymentTextDraft(bank)) throw invalid("Banco");
     if (!["", "0", "1"].includes(input.Verificado)) throw invalid("Verificado");
     // Without `verified` the business answers PAYMENT_NOT_VERIFIED: the code PNV of the document.
-    return { method, reference, ...(bank ? { bank } : {}), ...(input.Verificado === "1" ? { verified: true } : {}) };
+    const paid = { method, reference, ...(bank ? { bank } : {}), ...(input.Verificado === "1" ? { verified: true } : {}) };
+    if (method !== "card") return paid;
+    // A card, as the web takes it: credit always with the holder and the last 4 digits; debit with both or with neither.
+    // The holder is checked as it came, as the web does; the full number of a card never comes, only its last 4 digits.
+    const cardType = CARD_TYPES[input.idTipoTarjeta];
+    if (!cardType) throw input.idTipoTarjeta === "" ? missing("idTipoTarjeta") : invalid("idTipoTarjeta");
+    const holder = input.Titular, last4 = input.Ultimos4;
+    if (cardType === "debit" && holder === "" && last4 === "") return { ...paid, cardType };
+    if (holder === "") throw missing("Titular");
+    if (!isCardholderNameDraft(holder) || !/\p{L}/u.test(holder)) throw invalid("Titular", "El dato Titular lleva solo el nombre del titular de la tarjeta, hasta 120 letras");
+    if (last4 === "") throw missing("Ultimos4");
+    if (!/^[0-9]{4}$/.test(last4)) throw invalid("Ultimos4", "El dato Ultimos4 son solo los últimos 4 dígitos de la tarjeta");
+    return { ...paid, cardType, cardholderName: holder.trim(), last4 };
   }
 
   async function send(claims: Claims, parts: string[], now: Date) {
@@ -316,7 +359,11 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
     // Everything but the session (and the version of the application, already taken away), character by character:
     // what the document calls «los mismos datos». Without a version it is the text it always was. The currencies count
     // by their code: before 0.11 only codes came in, so the saved fingerprints still hold, and USD or 2 is the same send.
-    const fingerprint = createHash("sha256").update([...parts.slice(1, 4), sourceCurrency, destinationCurrency, ...parts.slice(6)].join("|")).digest("hex");
+    // The data of a card (0.13) count only when one of them has something: 16 data and the same with three empty ones
+    // at the end are the same petition.
+    const card = parts.slice(16);
+    const fingerprint = createHash("sha256").update([...parts.slice(1, 4), sourceCurrency, destinationCurrency, ...parts.slice(6, 16),
+      ...(card.some((value) => value !== "") ? card : [])].join("|")).digest("hex");
     return deps.store.transaction((state) => {
       assertAuthSession(state, claims, claims.sid);
       const actor = currentAccessUser(state, claims);
@@ -329,6 +376,10 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
         if (existing.fingerprint !== fingerprint) throw new ProtocolError("OPD", undefined, saved.envioReference);
         return okLine(now, saved.envio);
       }
+      // A central that keeps the card encrypted needs its full number, which this protocol never takes. After the
+      // idOperacion, so a send already registered is still answered.
+      if (deps.cardArchiveRequired && cardArchiveApplies(payment))
+        throw new ProtocolError("ORC", "Registre este pago con tarjeta desde la central: esta central guarda la tarjeta protegida");
       // After the idOperacion, as always. An idCliente may come as the number, the internal identification or the long id:
       // the same client by two of them is still the same client, and two equal texts that are nobody's are still MCL.
       const sender = clientOf(state, senderClientId)?.id ?? senderClientId, recipient = clientOf(state, recipientClientId)?.id ?? recipientClientId;
@@ -336,7 +387,9 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
       contactOf(state, actor, senderClientId, "sender");
       contactOf(state, actor, recipientClientId, "recipient");
       const quoted = quoteRemittance(state, { sourceCurrency, destinationCurrency, amount, amountMode }, now);
-      if (quoted.totalAmount !== total || quoted.calculation.payoutAmount !== receive) throw new ProtocolError("CCA");
+      // TotalAPagar is what the sender pays in all: with a credit card, the surcharge too (TotalConTarjeta of Cotizar).
+      const paid = payment.method === "card" ? cardChargeOf(quoted.totalAmount, payment.cardType, quoted.quote.creditCardCommissionBps ?? 0).totalAmount : quoted.totalAmount;
+      if (paid !== total || quoted.calculation.payoutAmount !== receive) throw new ProtocolError("CCA");
       const checkCatalogChanges = guardCatalogChanges(state, actor, SEND[1]);
       // The principal is the one of the quote: typed as the total or as what the person receives, the Monto is not it.
       const transfer = createRemittance(state, actor, {
@@ -346,7 +399,7 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
       checkCatalogChanges();
       recordMutationTrace(state, actor, "/cyp_send", {}, transfer, now);
       const envio = record(transfer.id, transfer.envioReference, transfer.reciboReference, transfer.operatingCode, protocolStamp(transfer.createdAt),
-        moneyText(transfer.amount), moneyText(transfer.commissionAmount), moneyText(transfer.totalAmount), moneyText(payoutOf(transfer)), moneyText(transfer.payment?.changeAmount ?? 0));
+        moneyText(transfer.amount), moneyText(transfer.commissionAmount), moneyText(totalPaidForTransfer(transfer)), moneyText(payoutOf(transfer)), moneyText(transfer.payment?.changeAmount ?? 0));
       // Kept for as long as the row lives (the document promises seven days at least): the answer of a repeated petition.
       state.idempotency.push({ id: scope, fingerprint, response: { protocol: TEXT_PROTOCOL_CHANNEL, transferId: transfer.id, envioReference: transfer.envioReference, envio }, createdAt: now.toISOString() });
       return okLine(now, envio);
@@ -473,6 +526,7 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
     if (name === "quote") return quote(state, parts, now);
     if (name === "pend") return pending(state, actor, parts, now);
     if (name === "rates") return rates(state, parts, now);
+    if (name === "fees") return fees(state, parts, now);
     if (name === "recs") return receipts(state, actor, parts, now);
     throw new ProtocolError("PNE");
   }

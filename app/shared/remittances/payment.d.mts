@@ -74,5 +74,7 @@ export declare function paymentAmounts(total: number, input?: RemittancePaymentI
     cardSurchargeBps?: number;
     cardSurchargeAmount?: number;
 };
+/** Whether a card payment needs the encrypted archive of the card when the central keeps one. */
+export declare const cardArchiveApplies: (payment?: Pick<RemittancePaymentInput, "method" | "cardType" | "last4">) => boolean;
 /** Card/bank receipts do not add physical bills to the remittance cash box. */
 export declare const cashReceivedForTransfer: (total: number, payment?: Pick<RemittancePayment, "method">) => number;

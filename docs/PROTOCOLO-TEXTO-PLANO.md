@@ -1,10 +1,10 @@
-# Protocolo de texto plano para la aplicación móvil (CYP 0.12)
+# Protocolo de texto plano para la aplicación móvil (CYP 0.13)
 
 Once peticiones `/cyp_*` que responden en texto plano, separadas por `|`, para que una aplicación móvil hecha por
 otro equipo haga Envíos de Dinero contra CyP y los entregue. Orden de Rardiel del 2026-11-19: «Programalo y deja todo
 listo».
 
-- **El contrato** es [`protocolo-cyp/Protocolo CYP 0.12.txt`](<protocolo-cyp/Protocolo CYP 0.12.txt>): es el documento
+- **El contrato** es [`protocolo-cyp/Protocolo CYP 0.13.txt`](<protocolo-cyp/Protocolo CYP 0.13.txt>): es el documento
   que se le envía a quien programa la aplicación. Si el servidor y ese documento no coinciden, hay un fallo: se
   arregla el servidor o se envía una versión nueva del documento, nunca se deja pasar. El documento describe solo
   lo que existe hoy: no cuenta lo que se cambió o se quitó. Lo nuevo desde la última versión que tiene esa persona
@@ -21,8 +21,9 @@ listo».
   `designs/2026-11-26-id-cliente-numero/`; y la 0.9 (búsqueda exacta, Monedas y Tasas), en
   `designs/2026-11-26-tasas-y-busqueda/`; la 0.10 (la identificación en el Listado de Clientes), en
   `designs/2026-11-26-listado-identificacion/`; la 0.11 (el `idMoneda` como número), en
-  `designs/2026-11-26-moneda-numero/`; y la 0.12 (`-1` en Tasas Vigentes), en `designs/2026-11-27-tasas-menos-uno/`.
-  No consta que de la 0.8 a la 0.11 se le mandaran: la 0.12 marca con `(NUEVO)` todo lo nuevo desde la 0.7.
+  `designs/2026-11-26-moneda-numero/`; la 0.12 (`-1` en Tasas Vigentes), en `designs/2026-11-27-tasas-menos-uno/`; y la
+  0.13 (pago con tarjeta y porcentajes), en `designs/2026-11-27-tarjeta-y-porcentajes/`. No consta que de la 0.8 a la
+  0.12 se le mandaran: la 0.13 marca con `(NUEVO)` todo lo nuevo desde la 0.7.
 
 ## Dónde está cada cosa
 
@@ -209,6 +210,21 @@ Visto en una captura suya del 2026-11-20 y comprobado contra un servidor local, 
   busca por trozos, en el nombre y el código. Envíos por Entregar (`pendingDeliveries`) sigue la misma regla con los
   números del envío y los datos del destinatario. **La búsqueda de la web no cambia**: con el mismo texto puede traer
   otros clientes (con `0000` sigue trayendo a todos).
+- **Pago con tarjeta y porcentajes (0.13).** Rardiel, 2026-11-27: «Ok, hazlo entonces y deja todo listo».
+  - **Registrar Envío** acepta `idForma_Pago` 2 con 19 datos: los 16 de siempre más `idTipoTarjeta` (1 crédito,
+    2 débito), `Titular` y `Ultimos4`.
+    - Con 17 o 18 datos, `PIN`. La `VersionApp` va de dato 17 o 20.
+    - Las reglas son las de la web (`paymentAmounts`). El titular se valida tal como llega, con
+      `isCardholderNameDraft`.
+    - El `TotalAPagar` con crédito lleva el recargo (`cardPaymentCharge` con
+      `quote.creditCardCommissionBps`), y la respuesta lo devuelve igual (`totalPaidForTransfer`).
+    - La huella cuenta los datos de tarjeta solo si alguno trae algo: las huellas guardadas siguen valiendo.
+  - **El archivo cifrado.** Si la central guarda tarjetas cifradas (`config.cardVault`), un pago que lo exigiría da
+    `ORC`. Se comprueba después de buscar el `idOperacion`. La condición es una sola función, `cardArchiveApplies`
+    (`payment.mjs`), que usan la web y el protocolo.
+  - **El rechazo de la base de datos** a un pago con tarjeta (migración 052) da `ORC`, no `EIC`.
+  - **Cotizar** suma al final `Por_RecargoTarjeta;RecargoTarjeta;TotalConTarjeta`.
+  - **Petición nueva `fees`**, con los tres porcentajes de `getCommissionPolicy`. Se pide con el permiso de Cotizar.
 - **`-1` en Tasas Vigentes (0.12).** La otra parte, el 2026-11-27: «Y es que su te mando un id de moneda -1», «Me
   devuelvas los valores de todas las monedas». En `rates`, `-1` exacto es lo mismo que vacío: todas las monedas con
   tasa vigente, nunca `TNE`. Va en `rates` y no en `currencyOf`, porque Cotizar y Registrar Envío necesitan una moneda
@@ -255,6 +271,12 @@ Hoy esto solo corre en la central de pruebas, con datos ficticios. Antes de pone
   un número: **antes de una central real hay que darles identificación interna a todos** (como hace la demo con
   `assignMissingClientIdentities`). Y si alguna vez se importan clientes, que la identificación interna la siga dando la
   central: dos con el mismo número (`INT00000031` e `INT000000031`) saldrían con la `INT` entera.
+- **Datos de tarjeta por GET (0.13).** Por GET, el titular y los 4 últimos dígitos de una tarjeta viajan en la
+  dirección y quedan en los registros de los servidores por donde pasan. El contrato recomienda POST. Antes de una
+  central real, decidir si Registrar Envío con tarjeta se acepta solo por POST.
+- **Tarjeta con el archivo cifrado (0.13).** Con `CARD_VAULT_ENABLED`, el crédito (y el débito con los 4 dígitos) no se
+  puede registrar desde la aplicación: da `ORC`, porque el protocolo no recibe el número completo. Si en una central
+  real hace falta, hay que decidir cómo. En `render.yaml` de la demo no está activado.
 - **Cédulas en el listado.** Desde la 0.10 el Listado de Clientes trae la cédula o el pasaporte de hasta 100 clientes
   por petición, además de teléfonos y direcciones. Lo pidió la otra parte. Antes de una central real hay que decidir si
   se queda así (por ejemplo, solo cuando se busca un cliente concreto). Un Cobrador, con `Lado` 1, recibe también las
