@@ -68,9 +68,11 @@ test("parameters get their names; one too many or a line break is PIN with its n
   assert.throws(() => assertOneLine("logout", ["s", "de más\n"]), pin("Parametros"));
   assert.throws(() => assertOneLine("recs", ["s", "", "", "", `1${String.fromCharCode(0x2029)}`]), pin("Pagina"));
   assert.doesNotThrow(() => assertOneLine("clients", ["s", "con\ttabulador", "1"]));
-  assert.equal(Object.keys(namedParameters("send", Array.from({ length: 16 }, () => ""))).length, 16);
-  assert.throws(() => namedParameters("send", Array.from({ length: 15 }, () => "")), pin("Parametros"));
-  assert.throws(() => namedParameters("send", Array.from({ length: 17 }, () => "")), pin("Parametros"));
+  // Registrar Envío: 16 data, or 19 with those of a card (0.13); the three of the card come empty with 16.
+  const sixteen = namedParameters("send", Array.from({ length: 16 }, () => "x"));
+  assert.deepEqual([Object.keys(sixteen).length, sixteen.idTipoTarjeta, sixteen.Titular, sixteen.Ultimos4], [19, "", "", ""]);
+  assert.equal(namedParameters("send", Array.from({ length: 19 }, (_value, index) => String(index))).Ultimos4, "18");
+  for (const length of [15, 17, 18, 20]) assert.throws(() => namedParameters("send", Array.from({ length }, () => "")), pin("Parametros"), String(length));
 });
 
 test("each failure gets its code; an unknown one is left for EIC", () => {
@@ -94,6 +96,10 @@ test("each failure gets its code; an unknown one is left for EIC", () => {
   assert.equal(code(Object.assign(new Error("x"), { statusCode: 429 })), "DML");
   assert.equal(code(Object.assign(new Error("x"), { statusCode: 413 })), "PIN");
   assert.equal(code(new Error("la base no responde")), undefined);
+  // The database refuses a card payment (migration 052): repeating does not fix it, so ORC and never EIC.
+  for (const constraint of ["remittance_payment_valid", "remittance_card_rate_matches_quote"])
+    assert.equal(code(Object.assign(new Error("check"), { code: "23514", constraint })), "ORC", constraint);
+  assert.equal(code(Object.assign(new Error("check"), { code: "23514", constraint: "otra_regla" })), undefined);
   assert.equal(code(invalid("Monto")), "PIN");
 });
 
@@ -138,6 +144,10 @@ test("the version of the application after the last datum is taken away, and onl
   const sixteen = Array.from({ length: 16 }, (_value, index) => index === 15 ? "150.00" : "x");
   assert.deepEqual(withoutVersion("send", sixteen), sixteen);
   assert.deepEqual(withoutVersion("send", [...sixteen, "3.0"]), sixteen);
+  // With a card, 19 data: the version can only be the twentieth. None of the three of the card has the form of one.
+  const nineteen = [...sixteen, "1", "Ana Pérez", "4242"];
+  assert.deepEqual(withoutVersion("send", nineteen), nineteen);
+  assert.deepEqual(withoutVersion("send", [...nineteen, "3.0"]), nineteen);
   // Entregar Envío: four data always, so 980.00 in last place is the amount. Envíos por Entregar: the session alone.
   assert.deepEqual(withoutVersion("pay", ["s", "operacion", "ENV00000001", "980.00"]), ["s", "operacion", "ENV00000001", "980.00"]);
   assert.deepEqual(withoutVersion("pay", ["s", "operacion", "ENV00000001", "980.00", "3.0"]), ["s", "operacion", "ENV00000001", "980.00"]);
