@@ -86,5 +86,11 @@ export function paymentAmounts(total, input, creditCardCommissionBps = 0) {
     }
     return { method, tenderedAmount: total, changeAmount: 0, reference, ...(bank ? { bank } : {}) };
 }
+/**
+ * Whether a card payment needs the encrypted archive of the card when the central keeps one: credit, or debit with its
+ * last 4 digits. The web and the plain-text protocol (which never takes the full number) ask the same question here.
+ */
+export const cardArchiveApplies = (payment) => payment?.method === "card" &&
+    (payment.cardType === "credit" || (payment.cardType === "debit" && payment.last4 !== undefined));
 /** Card/bank receipts do not add physical bills to the remittance cash box. */
 export const cashReceivedForTransfer = (total, payment) => !payment || payment.method === "cash" ? total : 0;

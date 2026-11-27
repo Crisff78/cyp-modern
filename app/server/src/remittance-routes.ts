@@ -12,7 +12,7 @@ import {
 import { boundedId, freeText, phone, singleLine } from "./input-validation.js";
 import { remittanceClientDraft } from "./client-schema.js";
 import { registerRemittanceClient } from "./remittance-client-registration.js";
-import { isCardholderNameDraft, isPaymentTextDraft, paymentMethods } from "../../shared/remittances/payment.mjs";
+import { cardArchiveApplies, isCardholderNameDraft, isPaymentTextDraft, paymentMethods } from "../../shared/remittances/payment.mjs";
 import { CardVault, cardEnvelopeSchema } from "./card-vault.js";
 import { remittanceCashActivity } from "./remittance-cash-activity.js";
 import { demoCashReopeningProblem, reopenDemoRemittanceCash } from "./remittance-demo-cash.js";
@@ -124,7 +124,7 @@ export function registerRemittanceRoutes(
       ? { ...input.newRecipientClient, phone: input.recipientPhone } : input.newRecipientClient;
     const recipientClientId = input.recipientClientId ?? registerRemittanceClient(state, actor, recipientDraft!, "recipient", senderClientId);
     const { newSenderClient: _sender, newRecipientClient: _recipient, cardArchive, ...values } = input;
-    const archiveEligible = input.payment?.method === "card" && (input.payment.cardType === "credit" || (input.payment.cardType === "debit" && input.payment.last4 !== undefined));
+    const archiveEligible = cardArchiveApplies(input.payment);
     if (vault && archiveEligible && !cardArchive) throw new DomainError("CARD_ARCHIVE_REQUIRED", "Actualiza la pantalla y completa el archivo cifrado de la tarjeta antes de confirmar.", 400);
     if (cardArchive && (!vault || !archiveEligible)) throw new DomainError("CARD_STORAGE_UNAVAILABLE", "El guardado cifrado de tarjeta no está disponible para este pago.", 409);
     const result = createRemittance(state, actor, { ...values, senderClientId, recipientClientId }, systemOperators);

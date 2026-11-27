@@ -1,8 +1,8 @@
-// Plain-text protocol for the mobile application (docs/protocolo-cyp/Protocolo CYP 0.12.txt).
+// Plain-text protocol for the mobile application (docs/protocolo-cyp/Protocolo CYP 0.13.txt).
 // This file has no Fastify in it: how a petition is read, how an answer is written and which code an error gets.
 import { DomainError } from "./domain.js";
 
-export const PROTOCOL_COMMANDS = ["login", "logout", "clients", "client", "quote", "send", "recs", "pend", "pay", "currencies", "rates"] as const;
+export const PROTOCOL_COMMANDS = ["login", "logout", "clients", "client", "quote", "send", "recs", "pend", "pay", "currencies", "rates", "fees"] as const;
 export type ProtocolCommand = (typeof PROTOCOL_COMMANDS)[number];
 /** The names of the parameters, as the document writes them; a PIN error names the one that is wrong. */
 export const PROTOCOL_PARAMETERS: Record<Exclude<ProtocolCommand, "login">, readonly string[]> = {
@@ -11,12 +11,15 @@ export const PROTOCOL_PARAMETERS: Record<Exclude<ProtocolCommand, "login">, read
   client: ["idSesion", "idCliente", "Lado"],
   quote: ["idSesion", "idMonedaOrigen", "idMonedaDestino", "Monto", "Modo"],
   send: ["idSesion", "idOperacion", "idRemitente", "idDestinatario", "idMonedaOrigen", "idMonedaDestino", "Monto", "Modo",
-    "TotalAPagar", "MontoARecibir", "idForma_Pago", "Recibido", "Referencia", "Banco", "Verificado", "Nota"],
+    "TotalAPagar", "MontoARecibir", "idForma_Pago", "Recibido", "Referencia", "Banco", "Verificado", "Nota",
+    // Since 0.13, only with a card (idForma_Pago 2): the petition has 16 data, or these 19.
+    "idTipoTarjeta", "Titular", "Ultimos4"],
   recs: ["idSesion", "FechaInicial", "FechaFinal", "idEstado", "Pagina"],
   pend: ["idSesion", "Texto", "Pagina", "idDestinatario"],
   pay: ["idSesion", "idOperacion", "NumEnvio", "MontoARecibir"],
   currencies: ["idSesion"],
   rates: ["idSesion", "idMoneda"],
+  fees: ["idSesion"],
 };
 export const PAGE_SIZE = 100;
 export const MAX_RECEIPT_DAYS = 31;
@@ -94,6 +97,10 @@ export function protocolErrorOf(error: unknown): ProtocolError | undefined {
     if (error.code === "INVALID_PAYMENT") return invalid("idForma_Pago", "Revise los datos de la forma de pago");
     return new ProtocolError("ORC", CENTRAL_SETUP[error.code] ?? error.message);
   }
+  // The database checks a card payment again (migration 052). Repeating does not fix it: ORC, not EIC.
+  const database = error as { code?: string; constraint?: string } | null;
+  if (database?.code === "23514" && ["remittance_payment_valid", "remittance_card_rate_matches_quote"].includes(database.constraint ?? ""))
+    return new ProtocolError("ORC", "La central rechazó los datos del pago con tarjeta; el envío no se guardó");
   const status = (error as { statusCode?: number } | null)?.statusCode;
   if (status === 429) return new ProtocolError("DML");
   if (status === 413) return invalid(WHOLE_PETITION, "La petición es demasiado grande");
@@ -173,11 +180,11 @@ export function rawParameters(method: string, url: string, body: unknown) {
 const VERSION = /^\d{1,3}(\.\d{1,3}){1,2}$/;
 export const isVersion = (value: string) => VERSION.test(value);
 /** The data a petition cannot go without. Whatever comes after them is optional. */
-const REQUIRED: Record<Exclude<ProtocolCommand, "login">, number> = { logout: 1, clients: 1, client: 2, quote: 4, send: 16, recs: 1, pend: 1, pay: 4, currencies: 1, rates: 1 };
+const REQUIRED: Record<Exclude<ProtocolCommand, "login">, number> = { logout: 1, clients: 1, client: 2, quote: 4, send: 16, recs: 1, pend: 1, pay: 4, currencies: 1, rates: 1, fees: 1 };
 /**
  * The data without the version of the application, when it comes. It is always one datum more: it is taken away only
  * when the petition already has the data it cannot go without, so an amount in last place (100.00, written as a
- * version is) stays the amount, and in Registrar Envío it can only be the seventeenth datum. The central does not
+ * version is) stays the amount, and in Registrar Envío it can only be the seventeenth datum (the twentieth with a card). The central does not
  * use it. The sign-in reads its own (see login).
  */
 export function withoutVersion(command: Exclude<ProtocolCommand, "login">, parts: string[]) {
@@ -190,11 +197,14 @@ export function assertOneLine(command: Exclude<ProtocolCommand, "login">, parts:
   const name = PROTOCOL_PARAMETERS[command][at] ?? WHOLE_PETITION;
   throw invalid(name, name === WHOLE_PETITION ? "La petición no puede llevar saltos de línea" : `El dato ${name} no puede llevar saltos de línea`);
 }
+const SEND_DATA = 16;
 /** The parameters by their name; the ones left out are empty. More than the petition has is PIN. */
 export function namedParameters(command: Exclude<ProtocolCommand, "login">, parts: string[]) {
   const names = PROTOCOL_PARAMETERS[command];
-  if (command === "send" && parts.length !== names.length)
-    throw invalid(WHOLE_PETITION, `Registrar Envío lleva siempre ${names.length} datos (${names.length - 1} pipes)`);
+  // Registrar Envío: the 16 data of always, or 19 with the data of the card (0.13). A datum out of place never moves the
+  // others, so 17 or 18 is PIN.
+  if (command === "send" && parts.length !== SEND_DATA && parts.length !== names.length)
+    throw invalid(WHOLE_PETITION, `Registrar Envío lleva ${SEND_DATA} datos (${SEND_DATA - 1} pipes), o ${names.length} con los de la tarjeta (${names.length - 1} pipes)`);
   if (parts.length > names.length) throw invalid(WHOLE_PETITION, "La petición trae datos de más");
   return Object.fromEntries(names.map((name, index) => [name, parts[index] ?? ""])) as Record<string, string>;
 }
