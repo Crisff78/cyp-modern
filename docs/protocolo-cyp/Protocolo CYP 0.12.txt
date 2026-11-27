@@ -1,7 +1,7 @@
 Protocolo de Intercambio de Datos (CyP)
 
- Versión: 0.11
-   Fecha: 26/11/2026
+ Versión: 0.12
+   Fecha: 27/11/2026
 
 
  Aquí le explicamos cómo su aplicación móvil le va a pedir datos a la
@@ -340,6 +340,8 @@ línea y sin salto de línea al final. Hay dos formas:
                 que trae también el código de tres letras para mostrarlo
                 (DOP, USD, EUR). En las peticiones se acepta también ese
                 código, como en las versiones anteriores.
+                (NUEVO) En Tasas Vigentes (6.2), y solo ahí, -1 quiere decir
+                "todas las monedas".
 
  Sí / No     -> 1 / 0
 
@@ -432,6 +434,8 @@ Lo nuevo de esta versión
    OJO: donde su aplicación mostraba DOP o USD (por ejemplo, la moneda de
    un envío por entregar), ahora llega 1 o 2. Muéstrelo con el Nombre o el
    Codigo del Listado de Monedas.
+ - Tasas Vigentes acepta -1 como idMoneda: trae las tasas de todas las
+   monedas, igual que si no lo manda (6.2).
  - En las preguntas del final cambian la 1, la 5 y la 7.
 
  Lo que ya tiene hecho sigue funcionando: las peticiones de antes son las
@@ -1599,7 +1603,8 @@ Funcionalidades
 
  idMoneda: Si se manda, viene solo la tasa de esa moneda. Si no, vienen
            todas las que tienen tasa vigente. (NUEVO) Va el número; el
-           código (USD) también se acepta.
+           código (USD) también se acepta. (NUEVO) Con -1 vienen todas,
+           igual que si no se manda.
 
  Qué devuelve:
 
@@ -1627,6 +1632,7 @@ Funcionalidades
 
  TNE - Solo con idMoneda: esa moneda no tiene tasa vigente, y hoy no se
        puede cotizar con ella. El Dato es el idMoneda, tal como se mandó.
+       (NUEVO) Con -1 no llega nunca: el peso viene siempre.
 
  A tener en cuenta:
 
@@ -1652,6 +1658,8 @@ Funcionalidades
  (El peso no tiene una tasa registrada: su Actualizada viene vacía y por
  eso hay un ; al final de su registro. El euro trae la tasa de ayer, que
  sigue vigente.)
+
+ Todas, con -1:      /cyp_rates?idSesion|-1   (la misma respuesta de arriba)
 
  Una sola moneda:   /cyp_rates?idSesion|2
 
