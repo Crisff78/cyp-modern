@@ -1,6 +1,6 @@
 Protocolo de Intercambio de Datos (CyP)
 
- Versión: 0.13
+ Versión: 0.14
    Fecha: 27/11/2026
 
 
@@ -16,15 +16,18 @@ Cómo se hace un envío, paso a paso
 
  1- Iniciar Sesión: el usuario pone su nombre de usuario y su clave, y la
     central devuelve un idSesion. Ese idSesion se manda en todo lo demás.
+    (NUEVO) La respuesta trae también los porcentajes de los cargos, para
+    mostrárselos al usuario (1.1).
  2- Listado de Clientes: se busca al que envía (remitente) y al que recibe
-    (destinatario). (NUEVO) El listado trae su identificación (cédula o
+    (destinatario). El listado trae su identificación (cédula o
     pasaporte), su teléfono y su dirección.
  3- Cotizar Envío: se mandan el monto y las monedas, y la central devuelve
     la comisión, el total que paga el remitente y lo que va a recibir el
-    destinatario. (NUEVO) Para que el usuario elija las monedas y vea sus
+    destinatario. Para que el usuario elija las monedas y vea sus
     tasas están Listado de Monedas y Tasas Vigentes (6). (NUEVO) Si paga
-    con tarjeta de crédito, la cotización trae también su recargo, y los
-    porcentajes se pueden ver con Porcentajes (6.3).
+    con tarjeta de crédito, la cotización trae también su recargo. Los
+    porcentajes llegan al iniciar sesión, y se pueden pedir otra vez con
+    Porcentajes (6.3).
  4- Registrar Envío: se mandan los dos clientes, lo cotizado y la forma de
     pago, junto con un idOperacion que inventa su aplicación para que el
     envío no se registre dos veces. Para registrar, el usuario tiene que
@@ -39,7 +42,7 @@ Cómo se entrega un envío, paso a paso
 
  1- Iniciar Sesión, igual que para enviar.
  2- Envíos por Entregar: se buscan los envíos que viene a cobrar el
-    destinatario. (NUEVO) Lo más sencillo es buscarlo en el Listado de
+    destinatario. Lo más sencillo es buscarlo en el Listado de
     Clientes y pedir sus envíos con su idCliente (idDestinatario).
     También se puede buscar por el número del envío, por el nombre o la
     cédula del destinatario, o por su teléfono.
@@ -313,7 +316,7 @@ línea y sin salto de línea al final. Hay dos formas:
 6) Formato de los datos
 -----------------------
 
- idCliente   -> (NUEVO) Un número entero, sin ceros delante. Ejemplo: 31
+ idCliente   -> Un número entero, sin ceros delante. Ejemplo: 31
                 Hoy tiene hasta 8 cifras y nunca tendrá más de 16. Si lo
                 guarda como número, use un entero de 64 bits; también
                 puede guardarlo como texto. No lo arme: use siempre el que
@@ -341,13 +344,13 @@ línea y sin salto de línea al final. Hay dos formas:
  Tasas       -> Pesos dominicanos por una unidad de la moneda, con punto
                 decimal y seis decimales. Ejemplo: 59.250000
 
- idMoneda    -> (NUEVO) Un número, como en LSAN: 1 (Peso Dominicano),
+ idMoneda    -> Un número, como en LSAN: 1 (Peso Dominicano),
                 2 (Dólar Americano), 3 (Euro). En esta versión solo existen
                 estas tres. No lo arme: use el del Listado de Monedas (6.1),
                 que trae también el código de tres letras para mostrarlo
                 (DOP, USD, EUR). En las peticiones se acepta también ese
                 código, como en las versiones anteriores.
-                (NUEVO) En Tasas Vigentes (6.2), y solo ahí, -1 quiere decir
+                En Tasas Vigentes (6.2), y solo ahí, -1 quiere decir
                 "todas las monedas".
 
  Sí / No     -> 1 / 0
@@ -404,60 +407,32 @@ ficticios. Su dirección (url), el usuario y la clave se los damos aparte.
 Lo nuevo de esta versión
 ------------------------
 
- Esto es lo nuevo desde la versión 0.7. En el documento está marcado con
+ Esto es lo nuevo desde la versión 0.12. En el documento está marcado con
 (NUEVO).
 
- - El idCliente ahora es un número entero, sin ceros delante: 31 (vea
-   "Formato de los datos"). Así viene en el Listado de Clientes, en Datos
-   del Cliente y en el registro de cada envío, y así se manda en todas
-   las peticiones.
- - Un idCliente de antes, con INT delante (INT00000031) o largo, sigue
-   valiendo. Para repetir un envío ya mandado, repítalo con la misma
-   forma que usó la primera vez (3.2).
- - Envíos por Entregar acepta un dato más al final, idDestinatario: los
-   envíos pendientes de un cliente, por su idCliente (5.1). Así no hace
-   falta buscarlos por la cédula.
- - Una aclaración: Envíos por Entregar trae un registro por envío. Una
-   persona con varios envíos pendientes sale varias veces, una por envío,
-   cada una con su remitente (5.1).
- - El Listado de Clientes busca de forma exacta los números y los
-   códigos (2.1): un texto de solo cifras ya no encuentra por trozos.
-   Por eso antes "0000" traía todos los clientes: estaba dentro de cada
-   INT00000031. Envíos por Entregar busca igual (5.1).
- - Dos peticiones nuevas, en la sección 6: Listado de Monedas
-   (currencies) y Tasas Vigentes (rates).
- - El Listado de Clientes trae la Identificacion (cédula o pasaporte) en
-   el cuarto lugar, como la pidió (2.1):
-   idCliente;Codigo;Nombre;Identificacion;Telefono;Direccion
-   OJO: el Telefono y la Direccion pasan al quinto y al sexto lugar.
- - El idMoneda ahora es un número, como en LSAN: 1 = DOP, 2 = USD,
-   3 = EUR (vea "Formato de los datos"). El Listado de Monedas lo trae
-   delante, y el código al final (6.1):
-   idMoneda;Nombre;Codigo
-   Así viene también en Tasas Vigentes, en Datos del Cliente, en el
-   registro de cada envío (datos 12 y 16) y en el Dato de CNA y CSF, y así
-   se manda en Cotizar Envío, Registrar Envío y Tasas Vigentes. El código
-   de antes (USD) se sigue aceptando en las peticiones.
-   OJO: donde su aplicación mostraba DOP o USD (por ejemplo, la moneda de
-   un envío por entregar), ahora llega 1 o 2. Muéstrelo con el Nombre o el
-   Codigo del Listado de Monedas.
- - Tasas Vigentes acepta -1 como idMoneda: trae las tasas de todas las
-   monedas, igual que si no lo manda (6.2).
+ - OJO: la respuesta de Iniciar Sesión trae una parte más al final,
+   Porcentajes, con los porcentajes de la comisión, del cargo de entrega
+   y del recargo de tarjeta de crédito (1.1). Ahora son 6 partes:
+   OK|FechayHora|idSesion|DatosUsuario|Vence|Porcentajes
+   Si su aplicación comprueba que vengan exactamente 5, cámbielo.
  - Pago con tarjeta en Registrar Envío (3.2): idForma_Pago 2, con tres
    datos más al final (idTipoTarjeta, Titular y Ultimos4), que van solo
    con tarjeta. Con tarjeta de crédito, el TotalAPagar lleva el recargo.
+   Con tarjeta, VersionApp va de dato 20. El número completo de la
+   tarjeta, su vencimiento y su CVV no se mandan nunca.
  - Cotizar Envío trae tres datos más al final, para tarjeta de crédito:
    Por_RecargoTarjeta, RecargoTarjeta y TotalConTarjeta (3.1).
- - Una petición nueva, Porcentajes (fees), con los porcentajes de la
-   comisión, del cargo de entrega y del recargo de tarjeta (6.3).
- - En las preguntas del final cambian la 1, la 5, la 6 y la 7.
+ - Una petición nueva, Porcentajes (fees), para pedir otra vez los
+   porcentajes (6.3).
+ - Pagar con Tarjeta ya no está en "No incluido en esta versión".
+ - En las preguntas del final cambian la 1 y la 6.
 
- Lo que ya tiene hecho sigue funcionando: las peticiones de antes son las
-mismas, y un idCliente o un idMoneda de antes se siguen aceptando. Lo que
-cambia es la forma del idCliente y del idMoneda que trae cada respuesta,
-el lugar del Telefono y la Direccion en el Listado de Clientes, y que una
-búsqueda por un trozo de número ya no encuentra nada. Registrar Envío
-sigue aceptando sus 16 datos de siempre; los 19 son solo para tarjeta.
+ Lo demás sigue igual que en la 0.12: las peticiones de antes son las
+mismas, y Registrar Envío sigue aceptando sus 16 datos de siempre (los 19
+son solo para tarjeta). Lo único que puede afectar a lo que ya tiene hecho
+es que vienen datos de más al final: la sexta parte de Iniciar Sesión y
+los tres datos nuevos de Cotizar Envío. Si su aplicación cuenta las partes
+o los datos, revíselo.
 
 
 
@@ -498,8 +473,8 @@ Funcionalidades
 5.2- Entregar Envío (pay)
 
 
-6- Monedas y Tasas (NUEVO)
---------------------------
+6- Monedas y Tasas
+------------------
 
 6.1- Listado de Monedas (currencies)
 6.2- Tasas Vigentes (rates)
@@ -520,7 +495,7 @@ Funcionalidades
       (por POST: /cyp_login, y en el cuerpo: Usuario|Clave)
       (como la manda su aplicación: /cyp_login?p=Usuario|Clave|3.0)
 
- Res: OK|FechayHora|idSesion|DatosUsuario|Vence
+ Res: OK|FechayHora|idSesion|DatosUsuario|Vence|Porcentajes
       ER|FechayHora|Código|Mensaje|Dato
 
  Qué se manda:
@@ -565,8 +540,8 @@ Funcionalidades
       undefined  - No definido (sin acceso: no puede enviar ni ver envíos)
 
  PuedeEnviar: 1 - El usuario puede buscar clientes, cotizar y registrar
-                  envíos. (NUEVO) También puede pedir las Tasas Vigentes
-                  (6.2).
+                  envíos. También puede pedir las Tasas Vigentes
+                  (6.2) y (NUEVO) los Porcentajes (6.3).
               0 - No puede. Si lo intenta, la central responde ER con SPE.
 
  PuedeVerEnvios: 1 - El usuario puede pedir el Listado de Recibos
@@ -584,6 +559,19 @@ Funcionalidades
         otra hora: compárela con la FechayHora que trae cada respuesta de
         la central. La sesión puede terminar ANTES de Vence (vea el punto
         2 de "A tener en cuenta").
+
+ Porcentajes: (NUEVO) Por_Comision;Por_CargoEntrega;Por_RecargoTarjeta
+
+              Los porcentajes con que la central calcula los cargos de un
+              envío: la comisión, el cargo de entrega y el recargo de
+              tarjeta de crédito. Son los mismos de Porcentajes (6.3), con
+              dos decimales (5.00), y pueden ser 0.00.
+
+              Si el usuario no puede enviar (PuedeEnviar 0), los tres
+              vienen vacíos: ;; (vacío no es 0.00).
+
+              Son para mostrar: los importes de un envío salen siempre de
+              Cotizar Envío.
 
  Errores propios:
 
@@ -608,14 +596,19 @@ Funcionalidades
     que iniciar sesión otra vez.
  3- La central admite 10 intentos de inicio de sesión por minuto desde una
     misma dirección IP. Si se pasan, responde ER con DML.
+ 4- (NUEVO) Los Porcentajes son los del momento en que se inició la
+    sesión. Si el Administrador los cambia, Porcentajes (6.3) trae los de
+    ese momento.
 
  Ejemplo:
 
  Pet: /cyp_login?caja1@empresa.com|MiClave!2026
 
- Res: OK|20261119093000|7C41D09AE35B4F28A16DC0B97E2F8A13|9d2c7a10-55e1-4f0b-a3c8-6e7f8a9b0c1d;María López;cashier;1;1;1|20261119173000
+ Res: OK|20261119093000|7C41D09AE35B4F28A16DC0B97E2F8A13|9d2c7a10-55e1-4f0b-a3c8-6e7f8a9b0c1d;María López;cashier;1;1;1|20261119173000|5.00;2.00;3.50
 
- (La sesión empezó a las 09:30:00 y se vence a las 17:30:00.)
+ (La sesión empezó a las 09:30:00 y se vence a las 17:30:00. La comisión
+ es del 5 %, el cargo de entrega del 2 % y el recargo de tarjeta de
+ crédito del 3.5 %.)
 
 
 1.2- Cerrar Sesión
@@ -652,7 +645,7 @@ Funcionalidades
 ------------------------
 
  Para qué sirve: trae los clientes, todos o los que coinciden con lo que se
- busca. De cada uno trae lo necesario para elegirlo: (NUEVO) su
+ busca. De cada uno trae lo necesario para elegirlo: su
  identificación, su teléfono y su dirección.
 
  Pet: /cyp_clients?idSesion[|Texto[|Pagina[|Lado]]]
@@ -665,7 +658,7 @@ Funcionalidades
  Texto: Lo que se quiere buscar (hasta 160 caracteres, sin | ni saltos de
         línea). Si no se manda, vienen todos. Si se manda, vienen:
 
-        (NUEVO) Los números y los códigos se buscan enteros:
+        Los números y los códigos se buscan enteros:
 
         - El cliente cuyo idCliente es ese texto (31; también
           INT00000031).
@@ -707,10 +700,7 @@ Funcionalidades
 
  ClienteX: idCliente;Codigo;Nombre;Identificacion;Telefono;Direccion
 
- (NUEVO: la Identificacion viene en el cuarto lugar. El Telefono y la
- Direccion pasan al quinto y al sexto. Ahora son 6 datos.)
-
- idCliente: (NUEVO) El identificador del cliente: un número entero.
+ idCliente: El identificador del cliente: un número entero.
             Ejemplo: 31. Es el que se manda en las demás peticiones. No
             lo saque del Codigo, porque no tienen relación: el cliente
             del Codigo CLI00000012 puede tener el idCliente 31.
@@ -720,7 +710,7 @@ Funcionalidades
 
  Nombre: El nombre del cliente.
 
- Identificacion: (NUEVO) La cédula o el pasaporte del cliente, como está
+ Identificacion: La cédula o el pasaporte del cliente, como está
                  en la central. Puede venir vacía.
 
  Telefono: El teléfono del cliente; si no tiene, su celular. Puede
@@ -736,7 +726,7 @@ Funcionalidades
  A tener en cuenta:
 
  1- Solo vienen clientes activos, ordenados por Nombre.
- 2- (NUEVO) La identificación, el teléfono y la dirección ya vienen en el
+ 2- La identificación, el teléfono y la dirección ya vienen en el
     listado. El celular por separado y la moneda del cliente se piden con
     Datos del Cliente (2.2).
  3- Para buscar a alguien por su cédula o su pasaporte, se manda ese dato
@@ -744,17 +734,17 @@ Funcionalidades
  4- Cada búsqueda cuenta para el límite de 120 peticiones por minuto. No
     busque con cada letra que escribe el usuario: espere a que termine de
     escribir.
- 5- (NUEVO) Si su aplicación tiene guardado un idCliente de antes, con
+ 5- Si su aplicación tiene guardado un idCliente de antes, con
     INT delante (INT00000031) o largo (36 caracteres), sigue valiendo en
     las peticiones. Las respuestas traen siempre el número: el de
     INT00000031 es 31 (sin la INT ni los ceros de delante). Si la central
     le devuelve para un cliente un idCliente distinto del que tenía
     guardado, use el nuevo.
- 6- (NUEVO) Con solo cifras pueden venir dos clientes distintos: el de ese
+ 6- Con solo cifras pueden venir dos clientes distintos: el de ese
     idCliente y el de ese Codigo, si el Codigo de alguno es solo cifras.
     Elija por el nombre. Para pedir un cliente por su idCliente, lo
     directo es Datos del Cliente (2.2).
- 7- (NUEVO) Con letras se sigue buscando por trozos: "cl" trae a todos los
+ 7- Con letras se sigue buscando por trozos: "cl" trae a todos los
     clientes que tienen "cl" en su código o en su nombre.
 
  Ejemplos:
@@ -800,7 +790,7 @@ Funcionalidades
  Cliente: idCliente;Codigo;Nombre;Identificacion;Telefono;Celular;Direccion;
           idMoneda
 
- Identificacion: Cédula o pasaporte. Puede venir vacía. (NUEVO) Viene
+ Identificacion: Cédula o pasaporte. Puede venir vacía. Viene
                  vacía también si en la central solo tiene su
                  identificación interna (INT...), que no es una cédula.
 
@@ -825,7 +815,7 @@ Funcionalidades
     para el que recibe (destinatario, Lado 1).
  2- Para buscar un cliente por su cédula o su pasaporte se usa el Listado
     de Clientes (2.1), con ese dato en Texto.
- 3- (NUEVO) La respuesta trae el idCliente como número, aunque se haya
+ 3- La respuesta trae el idCliente como número, aunque se haya
     pedido con uno de antes (INT00000031 o largo).
 
  Ejemplo:
@@ -865,7 +855,7 @@ Funcionalidades
  Modo: 0 - Monto es lo que se quiere enviar, en la moneda de origen (se
            asume si no se manda)
        1 - Monto es el total que paga el remitente, con la comisión dentro,
-           en la moneda de origen (sin el recargo de tarjeta)
+           en la moneda de origen ((NUEVO) sin el recargo de tarjeta)
        2 - Monto es lo que debe recibir el destinatario, en la moneda de
            destino
 
@@ -943,8 +933,9 @@ Funcionalidades
 
  En el ejemplo: 100.00 USD a 59.25 son 5925.00 DOP; se descuentan 118.50
  de cargo de entrega y el destinatario recibe 5806.50 DOP. El remitente
- paga 105.00 USD (100.00 + 5.00 de comisión). Si paga con tarjeta de
- crédito, con un recargo del 3.5 %, paga 108.68 USD (105.00 + 3.68).
+ paga 105.00 USD (100.00 + 5.00 de comisión). (NUEVO) Si paga con
+ tarjeta de crédito, con un recargo del 3.5 %, paga 108.68 USD
+ (105.00 + 3.68).
 
  (La Comision y el Por_Comision valen 5.00 los dos por casualidad: el
  segundo dato es la comisión en dinero y el quinto es el porcentaje.)
@@ -984,8 +975,8 @@ Funcionalidades
  mismo. Con 17 o 18 datos, la central responde ER con PIN.
 
  Si su aplicación manda VersionApp, va después de los 16: es el
- dato 17 (o el 20, después de los 19). Ojo: si manda 15 datos y luego
- VersionApp, la central cuenta 16 y toma VersionApp por la Nota.
+ dato 17 ((NUEVO) o el 20, después de los 19). Ojo: si manda 15 datos y
+ luego VersionApp, la central cuenta 16 y toma VersionApp por la Nota.
 
  Qué se manda:
 
@@ -1021,10 +1012,10 @@ Funcionalidades
                  los datos, no la forma de mandarlos.
                  El idRemitente y el idDestinatario son datos
                  como los demás: repítalos en la misma forma en que los
-                 mandó la primera vez. (NUEVO) Si la primera vez mandó
+                 mandó la primera vez. Si la primera vez mandó
                  INT00000031, repita INT00000031 y no 31: si cambia la
                  forma, la central responde OPD.
-                 (NUEVO) La moneda es la excepción: 2 y USD cuentan como
+                 La moneda es la excepción: 2 y USD cuentan como
                  el mismo dato, y repetir con una u otra forma es la misma
                  petición. (NUEVO) Y los 16 datos y los mismos con los tres
                  de tarjeta vacíos también son la misma petición.
@@ -1090,10 +1081,12 @@ Funcionalidades
 
  Banco: El nombre del banco o del proveedor, como texto (hasta 160
         caracteres, sin | ni saltos de línea; no es un idBanco). Opcional
-        con Transferencia, Depósito y Tarjeta; con Efectivo va vacío.
+        con Transferencia, Depósito y (NUEVO) Tarjeta; con Efectivo va
+        vacío.
 
- Verificado: Con Transferencia, Depósito y Tarjeta, su aplicación le
-             pregunta al usuario si ya comprobó que el pago llegó (por
+ Verificado: Con Transferencia, Depósito y (NUEVO) Tarjeta, su
+             aplicación le pregunta al usuario si ya comprobó que el pago
+             llegó (por
              ejemplo, con una casilla que tiene que marcar). Solo si dice
              que sí, manda 1. Si no va 1, la central responde ER con PNV.
              La central no hace la transferencia, el depósito ni el cobro
@@ -1120,8 +1113,8 @@ Funcionalidades
 
            Con débito, el Titular y los Ultimos4 van los dos o ninguno.
 
- OJO con los datos de la tarjeta: el número completo de la tarjeta, su
- fecha de vencimiento y su código de seguridad (CVV) NO se mandan nunca,
+ (NUEVO) OJO con los datos de la tarjeta: el número completo de la
+ tarjeta, su fecha de vencimiento y su código de seguridad (CVV) NO se mandan nunca,
  en ningún dato (tampoco en la Referencia ni en la Nota). La central no los
  pide y no los guarda. Le recomendamos mandar por POST los envíos con
  tarjeta, para que el Titular y los Ultimos4 no queden escritos en la
@@ -1174,8 +1167,8 @@ Funcionalidades
        coinciden. Hay que cotizar otra vez.
  CNA - Caja No Abierta: el usuario no tiene abierta su Caja de Remesas.
  EIS - Efectivo InSuficiente: lo Recibido es menos que el TotalAPagar.
- PNV - Pago No Verificado: con Transferencia, Depósito o Tarjeta no vino
-       Verificado = 1.
+ PNV - Pago No Verificado: con Transferencia, Depósito o (NUEVO) Tarjeta
+       no vino Verificado = 1.
  OPD - OPeración Duplicada: ese idOperacion ya se usó con otros datos. El
        envío ya estaba registrado; el Dato es su NumEnvio. No lo mande de
        nuevo.
@@ -1302,7 +1295,7 @@ Funcionalidades
 
  idEstado: 0, 1 o 2, con el mismo significado de arriba.
 
- idRemitente, idDestinatario: El idCliente de cada uno. (NUEVO) Viene
+ idRemitente, idDestinatario: El idCliente de cada uno. Viene
               el número, aunque el envío se haya registrado con otra
               forma.
 
@@ -1312,13 +1305,13 @@ Funcionalidades
  Telefono: El teléfono del destinatario. Puede venir vacío.
 
  idMonedaOrigen, MontoAEnviar, Comision, TotalAPagar: La moneda en que pagó
-          el remitente ((NUEVO) su número: 2, no USD), lo que envió, la
+          el remitente (su número: 2, no USD), lo que envió, la
           comisión y lo que pagó en total.
           Con Tarjeta, el TotalAPagar incluye además el recargo de tarjeta:
           en esos recibos no es igual a MontoAEnviar + Comision.
 
  idMonedaDestino, MontoARecibir: La moneda en que se le entrega al
-          destinatario ((NUEVO) su número) y lo que recibe.
+          destinatario (su número) y lo que recibe.
 
  idForma_Pago: Cómo pagó el remitente:
 
@@ -1400,7 +1393,7 @@ Funcionalidades
  Texto: Lo que se quiere buscar (hasta 160 caracteres, sin | ni saltos de
         línea). Si no se manda, vienen todos. Si se manda, vienen:
 
-        (NUEVO) Los números se buscan enteros, como en el Listado de
+        Los números se buscan enteros, como en el Listado de
         Clientes:
 
         - El envío cuyo NumEnvio, NumRecibo o CodOperacion es ese texto,
@@ -1417,7 +1410,7 @@ Funcionalidades
  Pagina: El número de página, empezando por 1. Si no se manda se asume 1.
          Cada página trae 100 envíos como máximo.
 
- idDestinatario: (NUEVO) El idCliente del destinatario, el que vino en el
+ idDestinatario: El idCliente del destinatario, el que vino en el
                  Listado de Clientes. Si se manda, vienen solo los envíos
                  pendientes a ese cliente. Se puede mandar junto con el
                  Texto, o solo: /cyp_pend?idSesion|||47
@@ -1438,7 +1431,7 @@ Funcionalidades
          Telefono (dato 11)       - Su teléfono.
          idMonedaDestino (dato 16) y MontoARecibir (dato 17)
                                   - En qué moneda y cuánto hay que
-                                    entregarle. (NUEVO) La moneda llega
+                                    entregarle. La moneda llega
                                     como número: muéstrela con el
                                     Codigo o el Nombre de 6.1.
          Identificacion (dato 20) - Su cédula o pasaporte, para comprobar
@@ -1448,7 +1441,7 @@ Funcionalidades
 
  RNE - No hay ningún envío por entregar que mostrar. No es un fallo: su
        aplicación muestra la lista vacía.
- CNE - (NUEVO) El idDestinatario no es de ningún cliente. El Dato es el
+ CNE - El idDestinatario no es de ningún cliente. El Dato es el
        idDestinatario.
 
  A tener en cuenta:
@@ -1469,11 +1462,11 @@ Funcionalidades
  5- Cada búsqueda cuenta para el límite de 120 peticiones por minuto. No
     busque con cada letra que escribe el usuario: espere a que termine de
     escribir.
- 6- (NUEVO) Viene un registro por envío, no uno por persona. Una misma
+ 6- Viene un registro por envío, no uno por persona. Una misma
     persona puede tener varios envíos pendientes, de remitentes
     distintos: buscando por su cédula o por su idDestinatario vienen
     todos, uno por envío. Cada uno se entrega aparte, con su NumEnvio.
- 7- (NUEVO) Para los envíos de un destinatario, use idDestinatario: su
+ 7- Para los envíos de un destinatario, use idDestinatario: su
     idCliente en el Texto (por ejemplo 31) no encuentra nada.
 
  Ejemplos:
@@ -1487,7 +1480,7 @@ Funcionalidades
 
  Todos los que el usuario puede entregar:  /cyp_pend?idSesion
 
- Por su idCliente (NUEVO):                 /cyp_pend?idSesion|||47
+ Por su idCliente:                         /cyp_pend?idSesion|||47
 
  Por la cédula del destinatario:           /cyp_pend?idSesion|402-1234567-8
 
@@ -1571,9 +1564,9 @@ Funcionalidades
        es de su ruta. El Dato es el idCliente del destinatario.
  CNA - Caja No Abierta: el usuario no tiene abierta hoy su Caja de Remesas
        en la moneda que recibe el destinatario. El Dato es el idMoneda de
-       esa moneda ((NUEVO) su número).
+       esa moneda (su número).
  CSF - Caja Sin Fondos: esa caja no tiene dinero suficiente para la
-       entrega. El Dato es el idMoneda ((NUEVO) su número).
+       entrega. El Dato es el idMoneda (su número).
  OPD - OPeración Duplicada: ese idOperacion ya se usó con otros datos. El
        Dato es el NumEnvio de la primera vez.
 
@@ -1627,10 +1620,8 @@ Funcionalidades
  Res: ER|20261119101500|CNA|No tiene abierta hoy su Caja de Remesas en DOP|1
 
 
-6- Monedas y Tasas (NUEVO)
-==========================
-
- (NUEVO: toda esta sección es nueva.)
+6- Monedas y Tasas
+==================
 
 6.1- Listado de Monedas
 -----------------------
@@ -1650,13 +1641,13 @@ Funcionalidades
 
  MonedaX: idMoneda;Nombre;Codigo
 
- idMoneda: (NUEVO) El número de la moneda (vea "Formato de los datos").
+ idMoneda: El número de la moneda (vea "Formato de los datos").
            Es el que se manda en Cotizar Envío, Registrar Envío y Tasas
            Vigentes, y el que viene en las demás respuestas.
 
  Nombre: El nombre de la moneda, para mostrarlo.
 
- Codigo: (NUEVO) El código de tres letras (DOP, USD, EUR), para
+ Codigo: El código de tres letras (DOP, USD, EUR), para
          mostrarlo.
 
  Errores propios: ninguno.
@@ -1690,8 +1681,8 @@ Funcionalidades
  Qué se manda:
 
  idMoneda: Si se manda, viene solo la tasa de esa moneda. Si no, vienen
-           todas las que tienen tasa vigente. (NUEVO) Va el número; el
-           código (USD) también se acepta. (NUEVO) Con -1 vienen todas,
+           todas las que tienen tasa vigente. Va el número; el
+           código (USD) también se acepta. Con -1 vienen todas,
            igual que si no se manda.
 
  Qué devuelve:
@@ -1700,7 +1691,7 @@ Funcionalidades
 
  TasaX: idMoneda;TasaCompra;TasaVenta;Fecha;Actualizada
 
- idMoneda: (NUEVO) El número de la moneda, como en el Listado de Monedas.
+ idMoneda: El número de la moneda, como en el Listado de Monedas.
 
  TasaCompra: Los pesos dominicanos que la central da por una unidad de
              esa moneda. Es la que se usa cuando el REMITENTE paga en esa
@@ -1720,7 +1711,7 @@ Funcionalidades
 
  TNE - Solo con idMoneda: esa moneda no tiene tasa vigente, y hoy no se
        puede cotizar con ella. El Dato es el idMoneda, tal como se mandó.
-       (NUEVO) Con -1 no llega nunca: el peso viene siempre.
+       Con -1 no llega nunca: el peso viene siempre.
 
  A tener en cuenta:
 
@@ -1760,7 +1751,8 @@ Funcionalidades
  (NUEVO: toda esta sección es nueva.)
 
  Para qué sirve: trae los porcentajes con que la central calcula los
- cargos de un envío, para mostrárselos al usuario.
+ cargos de un envío, para mostrárselos al usuario. Los mismos vienen al
+ iniciar sesión (1.1): esta petición sirve para pedirlos otra vez.
 
  Pet: /cyp_fees?idSesion
 
@@ -1788,7 +1780,9 @@ Funcionalidades
  1- Los porcentajes son para mostrar. Los importes de un envío salen
     siempre de Cotizar Envío: no los calcule con estos porcentajes.
  2- Son los mismos para todas las monedas y todos los montos. Los cambia
-    el Administrador en la central; pídalos de nuevo antes de mostrarlos.
+    el Administrador en la central: los que vinieron al iniciar sesión
+    pueden quedar viejos, y esta petición trae los de ese momento. Los que
+    cuentan son los de Cotizar Envío.
  3- La pueden pedir los mismos usuarios que pueden cotizar (PuedeEnviar).
 
  Ejemplo:
@@ -1814,7 +1808,7 @@ Errores
    Listado de Clientes, CNE no trae nada); OPD trae el NumEnvio que ya
    estaba registrado. En las entregas: ENE y MNC traen el
    NumEnvio; ENP, el idEstado del envío (1 o 2); CNA y CSF, el idMoneda
-   de la caja ((NUEVO) su número). (NUEVO) En Tasas Vigentes, TNE trae el
+   de la caja (su número). En Tasas Vigentes, TNE trae el
    idMoneda tal como se mandó. En los demás
    viene vacío.
  - En cada petición pusimos sus errores propios. Además, PIN, DML, PNE, EIC
@@ -1868,7 +1862,7 @@ Errores
  Del envío:
 
  TNE - Tasa No Encontrada: no hay tasa registrada para una de las monedas.
-       (NUEVO) En Tasas Vigentes: la moneda pedida no tiene tasa vigente.
+       En Tasas Vigentes: la moneda pedida no tiene tasa vigente.
  MIN - Monto INsuficiente: el Monto es demasiado pequeño.
  CCA - Cotización CAmbiada: los importes ya no coinciden. Hay que cotizar
        otra vez.
@@ -1876,8 +1870,8 @@ Errores
        Al entregar, es la caja de la moneda que recibe el
        destinatario.
  EIS - Efectivo InSuficiente: lo Recibido es menos que el TotalAPagar.
- PNV - Pago No Verificado: falta Verificado = 1 en Transferencia o
-       Depósito.
+ PNV - Pago No Verificado: falta Verificado = 1 en Transferencia,
+       Depósito o (NUEVO) Tarjeta.
  OPD - OPeración Duplicada: ese idOperacion ya se usó con otros datos. El
        envío ya estaba registrado; no hay que mandarlo de nuevo.
        Puede venir también al entregar.
@@ -1932,8 +1926,8 @@ una versión nueva de este documento.
  Sobre el formato:
 
  1- PlugIn y comandos: pusimos "cyp" y los comandos de este documento
-    (login, logout, clients, client, quote, send, recs, pend, pay y,
-    (NUEVO), currencies, rates y fees). ¿Tiene usted alguna regla para
+    (login, logout, clients, client, quote, send, recs, pend, pay,
+    currencies, rates y, (NUEVO), fees). ¿Tiene usted alguna regla para
     nombrarlos, o prefiere otros nombres? Si no, se quedan estos.
 
  2- Versión: su aplicación manda un número al final de la petición
@@ -1959,7 +1953,7 @@ una versión nueva de este documento.
     c) La central responde HTTP 200 también en los errores. ¿Su aplicación
        lo maneja así?
 
- 5- (NUEVO) Monedas: ya usamos números, como LSAN: 1 = Peso Dominicano,
+ 5- Monedas: ya usamos números, como LSAN: 1 = Peso Dominicano,
     2 = Dólar Americano y 3 = Euro. ¿Su aplicación usa esos mismos? Si
     usa otros para el dólar o el euro, díganos cuáles antes de usarlos
     con datos reales: después ya no se pueden cambiar.
@@ -1970,7 +1964,7 @@ una versión nueva de este documento.
     Si no, mándenos su lista y usamos la suya. El Banco va con su nombre,
     como texto, porque CyP no tiene idBanco. ¿Le sirve?
 
- 7- (NUEVO) Identificadores: el idCliente ya es un número entero (31),
+ 7- Identificadores: el idCliente ya es un número entero (31),
     como nos pidió. El idUsuario y el idEnvio siguen siendo textos de
     hasta 36 caracteres, que su aplicación nunca tiene que mandar de
     vuelta. ¿Le sirve así?
