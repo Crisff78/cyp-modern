@@ -1,10 +1,10 @@
-# Protocolo de texto plano para la aplicación móvil (CYP 0.11)
+# Protocolo de texto plano para la aplicación móvil (CYP 0.12)
 
 Once peticiones `/cyp_*` que responden en texto plano, separadas por `|`, para que una aplicación móvil hecha por
 otro equipo haga Envíos de Dinero contra CyP y los entregue. Orden de Rardiel del 2026-11-19: «Programalo y deja todo
 listo».
 
-- **El contrato** es [`protocolo-cyp/Protocolo CYP 0.11.txt`](<protocolo-cyp/Protocolo CYP 0.11.txt>): es el documento
+- **El contrato** es [`protocolo-cyp/Protocolo CYP 0.12.txt`](<protocolo-cyp/Protocolo CYP 0.12.txt>): es el documento
   que se le envía a quien programa la aplicación. Si el servidor y ese documento no coinciden, hay un fallo: se
   arregla el servidor o se envía una versión nueva del documento, nunca se deja pasar. El documento describe solo
   lo que existe hoy: no cuenta lo que se cambió o se quitó. Lo nuevo desde la última versión que tiene esa persona
@@ -20,9 +20,9 @@ listo».
   `designs/2026-11-25-protocolo-entregar/`; la 0.8 (el `idCliente` como número e `idDestinatario` en `pend`), en
   `designs/2026-11-26-id-cliente-numero/`; y la 0.9 (búsqueda exacta, Monedas y Tasas), en
   `designs/2026-11-26-tasas-y-busqueda/`; la 0.10 (la identificación en el Listado de Clientes), en
-  `designs/2026-11-26-listado-identificacion/`; y la 0.11 (el `idMoneda` como número), en
-  `designs/2026-11-26-moneda-numero/`. No consta que de la 0.8 a la 0.10 se le mandaran: la 0.11 marca con `(NUEVO)`
-  todo lo nuevo desde la 0.7.
+  `designs/2026-11-26-listado-identificacion/`; la 0.11 (el `idMoneda` como número), en
+  `designs/2026-11-26-moneda-numero/`; y la 0.12 (`-1` en Tasas Vigentes), en `designs/2026-11-27-tasas-menos-uno/`.
+  No consta que de la 0.8 a la 0.11 se le mandaran: la 0.12 marca con `(NUEVO)` todo lo nuevo desde la 0.7.
 
 ## Dónde está cada cosa
 
@@ -209,6 +209,10 @@ Visto en una captura suya del 2026-11-20 y comprobado contra un servidor local, 
   busca por trozos, en el nombre y el código. Envíos por Entregar (`pendingDeliveries`) sigue la misma regla con los
   números del envío y los datos del destinatario. **La búsqueda de la web no cambia**: con el mismo texto puede traer
   otros clientes (con `0000` sigue trayendo a todos).
+- **`-1` en Tasas Vigentes (0.12).** La otra parte, el 2026-11-27: «Y es que su te mando un id de moneda -1», «Me
+  devuelvas los valores de todas las monedas». En `rates`, `-1` exacto es lo mismo que vacío: todas las monedas con
+  tasa vigente, nunca `TNE`. Va en `rates` y no en `currencyOf`, porque Cotizar y Registrar Envío necesitan una moneda
+  (ahí `-1` sigue siendo `PIN`). En el ejemplo de LSAN, `-1` solo es un `idEstado` («Sin Cobrar»).
 - **El `idMoneda` como número (0.11).** La otra parte, el 2026-11-26, con la respuesta de `currencies` delante: «No
   mandas el ID de la moneda». En LSAN `idMoneda` es un número («Si idMoneda no se especifica se asumirá 1 por
   defecto»). `CURRENCY_IDS` fija 1 = DOP, 2 = USD, 3 = EUR (decisión de Claude: la otra parte no ha dado los suyos; el
@@ -227,7 +231,7 @@ Visto en una captura suya del 2026-11-20 y comprobado contra un servidor local, 
 - **Monedas y Tasas (0.9).** Las pidió la otra parte el 2026-11-26, separadas. `currencies` da las tres monedas con los
   nombres de `collector-assignments.ts`. `rates` sale de `ratesInForce` (`remittances.ts`), que usa `effectiveRate` con
   el día de negocio de Cotizar: lo que enseña es lo que usa Cotizar. Trae compra, venta, el día de la tasa (puede ser
-  anterior) y cuándo se cambió; el peso, siempre. Con `idMoneda` y sin tasa, `TNE` con la moneda en el Dato. Las tasas
+  anterior) y cuándo se cambió; el peso, siempre. Con `idMoneda` y sin tasa, `TNE` con la moneda en el Dato (con `-1`, nunca). Las tasas
   son para mostrar: los importes salen de Cotizar.
 
 ## Antes de producción

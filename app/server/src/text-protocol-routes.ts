@@ -1,4 +1,4 @@
-// Plain-text protocol for the mobile application: the petitions of docs/protocolo-cyp/Protocolo CYP 0.11.txt.
+// Plain-text protocol for the mobile application: the petitions of docs/protocolo-cyp/Protocolo CYP 0.12.txt.
 // Each one is a thin adapter in front of the same functions the JSON API uses; no rule of the business lives here.
 // Two things are its own: the idCliente (the number of the internal identification of the client instead of its id,
 // clientIds and clientOf) and, in Entregar Envío, the order of its checks and the idOperacion that tells a repetition
@@ -275,7 +275,9 @@ export async function registerTextProtocol(app: FastifyInstance, deps: TextProto
   /** Tasas Vigentes: the rates a quote made now uses (ratesInForce), all of them or one currency. */
   function rates(state: State, parts: string[], now: Date) {
     const input = namedParameters("rates", parts);
-    const currency = input.idMoneda === "" ? undefined : currencyOf("idMoneda", input.idMoneda);
+    // Since 0.12 an idMoneda of -1 is all the currencies, as if it came empty: the application asked for it. Only here,
+    // not in currencyOf: Cotizar and Registrar Envío need a currency.
+    const currency = input.idMoneda === "" || input.idMoneda === "-1" ? undefined : currencyOf("idMoneda", input.idMoneda);
     const rows = ratesInForce(state, now).filter((row) => !currency || row.currency === currency);
     // The Dato of an error that comes from the petition is what came, as with an idCliente.
     if (currency && !rows.length) throw new ProtocolError("TNE", `No hay tasa vigente de ${currency}`, input.idMoneda);
